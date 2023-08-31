@@ -51,6 +51,9 @@ def build_argv(command: Command, ext_module: config.ExtModule):
         "-fallow-shlib-undefined",
     ]
 
+    # Link libC
+    argv += ["-lc"]
+
     with pyconf(ext_module) as pyconf_file:
         # Setup a pyconf module
         argv += ["--mod", f"pyconf::{pyconf_file}"]
