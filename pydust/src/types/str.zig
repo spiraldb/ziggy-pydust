@@ -21,11 +21,17 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
-    pub inline fn append(self: PyString, other: PyString) !void {
+    pub fn append(self: PyString, other: PyString) !void {
         try self.appendObj(other.obj);
     }
 
-    pub fn appendObj(self: *PyString, other: PyObject) !void {
+    pub fn appendSlice(self: *PyString, str: [:0]const u8) !void {
+        const other = try fromSlice(str);
+        defer other.decref();
+        try self.appendObj(other.obj);
+    }
+
+    fn appendObj(self: *PyString, other: PyObject) !void {
         // This function effectively decref's the left-hand side.
         // The semantics therefore sort of imply mutation, and so we expose the same in our API.
         var self_ptr: ?*ffi.PyObject = self.obj.py;
@@ -36,12 +42,6 @@ pub const PyString = extern struct {
             // If set to null, then it failed.
             return PyError.Propagate;
         }
-    }
-
-    pub fn appendSlice(self: *PyString, str: [:0]const u8) !void {
-        const other = try fromSlice(str);
-        defer other.decref();
-        try self.appendObj(other.obj);
     }
 
     pub fn asSlice(self: PyString) ![:0]const u8 {
