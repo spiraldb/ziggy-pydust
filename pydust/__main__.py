@@ -37,7 +37,7 @@ def debug(args):
         subprocess.run(argv, check=True)
 
     os.makedirs("zig-out/", exist_ok=True)
-    shutil.move(ext_module.test_bin, "zig-out/test.bin")
+    shutil.move(ext_module.test_bin, "zig-out/debug.bin")
 
 
 if __name__ == "__main__":
