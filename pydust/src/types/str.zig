@@ -56,6 +56,8 @@ pub const PyString = extern struct {
     }
 };
 
+const testing = std.testing;
+
 test "PyString" {
     py.initialize();
     defer py.finalize();
@@ -65,5 +67,11 @@ test "PyString" {
 
     ps = try ps.appendSlice(", world!");
     var ps_slice = try ps.asSlice();
-    try std.testing.expectEqualStrings("Hello, world!", ps_slice[0 .. ps_slice.len - 1]);
+
+    // Null-terminated strings have len == non-null bytes, but are guaranteed to have a null byte
+    // when indexed by their length.
+    try testing.expectEqual(@as(usize, 13), ps_slice.len);
+    try testing.expectEqual(@as(u8, 0), ps_slice[ps_slice.len]);
+
+    try testing.expectEqualStrings("Hello, world!", ps_slice[0 .. ps_slice.len - 1]);
 }
