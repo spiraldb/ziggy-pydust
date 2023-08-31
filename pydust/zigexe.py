@@ -17,9 +17,9 @@ Command = Literal["build-lib"] | Literal["test"]
 
 
 @contextlib.contextmanager
-def build_argv(command: Command, ext_module: config.ExtModule):
+def build_argv(command: Command, ext_module: config.ExtModule, optimize: str = "Debug"):
     """The main entry point from Poetry's build script."""
-    argv = [sys.executable, "-m", "ziglang", command]
+    argv = [sys.executable, "-m", "ziglang", command, "-O", optimize]
     if command == "build-lib":
         argv += ["-dynamic"]
         # TODO(ngates): create the correct .so filename based on arch

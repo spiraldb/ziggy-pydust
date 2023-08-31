@@ -41,6 +41,11 @@ pub const PyString = extern struct {
         return self.appendObj(other.obj);
     }
 
+    pub fn asOwnedSlice(self: PyString) ![:0]const u8 {
+        defer self.decref();
+        return try self.asSlice();
+    }
+
     pub fn asSlice(self: PyString) ![:0]const u8 {
         var size: i64 = 0;
         const buffer: [*]const u8 = ffi.PyUnicode_AsUTF8AndSize(self.obj.py, &size) orelse return PyError.Propagate;
