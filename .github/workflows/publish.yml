@@ -1,0 +1,57 @@
+name: Publish
+
+on:
+  push:
+    tags: ['*']
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  POETRY_VERSION: "1.6.1"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  publish:
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ziggy-pydust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        id: setup-python
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Load cached Poetry installation
+        id: cached-poetry
+        uses: actions/cache@v3
+        with:
+          path: ~/.local
+          key: poetry-${{ runner.os }}-${{ env.POETRY_VERSION  }}-${{ steps.setup-python.outputs.python-version }}
+      - name: Install Poetry
+        id: install-poetry
+        if: steps.cached-poetry.outputs.cache-hit != 'true'
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+      - name: Poetry git plugin
+        run: poetry self add poetry-git-version-plugin
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Poetry Build
+        run: poetry build -v
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
