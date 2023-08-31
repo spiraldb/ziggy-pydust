@@ -18,6 +18,8 @@ pub fn build(b: *std.Build) void {
     main_tests.addIncludePath(configurePython.getIncludePath());
     main_tests.addLibraryPath(configurePython.getLibraryPath());
     main_tests.linkSystemLibrary("python3.11");
+    main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
+
     const run_main_tests = b.addRunArtifact(main_tests);
     test_step.dependOn(&run_main_tests.step);
 

@@ -10,9 +10,7 @@ class ExtModule(BaseModel):
 
     name: str
     root: str
-
-    # TODO(ngates): maybe we can select this to be the minimum supported version?
-    limited_api: bool = False
+    limited_api: bool = True
 
     @property
     def libname(self):
