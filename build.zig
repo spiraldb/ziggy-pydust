@@ -41,7 +41,9 @@ pub fn build(b: *std.Build) void {
     }
 }
 
-fn getPythonIncludePath(allocator: std.mem.Allocator) ![]const u8 {
+fn getPythonIncludePath(
+    allocator: std.mem.Allocator,
+) ![]const u8 {
     const includeResult = try std.process.Child.exec(.{
         .allocator = allocator,
         .argv = &.{ "python", "-c", "import sysconfig; print(sysconfig.get_path('include'), end='')" },

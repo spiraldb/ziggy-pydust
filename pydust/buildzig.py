@@ -1,17 +1,11 @@
 import contextlib
-import os
 import subprocess
 import sys
 import sysconfig
 import textwrap
 from typing import TextIO
 
-import pydust
 from pydust import config
-
-# We ship the PyDust Zig library inside our Python package to make it easier
-# for us to auto-configure user projects.
-PYDUST_ROOT = os.path.join(os.path.dirname(pydust.__file__), "src", "pydust.zig")
 
 PYVER_MINOR = ".".join(str(v) for v in sys.version_info[:2])
 PYVER_HEX = f"{sys.hexversion:#010x}"
@@ -45,15 +39,16 @@ def generate_build_zig(build_zig_file):
         b.writeln('const std = @import("std");')
         b.writeln()
 
-        # We choose to ship Pydust source code inside our PyPi package. This means the that once the PyPi package has been
-        # downloaded there are no further requests out to the internet.
+        # We choose to ship Pydust source code inside our PyPi package. This means the that once the PyPi package has
+        # been downloaded there are no further requests out to the internet.
         #
-        # As a result of this though, we need some way to locate the source code. We can't use a reference to the currently
-        # running pydust, since that could be inside a temporary build env which won't exist later when the user is developing
-        # locally. Therefore, we defer resolving the path until the build.zig is invoked by shelling out to Python.
+        # As a result of this though, we need some way to locate the source code. We can't use a reference to the
+        # currently running pydust, since that could be inside a temporary build env which won't exist later when the
+        # user is developing locally. Therefore, we defer resolving the path until the build.zig is invoked by shelling
+        # out to Python.
         #
-        # We also want to avoid creating a pydust module (and instead prefer anonymous modules) so that we can populate a separate
-        # pyconf options object for each Python extension module.
+        # We also want to avoid creating a pydust module (and instead prefer anonymous modules) so that we can populate
+        # a separate pyconf options object for each Python extension module.
         b.write(
             """
             fn getPydustRootPath(allocator: std.mem.Allocator) ![]const u8 {
@@ -161,7 +156,9 @@ def generate_build_zig(build_zig_file):
 
         b.write(
             f"""
-            fn configurePythonInclude(pydust: []const u8, compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options) void {{
+            fn configurePythonInclude(
+                pydust: []const u8, compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options,
+            ) void {{
                 compile.addAnonymousModule("pydust", .{{
                     .source_file = .{{ .path = pydust }},
                     .dependencies = &.{{.{{ .name = "pyconf", .module = pyconf.createModule() }}}},
@@ -171,7 +168,9 @@ def generate_build_zig(build_zig_file):
                 compile.linker_allow_shlib_undefined = true;
             }}
 
-            fn configurePythonRuntime(pydust: []const u8, compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options) void {{
+            fn configurePythonRuntime(
+                pydust: []const u8, compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options
+            ) void {{
                 configurePythonInclude(pydust, compile, pyconf);
                 compile.linkSystemLibrary("python{PYVER_MINOR}");
                 compile.addLibraryPath(.{{ .path =  "{PYLIB}" }});
