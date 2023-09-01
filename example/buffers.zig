@@ -4,7 +4,7 @@ const py = @import("pydust");
 const Self = @This();
 
 pub const __doc__ =
-    \\Using buffer protocol to use Python arrays.
+    \\Using buffer protocol to accept arrays, e.g. numpy.
 ;
 
 pub fn sum(args: *const struct { arr: py.PyObject }) !u64 {
