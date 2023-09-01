@@ -1,6 +1,6 @@
-from pydust import build
+from pydust import buildzig
 
 
 def pytest_collection(session):
     """We use the same pydust build system for our example modules, but we trigger it from a pytest hook."""
-    build.build()
+    buildzig.zig_build(["install"], use_temp=True)

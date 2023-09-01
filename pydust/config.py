@@ -21,6 +21,12 @@ class ExtModule(BaseModel):
         return os.path.join(*self.name.split(".")[:-1])
 
     @property
+    def install_path(self):
+        # FIXME(ngates): for non-limited API
+        assert self.limited_api, "Only limited API modules are supported right now"
+        return os.path.join(*self.name.split(".")) + ".abi3.so"
+
+    @property
     def test_bin(self):
         return os.path.join("zig-out", self.libname + ".test.bin")
 
