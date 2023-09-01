@@ -9,6 +9,7 @@ pub const PyExc = struct {
         PyErr.setString(self, message);
     }
 
+    // TODO(marko): this doesn't work, can't do it in compile time
     pub const BaseException: PyExc = .{ .obj = .{ .py = ffi.PyExc_BaseException } };
     pub const TypeError: PyExc = .{ .obj = .{ .py = ffi.PyExc_TypeError } };
     pub const ValueError: PyExc = .{ .obj = .{ .py = ffi.PyExc_ValueError } };
