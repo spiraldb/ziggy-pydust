@@ -21,24 +21,27 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
-    pub inline fn append(self: PyString, other: PyString) !PyString {
-        return self.appendObj(other.obj);
+    pub fn append(self: PyString, other: PyString) !void {
+        try self.appendObj(other.obj);
     }
 
-    pub fn appendObj(self: PyString, other: PyObject) !PyString {
-        var self_ptr: ?*ffi.PyObject = self.obj.py;
-        ffi.PyUnicode_Append(@ptrCast(&self_ptr), other.py);
-        if (self_ptr) |ptr| {
-            return .{ .obj = .{ .py = ptr } };
-        } else {
-            return PyError.Propagate;
-        }
-    }
-
-    pub fn appendSlice(self: PyString, str: [:0]const u8) !PyString {
+    pub fn appendSlice(self: *PyString, str: [:0]const u8) !void {
         const other = try fromSlice(str);
         defer other.decref();
-        return self.appendObj(other.obj);
+        try self.appendObj(other.obj);
+    }
+
+    fn appendObj(self: *PyString, other: PyObject) !void {
+        // This function effectively decref's the left-hand side.
+        // The semantics therefore sort of imply mutation, and so we expose the same in our API.
+        var self_ptr: ?*ffi.PyObject = self.obj.py;
+        ffi.PyUnicode_Append(&self_ptr, other.py);
+        if (self_ptr) |ptr| {
+            self.obj.py = ptr;
+        } else {
+            // If set to null, then it failed.
+            return PyError.Propagate;
+        }
     }
 
     pub fn asOwnedSlice(self: PyString) ![:0]const u8 {
@@ -48,8 +51,8 @@ pub const PyString = extern struct {
 
     pub fn asSlice(self: PyString) ![:0]const u8 {
         var size: i64 = 0;
-        const buffer: [*]const u8 = ffi.PyUnicode_AsUTF8AndSize(self.obj.py, &size) orelse return PyError.Propagate;
-        return @ptrCast(buffer[0..@intCast(size + 1)]);
+        const buffer: [*:0]const u8 = ffi.PyUnicode_AsUTF8AndSize(self.obj.py, &size) orelse return PyError.Propagate;
+        return buffer[0..@as(usize, @intCast(size)) :0];
     }
 
     pub fn incref(self: PyString) void {
@@ -61,14 +64,26 @@ pub const PyString = extern struct {
     }
 };
 
+const testing = std.testing;
+
 test "PyString" {
     py.initialize();
     defer py.finalize();
 
-    var ps = try PyString.fromSlice("Hello");
+    const a = "Hello";
+    const b = ", world!";
+
+    var ps = try PyString.fromSlice(a);
     defer ps.decref();
 
-    ps = try ps.appendSlice(", world!");
+    try ps.appendSlice(b);
+
     var ps_slice = try ps.asSlice();
-    try std.testing.expectEqualStrings("Hello, world!", ps_slice[0 .. ps_slice.len - 1]);
+
+    // Null-terminated strings have len == non-null bytes, but are guaranteed to have a null byte
+    // when indexed by their length.
+    try testing.expectEqual(a.len + b.len, ps_slice.len);
+    try testing.expectEqual(@as(u8, 0), ps_slice[ps_slice.len]);
+
+    try testing.expectEqualStrings("Hello, world!", ps_slice);
 }
