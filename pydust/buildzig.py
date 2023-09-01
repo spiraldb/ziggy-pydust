@@ -20,19 +20,15 @@ PYINC = sysconfig.get_path("include")
 PYLIB = sysconfig.get_config_var("LIBDIR")
 
 
-def zig_build(argv: list[str], use_temp=False):
-    if use_temp:
-        with tempfile.NamedTemporaryFile(dir=".", prefix="build_", suffix=".zig") as temp_build_zig:
-            generate_build_zig(temp_build_zig.name)
-            subprocess.run(
-                [sys.executable, "-m", "ziglang", "build", "--build-file", temp_build_zig.name] + argv, check=True
-            )
-    else:
-        generate_build_zig()
-        subprocess.run([sys.executable, "-m", "ziglang", "build"] + argv, check=True)
+def zig_build(argv: list[str], build_zig="build.zig"):
+    generate_build_zig(build_zig)
+    subprocess.run(
+        [sys.executable, "-m", "ziglang", "build", "--build-file", build_zig] + argv,
+        check=True,
+    )
 
 
-def generate_build_zig(build_zig_file="build.zig"):
+def generate_build_zig(build_zig_file):
     """Generate the build.zig file for the current pyproject.toml.
 
     Initially we were calling `zig build-lib` directly, and this worked fine except it meant we
@@ -68,7 +64,7 @@ def generate_build_zig(build_zig_file="build.zig"):
                 with b.block():
                     b.write(
                         f"""
-                        # For each Python ext_module, generate a shared library and test runner.
+                        // For each Python ext_module, generate a shared library and test runner.
                         const pyconf = b.addOptions();
                         pyconf.addOption([:0]const u8, "module_name", "{ext_module.libname}");
                         pyconf.addOption(bool, "limited_api", {str(ext_module.limited_api).lower()});
