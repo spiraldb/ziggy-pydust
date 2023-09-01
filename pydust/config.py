@@ -17,10 +17,6 @@ class ExtModule(BaseModel):
         return self.name.rsplit(".", maxsplit=1)[-1]
 
     @property
-    def install_prefix(self):
-        return os.path.join(*self.name.split(".")[:-1])
-
-    @property
     def install_path(self):
         # FIXME(ngates): for non-limited API
         assert self.limited_api, "Only limited API modules are supported right now"

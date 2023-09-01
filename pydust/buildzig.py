@@ -68,6 +68,7 @@ def generate_build_zig(build_zig_file="build.zig"):
                 with b.block():
                     b.write(
                         f"""
+                        # For each Python ext_module, generate a shared library and test runner.
                         const pyconf = b.addOptions();
                         pyconf.addOption([:0]const u8, "module_name", "{ext_module.libname}");
                         pyconf.addOption(bool, "limited_api", {str(ext_module.limited_api).lower()});
@@ -81,7 +82,14 @@ def generate_build_zig(build_zig_file="build.zig"):
                             .optimize = optimize,
                         }});
                         configurePythonInclude(lib{ext_module.libname}, pyconf);
-                        b.installArtifact(lib{ext_module.libname});
+
+                        // Install the shared library within the source tree
+                        const install{ext_module.libname} = b.addInstallFileWithDir(
+                            lib{ext_module.libname}.getEmittedBin(),
+                            .{{ .custom = ".." }},  // Relative to project root: zig-out/../
+                            "{ext_module.install_path}",
+                        );
+                        b.getInstallStep().dependOn(&install{ext_module.libname}.step);
 
                         const test{ext_module.libname} = b.addTest(.{{
                             .root_source_file = .{{ .path = "{ext_module.root}" }},
@@ -170,3 +178,7 @@ class Writer:
     def writeln(self, text: str = ""):
         self.write(text)
         self.f.write("\n")
+
+
+if __name__ == "__main__":
+    generate_build_zig()
