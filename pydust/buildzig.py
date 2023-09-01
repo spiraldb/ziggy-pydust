@@ -92,7 +92,7 @@ def generate_build_zig(build_zig_file):
                         f"""
                         // For each Python ext_module, generate a shared library and test runner.
                         const pyconf = b.addOptions();
-                        pyconf.addOption([:0]const u8, "module_name", "{ext_module.libname}");
+                        pyconf.addOption([:0]const u8, "module_name", "{ext_module.name}");
                         pyconf.addOption(bool, "limited_api", {str(ext_module.limited_api).lower()});
                         pyconf.addOption([:0]const u8, "hexversion", "{PYVER_HEX}");
 
