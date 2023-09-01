@@ -1,4 +1,5 @@
 from array import array  # implements buffer protocol
+
 from example import buffers
 
 
