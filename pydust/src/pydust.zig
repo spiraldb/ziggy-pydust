@@ -62,7 +62,10 @@ pub fn finalize() void {
 }
 
 /// Register a struct as a Python module definition.
-pub fn module(comptime name: [:0]const u8, comptime definition: type) @TypeOf(definition) {
+pub fn module(comptime definition: type) void {
+    const pyconf = @import("pyconf");
+    const name = pyconf.module_name;
+
     var shortname = name;
     if (std.mem.lastIndexOf(u8, name, ".")) |idx| {
         shortname = name[idx + 1 ..];
@@ -75,7 +78,9 @@ pub fn module(comptime name: [:0]const u8, comptime definition: type) @TypeOf(de
     };
     State.addModule(moddef);
     evaluateDeclarations(definition);
-    return definition;
+
+    const wrapped = modules.define(moddef);
+    @export(wrapped.init, .{ .name = "PyInit_" ++ moddef.name, .linkage = .Strong });
 }
 
 /// Register a struct as a Python class definition.
@@ -179,13 +184,5 @@ pub fn findClasses(comptime mod: ModuleDef) []const ClassDef {
 fn evaluateDeclarations(comptime definition: type) void {
     for (@typeInfo(definition).Struct.decls) |decl| {
         _ = @field(definition, decl.name);
-    }
-}
-
-/// Export PyInit_<modname> C functions into the output object file.
-pub fn exportInitFunctions() void {
-    inline for (State.modules()) |moddef| {
-        const wrapped = modules.define(moddef);
-        @export(wrapped.init, .{ .name = "PyInit_" ++ moddef.name, .linkage = .Strong });
     }
 }
