@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 import sysconfig
-import tempfile
 import textwrap
 from typing import TextIO
 
@@ -103,7 +102,11 @@ def generate_build_zig(build_zig_file):
             b.write(
                 f"""
                 // Option for emitting test binary based on the given root source. This can be helpful for debugging.
-                const debugRoot = b.option([]const u8, "debug-root", "The root path of a file emitted as a binary for use with the debugger");
+                const debugRoot = b.option(
+                    []const u8,
+                    "debug-root",
+                    "The root path of a file emitted as a binary for use with the debugger",
+                );
                 if (debugRoot) |root| {{
                     const pyconf = b.addOptions();
                     pyconf.addOption([:0]const u8, "module_name", "debug");
