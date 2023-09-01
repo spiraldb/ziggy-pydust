@@ -9,18 +9,15 @@ pub const __doc__ =
 
 pub fn sum(args: *const struct { arr: py.PyObject }) !u64 {
     var out: py.PyBuffer = try py.PyBuffer.get(args.arr);
-    defer out.decref();
-
+    // defer out.decref();
     const values = try out.asSliceView(u64);
     var s: u64 = 0;
     for (values) |v| s += v;
     return s;
 }
 
-pub fn reverse(args: *const struct { arr: py.PyObject }) !py.PyObject {
+pub fn reverse(args: *const struct { arr: py.PyObject }) !void {
     var out: py.PyBuffer = try py.PyBuffer.get(args.arr);
-    // don't decref out because we return it as result
-
     // we can just work with slice, but this tests getPtr
     const length: usize = @intCast(out.shape[0]);
     const iter: usize = @divFloor(length, 2);
@@ -31,8 +28,6 @@ pub fn reverse(args: *const struct { arr: py.PyObject }) !py.PyObject {
         left.* = right.*;
         right.* = tmp;
     }
-
-    return out.obj;
 }
 
 comptime {
