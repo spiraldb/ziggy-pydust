@@ -1,5 +1,6 @@
-from example import buffers
 from array import array  # implements buffer protocol
+
+from example import buffers
 
 
 def test_sum():
