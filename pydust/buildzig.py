@@ -135,12 +135,12 @@ def generate_build_zig(build_zig_file):
                     .dependencies = &.{{.{{ .name = "pyconf", .module = pyconf.createModule() }}}},
                 }});
                 compile.addIncludePath(.{{ .path = "{PYINC}" }});
+                compile.linkLibC();
                 compile.linker_allow_shlib_undefined = true;
             }}
 
             fn configurePythonRuntime(compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options) void {{
                 configurePythonInclude(compile, pyconf);
-                compile.linkLibC();
                 compile.linkSystemLibrary("python{PYVER_MINOR}");
                 compile.addLibraryPath(.{{ .path =  "{PYLIB}" }});
             }}
