@@ -26,13 +26,17 @@ pub fn count(self: *const Self) u32 {
     return self.count;
 }
 
+pub fn whoami(self: *const Self) !py.PyString {
+    return self.name;
+}
+
 pub fn hello(
     self: *const Self,
     args: *const struct { name: py.PyString }, // (5)!
 ) !py.PyString {
-    const str = try py.PyString.fromSlice("Hello, ");
+    var str = try py.PyString.fromSlice("Hello, ");
     try str.append(args.name);
-    try str.append(". It's ");
+    try str.appendSlice(". It's ");
     try str.append(self.name);
     return str;
 }

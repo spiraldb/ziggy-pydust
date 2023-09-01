@@ -21,7 +21,7 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
-    pub fn append(self: PyString, other: PyString) !void {
+    pub fn append(self: *PyString, other: PyString) !void {
         try self.appendObj(other.obj);
     }
 
