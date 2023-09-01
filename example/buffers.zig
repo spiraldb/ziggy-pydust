@@ -1,6 +1,12 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const Self = @This();
+
+pub const __doc__ =
+    \\Using buffer protocol to use Python arrays.
+;
+
 pub fn sum(args: *const struct { arr: py.PyObject }) !u64 {
     var out: py.PyBuffer = try py.PyBuffer.get(args.arr);
     defer out.decref();
@@ -27,4 +33,8 @@ pub fn reverse(args: *const struct { arr: py.PyObject }) !py.PyObject {
     }
 
     return out.obj;
+}
+
+comptime {
+    py.module(@This());
 }

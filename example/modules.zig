@@ -42,6 +42,3 @@ pub fn count(self: *const Self) u32 {
 comptime {
     py.module(@This());
 }
-
-// TODO(marko): Move this to submodule
-pub usingnamespace @import("buffers.zig");
