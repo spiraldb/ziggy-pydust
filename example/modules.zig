@@ -14,9 +14,6 @@ const Self = @This(); // (1)!
 count: u32 = 0, // (2)!
 name: py.PyString,
 
-/// A __new__ function can be used to initialize module state at runtime.
-/// This is useful for values that require calling into Python
-/// and cannot be known at comptime.
 pub fn __new__() !Self { // (3)!
     return .{ .name = try py.PyString.fromSlice("Ziggy") };
 }
