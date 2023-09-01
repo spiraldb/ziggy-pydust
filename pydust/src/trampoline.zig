@@ -34,7 +34,7 @@ pub fn setErr(err: anyerror) void {
     };
 }
 
-pub fn toPyObject(comptime funcName: [:0]const u8, comptime objType: type) type {
+pub fn toPyObject(comptime objType: type) type {
     return struct {
         pub inline fn unwrap(obj: objType) ?*ffi.PyObject {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
@@ -53,17 +53,21 @@ pub fn toPyObject(comptime funcName: [:0]const u8, comptime objType: type) type 
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return (py.PyFloat.from(resultType, result) catch |e| return setErrObj(e)).obj.py,
                 .Int => return (py.PyLong.from(resultType, result) catch |e| return setErrObj(e)).obj.py,
-                .Struct => switch (resultType) {
-                    py.PyString => return result.obj.py,
-                    py.PyFloat => return result.obj.py,
-                    py.PyObject => return result.py,
-                    else => {},
+                .Struct => {
+                    // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
+                    if (@hasField(resultType, "obj") and @hasField(@TypeOf(result.obj), "py")) {
+                        return result.obj.py;
+                    }
+                    // Support py.PyObject
+                    if (resultType == py.PyObject) {
+                        return result.py;
+                    }
                 },
                 .Void => return ffi.Py_None,
                 else => {},
             }
 
-            @compileError("Unsupported return type " ++ @typeName(objType) ++ " from Pydust function " ++ funcName);
+            @compileError("Unsupported return type " ++ @typeName(objType) ++ " from Pydust function");
         }
     };
 }
