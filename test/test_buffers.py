@@ -1,5 +1,7 @@
 from array import array  # implements buffer protocol
 
+import numpy as np
+
 from example import buffers
 
 
@@ -15,7 +17,5 @@ def test_reverse():
 
 
 def test_nd():
-    import numpy as np
-
     arr = np.asarray([[1, 2, 3], [4, 5, 6]], dtype=np.uint64)
-    buffers.testing(arr)
+    buffers.sum(arr)

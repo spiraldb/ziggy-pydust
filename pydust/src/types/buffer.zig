@@ -62,14 +62,15 @@ pub const PyBuffer = extern struct {
         return @alignCast(std.mem.bytesAsSlice(value_type, self.buf.?[0..@intCast(self.len)]));
     }
 
-    pub fn fromOwnedSlice(allocator: std.mem.Allocator, fake: py.PyObject, comptime value_type: type, values: []value_type) !Self {
+    pub fn fromOwnedSlice(allocator: std.mem.Allocator, fake: py.PyObject, comptime value_type: type, values: []value_type) !*Self {
         var shape = try allocator.alloc(isize, 1);
         shape[0] = @intCast(values.len);
         const fmt = formatStr(value_type);
         var fmt_c = try allocator.allocSentinel(u8, fmt.len, 0);
         @memcpy(fmt_c, fmt[0..1]);
 
-        return .{
+        var result = try allocator.create(Self);
+        result.* = .{
             .buf = @alignCast(std.mem.sliceAsBytes(values).ptr),
             // TODO(marko): We need to create an object using PyType_FromSpec and register buffer release
             .obj = fake,
@@ -84,6 +85,7 @@ pub const PyBuffer = extern struct {
             .suboffsets = null,
             .internal = null,
         };
+        return result;
     }
 
     fn formatStr(comptime value_type: type) *const [1:0]u8 {
@@ -136,6 +138,7 @@ pub const PyBuffer = extern struct {
 
     pub fn decref(self: *Self) void {
         // decrefs the underlying object
+        std.debug.print("RELEASING BUFFER {any}", .{self});
         ffi.PyBuffer_Release(@ptrCast(self));
     }
 
