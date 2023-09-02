@@ -2,6 +2,7 @@ const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
+const tramp = @import("../trampoline.zig");
 
 /// See: https://docs.python.org/3/c-api/dict.html
 pub const PyDict = extern struct {
@@ -17,6 +18,14 @@ pub const PyDict = extern struct {
 
     pub fn decref(self: PyDict) void {
         self.obj.decref();
+    }
+
+    /// Create a PyDict from the given struct.
+    pub fn from(comptime S: type, value: S) !PyDict {
+        return switch (@typeInfo(S)) {
+            .Struct => of(.{ .py = try tramp.toPyObject(S).unwrap(value) }),
+            else => @compileError("PyDict can only be created from struct types"),
+        };
     }
 
     /// Return a new empty dictionary.
