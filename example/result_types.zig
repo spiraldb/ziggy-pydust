@@ -38,6 +38,12 @@ pub fn zigf64() f64 {
     return 6.4;
 }
 
+const StructResult = struct { foo: u64, bar: bool };
+
+pub fn zigstruct() StructResult {
+    return .{ .foo = 1234, .bar = true };
+}
+
 comptime {
     py.module(@This());
 }
