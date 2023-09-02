@@ -28,14 +28,6 @@ Pydust ships with type wrappers for CPython built-ins, such as PyFloat, PyTuple,
 are extern structs containing a single `#!c py.PyObject` field. This again enables them to be used in place
 of `#!c *ffi.PyObject`.
 
-The following function naming conventions apply:
-
-* Construct from Zig types
-* With Python type wrappers:
-    * Function name matches CPython API, e.g. `#!zig contains(key: []const u8)`.
-* With PyObject types
-    * Function name match CPython API with `Object` suffix, e.g. `#!zig containsObject(key: py.PyObject)`.
-
 ## Type Conversions
 
 At comptime, Pydust wraps your function definitions such that native Zig types can be returned
