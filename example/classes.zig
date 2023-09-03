@@ -18,7 +18,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     }
 
     pub fn get_name(self: *const Self) !py.PyString {
-        return py.PyString.fromPtr(self.name.ptr);
+        return py.PyString.fromSlice(self.name);
     }
 
     pub fn make_noise() !py.PyString {
