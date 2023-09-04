@@ -147,16 +147,14 @@ pub fn self(selfInstance: anytype) !types.PyObject {
 }
 
 /// Get zig state of super class `Super` of `classSelf` parameter
-pub fn super(comptime Super: type, selfInstance: anytype) !*Super {
+pub fn super(comptime Super: type, selfInstance: anytype) !types.PyObject {
     const moduleName = findContainingModule(Super);
     const imported = try types.PyModule.import(moduleName);
     const superPyType = try imported.obj.getAttr(getClassName(Super));
     const pyObj = try self(selfInstance);
 
     const superTypeObj: types.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
-    const superPyObj = try superTypeObj.call(&.{ superPyType, pyObj });
-    var zigSuperObj: *pytypes.State(Super) = @ptrCast(superPyObj.py);
-    return &zigSuperObj.state;
+    return superTypeObj.call(&.{ superPyType, pyObj });
 }
 
 /// Find the name of the module that contains the given definition.

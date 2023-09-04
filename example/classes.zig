@@ -21,14 +21,13 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub const __doc__ = "Adorable animal docstring";
     const Self = @This();
 
+    animal: Animal,
     name: py.PyString,
 
     pub fn __init__(self: *Self, args: *const extern struct { name: py.PyString }) !void {
-        var super = try py.super(Animal, self);
-        _ = super;
         var state = try py.PyLong.from(i64, 3);
         defer state.obj.decref();
-        // try super.__init__(&.{ .state = state });
+        try Animal.__init__(&self.animal, &.{ .state = state });
         self.name = args.name;
     }
 
