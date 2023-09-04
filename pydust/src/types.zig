@@ -1,4 +1,5 @@
 pub usingnamespace @import("types/buffer.zig");
+pub usingnamespace @import("types/dict.zig");
 pub usingnamespace @import("types/error.zig");
 pub usingnamespace @import("types/float.zig");
 pub usingnamespace @import("types/long.zig");

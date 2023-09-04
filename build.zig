@@ -21,16 +21,6 @@ pub fn build(b: *std.Build) void {
     const run_main_tests = b.addRunArtifact(main_tests);
     test_step.dependOn(&run_main_tests.step);
 
-    const example_lib = b.addSharedLibrary(.{
-        .name = "examples",
-        .root_source_file = .{ .path = "example/modules.zig" },
-        .main_pkg_path = .{ .path = "example/" },
-        .target = target,
-        .optimize = optimize,
-    });
-    example_lib.addAnonymousModule("pydust", .{ .source_file = .{ .path = "pydust/src/pydust.zig" } });
-    b.installArtifact(example_lib);
-
     // Option for emitting test binary based on the given root source.
     // This is used for debugging as in .vscode/tasks.json
     const test_debug_root = b.option([]const u8, "test-debug-root", "The root path of a file emitted as a binary for use with the debugger");
