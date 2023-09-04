@@ -1,7 +1,5 @@
 from array import array  # implements buffer protocol
 
-import numpy as np
-
 from example import buffers
 
 

@@ -1,18 +1,22 @@
 const py = @import("pydust");
 
 // --8<-- [start:append]
-fn append(left: py.PyString, right: []const u8) !void {
-    // Since we create the PyString, and no longer need it after
-    // this function, we are responsible for calling decref on it.
+fn append(left: *py.PyString, right: []const u8) !py.PyString {
     const rightPy = try py.PyString.fromSlice(right);
     defer rightPy.decref();
 
-    _ = try left.append(rightPy);
+    return left.append(rightPy);
 }
 // --8<-- [end:append]
 
-pub fn appendFoo(args: *const struct { left: py.PyString }) !void {
-    try append(args.left, "foo");
+// --8<-- [start:append2]
+fn append2(left: *py.PyString, right: []const u8) !py.PyString {
+    return left.appendSlice(right);
+}
+// --8<-- [end:append2]
+
+pub fn appendFoo(args: *const struct { left: py.PyString }) !py.PyString {
+    return append(@constCast(&args.left), "foo");
 }
 
 comptime {
