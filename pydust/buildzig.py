@@ -77,6 +77,7 @@ def generate_build_zig(build_zig_file):
                 const optimize = b.standardOptimizeOption(.{});
 
                 const test_step = b.step("test", "Run library tests");
+                const test_build_step = b.step("test-build", "Build test runners");
 
                 const pydust = getPydustRootPath(b.allocator) catch @panic("Failed to locate Pydust source code");
                 """
@@ -121,6 +122,14 @@ def generate_build_zig(build_zig_file):
                         }});
                         configurePythonRuntime(pydust, test{ext_module.libname}, pyconf);
 
+                        // Install the test binary
+                        const installtest{ext_module.libname} = b.addInstallBinFile(
+                            test{ext_module.libname}.getEmittedBin(),
+                            "{ext_module.libname}.test.bin",
+                        );
+                        test_build_step.dependOn(&installtest{ext_module.libname}.step);
+
+                        // Run the tests as part of zig build test.
                         const run_test{ext_module.libname} = b.addRunArtifact(test{ext_module.libname});
                         test_step.dependOn(&run_test{ext_module.libname}.step);
                         """
