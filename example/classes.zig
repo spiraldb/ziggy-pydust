@@ -16,6 +16,11 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         self.name = try args.name.asSlice();
     }
 
+    pub fn __len__(self: *const Self) usize {
+        _ = self;
+        return 4;
+    }
+
     pub fn get_name(self: *const Self) !py.PyString {
         return py.PyString.fromSlice(self.name);
     }

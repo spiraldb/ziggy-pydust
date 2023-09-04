@@ -19,3 +19,7 @@ def test_adopt():
     adopted = owner.adopt_puppy("Cute pupper's name")
     assert isinstance(adopted, classes.Dog)
     assert adopted.get_name() == "Cute pupper's name"
+
+
+def test_length():
+    assert len(classes.Dog("foo")) == 4

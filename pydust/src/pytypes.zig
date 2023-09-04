@@ -84,6 +84,13 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
+            if (@hasDecl(definition, "__len__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_mp_length,
+                    .pfunc = @ptrCast(@constCast(&mp_length)),
+                }};
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -93,6 +100,16 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
 
             break :blk slots_;
         };
+
+        fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
+            const lenFunc = @field(definition, "__len__");
+            const self: *const Instance = @ptrCast(pyself);
+            const result = @as(isize, @intCast(lenFunc(&self.state)));
+            if (@typeInfo(@typeInfo(@TypeOf(lenFunc)).Fn.return_type.?) == .ErrorUnion) {
+                return result catch return -1;
+            }
+            return result;
+        }
     };
 }
 
