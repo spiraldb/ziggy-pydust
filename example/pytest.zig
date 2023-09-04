@@ -10,6 +10,7 @@ const testing = std.testing;
 test "pydust-pytest" {
     const str = try py.PyString.fromSlice("hello");
     defer str.decref();
+
     try testing.expectEqualStrings("hello", try str.asSlice());
 }
 
