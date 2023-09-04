@@ -53,23 +53,3 @@ For native Zig types however, the following conversions apply:
 | `u32`, `u64`  | `int`        |
 | `f32`, `f64`  | `float`      |
 | `struct`      | `dict`       |
-
-## Memory Management
-
-Pydust, like Zig, doesn't perform any implicit memory management. Pydust is designed to be a relatively
-thin layer around the CPython API, and therefore the same semantics apply.
-
-All Pydust Python types (such as `py.PyObject` and `py.Py<Name>`) have `incref()` and `decref()` member
-functions. These correspond to `ffi.Py_INCREF` and `ffi.Py_DECREF` respectively.
-
-For example, if we take a Zig string `right` and wish to append it to a Python string, we first need
-to convert it to a `py.PyString`.
-
-``` zig
---8<-- "example/memory.zig:append"
-```
-
-!!! tip "Upcoming Feature!"
-
-    Work is underway to provide a test harness that uses Zig's `GeneralPurposeAllocator` to 
-    catch memory leaks within your Pydust extension code and surface them to pytest.
