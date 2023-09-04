@@ -20,12 +20,6 @@ pub fn __new__() !Self { // (3)!
 
 pub fn increment(self: *Self) void { // (4)!
     self.count += 1;
-
-    const builtins = try py.import("builtins");
-    const super = try builtins.get("super");
-    const instance = super.call(.{  });
-    instance.__init__(...);
-
 }
 
 pub fn count(self: *const Self) u32 {
