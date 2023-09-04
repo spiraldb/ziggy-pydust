@@ -29,8 +29,7 @@ pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
     pub fn adopt_puppy(args: *const extern struct { name: py.PyString }) !py.PyObject {
-        const puppy = try py.init(Dog, .{ .name = args.name });
-        return puppy;
+        return try py.init(Dog, .{ .name = args.name });
     }
 });
 
