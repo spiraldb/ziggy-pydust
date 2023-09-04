@@ -26,7 +26,6 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
-    const Self = @This();
 
     pub fn adopt_puppy(args: *const extern struct { name: py.PyString }) !py.PyObject {
         args.name.incref();
