@@ -18,10 +18,21 @@ pub const PyTuple = extern struct {
         return .{ .obj = .{ .py = tuple } };
     }
 
+<<<<<<< HEAD
     /// Construct a PyTuple from the given Zig tuple.
     pub fn from(values: anytype) !PyTuple {
         if (!@typeInfo(@TypeOf(values)).Struct.is_tuple) {
             @compileError("Must pass a Zig tuple into PyTuple.from");
+=======
+    pub fn fromValues(values: []const PyObject) !PyTuple {
+        const tuple = ffi.PyTuple_New(@intCast(values.len)) orelse return PyError.Propagate;
+
+        for (values, 0..) |value, i| {
+            if (ffi.PyTuple_SetItem(tuple, @intCast(i), value.py) < 0) {
+                return PyError.Propagate;
+            }
+            value.incref();
+>>>>>>> d73a6a2 (super)
         }
         return of(try py.PyObject.from(values));
     }

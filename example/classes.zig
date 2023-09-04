@@ -25,12 +25,19 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 
     pub fn __init__(self: *Self, args: *const extern struct { name: py.PyString }) !void {
         var super = try py.super(Animal, self);
-        try super.__init__(&.{ .state = try py.PyLong.from(i64, 1) });
+        _ = super;
+        var state = try py.PyLong.from(i64, 3);
+        defer state.obj.decref();
+        // try super.__init__(&.{ .state = state });
         self.name = args.name;
     }
 
-    pub fn get_name(self: *const Self) !py.PyString {
-        return self.name;
+    pub fn get_self(self: *Self) !py.PyObject {
+        return py.self(self);
+    }
+
+    pub fn get_name(self: *Self) !py.PyString {
+        return py.PyString.fromSlice(self.name);
     }
 
     pub fn make_noise() !py.PyString {

@@ -141,26 +141,22 @@ fn InitArgs(comptime Cls: type) type {
 }
 
 /// Convert user state instance into PyObject instance
-pub fn self(classSelf: anytype) !types.PyObject {
-    const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(classSelf)).Pointer.child), "state", classSelf);
+pub fn self(selfInstance: anytype) !types.PyObject {
+    const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(selfInstance)).Pointer.child), "state", selfInstance);
     return .{ .py = &selfState.obj };
 }
 
 /// Get zig state of super class `Super` of `classSelf` parameter
-pub fn super(comptime Super: type, classSelf: anytype) !Super {
+pub fn super(comptime Super: type, selfInstance: anytype) !*Super {
     const moduleName = findContainingModule(Super);
     const imported = try types.PyModule.import(moduleName);
-    imported.incref();
-    defer imported.decref();
     const superPyType = try imported.obj.getAttr(getClassName(Super));
-    superPyType.incref();
-    const pyObj = try self(classSelf);
-    pyObj.incref();
+    const pyObj = try self(selfInstance);
 
     const superTypeObj: types.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
     const superPyObj = try superTypeObj.call(&.{ superPyType, pyObj });
     var zigSuperObj: *pytypes.State(Super) = @ptrCast(superPyObj.py);
-    return zigSuperObj.state;
+    return &zigSuperObj.state;
 }
 
 /// Find the name of the module that contains the given definition.
