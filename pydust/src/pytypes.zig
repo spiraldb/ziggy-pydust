@@ -84,7 +84,7 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
-            if (@hasDecl(definition, "__finalize__")) {
+            if (@hasDecl(definition, "__del__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_finalize,
                     .pfunc = @ptrCast(@constCast(&finalize)),
@@ -101,7 +101,8 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             break :blk slots_;
         };
 
-        /// Wrapper for the user's __finalize__ function.
+        /// Wrapper for the user's __del__ function.
+        /// Note: tp_del is deprecated in favour of tp_finalize.
         ///
         /// See https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_finalize.
         fn finalize(pyself: *ffi.PyObject) void {
@@ -114,7 +115,7 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             ffi.PyErr_Fetch(&error_type, &error_value, &error_tb);
 
             const instance: *Instance = @ptrCast(pyself);
-            definition.__finalize__(&instance.state);
+            definition.__del__(&instance.state);
 
             ffi.PyErr_Restore(error_type, error_value, error_tb);
         }

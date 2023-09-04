@@ -16,7 +16,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         self.name = args.name;
     }
 
-    pub fn __finalize__(self: *Self) void {
+    pub fn __del__(self: *Self) void {
         self.name.decref();
     }
 

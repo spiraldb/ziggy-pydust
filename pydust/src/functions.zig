@@ -18,7 +18,7 @@ pub const Signature = struct {
 const reservedNames = .{
     "__new__",
     "__init__",
-    "__finalize__",
+    "__del__",
 };
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.

@@ -3,7 +3,6 @@ import io
 import pathlib
 import struct
 import subprocess
-import sys
 import tempfile
 
 import pytest
