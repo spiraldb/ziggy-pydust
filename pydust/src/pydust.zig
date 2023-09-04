@@ -150,8 +150,12 @@ pub fn self(classSelf: anytype) !types.PyObject {
 pub fn super(comptime Super: type, classSelf: anytype) !Super {
     const moduleName = findContainingModule(Super);
     const imported = try types.PyModule.import(moduleName);
+    imported.incref();
+    defer imported.decref();
     const superPyType = try imported.obj.getAttr(getClassName(Super));
+    superPyType.incref();
     const pyObj = try self(classSelf);
+    pyObj.incref();
 
     const superTypeObj: types.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
     const superPyObj = try superTypeObj.call(&.{ superPyType, pyObj });
