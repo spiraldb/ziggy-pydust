@@ -24,7 +24,7 @@ class ExtModule(BaseModel):
 
     @property
     def test_bin(self):
-        return os.path.join("zig-out", self.libname + ".test.bin")
+        return os.path.join("zig-out", "bin", self.libname + ".test.bin")
 
 
 class ToolPydust(BaseModel):
