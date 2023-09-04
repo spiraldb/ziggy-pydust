@@ -52,6 +52,7 @@ For native Zig types however, the following conversions apply:
 | `i32`, `i64`  | `int`        |
 | `u32`, `u64`  | `int`        |
 | `f32`, `f64`  | `float`      |
+| `struct`      | `dict`       |
 
 ## Memory Management
 

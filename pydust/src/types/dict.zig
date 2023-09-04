@@ -130,7 +130,7 @@ pub const PyDict = extern struct {
         value: py.PyObject,
     };
 
-    const ItemIterator = struct {
+    pub const ItemIterator = struct {
         pydict: PyDict,
         position: isize,
         nextKey: ?*ffi.PyObject,
