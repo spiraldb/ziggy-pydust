@@ -128,6 +128,7 @@ pub fn init(comptime Cls: type, args: ?InitArgs(Cls)) !types.PyObject {
     }
 }
 
+/// Find the type of the positional args for a class
 fn InitArgs(comptime Cls: type) type {
     if (!@hasDecl(Cls, "__init__")) {
         return Cls;
@@ -137,6 +138,23 @@ fn InitArgs(comptime Cls: type) type {
     const typeInfo = @typeInfo(@TypeOf(func));
     const sig = funcs.parseSignature("__init__", typeInfo.Fn, &.{ types.PyObject, *Cls, *const Cls });
     return @typeInfo(sig.argsParam.?.type.?).Pointer.child;
+}
+
+/// Convert user state instance into PyObject instance
+pub fn self(classSelf: anytype) !types.PyObject {
+    const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(classSelf)).Pointer.child), "state", classSelf);
+    return .{ .py = &selfState.obj };
+}
+
+/// Get zig state of super class `Super` of `classSelf` parameter
+pub fn super(comptime Super: type, classSelf: anytype) !Super {
+    const pyObj = try self(classSelf);
+    const objType = pyObj.py.ob_type;
+
+    const superTypeObj: types.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
+    const superPyObj = try superTypeObj.call(&.{ pyObj, types.PyObject{ .py = @alignCast(@ptrCast(objType)) } });
+    var zigSuperObj: *pytypes.State(Super) = @ptrCast(superPyObj.py);
+    return zigSuperObj.state;
 }
 
 /// Find the name of the module that contains the given definition.

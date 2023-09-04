@@ -10,7 +10,7 @@ def test_hierarchy():
 
 def test_make_noise():
     with pytest.raises(AttributeError):
-        classes.Animal().make_noise()
+        classes.Animal(1).make_noise()
     assert classes.Dog("Pupper's name").make_noise() == "Bark!"
 
 
@@ -19,3 +19,4 @@ def test_adopt():
     adopted = owner.adopt_puppy("Cute pupper's name")
     assert isinstance(adopted, classes.Dog)
     assert adopted.get_name() == "Cute pupper's name"
+    assert adopted.get_state() == 1
