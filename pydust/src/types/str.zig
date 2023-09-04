@@ -21,7 +21,7 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
-    pub fn append(self: PyString, other: PyString) !void {
+    pub fn append(self: *PyString, other: PyString) !void {
         try self.appendObj(other.obj);
     }
 
@@ -42,6 +42,11 @@ pub const PyString = extern struct {
             // If set to null, then it failed.
             return PyError.Propagate;
         }
+    }
+
+    pub fn asOwnedSlice(self: PyString) ![:0]const u8 {
+        defer self.decref();
+        return try self.asSlice();
     }
 
     pub fn asSlice(self: PyString) ![:0]const u8 {

@@ -34,14 +34,15 @@ pub fn setErr(err: anyerror) void {
     };
 }
 
-pub fn toPyObject(comptime funcName: [:0]const u8, comptime objType: type) type {
+pub fn toPyObject(comptime objType: type) type {
     return struct {
-        pub inline fn unwrap(obj: objType) ?*ffi.PyObject {
+        pub inline fn unwrap(obj: objType) !*ffi.PyObject {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
+
             const typeInfo = @typeInfo(objType);
             if (typeInfo == .ErrorUnion) {
                 _ = obj catch |err| {
-                    return setErrObj(err);
+                    return err;
                 };
             }
 
@@ -51,19 +52,31 @@ pub fn toPyObject(comptime funcName: [:0]const u8, comptime objType: type) type 
             switch (@typeInfo(resultType)) {
                 .Bool => return if (result) ffi.Py_True else ffi.Py_False,
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
-                .Float => return (py.PyFloat.from(resultType, result) catch |e| return setErrObj(e)).obj.py,
-                .Int => return (py.PyLong.from(resultType, result) catch |e| return setErrObj(e)).obj.py,
-                .Struct => switch (resultType) {
-                    py.PyString => return result.obj.py,
-                    py.PyFloat => return result.obj.py,
-                    py.PyObject => return result.py,
-                    else => {},
+                .Float => return (try py.PyFloat.from(resultType, result)).obj.py,
+                .Int => return (try py.PyLong.from(resultType, result)).obj.py,
+                .Struct => |s| {
+                    // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
+                    if (@hasField(resultType, "obj") and @hasField(@TypeOf(result.obj), "py")) {
+                        return result.obj.py;
+                    }
+                    // Support py.PyObject
+                    if (resultType == py.PyObject) {
+                        return result.py;
+                    }
+                    // Otherwise, return a Python dictionary
+                    const dict = try py.PyDict.new();
+                    inline for (s.fields) |field| {
+                        // Recursively unwrap the field value
+                        const fieldValue = try toPyObject(field.type).unwrap(@field(result, field.name));
+                        try dict.setItemStr(field.name ++ "\x00", .{ .py = fieldValue });
+                    }
+                    return dict.obj.py;
                 },
                 .Void => return ffi.Py_None,
                 else => {},
             }
 
-            @compileError("Unsupported return type " ++ @typeName(objType) ++ " from Pydust function " ++ funcName);
+            @compileError("Unsupported return type " ++ @typeName(objType) ++ " from Pydust function");
         }
     };
 }

@@ -41,59 +41,9 @@ pub fn build(b: *std.Build) void {
     }
 }
 
-/// TODO(ngates): I think this is nicer subprocessing Python all the time?
-/// But sadly ZLS doesn't evaluate steps that aren't OptionSteps. And I'd rather have a language server.
-/// Maybe I'll figure out the proper way to do this someday.
-pub const ConfigurePythonStep = struct {
-    step: std.build.Step,
-    options: Options,
-
-    // Output paths
-    includePath: std.build.GeneratedFile,
-    libPath: std.build.GeneratedFile,
-
-    const Options = struct {
-        pythonExe: []const u8 = "python3",
-    };
-
-    pub fn add(b: *std.Build, options: Options) *ConfigurePythonStep {
-        const self = b.allocator.create(ConfigurePythonStep) catch @panic("OOM");
-        self.* = .{
-            .step = std.build.Step.init(.{
-                .id = .custom,
-                .name = "configure python",
-                .owner = b,
-                .makeFn = ConfigurePythonStep.make,
-            }),
-            .options = options,
-            .includePath = .{ .step = &self.step },
-            .libPath = .{ .step = &self.step },
-        };
-
-        return self;
-    }
-
-    fn make(step: *std.build.Step, prog: *std.Progress.Node) anyerror!void {
-        prog.setName("Configure Python");
-        prog.activate();
-        const self = @fieldParentPtr(ConfigurePythonStep, "step", step);
-
-        self.includePath.path = try getPythonIncludePath(step.owner.allocator);
-        self.libPath.path = try getPythonLibraryPath(step.owner.allocator);
-
-        prog.end();
-    }
-
-    pub fn getIncludePath(self: *ConfigurePythonStep) std.Build.LazyPath {
-        return .{ .generated = &self.includePath };
-    }
-
-    pub fn getLibraryPath(self: *ConfigurePythonStep) std.Build.LazyPath {
-        return .{ .generated = &self.libPath };
-    }
-};
-
-fn getPythonIncludePath(allocator: std.mem.Allocator) ![]const u8 {
+fn getPythonIncludePath(
+    allocator: std.mem.Allocator,
+) ![]const u8 {
     const includeResult = try std.process.Child.exec(.{
         .allocator = allocator,
         .argv = &.{ "python", "-c", "import sysconfig; print(sysconfig.get_path('include'), end='')" },

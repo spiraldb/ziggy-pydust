@@ -2,15 +2,15 @@ from example import modules
 
 
 def test_module_docstring():
-    assert modules.__doc__.startswith("A docstring for the example module.")
+    assert modules.__doc__.startswith("Zig multi-line strings make it easy to define a docstring...")
 
 
 def test_modules_function():
-    assert modules.hello() == "Hello!"
+    assert modules.hello("Nick") == "Hello, Nick. It's Ziggy"
 
 
 def test_modules_state():
-    assert modules.whoami() == "Nick"
+    assert modules.whoami() == "Ziggy"
 
 
 def test_modules_mutable_state():

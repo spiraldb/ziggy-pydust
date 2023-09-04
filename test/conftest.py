@@ -1,11 +1,12 @@
 import pytest
 
-from pydust import build
+from pydust import buildzig
 
 
 def pytest_collection(session):
     """We use the same pydust build system for our example modules, but we trigger it from a pytest hook."""
-    build.build()
+    # We can't use a temp-file since zig build's caching depends on the file path.
+    buildzig.zig_build(["install"], build_zig="pytest.build.zig")
 
 
 def pytest_collection_modifyitems(session, config, items):
