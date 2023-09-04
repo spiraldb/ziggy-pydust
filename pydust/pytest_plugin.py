@@ -32,64 +32,6 @@ def pytest_collect_file(file_path, path, parent):
                 return ZigFile.from_parent(parent, path=file_path)
 
 
-class RequestTag(enum.Enum):
-    # Tells the compiler to shut down cleanly.
-    # No body.
-    exit = 0
-    # Tells the compiler to detect changes in source files and update the
-    # affected output compilation artifacts.
-    # If one of the compilation artifacts is an executable that is
-    # running as a child process, the compiler will wait for it to exit
-    # before performing the update.
-    # No body.
-    update = 1
-    # Tells the compiler to execute the executable as a child process.
-    # No body.
-    run = 2
-    # Tells the compiler to detect changes in source files and update the
-    # affected output compilation artifacts.
-    # If one of the compilation artifacts is an executable that is
-    # running as a child process, the compiler will perform a hot code
-    # swap.
-    # No body.
-    hot_update = 3
-    # Ask the test runner for metadata about all the unit tests that can
-    # be run. Server will respond with a `test_metadata` message.
-    # No body.
-    query_test_metadata = 4
-    # Ask the test runner to run a particular test.
-    # The message body is a u32 test index.
-    run_test = 5
-
-
-class ResponseTag(enum.Enum):
-    # Body is a UTF-8 string.
-    zig_version = 0
-    # Body is an ErrorBundle.
-    error_bundle = 1
-    # Body is a UTF-8 string.
-    progress = 2
-    # Body is a EmitBinPath.
-    emit_bin_path = 3
-    # Body is a TestMetadata
-    test_metadata = 4
-    # Body is a TestResults
-    test_results = 5
-
-
-class Header(BaseModel):
-    tag: int
-    bytes_len: int = 0
-
-    def pack(self):
-        return struct.pack("<II", self.tag, self.bytes_len)
-
-    @classmethod
-    def unpack(cls, buffer):
-        (tag, bytes_len) = struct.unpack("<II", buffer.read(8))
-        return cls(tag=tag, bytes_len=bytes_len)
-
-
 class ZigFile(pytest.File):
     def collect(self):
         """Collect all the tests that exist within this Zig root.
@@ -103,16 +45,16 @@ class ZigFile(pytest.File):
         proc = subprocess.Popen([ext_module.test_bin, "--listen=-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         try:
             # Zig first sends us its version.
-            h = Header.unpack(proc.stdout)
-            assert h.tag == ResponseTag.zig_version.value
+            h = TestProtocol.Header.unpack(proc.stdout)
+            assert h.tag == TestProtocol.ResponseTag.zig_version.value
             _zig_version = proc.stdout.read(h.bytes_len).decode("utf-8")
 
             # Then we can request test metadata
-            proc.stdin.write(Header(tag=RequestTag.query_test_metadata.value).pack())
+            proc.stdin.write(TestProtocol.Header(tag=TestProtocol.RequestTag.query_test_metadata.value).pack())
             proc.stdin.flush()
 
-            h = Header.unpack(proc.stdout)
-            assert h.tag == ResponseTag.test_metadata.value
+            h = TestProtocol.Header.unpack(proc.stdout)
+            assert h.tag == TestProtocol.ResponseTag.test_metadata.value
             test_metas = self._read_test_metadata(proc.stdout.read(h.bytes_len))
         finally:
             proc.kill()
@@ -172,17 +114,17 @@ class ZigItem(pytest.Item):
         )
         try:
             # Zig first sends us its version.
-            h = Header.unpack(proc.stdout)
-            assert h.tag == ResponseTag.zig_version.value
+            h = TestProtocol.Header.unpack(proc.stdout)
+            assert h.tag == TestProtocol.ResponseTag.zig_version.value
             _zig_version = proc.stdout.read(h.bytes_len).decode("utf-8")
 
             # Then we can request the test to run
-            proc.stdin.write(Header(tag=RequestTag.run_test.value, bytes_len=4).pack())
+            proc.stdin.write(TestProtocol.Header(tag=TestProtocol.RequestTag.run_test.value, bytes_len=4).pack())
             proc.stdin.write(struct.pack("<I", self.test_meta["idx"]))
             proc.stdin.flush()
 
-            h = Header.unpack(proc.stdout)
-            assert h.tag == ResponseTag.test_results.value
+            h = TestProtocol.Header.unpack(proc.stdout)
+            assert h.tag == TestProtocol.ResponseTag.test_results.value
 
             _test_idx, flags = struct.unpack("<II", proc.stdout.read(8))
             fail = bool(flags & 0x01)
@@ -212,3 +154,62 @@ class ZigItem(pytest.Item):
 
     def reportinfo(self):
         return self.path, 0, self.test_meta["name"]
+
+
+class TestProtocol:
+    """Utilities for reading and writing messages to the Zig test runner server."""
+
+    class RequestTag(enum.Enum):
+        # Tells the compiler to shut down cleanly.
+        # No body.
+        exit = 0
+        # Tells the compiler to detect changes in source files and update the
+        # affected output compilation artifacts.
+        # If one of the compilation artifacts is an executable that is
+        # running as a child process, the compiler will wait for it to exit
+        # before performing the update.
+        # No body.
+        update = 1
+        # Tells the compiler to execute the executable as a child process.
+        # No body.
+        run = 2
+        # Tells the compiler to detect changes in source files and update the
+        # affected output compilation artifacts.
+        # If one of the compilation artifacts is an executable that is
+        # running as a child process, the compiler will perform a hot code
+        # swap.
+        # No body.
+        hot_update = 3
+        # Ask the test runner for metadata about all the unit tests that can
+        # be run. Server will respond with a `test_metadata` message.
+        # No body.
+        query_test_metadata = 4
+        # Ask the test runner to run a particular test.
+        # The message body is a u32 test index.
+        run_test = 5
+
+    class ResponseTag(enum.Enum):
+        # Body is a UTF-8 string.
+        zig_version = 0
+        # Body is an ErrorBundle.
+        error_bundle = 1
+        # Body is a UTF-8 string.
+        progress = 2
+        # Body is a EmitBinPath.
+        emit_bin_path = 3
+        # Body is a TestMetadata
+        test_metadata = 4
+        # Body is a TestResults
+        test_results = 5
+
+    class Header(BaseModel):
+        tag: int
+        bytes_len: int = 0
+
+        def pack(self):
+            return struct.pack("<II", self.tag, self.bytes_len)
+
+        @classmethod
+        def unpack(cls, buffer):
+            (tag, bytes_len) = struct.unpack("<II", buffer.read(8))
+            return cls(tag=tag, bytes_len=bytes_len)

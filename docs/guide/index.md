@@ -69,6 +69,12 @@ to convert it to a `py.PyString`.
 --8<-- "example/memory.zig:append"
 ```
 
+Of course, you could also choose to use the `py.PyString.appendSlice` method which will handle this for you!
+
+``` zig
+--8<-- "example/memory.zig:append2"
+```
+
 !!! tip "Upcoming Feature!"
 
     Work is underway to provide a test harness that uses Zig's `GeneralPurposeAllocator` to 

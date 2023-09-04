@@ -44,6 +44,11 @@ pub const PyString = extern struct {
         }
     }
 
+    /// Return the length of the Unicode object, in code points.
+    pub fn length(self: PyString) usize {
+        return @intCast(ffi.PyUnicode_GetLength(self.obj.py));
+    }
+
     pub fn asOwnedSlice(self: PyString) ![:0]const u8 {
         defer self.decref();
         return try self.asSlice();
