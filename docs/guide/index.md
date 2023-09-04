@@ -53,3 +53,4 @@ For native Zig types however, the following conversions apply:
 | `u32`, `u64`  | `int`        |
 | `f32`, `f64`  | `float`      |
 | `struct`      | `dict`       |
+| `tuple struct`| `tuple`      |

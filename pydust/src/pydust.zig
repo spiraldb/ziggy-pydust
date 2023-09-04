@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtins = @import("builtins.zig");
 const mem = @import("mem.zig");
 const modules = @import("modules.zig");
 const types = @import("types.zig");
@@ -8,6 +9,7 @@ const tramp = @import("trampoline.zig");
 const PyError = @import("errors.zig").PyError;
 
 // Export some useful things for users
+pub usingnamespace builtins;
 pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
@@ -110,7 +112,7 @@ pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, compt
 pub fn init(comptime Cls: type, args: ?InitArgs(Cls)) !types.PyObject {
     const moduleName = findContainingModule(Cls);
     const imported = try types.PyModule.import(moduleName);
-    const pytype = try imported.obj.getAttr(getClassName(Cls));
+    const pytype = try imported.obj.get(getClassName(Cls));
     if (args) |arg| {
         if (@hasDecl(Cls, "__init__")) {
             const pyTup = try tramp.buildArgTuple(InitArgs(Cls), arg);
