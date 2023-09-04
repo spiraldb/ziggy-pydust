@@ -21,27 +21,33 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
-    pub fn append(self: *PyString, other: PyString) !void {
-        try self.appendObj(other.obj);
+    pub fn append(self: PyString, other: PyString) !PyString {
+        return self.appendObj(other.obj);
     }
 
-    pub fn appendSlice(self: *PyString, str: [:0]const u8) !void {
+    pub fn appendSlice(self: PyString, str: [:0]const u8) !PyString {
         const other = try fromSlice(str);
         defer other.decref();
-        try self.appendObj(other.obj);
+        return self.appendObj(other.obj);
     }
 
-    fn appendObj(self: *PyString, other: PyObject) !void {
+    fn appendObj(self: PyString, other: PyObject) !PyString {
         // This function effectively decref's the left-hand side.
         // The semantics therefore sort of imply mutation, and so we expose the same in our API.
+        // FIXME(ngates): this comment
         var self_ptr: ?*ffi.PyObject = self.obj.py;
         ffi.PyUnicode_Append(&self_ptr, other.py);
         if (self_ptr) |ptr| {
-            self.obj.py = ptr;
+            return of(.{ .py = ptr });
         } else {
             // If set to null, then it failed.
             return PyError.Propagate;
         }
+    }
+
+    /// Return the length of the Unicode object, in code points.
+    pub fn length(self: PyString) !usize {
+        return @intCast(ffi.PyUnicode_GetLength(self.obj.py));
     }
 
     pub fn asOwnedSlice(self: PyString) ![:0]const u8 {
@@ -74,9 +80,8 @@ test "PyString" {
     const b = ", world!";
 
     var ps = try PyString.fromSlice(a);
+    ps = try ps.appendSlice(b);
     defer ps.decref();
-
-    try ps.appendSlice(b);
 
     var ps_slice = try ps.asSlice();
 

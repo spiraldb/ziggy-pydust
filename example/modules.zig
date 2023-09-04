@@ -35,9 +35,9 @@ pub fn hello(
     args: *const struct { name: py.PyString }, // (5)!
 ) !py.PyString {
     var str = try py.PyString.fromSlice("Hello, ");
-    try str.append(args.name);
-    try str.appendSlice(". It's ");
-    try str.append(self.name);
+    str = try str.append(args.name);
+    str = try str.appendSlice(". It's ");
+    str = try str.append(self.name);
     return str;
 }
 
