@@ -21,10 +21,12 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
+    /// Append other to self. A reference to self is stolen so there's no need to decref.
     pub fn append(self: PyString, other: PyString) !PyString {
         return self.appendObj(other.obj);
     }
 
+    /// Append the slice to self. A reference to self is stolen so there's no need to decref.
     pub fn appendSlice(self: PyString, str: [:0]const u8) !PyString {
         const other = try fromSlice(str);
         defer other.decref();
