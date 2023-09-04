@@ -15,7 +15,7 @@ pub const Signature = struct {
     returnType: type,
 };
 
-const reservedNames = .{ "__new__", "__init__" };
+const reservedNames = .{ "__new__", "__init__", "__buffer__", "__release_buffer__" };
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: [:0]const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {

@@ -1,43 +1,33 @@
 const std = @import("std");
 const py = @import("pydust");
 
-const Self = @This();
+const PrivateData = struct {};
 
-pub const __doc__ =
-    \\Using buffer protocol to accept arrays, e.g. numpy.
-;
+pub const Buffer = py.class("Buffer", struct {
+    pub const __doc__ = "A class implementing a buffer protocol";
+    const Self = @This();
 
-pub fn sum(args: *const struct { arr: py.PyObject }) !u64 {
-    var out: py.PyBuffer = try py.PyBuffer.get(args.arr);
-    std.debug.print("SUM BUFFER {any}", .{out});
-    // defer out.decref();
-    const values = try out.asSliceView(u64);
-    var s: u64 = 0;
-    for (values) |v| s += v;
-    return s;
-}
-
-pub fn reverse(args: *const struct { arr: py.PyObject }) !void {
-    var out: py.PyBuffer = try py.PyBuffer.get(args.arr);
-    // we can just work with slice, but this tests getPtr
-    const length: usize = @intCast(out.shape.?[0]);
-    const iter: usize = @divFloor(length, 2);
-    for (0..iter) |i| {
-        var left = try out.getPtr(u64, &[_]isize{@intCast(i)});
-        var right = try out.getPtr(u64, &[_]isize{@intCast(length - i - 1)});
-        const tmp: u64 = left.*;
-        left.* = right.*;
-        right.* = tmp;
+    pub fn __init__(self: *Self, args: *const extern struct {}) !void {
+        _ = args;
+        _ = self;
+        std.debug.print("__INIT__", .{});
     }
-}
+
+    pub fn __buffer__(self: *const Self, out: *py.PyBuffer(PrivateData), flags: c_int) c_int {
+        _ = flags;
+        _ = out;
+        _ = self;
+        std.debug.print("__BUFFER__", .{});
+        return 0;
+    }
+
+    pub fn __release_buffer__(self: *const Self, view: *py.PyBuffer(PrivateData)) void {
+        _ = view;
+        _ = self;
+        std.debug.print("__RELEASE_BUFFER__", .{});
+    }
+});
 
 comptime {
     py.module(@This());
-}
-
-test "create buffer" {
-    const fake: py.PyObject = (try py.PyLong.from(c_long, 1)).obj;
-    var slice = try py.allocator.alloc(u64, 5);
-    var outPtr = try py.PyBuffer.fromOwnedSlice(py.allocator, fake, u64, slice);
-    outPtr.decref();
 }
