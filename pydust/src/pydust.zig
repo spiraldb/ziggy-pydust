@@ -116,6 +116,7 @@ pub fn init(comptime Cls: type, args: ?InitArgs(Cls)) !types.PyObject {
     if (args) |arg| {
         if (@hasDecl(Cls, "__init__")) {
             const pyTup = try tramp.buildArgTuple(InitArgs(Cls), arg);
+            defer pyTup.obj.decref();
             return try pytype.callObj(pyTup.obj);
         } else {
             var pyObj = try pytype.call0();

@@ -99,7 +99,10 @@ pub fn buildArgTuple(comptime argType: type, arg: argType) !py.PyTuple {
         const value = @field(arg, field.name);
         switch (field.type) {
             inline [:0]const u8 => |_| try pyTup.setItem(idx, ffi.Py_BuildValue("s", value)),
-            inline py.PyString => |_| try pyTup.setItem(idx, value.obj),
+            inline py.PyString => |_| blk: {
+                value.obj.incref();
+                break :blk try pyTup.setItem(idx, value.obj);
+            },
             else => @panic("unhandled type"),
         }
     }
