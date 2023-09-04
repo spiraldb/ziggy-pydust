@@ -63,6 +63,16 @@ pub fn toPyObject(comptime objType: type) type {
                     if (resultType == py.PyObject) {
                         return result.py;
                     }
+                    // If the struct is a tuple, return a Python tuple
+                    if (s.is_tuple) {
+                        const tuple = try py.PyTuple.new(s.fields.len);
+                        inline for (s.fields, 0..) |field, i| {
+                            // Recursively unwrap the field value
+                            const fieldValue = try toPyObject(field.type).unwrap(@field(result, field.name));
+                            try tuple.setItem(@intCast(i), .{ .py = fieldValue });
+                        }
+                        return tuple.obj.py;
+                    }
                     // Otherwise, return a Python dictionary
                     const dict = try py.PyDict.new();
                     inline for (s.fields) |field| {

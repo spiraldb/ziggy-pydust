@@ -46,7 +46,7 @@ pub fn define(comptime class: py.ClassDef) type {
                 const basesTuple = try py.PyTuple.new(class.bases.len);
                 inline for (class.bases, 0..) |base, i| {
                     // TODO(ngates): find the correct parent module
-                    const baseType = try module.obj.getAttr(py.getClassName(base));
+                    const baseType = try module.obj.get(py.getClassName(base));
                     try basesTuple.setItem(i, baseType);
                 }
                 basesPtr = basesTuple.obj.py;
