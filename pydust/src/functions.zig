@@ -95,7 +95,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
         const Self = @This();
 
         //const argWrapper = tramp.fromPyObjects(name, sig.argsStruct);
-        const resultWrapper = tramp.toPyObject(sig.name, sig.returnType);
+        const resultWrapper = tramp.toPyObject(sig.returnType);
 
         pub const Doc = docTextSignature(sig);
 

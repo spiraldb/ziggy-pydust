@@ -1,37 +1,24 @@
+pub const __doc__ =
+    \\Zig multi-line strings make it easy to define a docstring...
+    \\
+    \\..with lots of lines!
+    \\
+    \\P.S. I'm sure one day we'll hook into Zig's AST and read the Zig doc comments ;)
+;
+
 const std = @import("std");
 const py = @import("pydust");
 
-const Self = @This();
+const Self = @This(); // (1)!
 
-pub const __doc__ =
-    \\A docstring for the example module.
-    \\
-    \\With lots of lines...
-    \\
-    \\One day we'll parse these from Zig doc comments in the AST :)
-;
-
-/// Internal module state can be declared as struct fields.
-///
-/// Default values must be set inline, or in the __new__ function if
-/// they cannot be defaulted at comptime.
-count: u32 = 0,
+count: u32 = 0, // (2)!
 name: py.PyString,
 
-pub fn __new__() !Self {
-    return .{ .name = try py.PyString.fromSlice("Nick") };
+pub fn __new__() !Self { // (3)!
+    return .{ .name = try py.PyString.fromSlice("Ziggy") };
 }
 
-pub fn hello() !py.PyString {
-    return try py.PyString.fromSlice("Hello!");
-}
-
-pub fn whoami(self: *const Self) !py.PyString {
-    return self.name;
-}
-
-/// Functions taking a "self" parameter are passed the module state.
-pub fn increment(self: *Self) void {
+pub fn increment(self: *Self) void { // (4)!
     self.count += 1;
 }
 
@@ -39,6 +26,21 @@ pub fn count(self: *const Self) u32 {
     return self.count;
 }
 
+pub fn whoami(self: *const Self) !py.PyString {
+    return self.name;
+}
+
+pub fn hello(
+    self: *const Self,
+    args: *const struct { name: py.PyString }, // (5)!
+) !py.PyString {
+    var str = try py.PyString.fromSlice("Hello, ");
+    try str.append(args.name);
+    try str.appendSlice(". It's ");
+    try str.append(self.name);
+    return str;
+}
+
 comptime {
-    py.module(@This());
+    py.module(@This()); // (6)!
 }
