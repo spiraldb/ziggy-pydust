@@ -35,7 +35,8 @@ pub const PyObject = extern struct {
         return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.Propagate };
     }
 
-    pub fn call(self: PyObject, args: anytype) !PyObject {
+    pub fn call(self: PyObject, args: anytype, kwargs: anytype) !PyObject {
+        _ = kwargs;
         const argsTuple = try py.PyTuple.from(args);
         defer argsTuple.obj.decref();
         return .{ .py = ffi.PyObject_CallObject(self.py, argsTuple.obj.py) orelse return PyError.Propagate };
@@ -76,7 +77,7 @@ test "call" {
     defer math.decref();
 
     const pow = try math.get("pow");
-    const result = py.PyFloat.of(try pow.call(.{ @as(u32, 2), @as(u32, 3) }));
+    const result = py.PyFloat.of(try pow.call(.{ @as(u32, 2), @as(u32, 3) }, .{}));
 
     try std.testing.expectEqual(@as(f32, 8.0), try result.as(f32));
 }

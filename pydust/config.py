@@ -32,6 +32,8 @@ class ToolPydust(BaseModel):
 
     root: str = "src/"
 
+    build_zig: str = "build.zig"
+
     # We rename pluralized config sections so the pyproject.toml reads better.
     ext_modules: list[ExtModule] = Field(alias="ext_module", default_factory=list)
 

@@ -84,6 +84,13 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
+            if (@hasDecl(definition, "__del__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_finalize,
+                    .pfunc = @ptrCast(@constCast(&finalize)),
+                }};
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -93,6 +100,25 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
 
             break :blk slots_;
         };
+
+        /// Wrapper for the user's __del__ function.
+        /// Note: tp_del is deprecated in favour of tp_finalize.
+        ///
+        /// See https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_finalize.
+        fn finalize(pyself: *ffi.PyObject) void {
+            // The finalize slot shouldn't alter any exception that is currently set.
+            // So it's recommended we save the existing one (if any) and restore it afterwards.
+            // TODO(ngates): we may want to move this logic to PyErr if it happens more?
+            var error_type: ?*ffi.PyObject = undefined;
+            var error_value: ?*ffi.PyObject = undefined;
+            var error_tb: ?*ffi.PyObject = undefined;
+            ffi.PyErr_Fetch(&error_type, &error_value, &error_tb);
+
+            const instance: *Instance = @ptrCast(pyself);
+            definition.__del__(&instance.state);
+
+            ffi.PyErr_Restore(error_type, error_value, error_tb);
+        }
     };
 }
 
