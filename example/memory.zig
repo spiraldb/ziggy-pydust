@@ -13,11 +13,11 @@ pub fn append(args: *const struct { left: py.PyString }) !py.PyString {
 }
 // --8<-- [end:append]
 
-// --8<-- [start:append2]
+// --8<-- [start:concat]
 pub fn concat(args: *const struct { left: py.PyString }) !py.PyString {
     return args.left.concatSlice("right");
 }
-// --8<-- [end:append2]
+// --8<-- [end:concat]
 
 comptime {
     py.module(@This());
