@@ -148,11 +148,13 @@ pub fn self(classSelf: anytype) !types.PyObject {
 
 /// Get zig state of super class `Super` of `classSelf` parameter
 pub fn super(comptime Super: type, classSelf: anytype) !Super {
+    const moduleName = findContainingModule(Super);
+    const imported = try types.PyModule.import(moduleName);
+    const superPyType = try imported.obj.getAttr(getClassName(Super));
     const pyObj = try self(classSelf);
-    const objType = pyObj.py.ob_type;
 
     const superTypeObj: types.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
-    const superPyObj = try superTypeObj.call(&.{ pyObj, types.PyObject{ .py = @alignCast(@ptrCast(objType)) } });
+    const superPyObj = try superTypeObj.call(&.{ superPyType, pyObj });
     var zigSuperObj: *pytypes.State(Super) = @ptrCast(superPyObj.py);
     return zigSuperObj.state;
 }
