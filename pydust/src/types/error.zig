@@ -13,6 +13,7 @@ pub const PyExc = struct {
     pub const BaseException: PyExc = .{ .obj = .{ .py = ffi.PyExc_BaseException } };
     pub const TypeError: PyExc = .{ .obj = .{ .py = ffi.PyExc_TypeError } };
     pub const ValueError: PyExc = .{ .obj = .{ .py = ffi.PyExc_ValueError } };
+    pub const BufferError: PyExc = .{ .obj = .{ .py = ffi.PyExc_BufferError } };
 };
 
 pub const PyErr = struct {

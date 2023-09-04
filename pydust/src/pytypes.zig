@@ -64,6 +64,7 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
     return struct {
         const methods = Methods(definition, Instance);
         const init = Init(name, definition, Instance);
+        const buffer = Buffer(definition, Instance);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -87,14 +88,14 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             if (@hasDecl(definition, "__buffer__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_bf_getbuffer,
-                    .pfunc = @ptrCast(@constCast(&definition.__buffer__)),
+                    .pfunc = @ptrCast(@constCast(&buffer.getbufferproc)),
                 }};
             }
 
             if (@hasDecl(definition, "__release_buffer__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_bf_releasebuffer,
-                    .pfunc = @ptrCast(@constCast(&definition.__release_buffer__)),
+                    .pfunc = @ptrCast(@constCast(&buffer.releasebufferproc)),
                 }};
             }
 
@@ -210,6 +211,27 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
             }
 
             return pyArgs;
+        }
+    };
+}
+
+fn Buffer(comptime definition: type, comptime Instance: type) type {
+    const bufferGet = "__buffer__";
+
+    const bufferRelease = "__release_buffer__";
+
+    return struct {
+        const bufferGetFn = @field(definition, bufferGet);
+        const bufferReleaseFn = @field(definition, bufferRelease);
+
+        pub fn getbufferproc(self: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
+            const instance: *Instance = @ptrCast(self);
+            return tramp.errVoid(bufferGetFn(&instance.state, @ptrCast(view), flags));
+        }
+
+        pub fn releasebufferproc(self: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
+            const instance: *Instance = @ptrCast(self);
+            return bufferReleaseFn(&instance.state, @ptrCast(view));
         }
     };
 }
