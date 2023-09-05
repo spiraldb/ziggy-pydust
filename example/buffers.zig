@@ -6,14 +6,13 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     const Self = @This();
 
     values: []i64,
-    shape: []isize,
+    pylength: isize, // isize to be compatible with Python API
     format: [:0]const u8 = "l", // i64
 
     pub fn __init__(self: *Self, args: *const extern struct { elem: py.PyLong, size: py.PyLong }) !void {
         self.values = try py.allocator.alloc(i64, try args.size.as(u64));
         @memset(self.values, try args.elem.as(i64));
-        self.shape = try py.allocator.alloc(isize, 1);
-        self.shape[0] = @intCast(self.values.len);
+        self.pylength = @intCast(self.values.len);
     }
 
     pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {
@@ -21,26 +20,22 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         if (flags & py.PyBuffer.WRITABLE != 0) {
             return py.BufferError.raise("buffer is not writable");
         }
-
         const pyObj = try py.self(@constCast(self));
-        view.initFromSlice(i64, self.values, self.shape, pyObj);
-
-        // We need to incref the self object because it's being used by the view.
-        pyObj.incref();
+        view.initFromSlice(i64, self.values, @ptrCast(&self.pylength), pyObj);
     }
 
     pub fn __release_buffer__(self: *const Self, view: *py.PyBuffer) void {
         py.allocator.free(self.values);
-        py.allocator.free(self.shape);
-        // It might be necessary to clean up the view here. Depends on the implementation.
+        // It might be necessary to clear the view here in case the __bufferr__ method allocates view properties.
         _ = view;
     }
 });
 
 // A function that accepts an object implementing the buffer protocol.
 pub fn sum(args: *const extern struct { buf: py.PyObject }) !i64 {
+    var view: py.PyBuffer = undefined;
     // ND is required by asSlice.
-    var view = try py.PyBuffer.of(args.buf, py.PyBuffer.ND);
+    try args.buf.getBuffer(&view, py.PyBuffer.ND);
     defer view.release();
 
     var bufferSum: i64 = 0;

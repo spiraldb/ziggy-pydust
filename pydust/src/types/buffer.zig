@@ -45,7 +45,7 @@ pub const PyBuffer = extern struct {
     ndim: c_int,
     format: [*:0]const u8,
 
-    shape: ?[*]isize = null,
+    shape: ?[*]const isize = null,
     // If strides is NULL, the array is interpreted as a standard n-dimensional C-array.
     // Otherwise, the consumer must access an n-dimensional array as follows:
     // ptr = (char *)buf + indices[0] * strides[0] + ... + indices[n-1] * strides[n-1];
@@ -63,22 +63,7 @@ pub const PyBuffer = extern struct {
         return .{ .py = self.obj orelse unreachable };
     }
 
-    // Flag is a combination of ffi.PyBUF_* flags.
-    // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
-    pub fn of(obj: py.PyObject, flag: c_int) !PyBuffer {
-        if (ffi.PyObject_CheckBuffer(obj.py) != 1) {
-            return py.BufferError.raise("object does not support buffer interface");
-        }
-
-        var out: Self = undefined;
-        if (ffi.PyObject_GetBuffer(obj.py, @ptrCast(&out), flag) != 0) {
-            // Error is already raised.
-            return PyError.Propagate;
-        }
-        return out;
-    }
-
-    pub fn initFromSlice(self: *Self, comptime value_type: type, values: []value_type, shape: []isize, obj: py.PyObject) void {
+    pub fn initFromSlice(self: *Self, comptime value_type: type, values: []value_type, shape: [*]const isize, obj: py.PyObject) void {
         self.* = .{
             .buf = std.mem.sliceAsBytes(values).ptr,
             .obj = obj.py,
@@ -87,8 +72,10 @@ pub const PyBuffer = extern struct {
             .readonly = 1,
             .ndim = 1,
             .format = getFormat(value_type).ptr,
-            .shape = shape.ptr,
+            .shape = shape,
         };
+        // We need to incref the self object because it's being used by the view.
+        obj.incref();
     }
 
     // asSlice returns buf property as Zig slice. The view must have been created with ND flag.
