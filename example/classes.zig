@@ -45,6 +45,11 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         self.name.decref();
     }
 
+    pub fn __len__(self: *const Self) usize {
+        _ = self;
+        return 4;
+    }
+
     pub fn get_name(self: *const Self) !py.PyString {
         return self.name;
     }

@@ -87,7 +87,14 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             if (@hasDecl(definition, "__del__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_finalize,
-                    .pfunc = @ptrCast(@constCast(&finalize)),
+                    .pfunc = @ptrCast(@constCast(&tp_finalize)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__len__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_mp_length,
+                    .pfunc = @ptrCast(@constCast(&mp_length)),
                 }};
             }
 
@@ -101,11 +108,21 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             break :blk slots_;
         };
 
+        fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
+            const lenFunc = @field(definition, "__len__");
+            const self: *const Instance = @ptrCast(pyself);
+            const result = @as(isize, @intCast(lenFunc(&self.state)));
+            if (@typeInfo(@typeInfo(@TypeOf(lenFunc)).Fn.return_type.?) == .ErrorUnion) {
+                return result catch return -1;
+            }
+            return result;
+        }
+
         /// Wrapper for the user's __del__ function.
         /// Note: tp_del is deprecated in favour of tp_finalize.
         ///
         /// See https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_finalize.
-        fn finalize(pyself: *ffi.PyObject) void {
+        fn tp_finalize(pyself: *ffi.PyObject) void {
             // The finalize slot shouldn't alter any exception that is currently set.
             // So it's recommended we save the existing one (if any) and restore it afterwards.
             // TODO(ngates): we may want to move this logic to PyErr if it happens more?
