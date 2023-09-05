@@ -106,7 +106,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
 
         pub fn aspy() ffi.PyMethodDef {
             return .{
-                .ml_name = sig.name.ptr ++ "\x00",
+                .ml_name = sig.name.ptr ++ "",
                 .ml_meth = @ptrCast(&fastcall),
                 .ml_flags = ffi.METH_FASTCALL | flags,
                 .ml_doc = &Doc,
