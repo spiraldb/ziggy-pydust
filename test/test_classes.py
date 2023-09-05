@@ -14,6 +14,11 @@ def test_make_noise():
     assert classes.Dog("Dug").make_noise() == "Bark!"
 
 
+def test_init():
+    with pytest.raises(TypeError, match=r"Animal takes 1 argument"):
+        classes.Animal()
+
+
 def test_super():
     owner = classes.Owner()
     adopted = owner.name_puppy("Dug")

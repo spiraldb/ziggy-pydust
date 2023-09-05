@@ -53,6 +53,17 @@ pub const PyObject = extern struct {
         return .{ .py = ffi.PyObject_GetAttrString(self.py, attr) orelse return PyError.Propagate };
     }
 
+    // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
+    pub fn getBuffer(self: py.PyObject, out: *py.PyBuffer, flags: c_int) !void {
+        if (ffi.PyObject_CheckBuffer(self.py) != 1) {
+            return py.BufferError.raise("object does not support buffer interface");
+        }
+        if (ffi.PyObject_GetBuffer(self.py, @ptrCast(out), flags) != 0) {
+            // Error is already raised.
+            return PyError.Propagate;
+        }
+    }
+
     pub fn set(self: PyObject, attr: [:0]const u8, value: PyObject) !PyObject {
         if (ffi.PyObject_SetAttrString(self.py, attr, value.py) < 0) {
             return PyError.Propagate;

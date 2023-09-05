@@ -8,7 +8,7 @@ const Type = std.builtin.Type;
 const MethodType = enum { STATIC, CLASS, INSTANCE };
 
 pub const Signature = struct {
-    name: [:0]const u8,
+    name: []const u8,
     selfParam: ?Type.Fn.Param = null,
     argsParam: ?Type.Fn.Param = null,
     kwargsParam: ?Type.Fn.Param = null,
@@ -20,10 +20,12 @@ const reservedNames = .{
     "__init__",
     "__len__",
     "__del__",
+    "__buffer__",
+    "__release_buffer__",
 };
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
-pub fn parseSignature(comptime name: [:0]const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
+pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
     if (func.params.len > 3) {
         @compileError("Pydust function can have at most 3 parameters. A self ptr, and args and kwargs structs.");
     }
@@ -88,7 +90,7 @@ fn isSelfArg(comptime param: Type.Fn.Param, comptime SelfTypes: []const type) bo
     return false;
 }
 
-fn checkIsValidStructPtr(comptime funcName: [:0]const u8, comptime paramType: type) void {
+fn checkIsValidStructPtr(comptime funcName: []const u8, comptime paramType: type) void {
     const typeInfo = @typeInfo(paramType);
     if (typeInfo != .Pointer or !typeInfo.Pointer.is_const or @typeInfo(typeInfo.Pointer.child) != .Struct) {
         @compileError("Args and Kwargs must be passed as const struct pointers in function " ++ funcName);
@@ -106,7 +108,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
 
         pub fn aspy() ffi.PyMethodDef {
             return .{
-                .ml_name = sig.name.ptr,
+                .ml_name = sig.name.ptr ++ "",
                 .ml_meth = @ptrCast(&fastcall),
                 .ml_flags = ffi.METH_FASTCALL | flags,
                 .ml_doc = &Doc,
@@ -183,7 +185,7 @@ fn docTextSignature(comptime sig: Signature) [sigSize(sig):0]u8 {
 fn writeTextSig(name: []const u8, args: []const []const u8, buffer: [:0]u8) !void {
     var buf = std.io.fixedBufferStream(buffer);
     const writer = buf.writer();
-    try writer.writeAll(name[0 .. name.len - 1]);
+    try writer.writeAll(name);
     try writer.writeByte('(');
     for (args, 0..) |arg, i| {
         try writer.writeAll(arg);
@@ -198,7 +200,7 @@ fn writeTextSig(name: []const u8, args: []const []const u8, buffer: [:0]u8) !voi
 
 fn sigSize(comptime sig: Signature) usize {
     const args = sigArgs(sig) catch @compileError("Too many arguments");
-    var argSize: u64 = sig.name.len - 1;
+    var argSize: u64 = sig.name.len;
     // Count the size of the output string
     for (args) |arg| {
         argSize += arg.len + 2;
