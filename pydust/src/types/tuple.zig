@@ -38,14 +38,6 @@ pub const PyTuple = extern struct {
         }
     }
 
-    pub fn getRawItem(self: *const PyTuple, idx: isize) !*ffi.PyObject {
-        if (ffi.PyTuple_GetItem(self.obj.py, @intCast(idx))) |item| {
-            return item;
-        } else {
-            return PyError.Propagate;
-        }
-    }
-
     /// Insert a reference to object o at position pos of the tuple.
     ///
     /// Warning: steals a reference to value.
