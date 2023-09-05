@@ -26,10 +26,6 @@ pub const PyObject = extern struct {
         ffi.Py_DECREF(self.py);
     }
 
-    pub fn get_refcnt(self: PyObject) usize {
-        return @intCast(self.py.ob_refcnt);
-    }
-
     pub fn from(value: anytype) !PyObject {
         const ptr = try tramp.toPyObject(@TypeOf(value)).unwrap(value);
         return .{ .py = ptr };
