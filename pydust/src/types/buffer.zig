@@ -28,7 +28,8 @@ pub const PyBuffer = extern struct {
 
     buf: ?[*]u8,
 
-    // TODO(marko): We can make this PyObject but have to make ffi reference optional.
+    // Use pyObj to get the PyObject.
+    // This must be an optional pointer so we can set null value.
     obj: ?*ffi.PyObject,
 
     // product(shape) * itemsize.

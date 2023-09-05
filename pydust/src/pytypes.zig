@@ -139,7 +139,7 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             view.obj = null;
 
             const instance: *Instance = @ptrCast(self);
-            return tramp.errVoid(definition.__buffer__(&instance.state, .{ .py = self }, @ptrCast(view), flags));
+            return tramp.errVoid(definition.__buffer__(&instance.state, @ptrCast(view), flags));
         }
 
         fn bf_releasebuffer(self: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {

@@ -15,8 +15,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         @memset(self.values, elem);
     }
 
-    // TODO(marko): Get obj from self.
-    pub fn __buffer__(self: *const Self, obj: py.PyObject, view: *py.PyBuffer, flags: c_int) !void {
+    pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {
         if (flags & py.PyBuffer.WRITABLE != 0) {
             return py.BufferError.raise("Must not request writable");
         }
@@ -24,12 +23,13 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         const shape = try py.allocator.alloc(isize, 1);
         shape[0] = @intCast(self.values.len);
 
+        const pyObj = try py.self(@constCast(self));
         // Because we're using values, we need to incref it.
-        obj.incref();
+        pyObj.incref();
 
         view.* = .{
             .buf = std.mem.sliceAsBytes(self.values).ptr,
-            .obj = obj.py,
+            .obj = pyObj.py,
             .len = @intCast(self.values.len * @sizeOf(i64)),
             .readonly = 1,
             .itemsize = @sizeOf(i64),
