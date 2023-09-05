@@ -14,7 +14,11 @@ pub const Animal = py.class("Animal", struct {
         self.kind = try args.kind.as(u64);
     }
 
-    pub fn get_kind(self: *Self) !py.PyString {
+    pub fn get_kind(self: *Self) !py.PyLong {
+        return py.PyLong.from(u64, self.kind);
+    }
+
+    pub fn get_kind_name(self: *Self) !py.PyString {
         return switch (self.kind) {
             1 => py.PyString.fromSlice("Dog"),
             2 => py.PyString.fromSlice("Cat"),
@@ -51,9 +55,10 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return py.PyString.fromSlice("Bark!");
     }
 
-    pub fn get_kind(self: *Self) !py.PyString {
+    /// You can explicitly invoke your supers method
+    pub fn get_kind_name(self: *Self) !py.PyString {
         var super = try py.super(Dog, self);
-        var superKind = try super.get("get_kind");
+        var superKind = try super.get("get_kind_name");
         return py.PyString.of(try superKind.call0());
     }
 });

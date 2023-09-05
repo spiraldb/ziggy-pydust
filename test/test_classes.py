@@ -19,4 +19,5 @@ def test_adopt():
     adopted = owner.name_puppy("Cute pupper's name")
     assert isinstance(adopted, classes.Dog)
     assert adopted.get_name() == "Cute pupper's name"
-    assert adopted.get_kind() == "Dog"
+    assert adopted.get_kind_name() == "Dog"
+    assert adopted.get_kind() == 1
