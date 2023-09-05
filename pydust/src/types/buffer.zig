@@ -1,7 +1,6 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
-const PyError = @import("../errors.zig").PyError;
 
 /// Wrapper for Python Py_buffer.
 /// See: https://docs.python.org/3/c-api/buffer.html
@@ -37,10 +36,36 @@ pub const PyBuffer = extern struct {
 
     internal: ?*anyopaque,
 
+    pub fn incref(self: *Self) void {
+        self.obj.incref();
+    }
+
+    pub fn decref(self: *Self) void {
+        // decrefs the underlying object
+        ffi.PyBuffer_Release(@ptrCast(self));
+    }
+
+    // Flag is a combination of ffi.PyBUF_* flags.
+    // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
+    pub fn of(obj: py.PyObject, flag: c_int) PyBuffer {
+        if (ffi.PyObject_CheckBuffer(obj.py) != 1) {
+            // TODO(marko): This should raise BufferError.
+            @panic("not a buffer");
+        }
+
+        var out: Self = undefined;
+        if (ffi.PyObject_GetBuffer(obj.py, @ptrCast(&out), flag) != 0) {
+            // TODO(marko): This should raise BufferError.
+            @panic("unable to get buffer");
+        }
+        return out;
+    }
+
+    // A helper function for converting Zig types to buffer format string.
     pub fn allocFormat(comptime value_type: type, allocator: std.mem.Allocator) ![*:0]u8 {
         const fmt = PyBuffer.getFormat(value_type);
         var fmt_c = try allocator.allocSentinel(u8, fmt.len, 0);
-        @memcpy(fmt_c, fmt[0..1]);
+        @memcpy(fmt_c, fmt);
         return fmt_c;
     }
 
@@ -50,35 +75,35 @@ pub const PyBuffer = extern struct {
                 switch (i.signedness) {
                     .unsigned => switch (i.bits) {
                         8 => return &.{'B'},
-                        16 => return "H",
-                        32 => return "I",
-                        64 => return "L",
+                        16 => return &.{'H'},
+                        32 => return &.{'I'},
+                        64 => return &.{'L'},
                         else => {
-                            @compileError("Unsupported buffer type" ++ @typeName(value_type));
+                            @compileError("Unsupported buffer value type" ++ @typeName(value_type));
                         },
                     },
                     .signed => switch (i.bits) {
-                        8 => return "b",
-                        16 => return "h",
-                        32 => return "i",
-                        64 => return "l",
+                        8 => return &.{'b'},
+                        16 => return &.{'h'},
+                        32 => return &.{'i'},
+                        64 => return &.{'l'},
                         else => {
-                            @compileError("Unsupported buffer type" ++ @typeName(value_type));
+                            @compileError("Unsupported buffer value type" ++ @typeName(value_type));
                         },
                     },
                 }
             },
             .Float => |f| {
                 switch (f.bits) {
-                    32 => return "f",
-                    64 => return "d",
+                    32 => return &.{'f'},
+                    64 => return &.{'d'},
                     else => {
-                        @compileError("Unsupported buffer type" ++ @typeName(value_type));
+                        @compileError("Unsupported buffer value type" ++ @typeName(value_type));
                     },
                 }
             },
             else => {
-                @compileError("Unsupported buffer type" ++ @typeName(value_type));
+                @compileError("Unsupported buffer value type" ++ @typeName(value_type));
             },
         }
     }

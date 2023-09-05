@@ -19,6 +19,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     pub fn __buffer__(self: *const Self, obj: py.PyObject, view: *py.PyBuffer, flags: c_int) !void {
         if (flags & py.ffi.PyBUF_WRITABLE != 0) {
             // TODO(marko): This must raise BufferError
+            // py.PyExc.BufferError.raise("Must not request writable");
             @panic("Must not request writable");
         }
 
