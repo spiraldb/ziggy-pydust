@@ -7,7 +7,10 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyString = extern struct {
     obj: PyObject,
 
-    pub fn of(obj: py.PyObject) PyString {
+    pub fn of(obj: py.PyObject) !PyString {
+        if (ffi.PyUnicode_Check(obj.py) == 0) {
+            return py.TypeError.raise("Expected str");
+        }
         return .{ .obj = obj };
     }
 

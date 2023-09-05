@@ -8,7 +8,10 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyLong = extern struct {
     obj: py.PyObject,
 
-    pub fn of(obj: py.PyObject) PyLong {
+    pub fn of(obj: py.PyObject) !PyLong {
+        if (ffi.PyLong_Check(obj.py) == 0) {
+            return py.TypeError.raise("Expected int");
+        }
         return .{ .obj = obj };
     }
 

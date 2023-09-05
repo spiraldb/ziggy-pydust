@@ -27,7 +27,7 @@ pub const PyObject = extern struct {
     }
 
     pub fn from(value: anytype) !PyObject {
-        return try tramp.toPyObject(@TypeOf(value)).unwrap(value);
+        return try tramp.Trampoline(@TypeOf(value)).wrap(value);
     }
 
     pub fn call0(self: PyObject) !PyObject {
@@ -80,7 +80,7 @@ test "call" {
     defer math.decref();
 
     const pow = try math.get("pow");
-    const result = py.PyFloat.of(try pow.call(.{ @as(u32, 2), @as(u32, 3) }, .{}));
+    const result = try py.PyFloat.of(try pow.call(.{ @as(u32, 2), @as(u32, 3) }, .{}));
 
     try std.testing.expectEqual(@as(f32, 8.0), try result.as(f32));
 }

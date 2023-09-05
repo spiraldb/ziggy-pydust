@@ -61,7 +61,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub fn get_kind_name(self: *Self) !py.PyString {
         var super = try py.super(Dog, self);
         var superKind = try super.get("get_kind_name");
-        var kindStr = py.PyString.of(try superKind.call0());
+        var kindStr = try py.PyString.of(try superKind.call0());
         kindStr = try kindStr.appendSlice(" named ");
         kindStr = try kindStr.append(self.name);
         return kindStr;

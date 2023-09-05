@@ -35,45 +35,52 @@ pub fn setErr(err: PyError) void {
     };
 }
 
-/// Generate a function to convert a comptime-known Zig type into a py.PyObject.
-pub fn toPyObject(comptime objType: type) type {
+/// Generate functions to convert comptime-known Zig types to/from py.PyObject.
+pub fn Trampoline(comptime T: type) type {
     return struct {
-        pub inline fn unwrapPy(obj: objType) !*ffi.PyObject {
-            return (try unwrap(obj)).py;
+        pub inline fn wrapPy(obj: T) !*ffi.PyObject {
+            const pyobj = try wrap(obj);
+            if (@as(?*ffi.PyObject, @ptrCast(pyobj.py)) == null) {
+                @panic("NULL POINTER");
+            }
+            return pyobj.py;
         }
 
-        pub inline fn unwrap(obj: objType) !py.PyObject {
-            // Handle the error case explicitly, then we can unwrap the error case entirely.
-            const typeInfo = @typeInfo(objType);
+        pub inline fn wrap(obj: T) !py.PyObject {
+            const typeInfo = @typeInfo(T);
+
+            // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
-                _ = obj catch |err| {
-                    return err;
-                };
+                const value = obj catch |err| return err;
+                return Trampoline(typeInfo.ErrorUnion.payload).wrap(value);
             }
 
-            const result = if (typeInfo == .ErrorUnion) obj catch @panic("Error already handled above") else obj;
-            const resultType = if (typeInfo == .ErrorUnion) typeInfo.ErrorUnion.payload else objType;
+            // Early return to handle optionals
+            if (typeInfo == .Optional) {
+                const value = obj orelse return py.None();
+                return Trampoline(typeInfo.Optional.child).wrap(value);
+            }
 
-            switch (@typeInfo(resultType)) {
-                .Bool => return if (result) py.True().obj else py.False().obj,
+            switch (@typeInfo(T)) {
+                .Bool => return if (obj) py.True().obj else py.False().obj,
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
-                .Float => return (try py.PyFloat.from(resultType, result)).obj,
-                .Int => return (try py.PyLong.from(resultType, result)).obj,
+                .Float => return (try py.PyFloat.from(T, obj)).obj,
+                .Int => return (try py.PyLong.from(T, obj)).obj,
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
-                    if (@hasField(resultType, "obj") and @hasField(@TypeOf(result.obj), "py")) {
-                        return result.obj;
+                    if (@hasField(T, "obj") and @hasField(@TypeOf(obj.obj), "py")) {
+                        return obj.obj;
                     }
                     // Support py.PyObject
-                    if (resultType == py.PyObject) {
-                        return result;
+                    if (T == py.PyObject) {
+                        return obj;
                     }
                     // If the struct is a tuple, return a Python tuple
                     if (s.is_tuple) {
                         const tuple = try py.PyTuple.new(s.fields.len);
                         inline for (s.fields, 0..) |field, i| {
                             // Recursively unwrap the field value
-                            const fieldValue = try toPyObject(field.type).unwrap(@field(result, field.name));
+                            const fieldValue = try Trampoline(field.type).wrap(@field(obj, field.name));
                             try tuple.setItem(@intCast(i), fieldValue);
                         }
                         return tuple.obj;
@@ -82,8 +89,8 @@ pub fn toPyObject(comptime objType: type) type {
                     const dict = try py.PyDict.new();
                     inline for (s.fields) |field| {
                         // Recursively unwrap the field value
-                        const fieldValue = try toPyObject(field.type).unwrap(@field(result, field.name));
-                        try dict.setItemStr(field.name ++ "\x00", fieldValue);
+                        const fieldValue = try Trampoline(field.type).wrap(@field(obj, field.name));
+                        try dict.setItemStr(field.name, fieldValue);
                     }
                     return dict.obj;
                 },
@@ -91,7 +98,73 @@ pub fn toPyObject(comptime objType: type) type {
                 else => {},
             }
 
-            @compileError("Unsupported return type " ++ @typeName(objType) ++ " from Pydust function");
+            @compileError("Unsupported return type " ++ @typeName(T) ++ " from Pydust function");
+        }
+
+        /// Unwrap a Python object into the requested Zig type.
+        pub inline fn unwrap(object: ?py.PyObject) !T {
+            // Handle the error case explicitly, then we can unwrap the error case entirely.
+            const typeInfo = @typeInfo(T);
+            comptime var R = T;
+
+            // Early return to handle errors
+            if (typeInfo == .ErrorUnion) {
+                const value = object catch |err| return err;
+                return Trampoline(typeInfo.ErrorUnion.payload).unwrap(value);
+            }
+
+            // Early return to handle optionals
+            if (typeInfo == .Optional) {
+                const value = object orelse return null;
+                return Trampoline(typeInfo.Optional.child).unwrap(value);
+            }
+
+            // Otherwise we can unwrap the object.
+            var obj = object orelse @panic("Unexpected null");
+
+            switch (@typeInfo(R)) {
+                .Bool => return if (py.PyBool.of(obj).asbool()) true else false,
+                .ErrorUnion => @compileError("ErrorUnion already handled"),
+                .Float => return try (try py.PyFloat.of(obj)).as(T),
+                .Int => return try (try py.PyLong.of(obj)).as(T),
+                .Optional => @compileError("Optional already handled"),
+                .Struct => |s| {
+                    // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
+                    if (@hasField(R, "obj") and @hasField(@TypeOf(@field(R, "obj")), "py")) {
+                        return try @field(R, "of")(obj);
+                    }
+                    // Support py.PyObject
+                    if (R == py.PyObject) {
+                        return obj;
+                    }
+                    // If the struct is a tuple, extract from the PyTuple
+                    if (s.is_tuple) {
+                        const tuple = try py.PyTuple.of(obj);
+                        var result: R = undefined;
+                        for (s.fields, 0..) |field, i| {
+                            // Recursively unwrap the field value
+                            const fieldValue = try tuple.getItem(i);
+                            @field(result, field.name) = try Trampoline(field.type.?).unwrap(fieldValue);
+                        }
+                        return result;
+                    }
+                    // Otherwise, extract from a Python dictionary
+                    const dict = try py.PyDict.of(obj);
+                    var result: R = undefined;
+                    inline for (s.fields) |field| {
+                        // Recursively unwrap the field value
+                        const fieldValue = try dict.getItemStr(field.name ++ "") orelse {
+                            return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+                        };
+                        @field(result, field.name) = try Trampoline(field.type).unwrap(fieldValue);
+                    }
+                    return result;
+                },
+                .Void => if (py.is_none(obj)) return else return py.TypeError.raise("Expected None"),
+                else => {},
+            }
+
+            @compileError("Unsupported return type " ++ @typeName(T) ++ " from Pydust function");
         }
     };
 }

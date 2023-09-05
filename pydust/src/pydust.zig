@@ -14,6 +14,8 @@ pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
+pub usingnamespace tramp;
+
 const Self = @This();
 
 pub const ModuleDef = struct {

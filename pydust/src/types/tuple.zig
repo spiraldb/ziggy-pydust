@@ -9,7 +9,10 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyTuple = extern struct {
     obj: PyObject,
 
-    pub fn of(obj: py.PyObject) PyTuple {
+    pub fn of(obj: py.PyObject) !PyTuple {
+        if (ffi.PyTuple_Check(obj.py) == 0) {
+            return py.TypeError.raise("Expected tuple");
+        }
         return .{ .obj = obj };
     }
 
@@ -88,7 +91,7 @@ test "PyTuple" {
 
     try std.testing.expectEqual(@as(isize, 2), try tuple.getSize());
 
-    try std.testing.expectEqual(@as(c_long, 1), try PyLong.of(try tuple.getItem(0)).as(c_long));
+    try std.testing.expectEqual(@as(c_long, 1), try (try PyLong.of(try tuple.getItem(0))).as(c_long));
     try tuple.setItem(0, second.obj);
-    try std.testing.expectEqual(@as(f64, 1.0), try PyFloat.of(try tuple.getItem(0)).as(f64));
+    try std.testing.expectEqual(@as(f64, 1.0), try (try PyFloat.of(try tuple.getItem(0))).as(f64));
 }
