@@ -217,8 +217,7 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
 
             var pyArgs: []*ffi.PyObject = py.allocator.alloc(*ffi.PyObject, argLen) catch return null;
             for (0..argLen) |i| {
-                var item = tuple.getItem(@intCast(i)) catch return null;
-                pyArgs[i] = item.py;
+                pyArgs[i] = tuple.getRawItem(@intCast(i)) catch return null;
             }
 
             return pyArgs;

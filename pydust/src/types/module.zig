@@ -11,19 +11,19 @@ pub const PyModule = extern struct {
 
     const Self = @This();
 
-    pub fn of(obj: py.PyObject) Self {
+    pub fn of(obj: py.PyObject) PyModule {
         return .{ .obj = obj };
     }
 
-    pub fn incref(self: Self) void {
+    pub fn incref(self: PyModule) void {
         self.obj.incref();
     }
 
-    pub fn decref(self: Self) void {
+    pub fn decref(self: PyModule) void {
         self.obj.decref();
     }
 
-    pub fn import(name: [:0]const u8) !Self {
+    pub fn import(name: [:0]const u8) !PyModule {
         return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.Propagate } };
     }
 
@@ -39,7 +39,7 @@ pub const PyModule = extern struct {
     }
 
     /// Create and insantiate a PyModule object from a Python code string.
-    pub fn fromCode(code: []const u8, filename: []const u8, module_name: []const u8) !Self {
+    pub fn fromCode(code: []const u8, filename: []const u8, module_name: []const u8) !PyModule {
         const pycode = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse return PyError.Propagate;
         defer ffi.Py_DECREF(pycode);
 
