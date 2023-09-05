@@ -43,18 +43,17 @@ pub const PyBuffer = extern struct {
     // If ndim == 0, the memory location pointed to by buf is interpreted as a scalar of size itemsize.
     // In that case, both shape and strides are NULL.
     ndim: c_int,
-    format_str: [*:0]u8,
+    format: [*:0]const u8,
 
-    shape: ?[*]isize,
+    shape: ?[*]isize = null,
     // If strides is NULL, the array is interpreted as a standard n-dimensional C-array.
     // Otherwise, the consumer must access an n-dimensional array as follows:
     // ptr = (char *)buf + indices[0] * strides[0] + ... + indices[n-1] * strides[n-1];
-    strides: ?[*]isize,
+    strides: ?[*]isize = null,
     // If all suboffsets are negative (i.e. no de-referencing is needed),
     // then this field must be NULL (the default value).
-    suboffsets: ?[*]isize,
-
-    internal: ?*anyopaque,
+    suboffsets: ?[*]isize = null,
+    internal: ?*anyopaque = null,
 
     pub fn release(self: *Self) void {
         ffi.PyBuffer_Release(@ptrCast(self));
@@ -79,32 +78,42 @@ pub const PyBuffer = extern struct {
         return out;
     }
 
-    // A helper function for converting Zig types to buffer format string.
-    pub fn allocFormat(comptime value_type: type, allocator: std.mem.Allocator) ![*:0]u8 {
-        const fmt = PyBuffer.getFormat(value_type);
-        var fmt_c = try allocator.allocSentinel(u8, fmt.len, 0);
-        @memcpy(fmt_c, fmt);
-        return fmt_c;
+    pub fn initFromSlice(self: *Self, comptime value_type: type, values: []value_type, shape: []isize, obj: py.PyObject) void {
+        self.* = .{
+            .buf = std.mem.sliceAsBytes(values).ptr,
+            .obj = obj.py,
+            .len = @intCast(values.len * @sizeOf(value_type)),
+            .itemsize = @sizeOf(value_type),
+            .readonly = 1,
+            .ndim = 1,
+            .format = getFormat(value_type).ptr,
+            .shape = shape.ptr,
+        };
     }
 
-    fn getFormat(comptime value_type: type) []const u8 {
+    // asSlice returns buf property as Zig slice. The view must have been created with ND flag.
+    pub fn asSlice(self: *const Self, comptime value_type: type) []value_type {
+        return @alignCast(std.mem.bytesAsSlice(value_type, self.buf.?[0..@intCast(self.len)]));
+    }
+
+    fn getFormat(comptime value_type: type) [:0]const u8 {
         switch (@typeInfo(value_type)) {
             .Int => |i| {
                 switch (i.signedness) {
                     .unsigned => switch (i.bits) {
-                        8 => return &.{'B'},
-                        16 => return &.{'H'},
-                        32 => return &.{'I'},
-                        64 => return &.{'L'},
+                        8 => return "B",
+                        16 => return "H",
+                        32 => return "I",
+                        64 => return "L",
                         else => {
                             @compileError("Unsupported buffer value type" ++ @typeName(value_type));
                         },
                     },
                     .signed => switch (i.bits) {
-                        8 => return &.{'b'},
-                        16 => return &.{'h'},
-                        32 => return &.{'i'},
-                        64 => return &.{'l'},
+                        8 => return "b",
+                        16 => return "h",
+                        32 => return "i",
+                        64 => return "l",
                         else => {
                             @compileError("Unsupported buffer value type" ++ @typeName(value_type));
                         },
@@ -113,8 +122,8 @@ pub const PyBuffer = extern struct {
             },
             .Float => |f| {
                 switch (f.bits) {
-                    32 => return &.{'f'},
-                    64 => return &.{'d'},
+                    32 => return "f",
+                    64 => return "d",
                     else => {
                         @compileError("Unsupported buffer value type" ++ @typeName(value_type));
                     },
