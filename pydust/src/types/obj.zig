@@ -27,8 +27,7 @@ pub const PyObject = extern struct {
     }
 
     pub fn from(value: anytype) !PyObject {
-        const ptr = try tramp.toPyObject(@TypeOf(value)).unwrap(value);
-        return .{ .py = ptr };
+        return try tramp.toPyObject(@TypeOf(value)).unwrap(value);
     }
 
     pub fn call0(self: PyObject) !PyObject {

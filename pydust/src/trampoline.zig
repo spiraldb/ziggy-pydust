@@ -2,7 +2,7 @@
 const std = @import("std");
 const Type = std.builtin.Type;
 const ffi = @import("ffi.zig");
-const py = @import("types.zig");
+const py = @import("pydust.zig");
 const PyError = @import("errors.zig").PyError;
 
 pub fn errObj(obj: PyError!py.PyObject) ?*ffi.PyObject {
@@ -38,6 +38,10 @@ pub fn setErr(err: PyError) void {
 /// Generate a function to convert a comptime-known Zig type into a py.PyObject.
 pub fn toPyObject(comptime objType: type) type {
     return struct {
+        pub inline fn unwrapPy(obj: objType) !*ffi.PyObject {
+            return (try unwrap(obj)).py;
+        }
+
         pub inline fn unwrap(obj: objType) !py.PyObject {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(objType);
@@ -51,18 +55,18 @@ pub fn toPyObject(comptime objType: type) type {
             const resultType = if (typeInfo == .ErrorUnion) typeInfo.ErrorUnion.payload else objType;
 
             switch (@typeInfo(resultType)) {
-                .Bool => return if (result) ffi.Py_True else ffi.Py_False,
+                .Bool => return if (result) py.True().obj else py.False().obj,
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
-                .Float => return (try py.PyFloat.from(resultType, result)).obj.py,
-                .Int => return (try py.PyLong.from(resultType, result)).obj.py,
+                .Float => return (try py.PyFloat.from(resultType, result)).obj,
+                .Int => return (try py.PyLong.from(resultType, result)).obj,
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
                     if (@hasField(resultType, "obj") and @hasField(@TypeOf(result.obj), "py")) {
-                        return result.obj.py;
+                        return result.obj;
                     }
                     // Support py.PyObject
                     if (resultType == py.PyObject) {
-                        return result.py;
+                        return result;
                     }
                     // If the struct is a tuple, return a Python tuple
                     if (s.is_tuple) {
@@ -70,20 +74,20 @@ pub fn toPyObject(comptime objType: type) type {
                         inline for (s.fields, 0..) |field, i| {
                             // Recursively unwrap the field value
                             const fieldValue = try toPyObject(field.type).unwrap(@field(result, field.name));
-                            try tuple.setItem(@intCast(i), .{ .py = fieldValue });
+                            try tuple.setItem(@intCast(i), fieldValue);
                         }
-                        return tuple.obj.py;
+                        return tuple.obj;
                     }
                     // Otherwise, return a Python dictionary
                     const dict = try py.PyDict.new();
                     inline for (s.fields) |field| {
                         // Recursively unwrap the field value
                         const fieldValue = try toPyObject(field.type).unwrap(@field(result, field.name));
-                        try dict.setItemStr(field.name ++ "\x00", .{ .py = fieldValue });
+                        try dict.setItemStr(field.name ++ "\x00", fieldValue);
                     }
-                    return dict.obj.py;
+                    return dict.obj;
                 },
-                .Void => return ffi.Py_None,
+                .Void => return py.None(),
                 else => {},
             }
 
