@@ -34,11 +34,11 @@ pub fn setErr(err: anyerror) void {
     };
 }
 
+/// Generate a function to convert a comptime-known Zig type into a py.PyObject.
 pub fn toPyObject(comptime objType: type) type {
     return struct {
-        pub inline fn unwrap(obj: objType) !*ffi.PyObject {
+        pub inline fn unwrap(obj: objType) !py.PyObject {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
-
             const typeInfo = @typeInfo(objType);
             if (typeInfo == .ErrorUnion) {
                 _ = obj catch |err| {
