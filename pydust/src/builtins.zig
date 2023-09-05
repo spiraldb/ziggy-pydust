@@ -1,5 +1,6 @@
 const py = @import("./pydust.zig");
 const ffi = @import("./ffi.zig");
+const PyError = @import("./errors.zig").PyError;
 
 /// Returns a new reference to Py_None.
 pub inline fn None() py.PyObject {
@@ -10,7 +11,7 @@ pub inline fn None() py.PyObject {
 }
 
 /// Checks whether a given object is None. Avoids incref'ing None to do the check.
-pub inline fn isNone(object: anytype) bool {
+pub inline fn is_none(object: anytype) bool {
     const obj = try py.PyObject.from(object);
     return ffi.Py_IsNone(obj.py) == 1;
 }
@@ -23,6 +24,14 @@ pub inline fn False() py.PyBool {
 /// Returns a new reference to Py_True.
 pub inline fn True() py.PyBool {
     return py.PyBool.true_();
+}
+
+/// Get the length of the given object. Equivalent to len(obj) in Python.
+pub fn len(object: anytype) !usize {
+    const obj = try py.PyObject.from(object);
+    const length = ffi.PyObject_Length(obj.py);
+    if (length < 0) return PyError.Propagate;
+    return length;
 }
 
 /// Import a module by fully-qualified name returning a PyObject.
