@@ -251,7 +251,7 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
                 return null;
             }
 
-            const tuple = py.PyTuple{ .obj = .{ .py = args } };
+            const tuple: py.PyTuple = .{ .obj = .{ .py = args } };
             const argsSize = tuple.getSize() catch return null;
             const argLen = @typeInfo(@typeInfo(initSig.argsParam.?.type.?).Pointer.child).Struct.fields.len;
             if (argsSize != argLen) {
@@ -261,7 +261,8 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
 
             var pyArgs: []*ffi.PyObject = py.allocator.alloc(*ffi.PyObject, argLen) catch return null;
             for (0..argLen) |i| {
-                pyArgs[i] = tuple.getRawItem(@intCast(i)) catch return null;
+                const item = tuple.getItem(@intCast(i)) catch return null;
+                pyArgs[i] = item.py;
             }
 
             return pyArgs;
