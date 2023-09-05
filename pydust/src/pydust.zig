@@ -140,7 +140,7 @@ fn InitArgs(comptime Cls: type) type {
     const func = @field(Cls, "__init__");
     const typeInfo = @typeInfo(@TypeOf(func));
     const sig = funcs.parseSignature("__init__", typeInfo.Fn, &.{ types.PyObject, *Cls, *const Cls });
-    return @typeInfo(sig.argsParam.?.type.?).Pointer.child;
+    return @typeInfo(sig.argsParam.?).Pointer.child;
 }
 
 /// Convert user state instance into PyObject instance

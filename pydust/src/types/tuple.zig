@@ -33,7 +33,7 @@ pub const PyTuple = extern struct {
         return ffi.PyTuple_Size(self.obj.py);
     }
 
-    pub fn getItem(self: *const PyTuple, idx: isize) !PyObject {
+    pub fn getItem(self: *const PyTuple, idx: usize) !PyObject {
         if (ffi.PyTuple_GetItem(self.obj.py, @intCast(idx))) |item| {
             return .{ .py = item };
         } else {

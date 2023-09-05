@@ -9,10 +9,11 @@ const MethodType = enum { STATIC, CLASS, INSTANCE };
 
 pub const Signature = struct {
     name: []const u8,
-    selfParam: ?Type.Fn.Param = null,
-    argsParam: ?Type.Fn.Param = null,
-    kwargsParam: ?Type.Fn.Param = null,
+    selfParam: ?type = null,
+    argsParam: ?type = null,
     returnType: type,
+    nargs: usize = 0,
+    nkwargs: usize = 0,
 };
 
 const reservedNames = .{
@@ -26,33 +27,60 @@ const reservedNames = .{
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
-    if (func.params.len > 3) {
-        @compileError("Pydust function can have at most 3 parameters. A self ptr, and args and kwargs structs.");
-    }
-
     var sig = Signature{
         // TODO(ngates): is this true?
         .returnType = func.return_type orelse @compileError("Pydust functions must always return or error."),
         .name = name,
     };
 
-    for (func.params, 0..) |param, i| {
-        if (i == 0) {
+    switch (func.params.len) {
+        2 => {
+            sig.selfParam = func.params[0].type.?;
+            sig.argsParam = func.params[1].type.?;
+        },
+        1 => {
+            const param = func.params[0];
             if (isSelfArg(param, SelfTypes)) {
-                sig.selfParam = param;
-                continue;
+                sig.selfParam = param.type.?;
+            } else {
+                if (@typeInfo(param.type.?) != .Struct) {
+                    // TODO(ngates): check there are no args after kwargs.
+                    @compileError("Pydust arguments must be defined in a struct");
+                }
+                sig.argsParam = param.type.?;
             }
-        }
+        },
+        0 => {},
+        else => @compileError("Pydust function can have at most 2 parameters. A self ptr and a parameters struct."),
+    }
 
-        checkIsValidStructPtr(name, param.type.?);
-        if (sig.argsParam != null) {
-            sig.kwargsParam = param;
-        } else {
-            sig.argsParam = param;
-        }
+    // Count up the parameters
+    if (sig.argsParam) |p| {
+        sig.nargs = countArgs(p);
+        sig.nkwargs = countKwargs(p);
     }
 
     return sig;
+}
+
+fn countArgs(comptime argsParam: type) usize {
+    var n: usize = 0;
+    for (@typeInfo(argsParam).Struct.fields) |field| {
+        if (field.default_value == null) {
+            n += 1;
+        }
+    }
+    return n;
+}
+
+fn countKwargs(comptime argsParam: type) usize {
+    var n: usize = 0;
+    for (@typeInfo(argsParam).Struct.fields) |field| {
+        if (field.default_value != null) {
+            n += 1;
+        }
+    }
+    return n;
 }
 
 pub fn isReserved(comptime name: []const u8) bool {
@@ -62,22 +90,6 @@ pub fn isReserved(comptime name: []const u8) bool {
         }
     }
     return false;
-}
-
-pub fn getSelfParamFn(comptime Cls: type, comptime Self: type, comptime sig: Signature) type {
-    return struct {
-        pub fn unwrap(pyself: *ffi.PyObject) !sig.selfParam.?.type.? {
-            if (sig.selfParam) |param| {
-                return switch (param.type.?) {
-                    py.PyObject => py.PyObject{ .py = pyself },
-                    *Cls => &@fieldParentPtr(Self, "obj", pyself).state,
-                    *const Cls => &@fieldParentPtr(Self, "obj", pyself).state,
-                    else => @compileError("Unsupported self param type: " ++ @typeName(param.type.?)),
-                };
-            }
-            @compileError("Tried to get pass self param to a function that doesn't expect it");
-        }
-    };
 }
 
 /// Check whether the first parameter of the function is one of the valid "self" types.
@@ -90,28 +102,17 @@ fn isSelfArg(comptime param: Type.Fn.Param, comptime SelfTypes: []const type) bo
     return false;
 }
 
-fn checkIsValidStructPtr(comptime funcName: []const u8, comptime paramType: type) void {
-    const typeInfo = @typeInfo(paramType);
-    if (typeInfo != .Pointer or !typeInfo.Pointer.is_const or @typeInfo(typeInfo.Pointer.child) != .Struct) {
-        @compileError("Args and Kwargs must be passed as const struct pointers in function " ++ funcName);
-    }
-}
-
 pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_int) type {
     return struct {
-        const Self = @This();
+        const doc = docTextSignature(sig);
 
-        //const argWrapper = tramp.fromPyObjects(name, sig.argsStruct);
-        const resultWrapper = tramp.Trampoline(sig.returnType);
-
-        pub const Doc = docTextSignature(sig);
-
+        /// Return a PyMethodDef for this wrapped function.
         pub fn aspy() ffi.PyMethodDef {
             return .{
                 .ml_name = sig.name.ptr ++ "",
-                .ml_meth = @ptrCast(&fastcall),
-                .ml_flags = ffi.METH_FASTCALL | flags,
-                .ml_doc = &Doc,
+                .ml_meth = if (sig.nkwargs > 0) @ptrCast(&fastcallKwargs) else @ptrCast(&fastcall),
+                .ml_flags = ffi.METH_FASTCALL | flags | if (sig.nkwargs > 0) ffi.METH_KEYWORDS else 0,
+                .ml_doc = &doc,
             };
         }
 
@@ -120,54 +121,113 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             pyargs: [*]ffi.PyObject,
             nargs: ffi.Py_ssize_t,
         ) callconv(.C) ?*ffi.PyObject {
-            return fastcallInternal(pyself, pyargs, nargs) catch |err| tramp.setErrObj(err);
+            const resultObject = internal(
+                .{ .py = pyself },
+                @as([*]py.PyObject, @ptrCast(pyargs))[0..@intCast(nargs)],
+            ) catch |err| return tramp.setErrObj(err);
+            return resultObject.py;
         }
 
-        inline fn fastcallInternal(
+        inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) !py.PyObject {
+            const self = if (sig.selfParam) |Self| tramp.Trampoline(Self).unwrap(pyself) else null;
+            const resultTrampoline = tramp.Trampoline(sig.returnType);
+
+            if (sig.argsParam) |Args| {
+                // Create an args struct and populate it with pyargs.
+                var args: Args = undefined;
+                inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
+                    @field(args, field.name) = try tramp.Trampoline(field.type).unwrap(pyargs[i]);
+                }
+
+                var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
+                const result = @call(.always_inline, func, callArgs);
+                return resultTrampoline.wrap(result);
+            } else {
+                var callArgs = if (sig.selfParam) |_| .{self} else .{};
+                const result = @call(.always_inline, func, callArgs);
+                return resultTrampoline.wrap(result);
+            }
+        }
+
+        fn fastcallKwargs(
             pyself: *ffi.PyObject,
             pyargs: [*]ffi.PyObject,
             nargs: ffi.Py_ssize_t,
-        ) !?*ffi.PyObject {
-            if (sig.selfParam == null) {
-                // fn()
-                if (sig.argsParam == null) {
-                    // TODO(ngates): mark other function calls as always_inline?
-                    return resultWrapper.wrapRaw(@call(.always_inline, func, .{}));
-                }
-
-                // fn(args)
-                if (sig.kwargsParam == null) {
-                    return resultWrapper.wrapRaw(func(try getArgs(pyargs, nargs)));
-                }
-
-                // fn(args, kwargs)
-                @compileError("Kwargs are unsupported");
-            } else {
-                const selfParam = try tramp.Trampoline(sig.selfParam.?.type.?).unwrap(.{ .py = pyself });
-
-                // fn(self)
-                if (sig.argsParam == null) {
-                    return resultWrapper.wrapRaw(func(selfParam));
-                }
-
-                // fn(self, args)
-                if (sig.kwargsParam == null) {
-                    return resultWrapper.wrapRaw(func(selfParam, try getArgs(pyargs, nargs)));
-                }
-
-                // fn(self, args, kwargs)
-                @compileError("Kwargs are unsupported");
-            }
+            kwnames: *ffi.PyObject,
+        ) callconv(.C) ?*ffi.PyObject {
+            return internalKwargs(
+                .{ .py = pyself },
+                @as([*]py.PyObject, @ptrCast(pyargs))[0..nargs],
+                py.PyTuple.of(.{ .py = kwnames }),
+            ) catch |err| tramp.setErrObj(err);
         }
 
-        // Cast the Python arguments into the requested argument struct.
-        fn getArgs(pyargs: [*]ffi.PyObject, nargs: ffi.Py_ssize_t) !sig.argsParam.?.type.? {
-            if (@typeInfo(@typeInfo(sig.argsParam.?.type.?).Pointer.child).Struct.fields.len != nargs) {
-                return py.TypeError.raise("Incorrect number of arguments");
-            }
-            return @ptrCast(pyargs[0..@intCast(nargs)]);
+        inline fn internalKwargs(pyself: py.PyObject, pyargs: []py.PyObject, kwnames: py.PyTuple) !py.PyObject {
+            _ = kwnames;
+            _ = pyargs;
+            _ = pyself;
         }
     };
+
+    // return struct {
+    //     const Self = @This();
+
+    //     //const argWrapper = tramp.fromPyObjects(name, sig.argsStruct);
+    //     const resultWrapper = tramp.Trampoline(sig.returnType);
+
+    //     pub fn aspy() ffi.PyMethodDef {
+    //         return .{
+    //             .ml_name = sig.name.ptr ++ "",
+    //             .ml_meth = @ptrCast(&fastcall),
+    //             .ml_flags = ffi.METH_FASTCALL | flags,
+    //             .ml_doc = &Doc,
+    //         };
+    //     }
+
+    //     fn fastcall(
+    //         pyself: *ffi.PyObject,
+    //         pyargs: [*]ffi.PyObject,
+    //         nargs: ffi.Py_ssize_t,
+    //     ) callconv(.C) ?*ffi.PyObject {
+    //         return fastcallInternal(pyself, pyargs, nargs) catch |err| tramp.setErrObj(err);
+    //     }
+
+    //     inline fn fastcallInternal(
+    //         pyself: *ffi.PyObject,
+    //         pyargs: [*]ffi.PyObject,
+    //         nargs: ffi.Py_ssize_t,
+    //     ) !?*ffi.PyObject {
+    //         if (sig.selfParam) |selfParam| {
+    //             _ = selfParam;
+    //             const self = try tramp.Trampoline(sig.selfParam.?).unwrap(.{ .py = pyself });
+
+    //             // fn(self)
+    //             if (sig.argsParam == null) {
+    //                 return resultWrapper.wrapRaw(func(self));
+    //             }
+
+    //             // fn(self, args)
+    //             return resultWrapper.wrapRaw(func(self, try getArgs(pyargs, nargs)));
+    //         } else {
+    //             // fn()
+    //             if (sig.argsParam == null) {
+    //                 // TODO(ngates): mark other function calls as always_inline?
+    //                 return resultWrapper.wrapRaw(@call(.always_inline, func, .{}));
+    //             }
+
+    //             // fn(args)
+    //             return resultWrapper.wrapRaw(func(try getArgs(pyargs, nargs)));
+    //         }
+    //     }
+
+    //     // Cast the Python arguments into the requested argument struct.
+    //     fn getArgs(pyargs: [*]ffi.PyObject, nargs: ffi.Py_ssize_t) !sig.argsParam.? {
+    //         if (@typeInfo(@typeInfo(sig.argsParam.?).Pointer.child).Struct.fields.len != nargs) {
+    //             return py.TypeError.raise("Incorrect number of arguments");
+    //         }
+    //         return @ptrCast(pyargs[0..@intCast(nargs)]);
+    //     }
+    // };
 }
 
 /// Generate minimal function docstring to populate __text_signature__ function field.
@@ -223,18 +283,18 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
         // Insert marker for positional only args
         try sigargs.append("/");
         // Assume struct pointer
-        if (!std.meta.trait.is(.Pointer)(argParam.type.?) and !std.meta.trait.is(.Struct)(@typeInfo(@typeInfo(argParam.type.?).Pointer.child))) {
-            @compileError("ArgParam can only be a struct pointer");
+        if (!std.meta.trait.is(.Struct)(argParam)) {
+            @compileError("ArgParam can only be a struct");
         }
-        for (@typeInfo(@typeInfo(argParam.type.?).Pointer.child).Struct.fields) |field| {
+        for (@typeInfo(argParam).Struct.fields) |field| {
             try sigargs.append(field.name);
         }
     }
-    if (sig.kwargsParam) |_| {
-        // Insert marker for keywords only args
-        try sigargs.append("*");
-        @compileError("Kwargs are not supported");
-    }
+    // if (sig.kwargsParam) |_| {
+    //     // Insert marker for keywords only args
+    //     try sigargs.append("*");
+    //     @compileError("Kwargs are not supported");
+    // }
 
     return sigargs.constSlice();
 }

@@ -9,7 +9,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     pylength: isize, // isize to be compatible with Python API
     format: [:0]const u8 = "l", // i64
 
-    pub fn __init__(self: *Self, args: *const extern struct { elem: py.PyLong, size: py.PyLong }) !void {
+    pub fn __init__(self: *Self, args: struct { elem: py.PyLong, size: py.PyLong }) !void {
         self.values = try py.allocator.alloc(i64, try args.size.as(u64));
         @memset(self.values, try args.elem.as(i64));
         self.pylength = @intCast(self.values.len);
@@ -32,7 +32,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 });
 
 // A function that accepts an object implementing the buffer protocol.
-pub fn sum(args: *const extern struct { buf: py.PyObject }) !i64 {
+pub fn sum(args: struct { buf: py.PyObject }) !i64 {
     var view: py.PyBuffer = undefined;
     // ND is required by asSlice.
     try args.buf.getBuffer(&view, py.PyBuffer.Flags.ND);

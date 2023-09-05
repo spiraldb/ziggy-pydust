@@ -8,7 +8,7 @@ pub const Animal = py.class("Animal", struct {
 
     kind: u64,
 
-    pub fn __init__(self: *Self, args: *const extern struct { kind: py.PyLong }) !void {
+    pub fn __init__(self: *Self, args: struct { kind: py.PyLong }) !void {
         self.kind = try args.kind.as(u64);
     }
 
@@ -33,7 +33,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     animal: Animal,
     name: py.PyString,
 
-    pub fn __init__(self: *Self, args: *const extern struct { name: py.PyString }) !void {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString }) !void {
         var kind = try py.PyLong.from(u64, 1);
         defer kind.decref();
         try Animal.__init__(&self.animal, &.{ .kind = kind });
@@ -71,7 +71,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
-    pub fn name_puppy(args: *const extern struct { name: py.PyString }) !py.PyObject {
+    pub fn name_puppy(args: struct { name: py.PyString }) !py.PyObject {
         return try py.init(Dog, .{ .name = args.name });
     }
 });

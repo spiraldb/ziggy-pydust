@@ -78,6 +78,7 @@ pub fn Trampoline(comptime T: type) type {
                 .Int => return (try py.PyLong.from(T, obj)).obj,
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
+                    // TODO(ngates): do this on the type info, not runtime value
                     if (@hasField(T, "obj") and @hasField(@TypeOf(obj.obj), "py")) {
                         return obj.obj;
                     }
@@ -157,7 +158,8 @@ pub fn Trampoline(comptime T: type) type {
                 },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
-                    if (@hasField(R, "obj") and @hasField(@TypeOf(@field(R, "obj")), "py")) {
+                    // TODO(ngates): extract this into a TraitFn
+                    if (@hasField(R, "obj") and @hasField(std.meta.fieldInfo(R, .obj).type, "py")) {
                         return try @field(R, "of")(obj);
                     }
                     // Support py.PyObject
