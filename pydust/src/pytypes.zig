@@ -251,7 +251,7 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
                 return null;
             }
 
-            const tuple = py.PyTuple{ .obj = .{ .py = args } };
+            const tuple: py.PyTuple = .{ .obj = .{ .py = args } };
             const argsSize = tuple.getSize() catch return null;
             const argLen = @typeInfo(@typeInfo(initSig.argsParam.?.type.?).Pointer.child).Struct.fields.len;
             if (argsSize != argLen) {
