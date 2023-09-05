@@ -20,6 +20,8 @@ const reservedNames = .{
     "__init__",
     "__len__",
     "__del__",
+    "__buffer__",
+    "__release_buffer__",
 };
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.

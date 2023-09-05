@@ -98,6 +98,20 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
+            if (@hasDecl(definition, "__buffer__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_bf_getbuffer,
+                    .pfunc = @ptrCast(@constCast(&bf_getbuffer)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__release_buffer__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_bf_releasebuffer,
+                    .pfunc = @ptrCast(@constCast(&bf_releasebuffer)),
+                }};
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -135,6 +149,19 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             definition.__del__(&instance.state);
 
             ffi.PyErr_Restore(error_type, error_value, error_tb);
+        }
+
+        fn bf_getbuffer(self: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
+            // In case of any error, the view.obj field must be set to NULL.
+            view.obj = null;
+
+            const instance: *Instance = @ptrCast(self);
+            return tramp.errVoid(definition.__buffer__(&instance.state, @ptrCast(view), flags));
+        }
+
+        fn bf_releasebuffer(self: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
+            const instance: *Instance = @ptrCast(self);
+            return definition.__release_buffer__(&instance.state, @ptrCast(view));
         }
     };
 }
