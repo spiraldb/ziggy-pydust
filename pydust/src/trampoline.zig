@@ -31,7 +31,7 @@ pub fn setErr(err: PyError) void {
     return switch (err) {
         error.Propagate => {},
         error.Raised => {},
-        error.OOM => py.MemoryError.raise("OOM") catch return,
+        error.OutOfMemory => py.MemoryError.raise("OOM") catch return,
     };
 }
 
