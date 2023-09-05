@@ -26,7 +26,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 
     pub fn __init__(self: *Self, args: *const extern struct { name: py.PyString }) !void {
         var state = try py.PyLong.from(u64, 1);
-        defer state.obj.decref();
+        defer state.decref();
         try Animal.__init__(&self.animal, &.{ .state = state });
         self.name = args.name;
     }
@@ -41,6 +41,17 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 
     pub fn make_noise() !py.PyString {
         return py.PyString.fromSlice("Bark!");
+    }
+
+    pub fn get_kind(self: *Self) !py.PyString {
+        var super = try py.super(Dog, self);
+        var superKind = try super.get("get_kind");
+        const kind = py.PyLong.of(try superKind.call0());
+        if (try kind.as(u64) == 1) {
+            return py.PyString.fromSlice("Dog");
+        } else {
+            return py.PyString.fromSlice("Not a Dog");
+        }
     }
 });
 
