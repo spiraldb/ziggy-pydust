@@ -38,11 +38,19 @@ pub fn setErr(err: PyError) void {
 /// Generate functions to convert comptime-known Zig types to/from py.PyObject.
 pub fn Trampoline(comptime T: type) type {
     return struct {
-        pub inline fn wrapPy(obj: T) !*ffi.PyObject {
-            const pyobj = try wrap(obj);
+        pub inline fn wrapRaw(obj: T) ?*ffi.PyObject {
+            const pyobj = wrap(obj) catch |err| switch (err) {
+                // On error, we assume an exception has been set and return a NULL pointer to Python.
+                // Maybe we should std.debug.assert that we have in fact done so?
+                error.Propagate => return null,
+                error.Raised => return null,
+                error.OutOfMemory => py.MemoryError.raise("OOM") catch return null,
+            };
+
             if (@as(?*ffi.PyObject, @ptrCast(pyobj.py)) == null) {
                 @panic("NULL POINTER");
             }
+
             return pyobj.py;
         }
 

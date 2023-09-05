@@ -130,12 +130,12 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
                 // fn()
                 if (sig.argsParam == null) {
                     // TODO(ngates): mark other function calls as always_inline?
-                    return resultWrapper.wrapPy(@call(.always_inline, func, .{}));
+                    return resultWrapper.wrapRaw(@call(.always_inline, func, .{}));
                 }
 
                 // fn(args)
                 if (sig.kwargsParam == null) {
-                    return resultWrapper.wrapPy(func(try getArgs(pyargs, nargs)));
+                    return resultWrapper.wrapRaw(func(try getArgs(pyargs, nargs)));
                 }
 
                 // fn(args, kwargs)
@@ -145,12 +145,12 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
 
                 // fn(self)
                 if (sig.argsParam == null) {
-                    return resultWrapper.wrapPy(func(selfParam));
+                    return resultWrapper.wrapRaw(func(selfParam));
                 }
 
                 // fn(self, args)
                 if (sig.kwargsParam == null) {
-                    return resultWrapper.wrapPy(func(selfParam, try getArgs(pyargs, nargs)));
+                    return resultWrapper.wrapRaw(func(selfParam, try getArgs(pyargs, nargs)));
                 }
 
                 // fn(self, args, kwargs)
