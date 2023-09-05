@@ -30,7 +30,8 @@ pub const ClassDef = struct {
     bases: []const type,
 };
 
-const State = blk: {
+// FIXME(ngates): not pub
+pub const State = blk: {
     comptime var modList: [20]ModuleDef = undefined;
     comptime var modulesOffset: u8 = 0;
     comptime var classList: [100]ClassDef = undefined;
@@ -158,14 +159,33 @@ pub fn super(comptime Super: type, selfInstance: anytype) !types.PyObject {
     return superTypeObj.callArgs(.{ superPyType, pyObj });
 }
 
-/// Find the name of the module that contains the given definition.
 pub fn getClassName(comptime definition: type) [:0]const u8 {
+    return findClassName(definition) orelse @compileError("Unrecognized class definition");
+}
+
+/// Find the class name of the given state definition.
+pub inline fn findClassName(comptime definition: type) ?[:0]const u8 {
     inline for (State.classes()) |classDef| {
         if (classDef.definition == definition) {
             return classDef.name;
         }
     }
-    @compileError("Unknown class definition");
+    return null;
+}
+
+/// Get the module name of the given state definition.
+pub fn getModuleName(comptime definition: type) ?[:0]const u8 {
+    return findModuleName(definition) orelse @compileError("Unrecognized module definition");
+}
+
+/// Find the module name of the given state definition.
+pub inline fn findModuleName(comptime definition: type) ?[:0]const u8 {
+    inline for (State.modules()) |modDef| {
+        if (modDef.definition == definition) {
+            return modDef.name;
+        }
+    }
+    return null;
 }
 
 /// Find the name of the module that contains the given definition.

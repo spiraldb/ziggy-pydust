@@ -97,7 +97,7 @@ fn checkIsValidStructPtr(comptime funcName: []const u8, comptime paramType: type
     }
 }
 
-pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamFn: type, comptime flags: c_int) type {
+pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_int) type {
     return struct {
         const Self = @This();
 
@@ -143,7 +143,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
                 // fn(args, kwargs)
                 @compileError("Kwargs are unsupported");
             } else {
-                const selfParam = selfParamFn.unwrap(pyself) catch |err| return tramp.setErrObj(err);
+                const selfParam = try tramp.Trampoline(sig.selfParam.?.type.?).unwrap(.{ .py = pyself });
 
                 // fn(self)
                 if (sig.argsParam == null) {

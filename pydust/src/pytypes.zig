@@ -167,6 +167,7 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
 }
 
 fn Methods(comptime definition: type, comptime Instance: type) type {
+    _ = Instance;
     const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
 
     return struct {
@@ -184,7 +185,7 @@ fn Methods(comptime definition: type, comptime Instance: type) type {
 
                 // The valid types for a "self" parameter are either the module state struct (definition), or a py.PyModule.
                 const sig = funcs.parseSignature(decl.name, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
-                const def = funcs.wrap(value, sig, funcs.getSelfParamFn(definition, Instance, sig), 0);
+                const def = funcs.wrap(value, sig, 0);
                 defs_ = defs_ ++ .{def};
             }
 

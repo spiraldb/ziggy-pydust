@@ -3,6 +3,7 @@ const std = @import("std");
 const Type = std.builtin.Type;
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const pytypes = @import("pytypes.zig");
 const PyError = @import("errors.zig").PyError;
 
 pub fn errObj(obj: PyError!py.PyObject) ?*ffi.PyObject {
@@ -54,6 +55,7 @@ pub fn Trampoline(comptime T: type) type {
             return pyobj.py;
         }
 
+        /// Wrap a Zig object into a PyObject.
         pub inline fn wrap(obj: T) !py.PyObject {
             const typeInfo = @typeInfo(T);
 
@@ -109,7 +111,7 @@ pub fn Trampoline(comptime T: type) type {
             @compileError("Unsupported return type " ++ @typeName(T) ++ " from Pydust function");
         }
 
-        /// Unwrap a Python object into the requested Zig type.
+        /// Unwrap a Python object into a Zig object.
         pub inline fn unwrap(object: ?py.PyObject) !T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
@@ -136,6 +138,23 @@ pub fn Trampoline(comptime T: type) type {
                 .Float => return try (try py.PyFloat.of(obj)).as(T),
                 .Int => return try (try py.PyLong.of(obj)).as(T),
                 .Optional => @compileError("Optional already handled"),
+                .Pointer => |p| {
+                    // If the pointer is for a Pydust class
+                    if (py.findClassName(p.child)) |_| {
+                        // TODO(ngates): check the PyType?
+                        const PyType = pytypes.State(p.child);
+                        const pyobject = @as(*PyType, @ptrCast(obj.py));
+                        return @constCast(&pyobject.state);
+                    }
+
+                    // If the pointer is for a Pydust module
+                    if (py.findModuleName(p.child)) |_| {
+                        const mod = try py.PyModule.of(obj);
+                        return try mod.getState(p.child);
+                    }
+
+                    @compileLog("Unsupported pointer type " ++ @typeName(p.child), py.State.classes(), py.State.modules());
+                },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
                     if (@hasField(R, "obj") and @hasField(@TypeOf(@field(R, "obj")), "py")) {
@@ -172,7 +191,7 @@ pub fn Trampoline(comptime T: type) type {
                 else => {},
             }
 
-            @compileError("Unsupported return type " ++ @typeName(T) ++ " from Pydust function");
+            @compileError("Unsupported argument type " ++ @typeName(T) ++ " for Pydust function");
         }
     };
 }
