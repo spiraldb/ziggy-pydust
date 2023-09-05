@@ -1,8 +1,6 @@
 const std = @import("std");
 const py = @import("pydust");
 
-const Errors = error{UnknownKind};
-
 pub const Animal = py.class("Animal", struct {
     pub const __doc__ = "Animal docstring";
 
