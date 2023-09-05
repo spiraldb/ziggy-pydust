@@ -19,10 +19,7 @@ pub const Animal = py.class("Animal", struct {
             1 => py.PyString.fromSlice("Dog"),
             2 => py.PyString.fromSlice("Cat"),
             3 => py.PyString.fromSlice("Parrot"),
-            else => k: {
-                py.PyErr.setRuntimeError("Unknown animal kind");
-                break :k Errors.UnknownKind;
-            },
+            else => py.RuntimeError.raise("Unknown animal kind"),
         };
     }
 });
