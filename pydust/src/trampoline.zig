@@ -39,7 +39,7 @@ pub fn setErr(err: PyError) void {
 /// Generate functions to convert comptime-known Zig types to/from py.PyObject.
 pub fn Trampoline(comptime T: type) type {
     return struct {
-        pub inline fn wrapRaw(obj: T) ?*ffi.PyObject {
+        pub fn wrapRaw(obj: T) ?*ffi.PyObject {
             const pyobj = wrap(obj) catch |err| switch (err) {
                 // On error, we assume an exception has been set and return a NULL pointer to Python.
                 // Maybe we should std.debug.assert that we have in fact done so?
@@ -56,7 +56,7 @@ pub fn Trampoline(comptime T: type) type {
         }
 
         /// Wrap a Zig object into a PyObject.
-        pub inline fn wrap(obj: T) !py.PyObject {
+        pub fn wrap(obj: T) !py.PyObject {
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
@@ -112,7 +112,7 @@ pub fn Trampoline(comptime T: type) type {
         }
 
         /// Unwrap a Python object into a Zig object.
-        pub inline fn unwrap(object: ?py.PyObject) !T {
+        pub fn unwrap(object: ?py.PyObject) !T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
             comptime var R = T;

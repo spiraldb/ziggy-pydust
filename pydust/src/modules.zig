@@ -72,23 +72,6 @@ fn Methods(comptime definition: type) type {
             }
             break :blk pydefs_;
         };
-
-        fn getSelfParamFn(comptime sig: funcs.Signature) type {
-            return struct {
-                pub fn unwrap(pyself: *ffi.PyObject) !sig.selfParam.?.type.? {
-                    if (sig.selfParam) |param| {
-                        const mod = py.PyModule{ .obj = .{ .py = pyself } };
-                        return switch (param.type.?) {
-                            py.PyModule => mod,
-                            *definition => @as(*definition, @ptrCast(try mod.getState(definition))),
-                            *const definition => @as(*const definition, @ptrCast(try mod.getState(definition))),
-                            else => @compileError("Unsupported self param type: " ++ @typeName(param.type.?)),
-                        };
-                    }
-                    @compileError("Tried to get module self parameter for a function that doesn't expect it");
-                }
-            };
-        }
     };
 }
 
