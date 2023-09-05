@@ -92,13 +92,6 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             }
 
             if (@hasDecl(definition, "__buffer__")) {
-                if (@hasDecl(definition, "__release_buffer__")) {
-                    slots_ = slots_ ++ .{ffi.PyType_Slot{
-                        .slot = ffi.Py_bf_releasebuffer,
-                        .pfunc = @ptrCast(@constCast(&bf_releasebuffer)),
-                    }};
-                }
-
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_bf_getbuffer,
                     .pfunc = @ptrCast(@constCast(&bf_getbuffer)),
