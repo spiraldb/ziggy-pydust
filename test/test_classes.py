@@ -14,7 +14,7 @@ def test_make_noise():
     assert classes.Dog("Pupper's name").make_noise() == "Bark!"
 
 
-def test_adopt():
+def test_super():
     owner = classes.Owner()
     adopted = owner.name_puppy("Cute pupper's name")
     assert isinstance(adopted, classes.Dog)
