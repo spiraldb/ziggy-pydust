@@ -55,11 +55,13 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return py.PyString.fromSlice("Bark!");
     }
 
-    /// You can explicitly invoke your supers method
     pub fn get_kind_name(self: *Self) !py.PyString {
         var super = try py.super(Dog, self);
         var superKind = try super.get("get_kind_name");
-        return py.PyString.of(try superKind.call0());
+        var kindStr = py.PyString.of(try superKind.call0());
+        kindStr = try kindStr.appendSlice(" named ");
+        kindStr = try kindStr.append(self.name);
+        return kindStr;
     }
 });
 
