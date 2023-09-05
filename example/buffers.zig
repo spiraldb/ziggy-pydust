@@ -17,7 +17,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 
     pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {
         // For more details on request types, see https://docs.python.org/3/c-api/buffer.html#buffer-request-types
-        if (flags & py.PyBuffer.WRITABLE != 0) {
+        if (flags & py.PyBuffer.Flags.WRITABLE != 0) {
             return py.BufferError.raise("request for writable buffer is rejected");
         }
         const pyObj = try py.self(@constCast(self));
@@ -35,7 +35,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 pub fn sum(args: *const extern struct { buf: py.PyObject }) !i64 {
     var view: py.PyBuffer = undefined;
     // ND is required by asSlice.
-    try args.buf.getBuffer(&view, py.PyBuffer.ND);
+    try args.buf.getBuffer(&view, py.PyBuffer.Flags.ND);
     defer view.release();
 
     var bufferSum: i64 = 0;

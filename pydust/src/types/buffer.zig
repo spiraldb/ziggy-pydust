@@ -8,23 +8,25 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyBuffer = extern struct {
     const Self = @This();
 
-    pub const SIMPLE: c_int = 0;
-    pub const WRITABLE: c_int = 0x0001;
-    pub const FORMAT: c_int = 0x0004;
-    pub const ND: c_int = 0x0008;
-    pub const STRIDES: c_int = 0x0010 | ND;
-    pub const C_CONTIGUOUS: c_int = 0x0020 | STRIDES;
-    pub const F_CONTIGUOUS: c_int = 0x0040 | STRIDES;
-    pub const ANY_CONTIGUOUS: c_int = 0x0080 | STRIDES;
-    pub const INDIRECT: c_int = 0x0100 | STRIDES;
-    pub const CONTIG: c_int = STRIDES | WRITABLE;
-    pub const CONTIG_RO: c_int = ND;
-    pub const STRIDED: c_int = STRIDES | WRITABLE;
-    pub const STRIDED_RO: c_int = STRIDES;
-    pub const RECORDS: c_int = STRIDES | FORMAT | WRITABLE;
-    pub const RECORDS_RO: c_int = STRIDES | FORMAT;
-    pub const FULL: c_int = STRIDES | FORMAT | WRITABLE | ND;
-    pub const FULL_RO: c_int = STRIDES | FORMAT | ND;
+    pub const Flags = struct {
+        pub const SIMPLE: c_int = 0;
+        pub const WRITABLE: c_int = 0x0001;
+        pub const FORMAT: c_int = 0x0004;
+        pub const ND: c_int = 0x0008;
+        pub const STRIDES: c_int = 0x0010 | ND;
+        pub const C_CONTIGUOUS: c_int = 0x0020 | STRIDES;
+        pub const F_CONTIGUOUS: c_int = 0x0040 | STRIDES;
+        pub const ANY_CONTIGUOUS: c_int = 0x0080 | STRIDES;
+        pub const INDIRECT: c_int = 0x0100 | STRIDES;
+        pub const CONTIG: c_int = STRIDES | WRITABLE;
+        pub const CONTIG_RO: c_int = ND;
+        pub const STRIDED: c_int = STRIDES | WRITABLE;
+        pub const STRIDED_RO: c_int = STRIDES;
+        pub const RECORDS: c_int = STRIDES | FORMAT | WRITABLE;
+        pub const RECORDS_RO: c_int = STRIDES | FORMAT;
+        pub const FULL: c_int = STRIDES | FORMAT | WRITABLE | ND;
+        pub const FULL_RO: c_int = STRIDES | FORMAT | ND;
+    };
 
     buf: ?[*]u8,
 
@@ -92,18 +94,14 @@ pub const PyBuffer = extern struct {
                         16 => return "H",
                         32 => return "I",
                         64 => return "L",
-                        else => {
-                            @compileError("Unsupported buffer value type" ++ @typeName(value_type));
-                        },
+                        else => {},
                     },
                     .signed => switch (i.bits) {
                         8 => return "b",
                         16 => return "h",
                         32 => return "i",
                         64 => return "l",
-                        else => {
-                            @compileError("Unsupported buffer value type" ++ @typeName(value_type));
-                        },
+                        else => {},
                     },
                 }
             },
@@ -111,14 +109,12 @@ pub const PyBuffer = extern struct {
                 switch (f.bits) {
                     32 => return "f",
                     64 => return "d",
-                    else => {
-                        @compileError("Unsupported buffer value type" ++ @typeName(value_type));
-                    },
+                    else => {},
                 }
             },
-            else => {
-                @compileError("Unsupported buffer value type" ++ @typeName(value_type));
-            },
+            else => {},
         }
+
+        @compileError("Unsupported buffer value type" ++ @typeName(value_type));
     }
 };
