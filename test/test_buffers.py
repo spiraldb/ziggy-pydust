@@ -1,5 +1,6 @@
-from example import buffers
 from array import array
+
+from example import buffers
 
 
 def test_view():
