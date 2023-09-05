@@ -211,6 +211,7 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
             const argsSize = tuple.getSize() catch return null;
             const argLen = @typeInfo(@typeInfo(initSig.argsParam.?.type.?).Pointer.child).Struct.fields.len;
             if (argsSize != argLen) {
+                // FIXME(ngates): this is never caught. We should delegate this function to a Zig-style error handling function
                 py.RuntimeError.raiseComptimeFmt("{s} takes {d} arguments", .{ name, argLen }) catch return null;
             }
 
