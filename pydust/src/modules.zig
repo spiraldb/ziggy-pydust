@@ -58,7 +58,7 @@ fn Methods(comptime definition: type) type {
                 }
 
                 // The valid types for a "self" parameter are either the module state struct (definition), or a py.PyModule.
-                const sig = funcs.parseSignature(decl.name ++ "", typeInfo.Fn, &.{ py.PyModule, *definition, *const definition });
+                const sig = funcs.parseSignature(decl.name, typeInfo.Fn, &.{ py.PyModule, *definition, *const definition });
                 const def = funcs.wrap(value, sig, getSelfParamFn(sig), 0);
                 defs_ = defs_ ++ .{def};
             }
