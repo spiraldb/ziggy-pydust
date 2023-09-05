@@ -9,7 +9,9 @@ pub const PyBuffer = extern struct {
     const Self = @This();
 
     buf: ?[*]u8,
-    obj: py.PyObject,
+
+    // TODO(marko): We can make this PyObject but have to make ffi reference optional.
+    obj: ?*ffi.PyObject,
 
     // product(shape) * itemsize.
     // For contiguous arrays, this is the length of the underlying memory block.

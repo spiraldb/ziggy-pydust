@@ -135,6 +135,8 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
         }
 
         pub fn bf_getbuffer(self: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
+            // In case of any error, the view.obj field must be set to NULL.
+            view.obj = null;
             const instance: *Instance = @ptrCast(self);
             return tramp.errVoid(definition.__buffer__(&instance.state, .{ .py = self }, @ptrCast(view), flags));
         }

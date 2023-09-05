@@ -30,7 +30,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 
         view.* = .{
             .buf = std.mem.sliceAsBytes(self.values).ptr,
-            .obj = obj,
+            .obj = obj.py,
             .len = @intCast(self.values.len * @sizeOf(i64)),
             .readonly = 1,
             .itemsize = @sizeOf(i64),
@@ -47,6 +47,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         py.allocator.free(self.values);
         py.allocator.free(view.format_str[0..@intCast(std.mem.indexOfSentinel(u8, 0, view.format_str) + 1)]);
         if (view.shape) |shape| py.allocator.free(shape[0..@intCast(view.ndim)]);
+        view.obj = null;
     }
 });
 
