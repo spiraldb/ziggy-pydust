@@ -1,3 +1,4 @@
+pub usingnamespace @import("types/bool.zig");
 pub usingnamespace @import("types/buffer.zig");
 pub usingnamespace @import("types/dict.zig");
 pub usingnamespace @import("types/error.zig");

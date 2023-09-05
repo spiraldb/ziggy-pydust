@@ -5,32 +5,33 @@ const ffi = @import("ffi.zig");
 const py = @import("types.zig");
 const PyError = @import("errors.zig").PyError;
 
-pub fn errObj(obj: anyerror!py.PyObject) ?*ffi.PyObject {
+pub fn errObj(obj: PyError!py.PyObject) ?*ffi.PyObject {
     return if (obj) |o| o.py else |err| setErrObj(err);
 }
 
-pub fn errStr(str: anyerror!py.PyString) ?*ffi.PyObject {
+pub fn errStr(str: PyError!py.PyString) ?*ffi.PyObject {
     return if (str) |s| s.obj.py else |err| setErrObj(err);
 }
 
-pub fn errVoid(result: anyerror!void) c_int {
+pub fn errVoid(result: PyError!void) c_int {
     return if (result) 0 else |err| setErrInt(err);
 }
 
-pub fn setErrInt(err: anyerror) c_int {
+pub fn setErrInt(err: PyError) c_int {
     setErr(err);
     return -1;
 }
 
-pub fn setErrObj(err: anyerror) ?*ffi.PyObject {
+pub fn setErrObj(err: PyError) ?*ffi.PyObject {
     setErr(err);
     return null;
 }
 
-pub fn setErr(err: anyerror) void {
+pub fn setErr(err: PyError) void {
     return switch (err) {
         error.Propagate => {},
-        else => py.PyErr.setRuntimeError("An error occurrred"),
+        error.Raised => {},
+        error.OutOfMemory => py.MemoryError.raise("OOM") catch return,
     };
 }
 

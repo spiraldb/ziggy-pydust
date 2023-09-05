@@ -47,16 +47,15 @@ pub const PyBuffer = extern struct {
 
     // Flag is a combination of ffi.PyBUF_* flags.
     // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
-    pub fn of(obj: py.PyObject, flag: c_int) PyBuffer {
+    pub fn of(obj: py.PyObject, flag: c_int) !PyBuffer {
         if (ffi.PyObject_CheckBuffer(obj.py) != 1) {
-            // TODO(marko): This should raise BufferError.
-            @panic("not a buffer");
+            return py.BufferError.raise("object does not support buffer interface");
         }
 
         var out: Self = undefined;
         if (ffi.PyObject_GetBuffer(obj.py, @ptrCast(&out), flag) != 0) {
-            // TODO(marko): This should raise BufferError.
-            @panic("unable to get buffer");
+            // Error is already raised.
+            return py.PyError.Propagate;
         }
         return out;
     }
