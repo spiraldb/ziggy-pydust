@@ -143,7 +143,7 @@ fn InitArgs(comptime Cls: type) type {
 /// Convert user state instance into PyObject instance
 pub fn self(selfInstance: anytype) !types.PyObject {
     const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(selfInstance)).Pointer.child), "state", selfInstance);
-    return .{ .py = &selfState.obj };
+    return .{ .py = @constCast(&selfState.obj) };
 }
 
 /// Get zig state of super class `Super` of `classSelf` parameter

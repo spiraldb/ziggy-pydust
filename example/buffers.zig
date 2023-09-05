@@ -20,7 +20,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         if (flags & py.PyBuffer.Flags.WRITABLE != 0) {
             return py.BufferError.raise("request for writable buffer is rejected");
         }
-        const pyObj = try py.self(@constCast(self));
+        const pyObj = try py.self(self);
         view.initFromSlice(i64, self.values, @ptrCast(&self.pylength), pyObj);
     }
 
