@@ -8,8 +8,8 @@ The Zig documentation provides an [excellent introduction to writing tests](http
 
 !!! Note
 
-    If you choose to run tests using `zig build test`, then you must manually call `py.initialize()` and `defer py.finalize()`
-    in order to setup and teardown a Python interpreter. This is not necessary when running from the Pytest plugin.
+    Zig tests are currently spawned as a separate process. This means you must manually call `py.initialize()` and
+    `defer py.finalize()` in order to setup and teardown a Python interpreter.
 
 ``` zig title="example/pytest.zig"
 --8<-- "example/pytest.zig:example"
