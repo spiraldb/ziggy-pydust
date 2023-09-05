@@ -89,7 +89,7 @@ const PyExc = struct {
         return self.raise(message);
     }
 
-    pub fn raiseComptimeFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError!void {
+    pub fn raiseComptimeFmt(comptime self: Self, comptime fmt: [:0]const u8, comptime args: anytype) PyError!void {
         const message = std.fmt.comptimePrint(fmt, args);
         return self.raise(message);
     }

@@ -22,11 +22,3 @@ test "pydust-expected-failure" {
 
     try std.testing.expectEqualStrings("world", try str.asSlice());
 }
-
-pub fn raise_value_error(args: *const struct { message: py.PyString }) !void {
-    return py.ValueError.raise(try args.message.asSlice());
-}
-
-comptime {
-    py.module(@This());
-}
