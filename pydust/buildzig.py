@@ -13,10 +13,11 @@ PYINC = sysconfig.get_path("include")
 PYLIB = sysconfig.get_config_var("LIBDIR")
 
 
-def zig_build(argv: list[str], build_zig="build.zig"):
-    generate_build_zig(build_zig)
+def zig_build(argv: list[str]):
+    conf = config.load()
+    generate_build_zig(conf.build_zig)
     subprocess.run(
-        [sys.executable, "-m", "ziglang", "build", "--build-file", build_zig] + argv,
+        [sys.executable, "-m", "ziglang", "build", "--build-file", conf.build_zig] + argv,
         check=True,
     )
 

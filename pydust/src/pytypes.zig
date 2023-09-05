@@ -46,7 +46,7 @@ pub fn define(comptime class: py.ClassDef) type {
                 const basesTuple = try py.PyTuple.new(class.bases.len);
                 inline for (class.bases, 0..) |base, i| {
                     // TODO(ngates): find the correct parent module
-                    const baseType = try module.obj.getAttr(py.getClassName(base));
+                    const baseType = try module.obj.get(py.getClassName(base));
                     try basesTuple.setItem(i, baseType);
                 }
                 basesPtr = basesTuple.obj.py;
@@ -64,7 +64,6 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
     return struct {
         const methods = Methods(definition, Instance);
         const init = Init(name, definition, Instance);
-        const buffer = Buffer(definition, Instance);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -85,17 +84,24 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
+            if (@hasDecl(definition, "__del__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_finalize,
+                    .pfunc = @ptrCast(@constCast(&finalize)),
+                }};
+            }
+
             if (@hasDecl(definition, "__buffer__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_bf_getbuffer,
-                    .pfunc = @ptrCast(@constCast(&buffer.getbufferproc)),
+                    .pfunc = @ptrCast(@constCast(&bf_getbuffer)),
                 }};
             }
 
             if (@hasDecl(definition, "__release_buffer__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_bf_releasebuffer,
-                    .pfunc = @ptrCast(@constCast(&buffer.releasebufferproc)),
+                    .pfunc = @ptrCast(@constCast(&bf_releasebuffer)),
                 }};
             }
 
@@ -108,6 +114,35 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
 
             break :blk slots_;
         };
+
+        /// Wrapper for the user's __del__ function.
+        /// Note: tp_del is deprecated in favour of tp_finalize.
+        ///
+        /// See https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_finalize.
+        fn finalize(pyself: *ffi.PyObject) void {
+            // The finalize slot shouldn't alter any exception that is currently set.
+            // So it's recommended we save the existing one (if any) and restore it afterwards.
+            // TODO(ngates): we may want to move this logic to PyErr if it happens more?
+            var error_type: ?*ffi.PyObject = undefined;
+            var error_value: ?*ffi.PyObject = undefined;
+            var error_tb: ?*ffi.PyObject = undefined;
+            ffi.PyErr_Fetch(&error_type, &error_value, &error_tb);
+
+            const instance: *Instance = @ptrCast(pyself);
+            definition.__del__(&instance.state);
+
+            ffi.PyErr_Restore(error_type, error_value, error_tb);
+        }
+
+        pub fn bf_getbuffer(self: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
+            const instance: *Instance = @ptrCast(self);
+            return tramp.errVoid(definition.__buffer__(&instance.state, @ptrCast(view), flags));
+        }
+
+        pub fn bf_releasebuffer(self: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
+            const instance: *Instance = @ptrCast(self);
+            return definition.__release_buffer__(&instance.state, @ptrCast(view));
+        }
     };
 }
 
@@ -211,27 +246,6 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
             }
 
             return pyArgs;
-        }
-    };
-}
-
-fn Buffer(comptime definition: type, comptime Instance: type) type {
-    const bufferGet = "__buffer__";
-
-    const bufferRelease = "__release_buffer__";
-
-    return struct {
-        const bufferGetFn = @field(definition, bufferGet);
-        const bufferReleaseFn = @field(definition, bufferRelease);
-
-        pub fn getbufferproc(self: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
-            const instance: *Instance = @ptrCast(self);
-            return tramp.errVoid(bufferGetFn(&instance.state, @ptrCast(view), flags));
-        }
-
-        pub fn releasebufferproc(self: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
-            const instance: *Instance = @ptrCast(self);
-            return bufferReleaseFn(&instance.state, @ptrCast(view));
         }
     };
 }

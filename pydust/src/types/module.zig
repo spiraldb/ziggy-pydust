@@ -11,6 +11,18 @@ pub const PyModule = extern struct {
 
     const Self = @This();
 
+    pub fn of(obj: py.PyObject) PyModule {
+        return .{ .obj = obj };
+    }
+
+    pub fn incref(self: PyModule) void {
+        self.obj.incref();
+    }
+
+    pub fn decref(self: PyModule) void {
+        self.obj.decref();
+    }
+
     pub fn import(name: [:0]const u8) !PyModule {
         return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.Propagate } };
     }
@@ -33,13 +45,5 @@ pub const PyModule = extern struct {
 
         const pymod = ffi.PyImport_ExecCodeModuleEx(module_name.ptr, pycode, filename.ptr) orelse return PyError.Propagate;
         return .{ .obj = .{ .py = pymod } };
-    }
-
-    pub fn incref(self: PyModule) void {
-        self.obj.incref();
-    }
-
-    pub fn decref(self: PyModule) void {
-        self.obj.decref();
     }
 };

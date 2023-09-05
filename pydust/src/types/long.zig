@@ -34,18 +34,18 @@ pub const PyLong = extern struct {
         return switch (typeInfo.signedness) {
             .signed => {
                 if (typeInfo.bits <= @bitSizeOf(c_long)) {
-                    return self.asLong();
+                    return @intCast(try self.asLong());
                 } else if (typeInfo.bits <= @bitSizeOf(c_longlong)) {
-                    return self.asLongLong();
+                    return @intCast(try self.asLongLong());
                 } else {
                     @compileError("Unsupported long type" ++ @typeName(int_type));
                 }
             },
             .unsigned => {
                 if (typeInfo.bits <= @bitSizeOf(c_ulong)) {
-                    return self.asULong();
+                    return @intCast(try self.asULong());
                 } else if (typeInfo.bits <= @bitSizeOf(c_ulonglong)) {
-                    return self.asULongLong();
+                    return @intCast(try self.asULongLong());
                 } else {
                     @compileError("Unsupported long type" ++ @typeName(int_type));
                 }

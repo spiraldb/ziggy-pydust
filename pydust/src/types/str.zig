@@ -16,18 +16,17 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
-    pub fn fromPtr(str: [*]const u8) !PyString {
-        const unicode = ffi.PyUnicode_FromString(str) orelse return PyError.Propagate;
-        return .{ .obj = .{ .py = unicode } };
-    }
-
-    /// Append other to self. A reference to self is stolen so there's no need to decref.
+    /// Append other to self.
+    ///
+    /// Warning: a reference to self is stolen. Use concat, or self.incref(), if you don't own a reference to self.
     pub fn append(self: PyString, other: PyString) !PyString {
         return self.appendObj(other.obj);
     }
 
-    /// Append the slice to self. A reference to self is stolen so there's no need to decref.
-    pub fn appendSlice(self: PyString, str: [:0]const u8) !PyString {
+    /// Append the slice to self.
+    ///
+    /// Warning: a reference to self is stolen. Use concat, or self.incref(), if you don't own a reference to self.
+    pub fn appendSlice(self: PyString, str: []const u8) !PyString {
         const other = try fromSlice(str);
         defer other.decref();
         return self.appendObj(other.obj);
@@ -45,6 +44,20 @@ pub const PyString = extern struct {
             // If set to null, then it failed.
             return PyError.Propagate;
         }
+    }
+
+    /// Concat other to self. Returns a new reference.
+    pub fn concat(self: PyString, other: PyString) !PyString {
+        const result = ffi.PyUnicode_Concat(self.obj.py, other.obj.py) orelse return PyError.Propagate;
+        return of(.{ .py = result });
+    }
+
+    /// Concat other to self. Returns a new reference.
+    pub fn concatSlice(self: PyString, other: []const u8) !PyString {
+        const otherString = try fromSlice(other);
+        defer otherString.decref();
+
+        return concat(self, otherString);
     }
 
     /// Return the length of the Unicode object, in code points.
@@ -82,6 +95,7 @@ test "PyString" {
     const b = ", world!";
 
     var ps = try PyString.fromSlice(a);
+    // defer ps.decref();  <-- We don't need to decref here since append steals the reference to self.
     ps = try ps.appendSlice(b);
     defer ps.decref();
 

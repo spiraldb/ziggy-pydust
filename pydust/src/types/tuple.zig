@@ -18,16 +18,12 @@ pub const PyTuple = extern struct {
         return .{ .obj = .{ .py = tuple } };
     }
 
-    pub fn fromValues(values: []const PyObject) !PyTuple {
-        const tuple = ffi.PyTuple_New(@intCast(values.len)) orelse return PyError.Propagate;
-
-        for (values, 0..) |value, i| {
-            if (ffi.PyTuple_SetItem(tuple, @intCast(i), value.py) < 0) {
-                return PyError.Propagate;
-            }
+    /// Construct a PyTuple from the given Zig tuple.
+    pub fn from(values: anytype) !PyTuple {
+        if (!@typeInfo(@TypeOf(values)).Struct.is_tuple) {
+            @compileError("Must pass a Zig tuple into PyTuple.from");
         }
-
-        return .{ .obj = .{ .py = tuple } };
+        return of(try py.PyObject.from(values));
     }
 
     pub fn getSize(self: *const PyTuple) !isize {
@@ -50,10 +46,23 @@ pub const PyTuple = extern struct {
         }
     }
 
-    pub fn setItem(self: *const PyTuple, item: isize, value: PyObject) !void {
-        if (ffi.PyTuple_SetItem(self.obj.py, @intCast(item), value.py) < 0) {
+    /// Insert a reference to object o at position pos of the tuple.
+    ///
+    /// Warning: steals a reference to value.
+    pub fn setOwnedItem(self: *const PyTuple, pos: isize, value: PyObject) !void {
+        if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), value.py) < 0) {
             return PyError.Propagate;
         }
+    }
+
+    /// Insert a reference to object o at position pos of the tuple. Does not steal a reference to value.
+    pub fn setItem(self: *const PyTuple, pos: isize, value: PyObject) !void {
+        if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), value.py) < 0) {
+            return PyError.Propagate;
+        }
+        // PyTuple_SetItem steals a reference to value. We want the default behaviour not to do that.
+        // See setOwnedItem for an implementation that does steal.
+        value.incref();
     }
 
     pub fn incref(self: PyTuple) void {
@@ -74,7 +83,7 @@ test "PyTuple" {
     const second = try PyFloat.from(f64, 1.0);
     defer second.decref();
 
-    var tuple = try PyTuple.fromValues(&.{ first.obj, second.obj });
+    var tuple = try PyTuple.from(.{ first.obj, second.obj });
     defer tuple.decref();
 
     try std.testing.expectEqual(@as(isize, 2), try tuple.getSize());
