@@ -134,6 +134,8 @@ class ZigItem(pytest.Item):
 
             with open(stderr.name) as f:
                 self.add_report_section("call", "stderr", f.read())
+        except Exception as e:
+            raise Exception("Zig test crashed. Exited " + str(proc.wait())) from e
         finally:
             proc.kill()
             proc.wait()

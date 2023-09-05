@@ -3,6 +3,9 @@ const py = @import("pydust");
 
 // --8<-- [start:example]
 test "pydust pytest" {
+    py.initialize();
+    defer py.finalize();
+
     const str = try py.PyString.fromSlice("hello");
     defer str.decref();
 
@@ -11,6 +14,9 @@ test "pydust pytest" {
 // --8<-- [end:example]
 
 test "pydust-expected-failure" {
+    py.initialize();
+    defer py.finalize();
+
     const str = try py.PyString.fromSlice("hello");
     defer str.decref();
 

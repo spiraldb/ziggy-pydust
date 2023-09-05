@@ -84,6 +84,13 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
+            if (@hasDecl(definition, "__del__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_finalize,
+                    .pfunc = @ptrCast(@constCast(&tp_finalize)),
+                }};
+            }
+
             if (@hasDecl(definition, "__len__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_mp_length,
@@ -109,6 +116,25 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 return result catch return -1;
             }
             return result;
+        }
+
+        /// Wrapper for the user's __del__ function.
+        /// Note: tp_del is deprecated in favour of tp_finalize.
+        ///
+        /// See https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_finalize.
+        fn tp_finalize(pyself: *ffi.PyObject) void {
+            // The finalize slot shouldn't alter any exception that is currently set.
+            // So it's recommended we save the existing one (if any) and restore it afterwards.
+            // TODO(ngates): we may want to move this logic to PyErr if it happens more?
+            var error_type: ?*ffi.PyObject = undefined;
+            var error_value: ?*ffi.PyObject = undefined;
+            var error_tb: ?*ffi.PyObject = undefined;
+            ffi.PyErr_Fetch(&error_type, &error_value, &error_tb);
+
+            const instance: *Instance = @ptrCast(pyself);
+            definition.__del__(&instance.state);
+
+            ffi.PyErr_Restore(error_type, error_value, error_tb);
         }
     };
 }
@@ -180,8 +206,7 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
 
         pub fn init(self: *ffi.PyObject, args: [*c]ffi.PyObject, kwargs: [*c]ffi.PyObject) callconv(.C) c_int {
             if (kwargs != null and ffi.PyDict_Size(kwargs) > 0) {
-                py.PyErr.setRuntimeError(std.fmt.comptimePrint("Kwargs in __init__ functions are not supported for type: {s}", .{name}));
-                return -1;
+                py.RuntimeError.raise(std.fmt.comptimePrint("Kwargs in __init__ functions are not supported for type: {s}", .{name})) catch return -1;
             }
 
             const instance: *Instance = @ptrCast(self);
@@ -203,8 +228,8 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
             const argsSize = tuple.getSize() catch return null;
             const argLen = @typeInfo(@typeInfo(initSig.argsParam.?.type.?).Pointer.child).Struct.fields.len;
             if (argsSize != argLen) {
-                py.PyErr.setRuntimeError(std.fmt.comptimePrint("{s} takes {d} arguments", .{ name, argLen }));
-                return null;
+                // FIXME(ngates): this is never caught. We should delegate this function to a Zig-style error handling function
+                py.RuntimeError.raiseComptimeFmt("{s} takes {d} arguments", .{ name, argLen }) catch return null;
             }
 
             var pyArgs: []*ffi.PyObject = py.allocator.alloc(*ffi.PyObject, argLen) catch return null;

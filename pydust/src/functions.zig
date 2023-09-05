@@ -1,7 +1,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const tramp = @import("trampoline.zig");
-const py = @import("types.zig");
+const py = @import("pydust.zig");
 const PyError = @import("errors.zig").PyError;
 const Type = std.builtin.Type;
 
@@ -19,6 +19,7 @@ const reservedNames = .{
     "__new__",
     "__init__",
     "__len__",
+    "__del__",
 };
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
@@ -160,8 +161,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
         // Cast the Python arguments into the requested argument struct.
         fn getArgs(pyargs: [*]ffi.PyObject, nargs: ffi.Py_ssize_t) !sig.argsParam.?.type.? {
             if (@typeInfo(@typeInfo(sig.argsParam.?.type.?).Pointer.child).Struct.fields.len != nargs) {
-                py.PyErr.setRuntimeError("Incorrect number of arguments");
-                return PyError.Propagate;
+                return py.TypeError.raise("Incorrect number of arguments");
             }
             return @ptrCast(pyargs[0..@intCast(nargs)]);
         }

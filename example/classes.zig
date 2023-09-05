@@ -9,11 +9,15 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub const __doc__ = "Adorable animal docstring";
     const Self = @This();
 
-    name: [:0]const u8,
+    name: py.PyString,
 
     pub fn __init__(self: *Self, args: *const extern struct { name: py.PyString }) !void {
         args.name.incref();
-        self.name = try args.name.asSlice();
+        self.name = args.name;
+    }
+
+    pub fn __del__(self: *Self) void {
+        self.name.decref();
     }
 
     pub fn __len__(self: *const Self) usize {
@@ -22,7 +26,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     }
 
     pub fn get_name(self: *const Self) !py.PyString {
-        return py.PyString.fromSlice(self.name);
+        return self.name;
     }
 
     pub fn make_noise() !py.PyString {
