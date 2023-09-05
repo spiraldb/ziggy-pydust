@@ -21,3 +21,7 @@ def test_super():
     assert adopted.get_name() == "Dug"
     assert adopted.get_kind_name() == "Dog named Dug"
     assert adopted.get_kind() == 1
+
+
+def test_length():
+    assert len(classes.Dog("foo")) == 4

@@ -18,6 +18,7 @@ pub const Signature = struct {
 const reservedNames = .{
     "__new__",
     "__init__",
+    "__len__",
     "__del__",
     "__buffer__",
     "__release_buffer__",
