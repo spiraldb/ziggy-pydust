@@ -50,6 +50,18 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     }
 });
 
+// Accept a buffer protocol object.
+pub fn sum(args: *const extern struct { buf: py.PyObject }) !py.PyLong {
+    var view = try py.PyBuffer.of(args.buf, py.ffi.PyBUF_C_CONTIGUOUS);
+    defer view.release();
+
+    const sliceView: []i64 = @alignCast(std.mem.bytesAsSlice(i64, view.buf.?[0..@intCast(view.len)]));
+    var bufferSum: i64 = 0;
+    for (sliceView) |value| bufferSum += value;
+
+    return try py.PyLong.from(i64, bufferSum);
+}
+
 comptime {
     py.module(@This());
 }

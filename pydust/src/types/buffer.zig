@@ -1,6 +1,7 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
+const PyError = @import("../errors.zig").PyError;
 
 /// Wrapper for Python Py_buffer.
 /// See: https://docs.python.org/3/c-api/buffer.html
@@ -36,13 +37,12 @@ pub const PyBuffer = extern struct {
 
     internal: ?*anyopaque,
 
-    pub fn incref(self: *Self) void {
-        self.obj.incref();
+    pub fn release(self: *Self) void {
+        ffi.PyBuffer_Release(@ptrCast(self));
     }
 
-    pub fn decref(self: *Self) void {
-        // decrefs the underlying object
-        ffi.PyBuffer_Release(@ptrCast(self));
+    pub fn pyObj(self: *Self) py.PyObject {
+        return .{ .py = self.obj orelse unreachable };
     }
 
     // Flag is a combination of ffi.PyBUF_* flags.
@@ -55,7 +55,7 @@ pub const PyBuffer = extern struct {
         var out: Self = undefined;
         if (ffi.PyObject_GetBuffer(obj.py, @ptrCast(&out), flag) != 0) {
             // Error is already raised.
-            return py.PyError.Propagate;
+            return PyError.Propagate;
         }
         return out;
     }
