@@ -39,6 +39,10 @@ pub const PyObject = extern struct {
         return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.Propagate };
     }
 
+    pub fn callArgs(self: PyObject, args: anytype) !PyObject {
+        return self.call(args, null);
+    }
+
     pub fn call(self: PyObject, args: anytype, kwargs: anytype) !PyObject {
         _ = kwargs;
         const argsTuple = try py.PyTuple.from(args);

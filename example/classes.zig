@@ -1,19 +1,29 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const Errors = error{UnknownKind};
+
 pub const Animal = py.class("Animal", struct {
     pub const __doc__ = "Animal docstring";
 
     const Self = @This();
 
-    state: u64,
+    kind: u64,
 
-    pub fn __init__(self: *Self, args: *const extern struct { state: py.PyLong }) !void {
-        self.state = try args.state.as(u64);
+    pub fn __init__(self: *Self, args: *const extern struct { kind: py.PyLong }) !void {
+        self.kind = try args.kind.as(u64);
     }
 
-    pub fn get_kind(self: *Self) !u64 {
-        return self.state;
+    pub fn get_kind(self: *Self) !py.PyString {
+        return switch (self.kind) {
+            1 => py.PyString.fromSlice("Dog"),
+            2 => py.PyString.fromSlice("Cat"),
+            3 => py.PyString.fromSlice("Parrot"),
+            else => k: {
+                py.PyErr.setRuntimeError("Unknown animal kind");
+                break :k Errors.UnknownKind;
+            },
+        };
     }
 });
 
@@ -25,18 +35,18 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     name: py.PyString,
 
     pub fn __init__(self: *Self, args: *const extern struct { name: py.PyString }) !void {
-        var state = try py.PyLong.from(u64, 1);
-        defer state.decref();
-        try Animal.__init__(&self.animal, &.{ .state = state });
+        var kind = try py.PyLong.from(u64, 1);
+        defer kind.decref();
+        try Animal.__init__(&self.animal, &.{ .kind = kind });
         self.name = args.name;
     }
 
-    pub fn get_self(self: *Self) !py.PyObject {
-        return py.self(self);
+    pub fn __del__(self: *Self) void {
+        self.name.decref();
     }
 
-    pub fn get_name(self: *Self) !py.PyString {
-        return py.PyString.fromSlice(self.name);
+    pub fn get_name(self: *const Self) !py.PyString {
+        return self.name;
     }
 
     pub fn make_noise() !py.PyString {
@@ -46,19 +56,14 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub fn get_kind(self: *Self) !py.PyString {
         var super = try py.super(Dog, self);
         var superKind = try super.get("get_kind");
-        const kind = py.PyLong.of(try superKind.call0());
-        if (try kind.as(u64) == 1) {
-            return py.PyString.fromSlice("Dog");
-        } else {
-            return py.PyString.fromSlice("Not a Dog");
-        }
+        return .{ .obj = try superKind.call0() };
     }
 });
 
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
-    pub fn adopt_puppy(args: *const extern struct { name: py.PyString }) !py.PyObject {
+    pub fn name_puppy(args: *const extern struct { name: py.PyString }) !py.PyObject {
         return try py.init(Dog, .{ .name = args.name });
     }
 });

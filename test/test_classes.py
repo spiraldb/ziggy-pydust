@@ -16,7 +16,7 @@ def test_make_noise():
 
 def test_adopt():
     owner = classes.Owner()
-    adopted = owner.adopt_puppy("Cute pupper's name")
+    adopted = owner.name_puppy("Cute pupper's name")
     assert isinstance(adopted, classes.Dog)
     assert adopted.get_name() == "Cute pupper's name"
-    assert adopted.get_kind() == 1
+    assert adopted.get_kind() == "Dog"

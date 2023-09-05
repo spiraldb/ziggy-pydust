@@ -154,7 +154,7 @@ pub fn super(comptime Super: type, selfInstance: anytype) !types.PyObject {
     const pyObj = try self(selfInstance);
 
     const superTypeObj = types.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
-    return superTypeObj.call(.{ superPyType, pyObj });
+    return superTypeObj.callArgs(.{ superPyType, pyObj });
 }
 
 /// Find the name of the module that contains the given definition.
