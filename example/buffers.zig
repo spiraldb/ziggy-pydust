@@ -17,7 +17,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 
     // TODO(marko): Get obj from self.
     pub fn __buffer__(self: *const Self, obj: py.PyObject, view: *py.PyBuffer, flags: c_int) !void {
-        if (flags & py.ffi.PyBUF_WRITABLE != 0) {
+        if (flags & py.PyBuffer.WRITABLE != 0) {
             return py.BufferError.raise("Must not request writable");
         }
 
@@ -46,7 +46,6 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         py.allocator.free(self.values);
         py.allocator.free(view.format_str[0..@intCast(std.mem.indexOfSentinel(u8, 0, view.format_str) + 1)]);
         if (view.shape) |shape| py.allocator.free(shape[0..@intCast(view.ndim)]);
-        view.obj = null;
     }
 });
 
