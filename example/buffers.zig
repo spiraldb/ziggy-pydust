@@ -7,17 +7,13 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 
     values: []i64,
     shape: []isize,
-    format: [:0]const u8,
+    format: [:0]const u8 = "l", // i64
 
     pub fn __init__(self: *Self, args: *const extern struct { elem: py.PyLong, size: py.PyLong }) !void {
-        const elem = try args.elem.as(i64);
-        const size = try args.size.as(u64);
-
-        self.format = "l"; // i64
-        self.values = try py.allocator.alloc(i64, size);
-        @memset(self.values, elem);
+        self.values = try py.allocator.alloc(i64, try args.size.as(u64));
+        @memset(self.values, try args.elem.as(i64));
         self.shape = try py.allocator.alloc(isize, 1);
-        self.shape[0] = @intCast(size);
+        self.shape[0] = @intCast(self.values.len);
     }
 
     pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {
