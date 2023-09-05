@@ -189,8 +189,7 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
 
         pub fn init(self: *ffi.PyObject, args: [*c]ffi.PyObject, kwargs: [*c]ffi.PyObject) callconv(.C) c_int {
             if (kwargs != null and ffi.PyDict_Size(kwargs) > 0) {
-                py.PyErr.setRuntimeError(std.fmt.comptimePrint("Kwargs in __init__ functions are not supported for type: {s}", .{name}));
-                return -1;
+                py.RuntimeError.raise(std.fmt.comptimePrint("Kwargs in __init__ functions are not supported for type: {s}", .{name})) catch return -1;
             }
 
             const instance: *Instance = @ptrCast(self);
@@ -212,8 +211,8 @@ fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instanc
             const argsSize = tuple.getSize() catch return null;
             const argLen = @typeInfo(@typeInfo(initSig.argsParam.?.type.?).Pointer.child).Struct.fields.len;
             if (argsSize != argLen) {
-                py.PyErr.setRuntimeError(std.fmt.comptimePrint("{s} takes {d} arguments", .{ name, argLen }));
-                return null;
+                // FIXME(ngates): this is never caught. We should delegate this function to a Zig-style error handling function
+                py.RuntimeError.raiseComptimeFmt("{s} takes {d} arguments", .{ name, argLen }) catch return null;
             }
 
             var pyArgs: []*ffi.PyObject = py.allocator.alloc(*ffi.PyObject, argLen) catch return null;
