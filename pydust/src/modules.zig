@@ -12,7 +12,7 @@ pub fn define(comptime mod: py.ModuleDef) type {
         const doc: ?[:0]const u8 = if (@hasDecl(definition, "__doc__")) @field(definition, "__doc__") else null;
 
         const slots = Slots(mod);
-        const methods = Methods(mod.definition);
+        const methods = funcs.Methods(mod.definition);
 
         /// The PyInit_<modname> function to be exported in the output object file.
         pub fn init() callconv(.C) ?*ffi.PyObject {
@@ -38,40 +38,6 @@ pub fn define(comptime mod: py.ModuleDef) type {
             };
             return ffi.PyModuleDef_Init(pyModuleDef);
         }
-    };
-}
-
-fn Methods(comptime definition: type) type {
-    return struct {
-        const Self = @This();
-        const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
-
-        const defs: []const type = blk: {
-            var defs_: []const type = &.{};
-            for (@typeInfo(definition).Struct.decls) |decl| {
-                const value = @field(definition, decl.name);
-                const typeInfo = @typeInfo(@TypeOf(value));
-
-                // For now, we skip non-function declarations.
-                if (typeInfo != .Fn or funcs.isReserved(decl.name)) {
-                    continue;
-                }
-
-                // The valid types for a "self" parameter are either the module state struct (definition), or a py.PyModule.
-                const sig = funcs.parseSignature(decl.name, typeInfo.Fn, &.{ py.PyModule, *definition, *const definition });
-                const def = funcs.wrap(value, sig, 0);
-                defs_ = defs_ ++ .{def};
-            }
-            break :blk defs_[0..defs_.len];
-        };
-
-        pub const pydefs: [defs.len:empty]ffi.PyMethodDef = blk: {
-            var pydefs_: [defs.len:empty]ffi.PyMethodDef = undefined;
-            for (0..defs.len) |i| {
-                pydefs_[i] = defs[i].aspy();
-            }
-            break :blk pydefs_;
-        };
     };
 }
 

@@ -301,16 +301,16 @@ pub fn Trampoline(comptime T: type) type {
 
             var args: T = undefined;
             inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
-                if (field.default_value == null) {
-                    // We're an arg
-                    @field(args, field.name) = try callArgs.getArg(field.type, i);
-                } else {
+                if (field.default_value) |def| {
                     // We're a kwarg
                     if (try callArgs.getKwarg(field.type, field.name)) |kwarg| {
                         @field(args, field.name) = kwarg;
                     } else {
-                        @field(args, field.name) = @as(*field.type, @ptrCast(field.default_value)).*;
+                        @field(args, field.name) = @as(*field.type, @ptrCast(def)).*;
                     }
+                } else {
+                    // We're an arg
+                    @field(args, field.name) = try callArgs.getArg(field.type, i);
                 }
             }
 
