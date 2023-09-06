@@ -51,22 +51,27 @@ def generate_build_zig(build_zig_file):
         # We also want to avoid creating a pydust module (and instead prefer anonymous modules) so that we can populate
         # a separate pyconf options object for each Python extension module.
         b.write(
-            """
-            fn getPydustRootPath(allocator: std.mem.Allocator) ![]const u8 {
-                const includeResult = try std.process.Child.exec(.{
+            f"""
+            fn getPydustRootPath(allocator: std.mem.Allocator, python_bin: []const u8) ![]const u8 {{
+                const includeResult = try std.process.Child.exec(.{{
                     .allocator = allocator,
-                    .argv = &.{
-                        "python",
+                    .argv = &.{{
+                        {sys.executable},
                         "-c",
-                        \\\\import os
-                        \\\\import pydust
-                        \\\\print(os.path.join(os.path.dirname(pydust.__file__), 'src', 'pydust.zig'), end='')
-                        \\\\
-                    },
-                });
+                        \\import os
+                        \\import pydust
+                        \\print(os.path.join(os.path.dirname(pydust.__file__), 'src', 'pydust.zig'), end='')
+                        \\
+                    }},
+                }});
+                if (includeResult.term.Exited != 0) {{
+                    std.debug.print("Failed to locate pydust:\n{{s}}\n", .{{includeResult.stderr}});
+                    std.os.exit(1);
+                }}
+
                 allocator.free(includeResult.stderr);
                 return includeResult.stdout;
-            }
+            }}
             """
         )
         b.writeln()
@@ -128,6 +133,7 @@ def generate_build_zig(build_zig_file):
                             test{ext_module.libname}.getEmittedBin(),
                             "{ext_module.libname}.test.bin",
                         );
+                        test_build_step.dependOn(&install{ext_module.libname}.step);
                         test_build_step.dependOn(&installtest{ext_module.libname}.step);
 
                         // Run the tests as part of zig build test.
