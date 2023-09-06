@@ -13,7 +13,7 @@ pub const PyBool = extern struct {
 
     pub fn of(obj: py.PyObject) !PyBool {
         if (ffi.PyBool_Check(obj.py) == 0) {
-            return py.TypeError.raise("Expected bool");
+            return py.TypeError.raise("expected bool");
         }
         return .{ .obj = obj };
     }

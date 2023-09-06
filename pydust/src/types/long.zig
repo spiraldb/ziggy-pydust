@@ -10,7 +10,7 @@ pub const PyLong = extern struct {
 
     pub fn of(obj: py.PyObject) !PyLong {
         if (ffi.PyLong_Check(obj.py) == 0) {
-            return py.TypeError.raise("Expected int");
+            return py.TypeError.raise("expected int");
         }
         return .{ .obj = obj };
     }

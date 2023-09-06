@@ -10,7 +10,7 @@ pub const PyFloat = extern struct {
 
     pub fn of(obj: py.PyObject) !PyFloat {
         if (ffi.PyFloat_Check(obj.py) == 0) {
-            return py.TypeError.raise("Expected float");
+            return py.TypeError.raise("expected float");
         }
         return .{ .obj = obj };
     }

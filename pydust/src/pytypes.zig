@@ -30,7 +30,7 @@ pub fn define(comptime class: py.ClassDef) type {
         // Declare a struct representing an instance of the object.
         const Instance = State(class.definition);
 
-        const slots = Slots(name, class.definition, Instance);
+        const slots = Slots(class.definition, Instance);
 
         const spec = ffi.PyType_Spec{
             .name = pyName.ptr,
@@ -58,8 +58,7 @@ pub fn define(comptime class: py.ClassDef) type {
     };
 }
 
-fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instance: type) type {
-    _ = name;
+fn Slots(comptime definition: type, comptime Instance: type) type {
     const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
     return struct {
@@ -77,10 +76,10 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
-            if (@hasDecl(definition, "__init__")) {
+            if (@hasDecl(definition, "__new__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_tp_init,
-                    .pfunc = @ptrCast(@constCast(&tp_init)),
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = @ptrCast(@constCast(&tp_new)),
                 }};
             }
 
@@ -122,35 +121,40 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             break :blk slots_;
         };
 
-        fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
-            @compileLog("HERE");
+        fn tp_new(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 1) orelse return null;
+            // Cast it into a supertype instance. Note: we check at comptime that subclasses of this class
+            // include our own state object as the first field in their struct.
+            const self: *Instance = @ptrCast(pyself);
 
-            tp_init_internal(
-                .{ .py = pyself },
-                if (pyargs) |pa| py.PyTuple.of(.{ .py = pa }) catch return -1 else null,
-                if (pykwargs) |pk| py.PyDict.of(.{ .py = pk }) catch return -1 else null,
-            ) catch return -1;
-            return 0;
+            // Allow the definition to initialize the state field.
+            self.state = tp_new_internal(
+                if (pyargs) |pa| py.PyTuple.of(.{ .py = pa }) catch return null else null,
+                if (pykwargs) |pk| py.PyDict.of(.{ .py = pk }) catch return null else null,
+            ) catch return null;
+
+            return pyself;
         }
 
-        fn tp_init_internal(pyself: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) !void {
-            const sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ *Instance, *const Instance });
-            const Self = sig.selfParam orelse @compileError("__init__ must take a self parameter");
-            // TODO(ngates): trampoline this and check the PyObject is the correct type?
-            const self: Self = @ptrCast(pyself.py);
+        fn tp_new_internal(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) !definition {
+            const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{});
+            if (sig.selfParam) |_| @compileError("__new__ must not take a self parameter");
 
-            const Args = sig.argsParam orelse @compileError("__init__ must take an args struct");
+            const Args = sig.argsParam orelse @compileError("__new__ must take an args struct");
             var callArgs: Args = undefined;
 
-            @compileLog("HERE");
+            if (funcs.argCount(Args) != (if (pyargs) |pa| (try pa.getSize()) else 0)) {
+                return py.TypeError.raiseComptimeFmt("expected {d} arguments", .{funcs.argCount(Args)});
+            }
+
             inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
                 if (field.default_value == null) {
                     // We're an arg
-                    const args = pyargs orelse return py.TypeError.raise("missing args to __init__");
+                    const args = pyargs orelse return py.TypeError.raise("missing args to __new__");
                     @field(callArgs, field.name) = try tramp.Trampoline(field.type).unwrap(try args.getItem(i));
                 } else {
                     // We're a kwarg
-                    const kwargs = pykwargs orelse return py.TypeError.raise("missing kwargs to __init__");
+                    const kwargs = pykwargs orelse return py.TypeError.raise("missing kwargs to __new__");
                     const value = if (try kwargs.getItemStr(field.name)) |kwarg| {
                         try tramp.Trampoline(field.type).unwrap(kwarg);
                     } else {
@@ -161,7 +165,7 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             }
 
             // Finally, invoke the init function
-            try definition.__init__(self, callArgs);
+            return try definition.__new__(callArgs);
         }
 
         /// Wrapper for the user's __del__ function.
@@ -241,74 +245,5 @@ fn Methods(comptime definition: type, comptime Instance: type) type {
             }
             break :blk pydefs_;
         };
-    };
-}
-
-fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instance: type) type {
-    const initName = "__init__";
-
-    return struct {
-        const initSig = blk: {
-            const func = @field(definition, initName);
-            const typeInfo = @typeInfo(@TypeOf(func));
-            break :blk funcs.parseSignature(initName, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
-        };
-
-        const initFn = blk: {
-            const func = @field(definition, initName);
-            if (initSig.argsParam) |argsParam| {
-                const initFunction = struct {
-                    pub inline fn dispatch(self: *definition, args: []*ffi.PyObject) !void {
-                        const castArgs: argsParam = @ptrCast(args);
-                        try func(self, castArgs);
-                    }
-                };
-                break :blk initFunction.dispatch;
-            }
-
-            const initFunction = struct {
-                pub inline fn invoke(self: *definition) !void {
-                    try func(self);
-                }
-            };
-            break :blk initFunction.invoke;
-        };
-
-        pub fn init(self: *ffi.PyObject, args: [*c]ffi.PyObject, kwargs: [*c]ffi.PyObject) callconv(.C) c_int {
-            if (kwargs != null and ffi.PyDict_Size(kwargs) > 0) {
-                py.TypeError.raise(std.fmt.comptimePrint("Kwargs in __init__ functions are not supported for type: {s}", .{name})) catch return -1;
-            }
-
-            const instance: *Instance = @ptrCast(self);
-            if (initSig.argsParam) |_| {
-                const pyArgs: []*ffi.PyObject = unpackTuple(args) orelse return -1;
-                defer py.allocator.free(pyArgs);
-                return tramp.errVoid(initFn(&instance.state, pyArgs));
-            }
-
-            return tramp.errVoid(initFn(&instance.state));
-        }
-
-        fn unpackTuple(args: [*c]ffi.PyObject) ?[]*ffi.PyObject {
-            if (args == null) {
-                return null;
-            }
-
-            const tuple: py.PyTuple = .{ .obj = .{ .py = args } };
-            const argsSize = tuple.getSize() catch return null;
-            const argLen = @typeInfo(initSig.argsParam.?).Struct.fields.len;
-            if (argsSize != argLen) {
-                const argsNeedsS = if (argLen > 1) "s" else "";
-                py.TypeError.raiseComptimeFmt("{s} takes {d} argument" ++ argsNeedsS, .{ name, argLen }) catch return null;
-            }
-
-            var pyArgs: []*ffi.PyObject = py.allocator.alloc(*ffi.PyObject, argLen) catch return null;
-            for (0..argLen) |i| {
-                const item = tuple.getItem(@intCast(i)) catch return null;
-                pyArgs[i] = item.py;
-            }
-
-            return pyArgs;
-        }
     };
 }

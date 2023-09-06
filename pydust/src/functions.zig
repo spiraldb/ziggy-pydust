@@ -56,16 +56,16 @@ pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptim
 
     // Count up the parameters
     if (sig.argsParam) |p| {
-        sig.nargs = countArgs(p);
-        sig.nkwargs = countKwargs(p);
+        sig.nargs = argCount(p);
+        sig.nkwargs = kwargCount(p);
     }
 
     return sig;
 }
 
-fn countArgs(comptime argsParam: type) usize {
+pub fn argCount(comptime argsParam: type) usize {
     var n: usize = 0;
-    for (@typeInfo(argsParam).Struct.fields) |field| {
+    inline for (@typeInfo(argsParam).Struct.fields) |field| {
         if (field.default_value == null) {
             n += 1;
         }
@@ -73,9 +73,9 @@ fn countArgs(comptime argsParam: type) usize {
     return n;
 }
 
-fn countKwargs(comptime argsParam: type) usize {
+pub fn kwargCount(comptime argsParam: type) usize {
     var n: usize = 0;
-    for (@typeInfo(argsParam).Struct.fields) |field| {
+    inline for (@typeInfo(argsParam).Struct.fields) |field| {
         if (field.default_value != null) {
             n += 1;
         }
@@ -129,12 +129,15 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
         }
 
         inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) !py.PyObject {
-            const self = if (sig.selfParam) |Self| tramp.Trampoline(Self).unwrap(pyself) else null;
+            const self = if (sig.selfParam) |Self| try tramp.Trampoline(Self).unwrap(pyself) else null;
             const resultTrampoline = tramp.Trampoline(sig.returnType);
 
             if (sig.argsParam) |Args| {
                 // Create an args struct and populate it with pyargs.
                 var args: Args = undefined;
+                if (argCount(Args) != pyargs.len) {
+                    return py.TypeError.raiseComptimeFmt("expected {d} args", .{argCount(Args)});
+                }
                 inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
                     @field(args, field.name) = try tramp.Trampoline(field.type).unwrap(pyargs[i]);
                 }

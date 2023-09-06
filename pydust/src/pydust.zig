@@ -88,6 +88,23 @@ pub fn module(comptime definition: type) void {
     @export(wrapped.init, .{ .name = "PyInit_" ++ moddef.name, .linkage = .Strong });
 }
 
+pub fn cls(comptime name: [:0]const u8, comptime definition: type) type {
+    _ = name;
+    return struct {
+        const Cls = @This();
+
+        _do_not_instantiate_this_struct: i32,
+
+        pub usingnamespace definition;
+
+        pub fn init() Cls {
+            return .{ ._do_not_instantiate_this_struct = 0 };
+        }
+
+        pub fn incref() void {}
+    };
+}
+
 /// Register a struct as a Python class definition.
 pub fn class(comptime name: [:0]const u8, comptime definition: type) @TypeOf(definition) {
     const classdef: ClassDef = .{
@@ -112,35 +129,34 @@ pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, compt
 }
 
 /// Instantiate class register view class/subclass
-pub fn init(comptime Cls: type, args: ?InitArgs(Cls)) !types.PyObject {
+pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     const moduleName = findContainingModule(Cls);
     const imported = try types.PyModule.import(moduleName);
     const pytype = try imported.obj.get(getClassName(Cls));
-    if (args) |arg| {
-        if (@hasDecl(Cls, "__init__")) {
-            const pyTup = try tramp.buildArgTuple(InitArgs(Cls), arg);
-            return try pytype.callObj(pyTup.obj);
-        } else {
-            var pyObj = try pytype.call0();
-            var zigObj: *pytypes.State(Cls) = @ptrCast(pyObj.py);
-            zigObj.state = arg;
-            return pyObj;
-        }
+
+    if (@hasDecl(Cls, "__new__")) {
+        const pyTup = try tramp.buildArgTuple(NewArgs(Cls), args);
+        const obj: *pytypes.State(Cls) = @ptrCast((try pytype.callObj(pyTup.obj)).py);
+        return &obj.state;
     } else {
-        return try pytype.call0();
+        // FIXME(ngates): remove this
+        var pyObj = try pytype.call0();
+        var zigObj: *pytypes.State(Cls) = @ptrCast(pyObj.py);
+        zigObj.state = args;
+        return &zigObj.state;
     }
 }
 
 /// Find the type of the positional args for a class
-fn InitArgs(comptime Cls: type) type {
-    if (!@hasDecl(Cls, "__init__")) {
-        return Cls;
+inline fn NewArgs(comptime Cls: type) type {
+    if (!@hasDecl(Cls, "__new__")) {
+        return struct {};
     }
 
-    const func = @field(Cls, "__init__");
+    const func = @field(Cls, "__new__");
     const typeInfo = @typeInfo(@TypeOf(func));
-    const sig = funcs.parseSignature("__init__", typeInfo.Fn, &.{ types.PyObject, *Cls, *const Cls });
-    return @typeInfo(sig.argsParam.?).Pointer.child;
+    const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
+    return sig.argsParam orelse struct {};
 }
 
 /// Convert user state instance into PyObject instance

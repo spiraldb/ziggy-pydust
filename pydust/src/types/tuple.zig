@@ -11,7 +11,7 @@ pub const PyTuple = extern struct {
 
     pub fn of(obj: py.PyObject) !PyTuple {
         if (ffi.PyTuple_Check(obj.py) == 0) {
-            return py.TypeError.raise("Expected tuple");
+            return py.TypeError.raise("expected tuple");
         }
         return .{ .obj = obj };
     }

@@ -9,10 +9,14 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     pylength: isize, // isize to be compatible with Python API
     format: [:0]const u8 = "l", // i64
 
-    pub fn __init__(self: *Self, args: struct { elem: py.PyLong, size: py.PyLong }) !void {
-        self.values = try py.allocator.alloc(i64, try args.size.as(u64));
-        @memset(self.values, try args.elem.as(i64));
-        self.pylength = @intCast(self.values.len);
+    pub fn __new__(args: struct { elem: i64, length: u32 }) !Self {
+        const values = try py.allocator.alloc(i64, args.length);
+        @memset(values, args.elem);
+
+        return Self{
+            .values = values,
+            .pylength = @intCast(args.length),
+        };
     }
 
     pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {

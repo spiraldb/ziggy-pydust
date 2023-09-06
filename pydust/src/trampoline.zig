@@ -76,6 +76,22 @@ pub fn Trampoline(comptime T: type) type {
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return (try py.PyFloat.from(T, obj)).obj,
                 .Int => return (try py.PyLong.from(T, obj)).obj,
+                .Pointer => |p| {
+                    // If the pointer is for a Pydust class
+                    if (py.findClassName(p.child)) |_| {
+                        // TODO(ngates): check the PyType?
+                        const PyType = pytypes.State(p.child);
+                        const pyobject: *ffi.PyObject = @ptrCast(@fieldParentPtr(PyType, "state", obj));
+                        return .{ .py = pyobject };
+                    }
+
+                    // If the pointer is for a Pydust module
+                    if (py.findModuleName(p.child)) |_| {
+                        @compileError("Cannot currently return modules");
+                    }
+
+                    @compileLog("Unsupported pointer type " ++ @typeName(p.child), py.State.classes(), py.State.modules());
+                },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
                     // TODO(ngates): do this on the type info, not runtime value
@@ -189,7 +205,7 @@ pub fn Trampoline(comptime T: type) type {
                     }
                     return result;
                 },
-                .Void => if (py.is_none(obj)) return else return py.TypeError.raise("Expected None"),
+                .Void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
                 else => {},
             }
 

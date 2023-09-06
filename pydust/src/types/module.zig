@@ -13,7 +13,7 @@ pub const PyModule = extern struct {
 
     pub fn of(obj: py.PyObject) !PyModule {
         if (ffi.PyModule_Check(obj.py) == 0) {
-            return py.TypeError.raise("Expected module");
+            return py.TypeError.raise("expected module");
         }
         return .{ .obj = obj };
     }

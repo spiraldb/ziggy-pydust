@@ -8,12 +8,12 @@ pub const Animal = py.class("Animal", struct {
 
     kind: u64,
 
-    pub fn __init__(self: *Self, args: struct { kind: py.PyLong }) !void {
-        self.kind = try args.kind.as(u64);
+    pub fn __new__(args: struct { kind: u64 }) !Self {
+        return .{ .kind = args.kind };
     }
 
-    pub fn get_kind(self: *Self) !py.PyLong {
-        return py.PyLong.from(u64, self.kind);
+    pub fn get_kind(self: *Self) !u64 {
+        return self.kind;
     }
 
     pub fn get_kind_name(self: *Self) !py.PyString {
@@ -30,15 +30,16 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub const __doc__ = "Adorable animal docstring";
     const Self = @This();
 
+    // A subclass of a Pydust class is required to hold its parent's state.
     animal: Animal,
     name: py.PyString,
 
-    pub fn __init__(self: *Self, args: struct { name: py.PyString }) !void {
-        var kind = try py.PyLong.from(u64, 1);
-        defer kind.decref();
-        try Animal.__init__(&self.animal, &.{ .kind = kind });
+    pub fn __new__(args: struct { name: py.PyString }) !Self {
         args.name.incref();
-        self.name = args.name;
+        return .{
+            .animal = try Animal.__new__(.{ .kind = 1 }),
+            .name = args.name,
+        };
     }
 
     pub fn __del__(self: *Self) void {
@@ -71,7 +72,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
-    pub fn name_puppy(args: struct { name: py.PyString }) !py.PyObject {
+    pub fn name_puppy(args: struct { name: py.PyString }) !*Dog {
         return try py.init(Dog, .{ .name = args.name });
     }
 });

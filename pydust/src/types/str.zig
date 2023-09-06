@@ -9,7 +9,7 @@ pub const PyString = extern struct {
 
     pub fn of(obj: py.PyObject) !PyString {
         if (ffi.PyUnicode_Check(obj.py) == 0) {
-            return py.TypeError.raise("Expected str");
+            return py.TypeError.raise("expected str");
         }
         return .{ .obj = obj };
     }

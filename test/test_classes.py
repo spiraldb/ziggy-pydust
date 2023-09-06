@@ -15,7 +15,7 @@ def test_make_noise():
 
 
 def test_init():
-    with pytest.raises(TypeError, match=r"Animal takes 1 argument"):
+    with pytest.raises(TypeError, match=r"expected 1 arguments"):
         classes.Animal()
 
 
