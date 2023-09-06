@@ -51,27 +51,27 @@ def generate_build_zig(build_zig_file):
         # We also want to avoid creating a pydust module (and instead prefer anonymous modules) so that we can populate
         # a separate pyconf options object for each Python extension module.
         b.write(
-            f"""
-            fn getPydustRootPath(allocator: std.mem.Allocator) ![]const u8 {{
-                const includeResult = try std.process.Child.exec(.{{
+            """
+            fn getPydustRootPath(allocator: std.mem.Allocator, python: []const u8) ![]const u8 {
+                const includeResult = try std.process.Child.exec(.{
                     .allocator = allocator,
-                    .argv = &.{{
-                        "{sys.executable}",
+                    .argv = &.{
+                        python,
                         "-c",
                         \\\\import os
                         \\\\import pydust
                         \\\\print(os.path.join(os.path.dirname(pydust.__file__), 'src', 'pydust.zig'), end='')
                         \\\\
-                    }},
-                }});
-                if (includeResult.term.Exited != 0) {{
-                    std.debug.print("Failed to locate pydust: {{s}}", .{{includeResult.stderr}});
+                    },
+                });
+                if (includeResult.term.Exited != 0) {
+                    std.debug.print("Failed to locate pydust: {s}", .{includeResult.stderr});
                     std.os.exit(1);
-                }}
+                }
 
                 allocator.free(includeResult.stderr);
                 return includeResult.stdout;
-            }}
+            }
             """
         )
         b.writeln()
@@ -85,7 +85,15 @@ def generate_build_zig(build_zig_file):
                 const test_step = b.step("test", "Run library tests");
                 const test_build_step = b.step("test-build", "Build test runners");
 
-                const pydust = getPydustRootPath(b.allocator) catch @panic("Failed to locate Pydust source code");
+                const python_exe = b.option(
+                    []const u8,
+                    "python-exe",
+                    "The path of a Python executable to use",
+                );
+                const pydust = getPydustRootPath(
+                    b.allocator,
+                    python_exe orelse "python",
+                ) catch @panic("Failed to locate Pydust source code");
                 """
             )
 
