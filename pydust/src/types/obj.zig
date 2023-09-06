@@ -22,6 +22,12 @@ pub const PyObject = extern struct {
 
     py: *ffi.PyObject,
 
+    /// Converts any PyObject-like value into its PyObject representation.
+    /// No new references are created.
+    pub fn of(obj: anytype) PyObject {
+        return tramp.Trampoline(@TypeOf(obj)).wrapObject(obj);
+    }
+
     pub fn incref(self: PyObject) void {
         ffi.Py_INCREF(self.py);
     }

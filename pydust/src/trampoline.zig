@@ -10,7 +10,85 @@ const PyError = @import("errors.zig").PyError;
 /// Generate functions to convert comptime-known Zig types to/from py.PyObject.
 pub fn Trampoline(comptime T: type) type {
     return struct {
-        /// Wrap a Zig object into a PyObject.
+        /// Wraps object that already represent existing Python objects.
+        /// In other words, Zig primitive types are not supported.
+        pub fn wrapObject(obj: T) py.PyObject {
+            if (!isObjectLike()) {
+                @compileError("Cannot convert " ++ @typeName(T) ++ " into a Python object");
+            }
+
+            switch (@typeInfo(T)) {
+                .Pointer => |p| {
+                    // The object is an ffi.PyObject
+                    if (p.child == ffi.PyObject) {
+                        return .{ .py = obj };
+                    }
+
+                    // If the pointer is for a Pydust class
+                    if (py.findClassName(p.child)) |_| {
+                        const PyType = pytypes.State(p.child);
+                        const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
+                        return .{ .py = ffiObject };
+                    }
+
+                    // If the pointer is for a Pydust module
+                    if (py.findModuleName(p.child)) |_| {
+                        @compileError("Cannot currently return modules");
+                    }
+                },
+                .Struct => {
+                    // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
+                    if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
+                        return obj.obj;
+                    }
+
+                    // Support py.PyObject
+                    if (T == py.PyObject) {
+                        return obj;
+                    }
+                },
+                inline else => {},
+            }
+            @compileLog("Cannot convert into PyObject" ++ @typeName(T));
+        }
+
+        inline fn isObjectLike() bool {
+            switch (@typeInfo(T)) {
+                .Pointer => |p| {
+                    // The object is an ffi.PyObject
+                    if (p.child == ffi.PyObject) {
+                        return true;
+                    }
+
+                    // If the pointer is for a Pydust class
+                    if (py.findClassName(p.child)) |_| {
+                        return true;
+                    }
+
+                    // If the pointer is for a Pydust module
+                    if (py.findModuleName(p.child)) |_| {
+                        // FIXME(ngates): support modules
+                        return false;
+                    }
+                },
+                .Struct => {
+                    // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
+                    if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
+                        return true;
+                    }
+
+                    // Support py.PyObject
+                    if (T == py.PyObject) {
+                        return true;
+                    }
+                },
+                inline else => {},
+            }
+            return false;
+        }
+
+        /// Wraps a Zig object into a new Python object.
+        /// Always creates a new strong reference.
         pub inline fn wrap(obj: T) !py.PyObject {
             const typeInfo = @typeInfo(T);
 
@@ -26,40 +104,19 @@ pub fn Trampoline(comptime T: type) type {
                 return Trampoline(typeInfo.Optional.child).wrap(value);
             }
 
+            // Shortcut for object types
+            if (isObjectLike()) {
+                const pyobj = wrapObject(obj);
+                pyobj.incref();
+                return pyobj;
+            }
+
             switch (@typeInfo(T)) {
                 .Bool => return if (obj) py.True().obj else py.False().obj,
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return (try py.PyFloat.from(T, obj)).obj,
                 .Int => return (try py.PyLong.from(T, obj)).obj,
-                .Pointer => |p| {
-                    // If the pointer is for ffi.PyObject, just wrap it up
-                    if (p.child == ffi.PyObject) {
-                        return .{ .py = obj };
-                    }
-
-                    // If the pointer is for a Pydust class
-                    if (py.findClassName(p.child)) |_| {
-                        const PyType = pytypes.State(p.child);
-                        const pyobject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
-                        return .{ .py = pyobject };
-                    }
-
-                    // If the pointer is for a Pydust module
-                    if (py.findModuleName(p.child)) |_| {
-                        @compileError("Cannot currently return modules");
-                    }
-
-                    @compileLog("Unsupported pointer type " ++ @typeName(p.child), py.State.classes(), py.State.modules());
-                },
                 .Struct => |s| {
-                    // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
-                    if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
-                        return obj.obj;
-                    }
-                    // Support py.PyObject
-                    if (T == py.PyObject) {
-                        return obj;
-                    }
                     // If the struct is a tuple, return a Python tuple
                     if (s.is_tuple) {
                         const tuple = try py.PyTuple.new(s.fields.len);
@@ -187,7 +244,7 @@ pub fn Trampoline(comptime T: type) type {
 
             pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
                 const args = self.args orelse return py.TypeError.raise("missing args");
-                return py.as(R, args.getItem(idx));
+                return py.as(R, try args.getItem(idx));
             }
 
             pub fn getKwarg(self: CallArgs, comptime R: type, name: []const u8) !?R {

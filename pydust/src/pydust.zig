@@ -135,14 +135,16 @@ inline fn NewArgs(comptime Cls: type) type {
     return sig.argsParam orelse struct {};
 }
 
-/// Convert an instance of a Pydust class struct into PyObject instance
-pub fn object(obj: anytype) !types.PyObject {
-    return tramp.Trampoline(@TypeOf(obj)).wrap(obj);
+/// Create a new Python object from a Zig object.
+/// Note this will always create a new strong reference.
+pub fn toObject(value: anytype) !types.PyObject {
+    return tramp.Trampoline(@TypeOf(value)).wrap(value);
 }
 
 /// Convert a Python object into a Zig object.
-pub fn as(comptime T: type, obj: anytype) !T {
-    return tramp.Trampoline(T).unwrap(try object(obj));
+pub fn as(comptime T: type, obj: types.PyObject) !T {
+    // FIXME(ngates): ref counts
+    return tramp.Trampoline(T).unwrap(obj);
 }
 
 pub fn getClassName(comptime definition: type) [:0]const u8 {
