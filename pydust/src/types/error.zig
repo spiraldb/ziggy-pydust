@@ -85,7 +85,7 @@ const PyExc = struct {
     }
 
     pub fn raiseFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError {
-        const message = std.fmt.allocPrintZ(py.allocator, fmt, args);
+        const message = try std.fmt.allocPrintZ(py.allocator, fmt, args);
         return self.raise(message);
     }
 

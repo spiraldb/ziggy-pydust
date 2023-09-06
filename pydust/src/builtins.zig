@@ -31,10 +31,20 @@ pub fn len(object: anytype) !usize {
     const obj = try py.PyObject.from(object);
     const length = ffi.PyObject_Length(obj.py);
     if (length < 0) return PyError.Propagate;
-    return length;
+    return @intCast(length);
 }
 
 /// Import a module by fully-qualified name returning a PyObject.
 pub fn import(module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule.import(module_name)).obj;
+}
+
+/// The equivalent of Python's super() builtin. Returns a PyObject.
+pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
+    const imported = try import(py.findContainingModule(Super));
+    const superPyType = try imported.get(py.getClassName(Super));
+    const pyObj = try py.object(selfInstance);
+
+    const superBuiltin = py.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
+    return superBuiltin.call(py.PyObject, .{ superPyType, pyObj }, .{});
 }

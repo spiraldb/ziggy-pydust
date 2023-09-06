@@ -34,23 +34,23 @@ pub const PyObject = extern struct {
         return try tramp.Trampoline(@TypeOf(value)).wrap(value);
     }
 
+    /// Call this object without any arguments.
     pub fn call0(self: PyObject) !PyObject {
         return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.Propagate };
     }
 
-    pub fn callArgs(self: PyObject, args: anytype) !PyObject {
-        return self.call(args, null);
-    }
+    /// Call this object with the given args and kwargs.
+    pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
+        const argsObj = try tramp.Trampoline(@TypeOf(args)).wrap(args);
+        defer argsObj.decref();
+        const argsPy = if (try py.len(argsObj) == 0) null else (try py.PyTuple.of(argsObj)).obj.py;
 
-    pub fn call(self: PyObject, args: anytype, kwargs: anytype) !PyObject {
-        _ = kwargs;
-        const argsTuple = try py.PyTuple.from(args);
-        defer argsTuple.obj.decref();
-        return .{ .py = ffi.PyObject_CallObject(self.py, argsTuple.obj.py) orelse return PyError.Propagate };
-    }
+        const kwargsObj = try tramp.Trampoline(@TypeOf(kwargs)).wrap(kwargs);
+        defer kwargsObj.decref();
+        const kwargsPy = if (try py.len(kwargsObj) == 0) null else (try py.PyDict.of(kwargsObj)).obj.py;
 
-    pub fn callObj(self: PyObject, args: PyObject) !PyObject {
-        return .{ .py = ffi.PyObject_CallObject(self.py, args.py) orelse return PyError.Propagate };
+        const result = ffi.PyObject_Call(self.py, argsPy, kwargsPy) orelse return PyError.Propagate;
+        return tramp.Trampoline(R).unwrap(.{ .py = result });
     }
 
     pub fn get(self: PyObject, attr: [:0]const u8) !PyObject {
@@ -95,7 +95,7 @@ test "call" {
     defer math.decref();
 
     const pow = try math.get("pow");
-    const result = try py.PyFloat.of(try pow.call(.{ @as(u32, 2), @as(u32, 3) }, .{}));
+    const result = try pow.call(f32, .{ @as(i32, 2), @as(i32, 3) }, .{});
 
-    try std.testing.expectEqual(@as(f32, 8.0), try result.as(f32));
+    try std.testing.expectEqual(@as(f32, 8.0), result);
 }

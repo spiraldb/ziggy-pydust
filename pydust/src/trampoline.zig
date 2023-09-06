@@ -3,6 +3,7 @@ const std = @import("std");
 const Type = std.builtin.Type;
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const funcs = @import("functions.zig");
 const pytypes = @import("pytypes.zig");
 const PyError = @import("errors.zig").PyError;
 
@@ -39,7 +40,7 @@ pub fn setErr(err: PyError) void {
 /// Generate functions to convert comptime-known Zig types to/from py.PyObject.
 pub fn Trampoline(comptime T: type) type {
     return struct {
-        pub fn wrapRaw(obj: T) ?*ffi.PyObject {
+        pub inline fn wrapRaw(obj: T) ?*ffi.PyObject {
             const pyobj = wrap(obj) catch |err| switch (err) {
                 // On error, we assume an exception has been set and return a NULL pointer to Python.
                 // Maybe we should std.debug.assert that we have in fact done so?
@@ -56,7 +57,7 @@ pub fn Trampoline(comptime T: type) type {
         }
 
         /// Wrap a Zig object into a PyObject.
-        pub fn wrap(obj: T) !py.PyObject {
+        pub inline fn wrap(obj: T) !py.PyObject {
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
@@ -77,11 +78,16 @@ pub fn Trampoline(comptime T: type) type {
                 .Float => return (try py.PyFloat.from(T, obj)).obj,
                 .Int => return (try py.PyLong.from(T, obj)).obj,
                 .Pointer => |p| {
+                    // If the pointer is for ffi.PyObject, just wrap it up
+                    if (p.child == ffi.PyObject) {
+                        return .{ .py = obj };
+                    }
+
                     // If the pointer is for a Pydust class
                     if (py.findClassName(p.child)) |_| {
                         // TODO(ngates): check the PyType?
                         const PyType = pytypes.State(p.child);
-                        const pyobject: *ffi.PyObject = @ptrCast(@fieldParentPtr(PyType, "state", obj));
+                        const pyobject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
                         return .{ .py = pyobject };
                     }
 
@@ -112,6 +118,10 @@ pub fn Trampoline(comptime T: type) type {
                         }
                         return tuple.obj;
                     }
+                    // Check the user is not accidentally returning a Pydust class or Module without a pointer
+                    if (py.findClassName(T) != null or py.findModuleName(T) != null) {
+                        @compileError("Pydust objects can only be returned as pointers");
+                    }
                     // Otherwise, return a Python dictionary
                     const dict = try py.PyDict.new();
                     inline for (s.fields) |field| {
@@ -129,7 +139,7 @@ pub fn Trampoline(comptime T: type) type {
         }
 
         /// Unwrap a Python object into a Zig object.
-        pub fn unwrap(object: ?py.PyObject) !T {
+        pub inline fn unwrap(object: ?py.PyObject) !T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
             comptime var R = T;
@@ -150,7 +160,7 @@ pub fn Trampoline(comptime T: type) type {
             var obj = object orelse @panic("Unexpected null");
 
             switch (@typeInfo(R)) {
-                .Bool => return if (py.PyBool.of(obj).asbool()) true else false,
+                .Bool => return if ((try py.PyBool.of(obj)).asbool()) true else false,
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return try (try py.PyFloat.of(obj)).as(T),
                 .Int => return try (try py.PyLong.of(obj)).as(T),
@@ -211,20 +221,35 @@ pub fn Trampoline(comptime T: type) type {
 
             @compileError("Unsupported argument type " ++ @typeName(T) ++ " for Pydust function");
         }
-    };
-}
 
-pub fn buildArgTuple(comptime argType: type, arg: argType) !py.PyTuple {
-    const argFields = @typeInfo(argType).Struct.fields;
-    const pyTup = try py.PyTuple.new(argFields.len);
-    inline for (argFields, 0..) |field, idx| {
-        const value = @field(arg, field.name);
-        switch (field.type) {
-            inline [:0]const u8 => |_| try pyTup.setItem(idx, ffi.Py_BuildValue("s", value)),
-            inline py.PyString => |_| try pyTup.setItem(idx, value.obj),
-            else => @panic("unhandled type"),
+        pub const CallArgs = struct {
+            args: py.PyTuple,
+            kwargs: py.PyDict,
+
+            pub fn decref(self: CallArgs) void {
+                self.args.decref();
+                self.kwargs.decref();
+            }
+        };
+
+        /// Wrap a Zig Pydust argument struct into Python CallArgs.
+        /// The caller is responsible for decref'ing the returned args and kwargs.
+        pub inline fn wrapCallArgs(obj: T) !CallArgs {
+            const args = try py.PyTuple.new(funcs.argCount(T));
+            const kwargs = try py.PyDict.new();
+
+            inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
+                const arg = try Trampoline(field.type).wrap(@field(obj, field.name));
+                if (field.default_value == null) {
+                    // It's an arg
+                    try args.setOwnedItem(i, arg);
+                } else {
+                    // It's a kwarg
+                    try kwargs.setOwnedItemStr(field.name, arg);
+                }
+            }
+
+            return .{ .args = args, .kwargs = kwargs };
         }
-    }
-
-    return pyTup;
+    };
 }

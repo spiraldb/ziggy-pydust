@@ -6,17 +6,25 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     const Self = @This();
 
     values: []i64,
-    pylength: isize, // isize to be compatible with Python API
+    shape: []const isize, // isize to be compatible with Python API
     format: [:0]const u8 = "l", // i64
 
     pub fn __new__(args: struct { elem: i64, length: u32 }) !Self {
         const values = try py.allocator.alloc(i64, args.length);
         @memset(values, args.elem);
 
+        const shape = try py.allocator.alloc(isize, 1);
+        shape[0] = @intCast(args.length);
+
         return Self{
             .values = values,
-            .pylength = @intCast(args.length),
+            .shape = shape,
         };
+    }
+
+    pub fn __del__(self: *Self) void {
+        py.allocator.free(self.values);
+        py.allocator.free(self.shape);
     }
 
     pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {
@@ -24,12 +32,13 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         if (flags & py.PyBuffer.Flags.WRITABLE != 0) {
             return py.BufferError.raise("request for writable buffer is rejected");
         }
-        const pyObj = try py.self(@constCast(self));
-        view.initFromSlice(i64, self.values, @ptrCast(&self.pylength), pyObj);
+        view.initFromSlice(i64, self.values, self.shape, self);
     }
 
     pub fn __release_buffer__(self: *const Self, view: *py.PyBuffer) void {
-        py.allocator.free(self.values);
+        _ = self;
+        // FIXME(ngates): ref count the buffer
+        // py.allocator.free(self.values);
         // It might be necessary to clear the view here in case the __bufferr__ method allocates view properties.
         _ = view;
     }

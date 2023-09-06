@@ -55,8 +55,12 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return self.name;
     }
 
-    pub fn make_noise() !py.PyString {
-        return py.PyString.fromSlice("Bark!");
+    pub fn make_noise(args: struct { is_loud: bool = false }) !py.PyString {
+        if (args.is_loud) {
+            return py.PyString.fromSlice("Bark!");
+        } else {
+            return py.PyString.fromSlice("bark...");
+        }
     }
 
     pub fn get_kind_name(self: *Self) !py.PyString {

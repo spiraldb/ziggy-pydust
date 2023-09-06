@@ -11,7 +11,10 @@ def test_hierarchy():
 def test_make_noise():
     with pytest.raises(AttributeError):
         classes.Animal(0).make_noise()
-    assert classes.Dog("Dug").make_noise() == "Bark!"
+    d = classes.Dog("Dug")
+
+    assert d.make_noise() == "bark..."
+    assert d.make_noise(is_loud=True) == "Bark!"
 
 
 def test_init():

@@ -1,6 +1,7 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
+const tramp = @import("../trampoline.zig");
 const PyError = @import("../errors.zig").PyError;
 
 /// Wrapper for Python Py_buffer.
@@ -65,19 +66,21 @@ pub const PyBuffer = extern struct {
         return .{ .py = self.obj orelse unreachable };
     }
 
-    pub fn initFromSlice(self: *Self, comptime value_type: type, values: []value_type, shape: [*]const isize, obj: py.PyObject) void {
+    pub fn initFromSlice(self: *Self, comptime T: type, values: []T, shape: []const isize, owner: anytype) void {
+        const ownerObj = try tramp.Trampoline(@TypeOf(owner)).wrap(owner);
+        // We need to incref the self object because it's being used by the view.
+        ownerObj.incref();
+
         self.* = .{
             .buf = std.mem.sliceAsBytes(values).ptr,
-            .obj = obj.py,
-            .len = @intCast(values.len * @sizeOf(value_type)),
-            .itemsize = @sizeOf(value_type),
+            .obj = ownerObj.py,
+            .len = @intCast(values.len * @sizeOf(T)),
+            .itemsize = @sizeOf(T),
             .readonly = 1,
-            .ndim = 1,
-            .format = getFormat(value_type).ptr,
-            .shape = shape,
+            .ndim = @intCast(shape.len),
+            .format = getFormat(T).ptr,
+            .shape = shape.ptr,
         };
-        // We need to incref the self object because it's being used by the view.
-        obj.incref();
     }
 
     // asSlice returns buf property as Zig slice. The view must have been created with ND flag.

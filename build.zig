@@ -4,6 +4,9 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const pythonInc = getPythonIncludePath(b.allocator) catch @panic("Missing python");
+    const pythonLib = getPythonLibraryPath(b.allocator) catch @panic("Missing python");
+
     const test_step = b.step("test", "Run library tests");
 
     const main_tests = b.addTest(.{
@@ -13,13 +16,28 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     main_tests.linkLibC();
-    main_tests.addIncludePath(.{ .path = getPythonIncludePath(b.allocator) catch @panic("Missing python") });
-    main_tests.addLibraryPath(.{ .path = getPythonLibraryPath(b.allocator) catch @panic("Missing python") });
+    main_tests.addIncludePath(.{ .path = pythonInc });
+    main_tests.addLibraryPath(.{ .path = pythonLib });
     main_tests.linkSystemLibrary("python3.11");
     main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     const run_main_tests = b.addRunArtifact(main_tests);
     test_step.dependOn(&run_main_tests.step);
+
+    // Setup a library target to trick the Zig Language Server into providing completions for @import("pydust")
+    const example_lib = b.addSharedLibrary(.{
+        .name = "example",
+        .root_source_file = .{ .path = "example/hello.zig" },
+        .main_pkg_path = .{ .path = "example" },
+        .target = target,
+        .optimize = optimize,
+    });
+    example_lib.linkLibC();
+    main_tests.addIncludePath(.{ .path = pythonInc });
+    main_tests.addLibraryPath(.{ .path = pythonLib });
+    main_tests.linkSystemLibrary("python3.11");
+    main_tests.addAnonymousModule("pydust", .{ .source_file = .{ .path = "pydust/src/pydust.zig" } });
+    main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     // Option for emitting test binary based on the given root source.
     // This is used for debugging as in .vscode/tasks.json

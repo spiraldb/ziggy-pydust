@@ -5,9 +5,12 @@ const PyLong = @import("long.zig").PyLong;
 const PyFloat = @import("float.zig").PyFloat;
 const PyObject = @import("obj.zig").PyObject;
 const PyError = @import("../errors.zig").PyError;
+const seq = @import("./sequence.zig");
 
 pub const PyTuple = extern struct {
     obj: PyObject,
+
+    pub usingnamespace seq.SequenceMixin(@This());
 
     pub fn of(obj: py.PyObject) !PyTuple {
         if (ffi.PyTuple_Check(obj.py) == 0) {
@@ -16,7 +19,7 @@ pub const PyTuple = extern struct {
         return .{ .obj = obj };
     }
 
-    pub fn new(size: isize) !PyTuple {
+    pub fn new(size: usize) !PyTuple {
         const tuple = ffi.PyTuple_New(@intCast(size)) orelse return PyError.Propagate;
         return .{ .obj = .{ .py = tuple } };
     }
@@ -29,8 +32,8 @@ pub const PyTuple = extern struct {
         return of(try py.PyObject.from(values));
     }
 
-    pub fn getSize(self: *const PyTuple) !isize {
-        return ffi.PyTuple_Size(self.obj.py);
+    pub fn getSize(self: *const PyTuple) !usize {
+        return @intCast(ffi.PyTuple_Size(self.obj.py));
     }
 
     pub fn getItem(self: *const PyTuple, idx: usize) !PyObject {
@@ -81,7 +84,9 @@ test "PyTuple" {
     var tuple = try PyTuple.from(.{ first.obj, second.obj });
     defer tuple.decref();
 
-    try std.testing.expectEqual(@as(isize, 2), try tuple.getSize());
+    try std.testing.expectEqual(@as(usize, 2), try tuple.getSize());
+
+    try std.testing.expectEqual(@as(usize, 0), try tuple.index(second));
 
     try std.testing.expectEqual(@as(c_long, 1), try (try PyLong.of(try tuple.getItem(0))).as(c_long));
     try tuple.setItem(0, second.obj);
