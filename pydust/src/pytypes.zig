@@ -169,7 +169,8 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             view.obj = null;
 
             const self: *Instance = @ptrCast(pyself);
-            return definition.__buffer__(&self.state, @ptrCast(view), flags) catch -1;
+            definition.__buffer__(&self.state, @ptrCast(view), flags) catch return -1;
+            return 0;
         }
 
         fn bf_releasebuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
