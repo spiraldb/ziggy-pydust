@@ -44,8 +44,6 @@ fn Methods(comptime definition: type) type {
         const Self = @This();
         const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
 
-        // TODO(ngates): we could allocate based on the number of Struct.decls, then also keep a count.
-
         const defs: []const type = blk: {
             var defs_: []const type = &.{};
             for (@typeInfo(definition).Struct.decls) |decl| {

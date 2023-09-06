@@ -85,7 +85,6 @@ pub fn Trampoline(comptime T: type) type {
 
                     // If the pointer is for a Pydust class
                     if (py.findClassName(p.child)) |_| {
-                        // TODO(ngates): check the PyType?
                         const PyType = pytypes.State(p.child);
                         const pyobject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
                         return .{ .py = pyobject };
@@ -100,8 +99,7 @@ pub fn Trampoline(comptime T: type) type {
                 },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
-                    // TODO(ngates): do this on the type info, not runtime value
-                    if (@hasField(T, "obj") and @hasField(@TypeOf(obj.obj), "py")) {
+                    if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
                         return obj.obj;
                     }
                     // Support py.PyObject
@@ -184,7 +182,6 @@ pub fn Trampoline(comptime T: type) type {
                 },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
-                    // TODO(ngates): extract this into a TraitFn
                     if (@hasField(R, "obj") and @hasField(std.meta.fieldInfo(R, .obj).type, "py")) {
                         return try @field(R, "of")(obj);
                     }

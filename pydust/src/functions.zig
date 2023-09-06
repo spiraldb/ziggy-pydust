@@ -28,7 +28,6 @@ const reservedNames = .{
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
     var sig = Signature{
-        // TODO(ngates): is this true?
         .returnType = func.return_type orelse @compileError("Pydust functions must always return or error."),
         .name = name,
     };

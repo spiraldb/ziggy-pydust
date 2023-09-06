@@ -9,7 +9,7 @@ pub const PyDict = extern struct {
     obj: py.PyObject,
 
     pub fn of(obj: py.PyObject) !PyDict {
-        // TODO(ngates): should we be using CheckExact? Which of our functions break when passed a subclass of dict?
+        // NOTE(ngates): should we be using CheckExact? Which of our functions break when passed a subclass of dict?
         if (ffi.PyDict_Check(obj.py) == 0) {
             return py.TypeError.raise("expected dict");
         }

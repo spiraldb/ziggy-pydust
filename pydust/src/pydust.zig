@@ -119,10 +119,6 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     const imported = try types.PyModule.import(moduleName);
     const pytype = try imported.obj.get(getClassName(Cls));
 
-    // TODO(ngates): we could avoid going through Python for this if we can get hold of
-    // a static PyType definition? That would make the behaviour quite different from heap-allocated
-    // PyTypes though, so possibly not worth it.
-
     const callArgs = try tramp.Trampoline(NewArgs(Cls)).wrapCallArgs(args);
     defer callArgs.decref();
 

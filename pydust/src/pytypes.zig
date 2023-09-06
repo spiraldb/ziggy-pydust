@@ -45,7 +45,6 @@ pub fn define(comptime class: py.ClassDef) type {
             if (class.bases.len > 0) {
                 const basesTuple = try py.PyTuple.new(class.bases.len);
                 inline for (class.bases, 0..) |base, i| {
-                    // TODO(ngates): find the correct parent module
                     const baseType = try module.obj.get(py.getClassName(base));
                     try basesTuple.setItem(i, baseType);
                 }
@@ -175,7 +174,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         fn tp_finalize(pyself: *ffi.PyObject) void {
             // The finalize slot shouldn't alter any exception that is currently set.
             // So it's recommended we save the existing one (if any) and restore it afterwards.
-            // TODO(ngates): we may want to move this logic to PyErr if it happens more?
+            // NOTE(ngates): we may want to move this logic to PyErr if it happens more?
             var error_type: ?*ffi.PyObject = undefined;
             var error_value: ?*ffi.PyObject = undefined;
             var error_tb: ?*ffi.PyObject = undefined;
