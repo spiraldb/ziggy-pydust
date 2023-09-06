@@ -140,7 +140,7 @@ inline fn NewArgs(comptime Cls: type) type {
 /// Convert an instance of a Pydust class struct into PyObject instance
 pub fn object(selfInstance: anytype) !types.PyObject {
     const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(selfInstance)).Pointer.child), "state", selfInstance);
-    return .{ .py = &selfState.obj };
+    return .{ .py = @constCast(&selfState.obj) };
 }
 
 pub fn getClassName(comptime definition: type) [:0]const u8 {
