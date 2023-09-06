@@ -18,8 +18,9 @@ def test_make_noise():
 
 
 def test_init():
-    with pytest.raises(TypeError, match=r"expected 1 arguments"):
+    with pytest.raises(TypeError) as exc_info:
         classes.Animal()
+    assert str(exc_info.value) == "expected 1 argument"
 
 
 def test_super():

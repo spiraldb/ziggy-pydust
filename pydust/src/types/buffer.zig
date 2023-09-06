@@ -67,8 +67,8 @@ pub const PyBuffer = extern struct {
     }
 
     pub fn initFromSlice(self: *Self, comptime T: type, values: []T, shape: []const isize, owner: anytype) void {
-        const ownerObj = try tramp.Trampoline(@TypeOf(owner)).wrap(owner);
-        // We need to incref the self object because it's being used by the view.
+        // We need to incref the owner object because it's being used by the view.
+        const ownerObj = try py.object(owner);
         ownerObj.incref();
 
         self.* = .{

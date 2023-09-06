@@ -34,14 +34,6 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         }
         view.initFromSlice(i64, self.values, self.shape, self);
     }
-
-    pub fn __release_buffer__(self: *const Self, view: *py.PyBuffer) void {
-        _ = self;
-        // FIXME(ngates): ref count the buffer
-        // py.allocator.free(self.values);
-        // It might be necessary to clear the view here in case the __bufferr__ method allocates view properties.
-        _ = view;
-    }
 });
 
 // A function that accepts an object implementing the buffer protocol.
