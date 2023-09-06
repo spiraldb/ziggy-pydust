@@ -106,11 +106,11 @@ fn Slots(comptime mod: py.ModuleDef) type {
         };
 
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
-            mod_exec_(.{ .obj = .{ .py = pymodule } }) catch |err| return tramp.setErrInt(err);
+            mod_exec_internal(.{ .obj = .{ .py = pymodule } }) catch return -1;
             return 0;
         }
 
-        inline fn mod_exec_(module: py.PyModule) !void {
+        inline fn mod_exec_internal(module: py.PyModule) !void {
             // Initialize the state struct to default values
             const state = try module.getState(definition);
             if (@hasDecl(definition, "__new__")) {

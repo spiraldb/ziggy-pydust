@@ -7,55 +7,9 @@ const funcs = @import("functions.zig");
 const pytypes = @import("pytypes.zig");
 const PyError = @import("errors.zig").PyError;
 
-pub fn errObj(obj: PyError!py.PyObject) ?*ffi.PyObject {
-    return if (obj) |o| o.py else |err| setErrObj(err);
-}
-
-pub fn errStr(str: PyError!py.PyString) ?*ffi.PyObject {
-    return if (str) |s| s.obj.py else |err| setErrObj(err);
-}
-
-pub fn errVoid(result: PyError!void) c_int {
-    return if (result) 0 else |err| setErrInt(err);
-}
-
-pub fn setErrInt(err: PyError) c_int {
-    setErr(err);
-    return -1;
-}
-
-pub fn setErrObj(err: PyError) ?*ffi.PyObject {
-    setErr(err);
-    return null;
-}
-
-pub fn setErr(err: PyError) void {
-    return switch (err) {
-        error.Propagate => {},
-        error.Raised => {},
-        error.OutOfMemory => py.MemoryError.raise("OOM") catch return,
-    };
-}
-
 /// Generate functions to convert comptime-known Zig types to/from py.PyObject.
 pub fn Trampoline(comptime T: type) type {
     return struct {
-        pub inline fn wrapRaw(obj: T) ?*ffi.PyObject {
-            const pyobj = wrap(obj) catch |err| switch (err) {
-                // On error, we assume an exception has been set and return a NULL pointer to Python.
-                // Maybe we should std.debug.assert that we have in fact done so?
-                error.Propagate => return null,
-                error.Raised => return null,
-                error.OutOfMemory => py.MemoryError.raise("OOM") catch return null,
-            };
-
-            if (@as(?*ffi.PyObject, @ptrCast(pyobj.py)) == null) {
-                @panic("NULL POINTER");
-            }
-
-            return pyobj.py;
-        }
-
         /// Wrap a Zig object into a PyObject.
         pub inline fn wrap(obj: T) !py.PyObject {
             const typeInfo = @typeInfo(T);

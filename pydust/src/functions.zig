@@ -139,11 +139,11 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             const resultObject = internal(
                 .{ .py = pyself },
                 @as([*]py.PyObject, @ptrCast(pyargs))[0..@intCast(nargs)],
-            ) catch |err| return tramp.setErrObj(err);
+            ) catch return null;
             return resultObject.py;
         }
 
-        inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) !py.PyObject {
+        inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) PyError!py.PyObject {
             const self = if (sig.selfParam) |Self| try tramp.Trampoline(Self).unwrap(pyself) else null;
             const resultTrampoline = tramp.Trampoline(sig.returnType);
 
@@ -184,11 +184,11 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                 args,
                 kwargs,
                 if (kwnames) |names| py.PyTuple.of(.{ .py = names }) catch return null else null,
-            ) catch |err| return tramp.setErrObj(err);
+            ) catch return null;
             return resultObject.py;
         }
 
-        inline fn internalKwargs(pyself: py.PyObject, pyargs: []py.PyObject, pykwargs: []py.PyObject, kwnames: ?py.PyTuple) !py.PyObject {
+        inline fn internalKwargs(pyself: py.PyObject, pyargs: []py.PyObject, pykwargs: []py.PyObject, kwnames: ?py.PyTuple) PyError!py.PyObject {
             const Args = sig.argsParam.?; // We must have args if we know we have kwargs
             var args: Args = undefined;
 
