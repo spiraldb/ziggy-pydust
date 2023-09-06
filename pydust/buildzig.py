@@ -52,11 +52,11 @@ def generate_build_zig(build_zig_file):
         # a separate pyconf options object for each Python extension module.
         b.write(
             f"""
-            fn getPydustRootPath(allocator: std.mem.Allocator) ![]const u8 {{
+            fn getPydustRootPath(allocator: std.mem.Allocator, executable: []const u8) ![]const u8 {{
                 const includeResult = try std.process.Child.exec(.{{
                     .allocator = allocator,
                     .argv = &.{{
-                        "{sys.executable}",
+                        executable,
                         "-c",
                         \\\\import os
                         \\\\import pydust
@@ -85,7 +85,12 @@ def generate_build_zig(build_zig_file):
                 const test_step = b.step("test", "Run library tests");
                 const test_build_step = b.step("test-build", "Build test runners");
 
-                const pydust = getPydustRootPath(b.allocator) catch @panic("Failed to locate Pydust source code");
+                const python_executable = b.option(
+                    []const u8,
+                    "python-executable",
+                    "The path of a Python executable to use",
+                );
+                const pydust = getPydustRootPath(b.allocator, python_executable orelse "python") catch @panic("Failed to locate Pydust source code");
                 """
             )
 

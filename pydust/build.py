@@ -1,6 +1,7 @@
+import sys
 from pydust import buildzig
 
 
 def build():
     """The main entry point from Poetry's build script."""
-    buildzig.zig_build(["install"])
+    buildzig.zig_build(["install", "--python-executable", sys.executable])
