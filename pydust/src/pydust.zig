@@ -138,12 +138,21 @@ inline fn NewArgs(comptime Cls: type) type {
 /// Create a new Python object from a Zig object.
 /// Note this will always create a new strong reference.
 pub fn toObject(value: anytype) !types.PyObject {
+    if (@TypeOf(value) == comptime_int) {
+        return tramp.Trampoline(i64).wrap(value);
+    }
+
+    if (@TypeOf(value) == comptime_float) {
+        return tramp.Trampoline(f64).wrap(value);
+    }
+
     return tramp.Trampoline(@TypeOf(value)).wrap(value);
 }
 
 /// Convert a Python object into a Zig object.
 pub fn as(comptime T: type, obj: types.PyObject) !T {
-    // FIXME(ngates): ref counts
+    // FIXME(ngates): ensure that we eat a reference to whatever the input object is.
+    // Unless we return as a Python object type.
     return tramp.Trampoline(T).unwrap(obj);
 }
 

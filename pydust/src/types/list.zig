@@ -46,28 +46,34 @@ pub const PyList = extern struct {
 
     /// This function “steals” a reference to item and discards a reference to an item already in the list at the affected position.
     pub fn setOwnedItem(self: PyList, pos: isize, value: anytype) !void {
-        if (ffi.PyList_SetItem(self.obj.py, pos, (try py.toObject(value)).py) < 0) {
+        // Since this function steals the reference, it can only accept object-like values.
+        const valueObj = py.PyObject.of(value);
+        if (ffi.PyList_SetItem(self.obj.py, pos, valueObj.py) < 0) {
             return PyError.Propagate;
         }
     }
 
-    /// Does not steal a reference to value.
+    /// Set the item at the given position.
+    /// This function acquires its own reference to value.
     pub fn setItem(self: PyList, pos: isize, value: anytype) !void {
         const valueObj = try py.toObject(value);
-        valueObj.incref();
-        return self.setOwnedItem(pos, value);
+        return self.setOwnedItem(pos, valueObj);
     }
 
     // Insert the item item into list list in front of index idx.
     pub fn insert(self: PyList, idx: isize, value: anytype) !void {
-        if (ffi.PyList_Insert(self.obj.py, idx, value.py) < 0) {
+        const valueObj = try py.toObject(value);
+        defer valueObj.decref();
+        if (ffi.PyList_Insert(self.obj.py, idx, valueObj.py) < 0) {
             return PyError.Propagate;
         }
     }
 
     // Append the object item at the end of list list.
     pub fn append(self: PyList, value: anytype) !void {
-        if (ffi.PyList_Append(self.obj.py, value.py) < 0) {
+        const valueObj = try py.toObject(value);
+        defer valueObj.decref();
+        if (ffi.PyList_Append(self.obj.py, valueObj.py) < 0) {
             return PyError.Propagate;
         }
     }
@@ -86,7 +92,7 @@ pub const PyList = extern struct {
         }
     }
 
-    pub fn asTuple(self: PyList) !py.PyTuple {
+    pub fn toTuple(self: PyList) !py.PyTuple {
         return try py.PyTuple.of(.{ .py = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.Propagate });
     }
 
@@ -107,30 +113,27 @@ test "PyList" {
 
     var list = try PyList.new(2);
     defer list.decref();
+    try list.setItem(0, 1);
+    try list.setItem(1, 2.0);
 
-    const first = try PyLong.from(i64, 1);
-    defer first.decref();
     try testing.expectEqual(@as(usize, 2), list.length());
-    try list.setItem(0, first.obj);
+
     try testing.expectEqual(@as(i64, 1), try list.getItem(i64, 0));
+    try testing.expectEqual(@as(f64, 2.0), try list.getItem(f64, 1));
 
-    const second = try PyLong.from(i64, 2);
-    try list.setOwnedItem(1, second.obj); // owned by the list, don't decref
-
-    const third = try PyLong.from(i64, 3);
-    defer third.decref();
-    try list.append(third.obj);
+    try list.append(3);
     try testing.expectEqual(@as(usize, 3), list.length());
-    try testing.expectEqual(@as(i64, 3), try list.getItem(i64, 2));
+    try testing.expectEqual(@as(i32, 3), try list.getItem(i32, 2));
 
+    try list.insert(0, 1.23);
     try list.reverse();
-    try testing.expectEqual(@as(i64, 3), try list.getItem(i64, 0));
-    try testing.expectEqual(@as(i64, 1), try list.getItem(i64, 2));
+    try testing.expectEqual(@as(f32, 1.23), try list.getItem(f32, 3));
+
     try list.sort();
     try testing.expectEqual(@as(i64, 1), try list.getItem(i64, 0));
-    try testing.expectEqual(@as(i64, 3), try list.getItem(i64, 2));
 
-    const tuple = try list.asTuple();
+    const tuple = try list.toTuple();
     defer tuple.decref();
-    try std.testing.expectEqual(@as(usize, 3), tuple.length());
+
+    try std.testing.expectEqual(@as(usize, 4), tuple.length());
 }
