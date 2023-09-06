@@ -56,16 +56,16 @@ def generate_build_zig(build_zig_file):
                 const includeResult = try std.process.Child.exec(.{{
                     .allocator = allocator,
                     .argv = &.{{
-                        {sys.executable},
+                        "{sys.executable}",
                         "-c",
-                        \\import os
-                        \\import pydust
-                        \\print(os.path.join(os.path.dirname(pydust.__file__), 'src', 'pydust.zig'), end='')
-                        \\
+                        \\\\import os
+                        \\\\import pydust
+                        \\\\print(os.path.join(os.path.dirname(pydust.__file__), 'src', 'pydust.zig'), end='')
+                        \\\\
                     }},
                 }});
                 if (includeResult.term.Exited != 0) {{
-                    std.debug.print("Failed to locate pydust:\n{{s}}\n", .{{includeResult.stderr}});
+                    std.debug.print("Failed to locate pydust: {{s}}", .{{includeResult.stderr}});
                     std.os.exit(1);
                 }}
 
