@@ -121,7 +121,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         };
 
         fn tp_new(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 1) orelse return null;
+            const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 0) orelse return null;
             // Cast it into a supertype instance. Note: we check at comptime that subclasses of this class
             // include our own state object as the first field in their struct.
             const self: *Instance = @ptrCast(pyself);
