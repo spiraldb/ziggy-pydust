@@ -7,7 +7,7 @@ from example import functions
 
 def test_double():
     assert functions.double(10) == 20
-    with pytest.raises(TypeError, match="'float' object cannot be interpreted as an integer"):
+    with pytest.raises(TypeError, match="expected int"):
         functions.double(0.1)
 
 

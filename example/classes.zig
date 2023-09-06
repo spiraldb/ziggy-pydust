@@ -8,12 +8,12 @@ pub const Animal = py.class("Animal", struct {
 
     kind: u64,
 
-    pub fn __init__(self: *Self, args: *const extern struct { kind: py.PyLong }) !void {
-        self.kind = try args.kind.as(u64);
+    pub fn __new__(args: struct { kind: u64 }) !Self {
+        return .{ .kind = args.kind };
     }
 
-    pub fn get_kind(self: *Self) !py.PyLong {
-        return py.PyLong.from(u64, self.kind);
+    pub fn get_kind(self: *Self) !u64 {
+        return self.kind;
     }
 
     pub fn get_kind_name(self: *Self) !py.PyString {
@@ -30,15 +30,16 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub const __doc__ = "Adorable animal docstring";
     const Self = @This();
 
+    // A subclass of a Pydust class is required to hold its parent's state.
     animal: Animal,
     name: py.PyString,
 
-    pub fn __init__(self: *Self, args: *const extern struct { name: py.PyString }) !void {
-        var kind = try py.PyLong.from(u64, 1);
-        defer kind.decref();
-        try Animal.__init__(&self.animal, &.{ .kind = kind });
+    pub fn __new__(args: struct { name: py.PyString }) !Self {
         args.name.incref();
-        self.name = args.name;
+        return .{
+            .animal = try Animal.__new__(.{ .kind = 1 }),
+            .name = args.name,
+        };
     }
 
     pub fn __del__(self: *Self) void {
@@ -54,14 +55,18 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return self.name;
     }
 
-    pub fn make_noise() !py.PyString {
-        return py.PyString.fromSlice("Bark!");
+    pub fn make_noise(args: struct { is_loud: bool = false }) !py.PyString {
+        if (args.is_loud) {
+            return py.PyString.fromSlice("Bark!");
+        } else {
+            return py.PyString.fromSlice("bark...");
+        }
     }
 
     pub fn get_kind_name(self: *Self) !py.PyString {
         var super = try py.super(Dog, self);
         var superKind = try super.get("get_kind_name");
-        var kindStr = py.PyString.of(try superKind.call0());
+        var kindStr = try py.PyString.of(try superKind.call0());
         kindStr = try kindStr.appendSlice(" named ");
         kindStr = try kindStr.append(self.name);
         return kindStr;
@@ -71,7 +76,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
-    pub fn name_puppy(args: *const extern struct { name: py.PyString }) !py.PyObject {
+    pub fn name_puppy(args: struct { name: py.PyString }) !*Dog {
         return try py.init(Dog, .{ .name = args.name });
     }
 });

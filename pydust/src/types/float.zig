@@ -8,7 +8,10 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyFloat = extern struct {
     obj: py.PyObject,
 
-    pub fn of(obj: py.PyObject) PyFloat {
+    pub fn of(obj: py.PyObject) !PyFloat {
+        if (ffi.PyFloat_Check(obj.py) == 0) {
+            return py.TypeError.raise("expected float");
+        }
         return .{ .obj = obj };
     }
 

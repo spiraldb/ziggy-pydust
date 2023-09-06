@@ -14,13 +14,13 @@ pub const PyList = extern struct {
         return .{ .obj = obj };
     }
 
-    pub fn new(size: isize) !PyList {
+    pub fn new(size: usize) !PyList {
         const list = ffi.PyList_New(@intCast(size)) orelse return PyError.Propagate;
         return .{ .obj = .{ .py = list } };
     }
 
-    pub fn getSize(self: *const PyList) isize {
-        return ffi.PyList_Size(self.obj.py);
+    pub fn length(self: *const PyList) usize {
+        return @intCast(ffi.PyList_Size(self.obj.py));
     }
 
     // Returns borrowed reference.
@@ -82,8 +82,8 @@ pub const PyList = extern struct {
         }
     }
 
-    pub fn asTuple(self: *const PyList) py.PyTuple {
-        return py.PyTuple.of(.{ .py = ffi.PyList_AsTuple(self.obj.py) });
+    pub fn asTuple(self: *const PyList) !py.PyTuple {
+        return try py.PyTuple.of(.{ .py = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.Propagate });
     }
 
     pub fn incref(self: PyList) void {
@@ -106,9 +106,9 @@ test "PyList" {
 
     const first = try PyLong.from(i64, 1);
     defer first.decref();
-    try testing.expectEqual(@as(isize, 2), list.getSize());
+    try testing.expectEqual(@as(usize, 2), list.length());
     try list.setItem(0, first.obj);
-    try testing.expectEqual(@as(i64, 1), try PyLong.of(try list.getItem(0)).as(i64));
+    try testing.expectEqual(@as(i64, 1), try py.as(i64, list.getItem(0)));
 
     const second = try PyLong.from(i64, 2);
     try list.setOwnedItem(1, second.obj); // owned by the list, don't decref
@@ -116,17 +116,17 @@ test "PyList" {
     const third = try PyLong.from(i64, 3);
     defer third.decref();
     try list.append(third.obj);
-    try testing.expectEqual(@as(isize, 3), list.getSize());
-    try testing.expectEqual(@as(i64, 3), try PyLong.of(try list.getItem(2)).as(i64));
+    try testing.expectEqual(@as(usize, 3), list.length());
+    try testing.expectEqual(@as(i64, 3), try py.as(i64, list.getItem(2)));
 
     try list.reverse();
-    try testing.expectEqual(@as(i64, 3), try PyLong.of(try list.getItem(0)).as(i64));
-    try testing.expectEqual(@as(i64, 1), try PyLong.of(try list.getItem(2)).as(i64));
+    try testing.expectEqual(@as(i64, 3), try py.as(i64, list.getItem(0)));
+    try testing.expectEqual(@as(i64, 1), try py.as(i64, list.getItem(2)));
     try list.sort();
-    try testing.expectEqual(@as(i64, 1), try PyLong.of(try list.getItem(0)).as(i64));
-    try testing.expectEqual(@as(i64, 3), try PyLong.of(try list.getItem(2)).as(i64));
+    try testing.expectEqual(@as(i64, 1), try py.as(i64, list.getItem(0)));
+    try testing.expectEqual(@as(i64, 3), try py.as(i64, list.getItem(2)));
 
-    const tuple = list.asTuple();
+    const tuple = try list.asTuple();
     defer tuple.decref();
-    try std.testing.expectEqual(@as(isize, 3), try tuple.getSize());
+    try std.testing.expectEqual(@as(usize, 3), tuple.length());
 }

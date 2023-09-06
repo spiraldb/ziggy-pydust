@@ -8,7 +8,11 @@ const tramp = @import("../trampoline.zig");
 pub const PyDict = extern struct {
     obj: py.PyObject,
 
-    pub fn of(obj: py.PyObject) PyDict {
+    pub fn of(obj: py.PyObject) !PyDict {
+        // NOTE(ngates): should we be using CheckExact? Which of our functions break when passed a subclass of dict?
+        if (ffi.PyDict_Check(obj.py) == 0) {
+            return py.TypeError.raise("expected dict");
+        }
         return .{ .obj = obj };
     }
 
@@ -23,7 +27,7 @@ pub const PyDict = extern struct {
     /// Create a PyDict from the given struct.
     pub fn from(comptime S: type, value: S) !PyDict {
         return switch (@typeInfo(S)) {
-            .Struct => of(.{ .py = try tramp.toPyObject(S).unwrap(value) }),
+            .Struct => of(.{ .py = try tramp.Trampoline(S).wrap(value) }),
             else => @compileError("PyDict can only be created from struct types"),
         };
     }
@@ -46,7 +50,7 @@ pub const PyDict = extern struct {
     }
 
     /// Return the number of items in the dictionary. This is equivalent to len(p) on a dictionary.
-    pub fn size(self: PyDict) usize {
+    pub fn length(self: PyDict) usize {
         return @intCast(ffi.PyDict_Size(self.obj.py));
     }
 
@@ -58,10 +62,10 @@ pub const PyDict = extern struct {
         return result == 1;
     }
 
-    pub fn containsStr(self: PyDict, key: [:0]const u8) !bool {
+    pub fn containsStr(self: PyDict, key: []const u8) !bool {
         const keyObj = try py.PyString.fromSlice(key);
         defer keyObj.decref();
-        return contains(self, keyObj.obj);
+        return self.contains(keyObj.obj);
     }
 
     /// Insert val into the dictionary p with a key of key.
@@ -78,13 +82,14 @@ pub const PyDict = extern struct {
     }
 
     /// Insert val into the dictionary p with a key of key.
-    pub fn setItemStr(self: PyDict, key: [:0]const u8, value: py.PyObject) !void {
-        const result = ffi.PyDict_SetItemString(self.obj.py, key.ptr, value.py);
-        if (result < 0) return PyError.Propagate;
+    pub fn setItemStr(self: PyDict, key: []const u8, value: anytype) !void {
+        const keyObj = try py.PyString.fromSlice(key);
+        defer keyObj.decref();
+        return self.setItem(keyObj.obj, value);
     }
 
     /// Insert val into the dictionary p with a key of key.
-    pub fn setOwnedItemStr(self: PyDict, key: [:0]const u8, value: py.PyObject) !void {
+    pub fn setOwnedItemStr(self: PyDict, key: []const u8, value: py.PyObject) !void {
         defer value.decref();
         try self.setItemStr(key, value);
     }
@@ -97,20 +102,27 @@ pub const PyDict = extern struct {
     }
 
     /// Remove the entry in dictionary p with key key.
-    pub fn delItemStr(self: PyDict, key: [:0]const u8) !void {
-        if (ffi.PyDict_DelItemString(self.obj.py, key.ptr) < 0) {
-            return PyError.Propagate;
-        }
+    pub fn delItemStr(self: PyDict, key: []const u8) !void {
+        const keyObj = try py.PyString.fromSlice(key);
+        defer keyObj.decref();
+        return self.delItem(keyObj.obj);
     }
 
     /// Return the object from dictionary p which has a key key.
     /// Return value is a borrowed reference.
     pub fn getItem(self: PyDict, key: py.PyObject) !?py.PyObject {
-        const result = ffi.PyDict_GetItemWithError(self.obj.py, key.py) orelse return PyError.Propagate;
-        return .{ .py = result };
+        if (ffi.PyDict_GetItemWithError(self.obj.py, key.py)) |item| {
+            return .{ .py = item };
+        }
+
+        // If no exception, then the item is missing.
+        if (ffi.PyErr_Occurred() == null) {
+            return null;
+        }
+        return PyError.Propagate;
     }
 
-    pub fn getItemStr(self: PyDict, key: [:0]const u8) !?py.PyObject {
+    pub fn getItemStr(self: PyDict, key: []const u8) !?py.PyObject {
         const keyObj = try py.PyString.fromSlice(key);
         defer keyObj.decref();
         return self.getItem(keyObj.obj);
@@ -165,18 +177,18 @@ test "PyDict set and get" {
     defer bar.decref();
     try pd.setItemStr("foo", bar.obj);
     try testing.expect(try pd.containsStr("foo"));
-    try testing.expectEqual(@as(usize, 1), pd.size());
+    try testing.expectEqual(@as(usize, 1), pd.length());
 
     try testing.expectEqual(bar.obj, (try pd.getItemStr("foo")).?);
 
     try pd.delItemStr("foo");
     try testing.expect(!try pd.containsStr("foo"));
-    try testing.expectEqual(@as(usize, 0), pd.size());
+    try testing.expectEqual(@as(usize, 0), pd.length());
 
     try pd.setItemStr("foo", bar.obj);
-    try testing.expectEqual(@as(usize, 1), pd.size());
+    try testing.expectEqual(@as(usize, 1), pd.length());
     pd.clear();
-    try testing.expectEqual(@as(usize, 0), pd.size());
+    try testing.expectEqual(@as(usize, 0), pd.length());
 }
 
 test "PyDict iterator" {
@@ -194,11 +206,11 @@ test "PyDict iterator" {
 
     var iter = pd.itemsIterator();
     const first = iter.next().?;
-    try testing.expectEqualStrings("bar", try py.PyString.of(first.key).asSlice());
+    try testing.expectEqualStrings("bar", try (try py.PyString.of(first.key)).asSlice());
     try testing.expectEqual(foo.obj, first.value);
 
     const second = iter.next().?;
-    try testing.expectEqualStrings("baz", try py.PyString.of(second.key).asSlice());
+    try testing.expectEqualStrings("baz", try (try py.PyString.of(second.key)).asSlice());
     try testing.expectEqual(foo.obj, second.value);
 
     try testing.expectEqual(@as(?PyDict.Item, null), iter.next());

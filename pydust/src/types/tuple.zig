@@ -5,15 +5,21 @@ const PyLong = @import("long.zig").PyLong;
 const PyFloat = @import("float.zig").PyFloat;
 const PyObject = @import("obj.zig").PyObject;
 const PyError = @import("../errors.zig").PyError;
+const seq = @import("./sequence.zig");
 
 pub const PyTuple = extern struct {
     obj: PyObject,
 
-    pub fn of(obj: py.PyObject) PyTuple {
+    pub usingnamespace seq.SequenceMixin(@This());
+
+    pub fn of(obj: py.PyObject) !PyTuple {
+        if (ffi.PyTuple_Check(obj.py) == 0) {
+            return py.TypeError.raise("expected tuple");
+        }
         return .{ .obj = obj };
     }
 
-    pub fn new(size: isize) !PyTuple {
+    pub fn new(size: usize) !PyTuple {
         const tuple = ffi.PyTuple_New(@intCast(size)) orelse return PyError.Propagate;
         return .{ .obj = .{ .py = tuple } };
     }
@@ -23,14 +29,14 @@ pub const PyTuple = extern struct {
         if (!@typeInfo(@TypeOf(values)).Struct.is_tuple) {
             @compileError("Must pass a Zig tuple into PyTuple.from");
         }
-        return of(try py.PyObject.from(values));
+        return of(try py.object(values));
     }
 
-    pub fn getSize(self: *const PyTuple) !isize {
-        return ffi.PyTuple_Size(self.obj.py);
+    pub fn length(self: *const PyTuple) usize {
+        return @intCast(ffi.PyTuple_Size(self.obj.py));
     }
 
-    pub fn getItem(self: *const PyTuple, idx: isize) !PyObject {
+    pub fn getItem(self: *const PyTuple, idx: usize) !PyObject {
         if (ffi.PyTuple_GetItem(self.obj.py, @intCast(idx))) |item| {
             return .{ .py = item };
         } else {
@@ -78,9 +84,11 @@ test "PyTuple" {
     var tuple = try PyTuple.from(.{ first.obj, second.obj });
     defer tuple.decref();
 
-    try std.testing.expectEqual(@as(isize, 2), try tuple.getSize());
+    try std.testing.expectEqual(@as(usize, 2), tuple.length());
 
-    try std.testing.expectEqual(@as(c_long, 1), try PyLong.of(try tuple.getItem(0)).as(c_long));
+    try std.testing.expectEqual(@as(usize, 0), try tuple.index(second));
+
+    try std.testing.expectEqual(@as(c_long, 1), try (try PyLong.of(try tuple.getItem(0))).as(c_long));
     try tuple.setItem(0, second.obj);
-    try std.testing.expectEqual(@as(f64, 1.0), try PyFloat.of(try tuple.getItem(0)).as(f64));
+    try std.testing.expectEqual(@as(f64, 1.0), try (try PyFloat.of(try tuple.getItem(0))).as(f64));
 }

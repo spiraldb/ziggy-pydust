@@ -84,12 +84,12 @@ const PyExc = struct {
         return PyError.Raised;
     }
 
-    pub fn raiseFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError!void {
-        const message = std.fmt.allocPrintZ(py.allocator, fmt, args);
+    pub fn raiseFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError {
+        const message = try std.fmt.allocPrintZ(py.allocator, fmt, args);
         return self.raise(message);
     }
 
-    pub fn raiseComptimeFmt(comptime self: Self, comptime fmt: [:0]const u8, comptime args: anytype) PyError!void {
+    pub fn raiseComptimeFmt(comptime self: Self, comptime fmt: [:0]const u8, comptime args: anytype) PyError {
         const message = std.fmt.comptimePrint(fmt, args);
         return self.raise(message);
     }

@@ -44,8 +44,6 @@ fn Methods(comptime definition: type) type {
         const Self = @This();
         const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
 
-        // TODO(ngates): we could allocate based on the number of Struct.decls, then also keep a count.
-
         const defs: []const type = blk: {
             var defs_: []const type = &.{};
             for (@typeInfo(definition).Struct.decls) |decl| {
@@ -59,7 +57,7 @@ fn Methods(comptime definition: type) type {
 
                 // The valid types for a "self" parameter are either the module state struct (definition), or a py.PyModule.
                 const sig = funcs.parseSignature(decl.name, typeInfo.Fn, &.{ py.PyModule, *definition, *const definition });
-                const def = funcs.wrap(value, sig, getSelfParamFn(sig), 0);
+                const def = funcs.wrap(value, sig, 0);
                 defs_ = defs_ ++ .{def};
             }
             break :blk defs_[0..defs_.len];
@@ -72,23 +70,6 @@ fn Methods(comptime definition: type) type {
             }
             break :blk pydefs_;
         };
-
-        fn getSelfParamFn(comptime sig: funcs.Signature) type {
-            return struct {
-                pub fn unwrap(pyself: *ffi.PyObject) !sig.selfParam.?.type.? {
-                    if (sig.selfParam) |param| {
-                        const mod = py.PyModule{ .obj = .{ .py = pyself } };
-                        return switch (param.type.?) {
-                            py.PyModule => mod,
-                            *definition => @as(*definition, @ptrCast(try mod.getState(definition))),
-                            *const definition => @as(*const definition, @ptrCast(try mod.getState(definition))),
-                            else => @compileError("Unsupported self param type: " ++ @typeName(param.type.?)),
-                        };
-                    }
-                    @compileError("Tried to get module self parameter for a function that doesn't expect it");
-                }
-            };
-        }
     };
 }
 
@@ -125,11 +106,11 @@ fn Slots(comptime mod: py.ModuleDef) type {
         };
 
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
-            mod_exec_(.{ .obj = .{ .py = pymodule } }) catch |err| return tramp.setErrInt(err);
+            mod_exec_internal(.{ .obj = .{ .py = pymodule } }) catch return -1;
             return 0;
         }
 
-        inline fn mod_exec_(module: py.PyModule) !void {
+        inline fn mod_exec_internal(module: py.PyModule) !void {
             // Initialize the state struct to default values
             const state = try module.getState(definition);
             if (@hasDecl(definition, "__new__")) {

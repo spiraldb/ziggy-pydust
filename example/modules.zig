@@ -32,7 +32,7 @@ pub fn whoami(self: *const Self) !py.PyString {
 
 pub fn hello(
     self: *const Self,
-    args: *const struct { name: py.PyString }, // (5)!
+    args: struct { name: py.PyString }, // (5)!
 ) !py.PyString {
     var str = try py.PyString.fromSlice("Hello, ");
     str = try str.append(args.name);

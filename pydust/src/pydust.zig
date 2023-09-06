@@ -55,10 +55,12 @@ const State = blk: {
     };
 };
 
+/// Initialize Python interpreter state
 pub fn initialize() void {
     ffi.Py_Initialize();
 }
 
+/// Tear down Python interpreter state
 pub fn finalize() void {
     ffi.Py_Finalize();
 }
@@ -98,6 +100,7 @@ pub fn class(comptime name: [:0]const u8, comptime definition: type) @TypeOf(def
 }
 
 pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, comptime definition: type) @TypeOf(definition) {
+    // TODO(ngates): infer bases by looking at struct fields.
     const classdef: ClassDef = .{
         .name = name,
         .definition = definition,
@@ -108,62 +111,67 @@ pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, compt
     return definition;
 }
 
-/// Instantiate class register view class/subclass
-pub fn init(comptime Cls: type, args: ?InitArgs(Cls)) !types.PyObject {
+/// Instantiate a class defined in Pydust.
+pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     const moduleName = findContainingModule(Cls);
     const imported = try types.PyModule.import(moduleName);
     const pytype = try imported.obj.get(getClassName(Cls));
-    if (args) |arg| {
-        if (@hasDecl(Cls, "__init__")) {
-            const pyTup = try tramp.buildArgTuple(InitArgs(Cls), arg);
-            return try pytype.callObj(pyTup.obj);
-        } else {
-            var pyObj = try pytype.call0();
-            var zigObj: *pytypes.State(Cls) = @ptrCast(pyObj.py);
-            zigObj.state = arg;
-            return pyObj;
-        }
-    } else {
-        return try pytype.call0();
-    }
+
+    const callArgs = try tramp.Trampoline(NewArgs(Cls)).wrapCallArgs(args);
+    defer callArgs.decref();
+
+    return pytype.call(*Cls, callArgs.args, callArgs.kwargs);
 }
 
 /// Find the type of the positional args for a class
-fn InitArgs(comptime Cls: type) type {
-    if (!@hasDecl(Cls, "__init__")) {
-        return Cls;
+inline fn NewArgs(comptime Cls: type) type {
+    if (!@hasDecl(Cls, "__new__")) {
+        return struct {};
     }
 
-    const func = @field(Cls, "__init__");
+    const func = @field(Cls, "__new__");
     const typeInfo = @typeInfo(@TypeOf(func));
-    const sig = funcs.parseSignature("__init__", typeInfo.Fn, &.{ types.PyObject, *Cls, *const Cls });
-    return @typeInfo(sig.argsParam.?.type.?).Pointer.child;
+    const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
+    return sig.argsParam orelse struct {};
 }
 
-/// Convert user state instance into PyObject instance
-pub fn self(selfInstance: anytype) !types.PyObject {
-    const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(selfInstance)).Pointer.child), "state", selfInstance);
-    return .{ .py = @constCast(&selfState.obj) };
+/// Convert an instance of a Pydust class struct into PyObject instance
+pub fn object(obj: anytype) !types.PyObject {
+    return tramp.Trampoline(@TypeOf(obj)).wrap(obj);
 }
 
-/// Get zig state of super class `Super` of `classSelf` parameter
-pub fn super(comptime Super: type, selfInstance: anytype) !types.PyObject {
-    const imported = try types.PyModule.import(findContainingModule(Super));
-    const superPyType = try imported.obj.get(getClassName(Super));
-    const pyObj = try self(selfInstance);
-
-    const superTypeObj = types.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
-    return superTypeObj.callArgs(.{ superPyType, pyObj });
+/// Convert a Python object into a Zig object.
+pub fn as(comptime T: type, obj: anytype) !T {
+    return tramp.Trampoline(T).unwrap(try object(obj));
 }
 
-/// Find the name of the module that contains the given definition.
 pub fn getClassName(comptime definition: type) [:0]const u8 {
+    return findClassName(definition) orelse @compileError("Unrecognized class definition");
+}
+
+/// Find the class name of the given state definition.
+pub inline fn findClassName(comptime definition: type) ?[:0]const u8 {
     inline for (State.classes()) |classDef| {
         if (classDef.definition == definition) {
             return classDef.name;
         }
     }
-    @compileError("Unknown class definition");
+    return null;
+}
+
+/// Get the module name of the given state definition.
+pub fn getModuleName(comptime definition: type) ?[:0]const u8 {
+    return findModuleName(definition) orelse @compileError("Unrecognized module definition");
+}
+
+/// Find the module name of the given state definition.
+pub inline fn findModuleName(comptime definition: type) ?[:0]const u8 {
+    inline for (State.modules()) |modDef| {
+        if (modDef.definition == definition) {
+            return modDef.name;
+        }
+    }
+    return null;
 }
 
 /// Find the name of the module that contains the given definition.
