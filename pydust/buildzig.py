@@ -52,7 +52,7 @@ def generate_build_zig(build_zig_file):
         # a separate pyconf options object for each Python extension module.
         b.write(
             f"""
-            fn getPydustRootPath(allocator: std.mem.Allocator, python_bin: []const u8) ![]const u8 {{
+            fn getPydustRootPath(allocator: std.mem.Allocator) ![]const u8 {{
                 const includeResult = try std.process.Child.exec(.{{
                     .allocator = allocator,
                     .argv = &.{{
