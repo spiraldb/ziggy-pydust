@@ -50,7 +50,7 @@ pub const PyDict = extern struct {
     }
 
     /// Return the number of items in the dictionary. This is equivalent to len(p) on a dictionary.
-    pub fn size(self: PyDict) usize {
+    pub fn length(self: PyDict) usize {
         return @intCast(ffi.PyDict_Size(self.obj.py));
     }
 
@@ -177,18 +177,18 @@ test "PyDict set and get" {
     defer bar.decref();
     try pd.setItemStr("foo", bar.obj);
     try testing.expect(try pd.containsStr("foo"));
-    try testing.expectEqual(@as(usize, 1), pd.size());
+    try testing.expectEqual(@as(usize, 1), pd.length());
 
     try testing.expectEqual(bar.obj, (try pd.getItemStr("foo")).?);
 
     try pd.delItemStr("foo");
     try testing.expect(!try pd.containsStr("foo"));
-    try testing.expectEqual(@as(usize, 0), pd.size());
+    try testing.expectEqual(@as(usize, 0), pd.length());
 
     try pd.setItemStr("foo", bar.obj);
-    try testing.expectEqual(@as(usize, 1), pd.size());
+    try testing.expectEqual(@as(usize, 1), pd.length());
     pd.clear();
-    try testing.expectEqual(@as(usize, 0), pd.size());
+    try testing.expectEqual(@as(usize, 0), pd.length());
 }
 
 test "PyDict iterator" {

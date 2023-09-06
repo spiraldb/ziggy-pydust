@@ -140,31 +140,9 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             if (sig.selfParam) |_| @compileError("__new__ must not take a self parameter");
 
             const Args = sig.argsParam orelse @compileError("__new__ must take an args struct");
-            var callArgs: Args = undefined;
+            const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
 
-            if (funcs.argCount(Args) != (if (pyargs) |pa| (try pa.getSize()) else 0)) {
-                return py.TypeError.raiseComptimeFmt("expected {d} arguments", .{funcs.argCount(Args)});
-            }
-
-            inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
-                if (field.default_value == null) {
-                    // We're an arg
-                    const args = pyargs orelse return py.TypeError.raise("missing args to __new__");
-                    @field(callArgs, field.name) = try tramp.Trampoline(field.type).unwrap(try args.getItem(i));
-                } else {
-                    // We're a kwarg
-                    const kwargs = pykwargs orelse return py.TypeError.raise("missing kwargs to __new__");
-                    const value = if (try kwargs.getItemStr(field.name)) |kwarg| {
-                        try tramp.Trampoline(field.type).unwrap(kwarg);
-                    } else {
-                        field.default_value;
-                    };
-                    @field(callArgs, field.name) = value;
-                }
-            }
-
-            // Finally, invoke the init function
-            return try definition.__new__(callArgs);
+            return try definition.__new__(args);
         }
 
         /// Wrapper for the user's __del__ function.

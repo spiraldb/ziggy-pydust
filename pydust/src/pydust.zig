@@ -14,8 +14,6 @@ pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
-pub usingnamespace tramp;
-
 const Self = @This();
 
 pub const ModuleDef = struct {
@@ -138,9 +136,13 @@ inline fn NewArgs(comptime Cls: type) type {
 }
 
 /// Convert an instance of a Pydust class struct into PyObject instance
-pub fn object(selfInstance: anytype) !types.PyObject {
-    const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(selfInstance)).Pointer.child), "state", selfInstance);
-    return .{ .py = @constCast(&selfState.obj) };
+pub fn object(obj: anytype) !types.PyObject {
+    return tramp.Trampoline(@TypeOf(obj)).wrap(obj);
+}
+
+/// Convert a Python object into a Zig object.
+pub fn as(comptime T: type, obj: anytype) !T {
+    return tramp.Trampoline(T).unwrap(try object(obj));
 }
 
 pub fn getClassName(comptime definition: type) [:0]const u8 {

@@ -30,10 +30,6 @@ pub const PyObject = extern struct {
         ffi.Py_DECREF(self.py);
     }
 
-    pub fn from(value: anytype) !PyObject {
-        return try tramp.Trampoline(@TypeOf(value)).wrap(value);
-    }
-
     /// Call this object without any arguments.
     pub fn call0(self: PyObject) !PyObject {
         return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.Propagate };

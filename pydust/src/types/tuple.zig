@@ -29,10 +29,10 @@ pub const PyTuple = extern struct {
         if (!@typeInfo(@TypeOf(values)).Struct.is_tuple) {
             @compileError("Must pass a Zig tuple into PyTuple.from");
         }
-        return of(try py.PyObject.from(values));
+        return of(try py.object(values));
     }
 
-    pub fn getSize(self: *const PyTuple) !usize {
+    pub fn length(self: *const PyTuple) usize {
         return @intCast(ffi.PyTuple_Size(self.obj.py));
     }
 
@@ -84,7 +84,7 @@ test "PyTuple" {
     var tuple = try PyTuple.from(.{ first.obj, second.obj });
     defer tuple.decref();
 
-    try std.testing.expectEqual(@as(usize, 2), try tuple.getSize());
+    try std.testing.expectEqual(@as(usize, 2), tuple.length());
 
     try std.testing.expectEqual(@as(usize, 0), try tuple.index(second));
 

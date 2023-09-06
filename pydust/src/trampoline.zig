@@ -220,12 +220,30 @@ pub fn Trampoline(comptime T: type) type {
         }
 
         pub const CallArgs = struct {
-            args: py.PyTuple,
-            kwargs: py.PyDict,
+            args: ?py.PyTuple,
+            kwargs: ?py.PyDict,
+
+            pub fn nargs(self: CallArgs) usize {
+                return if (self.args) |args| args.length() else 0;
+            }
+
+            pub fn nkwargs(self: CallArgs) usize {
+                return if (self.kwargs) |kwargs| kwargs.length() else 0;
+            }
+
+            pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
+                const args = self.args orelse return py.TypeError.raise("missing args");
+                return py.as(R, args.getItem(idx));
+            }
+
+            pub fn getKwarg(self: CallArgs, comptime R: type, name: []const u8) !?R {
+                const kwargs = self.kwargs orelse return null;
+                return py.as(R, kwargs.getItemStr(name));
+            }
 
             pub fn decref(self: CallArgs) void {
-                self.args.decref();
-                self.kwargs.decref();
+                if (self.args) |args| args.decref();
+                if (self.kwargs) |kwargs| kwargs.decref();
             }
         };
 
@@ -247,6 +265,50 @@ pub fn Trampoline(comptime T: type) type {
             }
 
             return .{ .args = args, .kwargs = kwargs };
+        }
+
+        pub inline fn unwrapCallArgs(callArgs: CallArgs) !T {
+            if (funcs.argCount(T) != callArgs.nargs()) {
+                return py.TypeError.raiseComptimeFmt("expected {d} arguments", .{funcs.argCount(T)});
+            }
+
+            var args: T = undefined;
+            inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
+                if (field.default_value == null) {
+                    // We're an arg
+                    @field(args, field.name) = try callArgs.getArg(field.type, i);
+                } else {
+                    // We're a kwarg
+                    if (try callArgs.getKwarg(field.type, field.name)) |kwarg| {
+                        @field(args, field.name) = kwarg;
+                    } else {
+                        @field(args, field.name) = @as(*field.type, @ptrCast(field.default_value)).*;
+                    }
+                }
+            }
+
+            // Sanity check that we didn't recieve any kwargs that we weren't expecting
+            const fieldNames = std.meta.fieldNames(T);
+            if (callArgs.kwargs) |kwargs| {
+                var iter = kwargs.itemsIterator();
+                while (iter.next()) |item| {
+                    const itemName = try (try py.PyString.of(item.key)).asSlice();
+
+                    var exists = false;
+                    for (fieldNames) |name| {
+                        if (std.mem.eql(u8, name, itemName)) {
+                            exists = true;
+                            break;
+                        }
+                    }
+
+                    if (!exists) {
+                        return py.TypeError.raiseFmt("unexpected kwarg '{s}'", .{itemName});
+                    }
+                }
+            }
+
+            return args;
         }
     };
 }
