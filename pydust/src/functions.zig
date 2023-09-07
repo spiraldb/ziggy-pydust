@@ -183,7 +183,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                 .{ .py = pyself },
                 args,
                 kwargs,
-                if (kwnames) |names| py.PyTuple.of(.{ .py = names }) catch return null else null,
+                if (kwnames) |names| py.PyTuple.unchecked(.{ .py = names }) else null,
             ) catch return null;
             return resultObject.py;
         }
@@ -228,7 +228,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             for (0..pykwargs.len) |i| {
                 const names = kwnames orelse @panic("Expected kwnames with non-empty kwargs slice");
 
-                const kwname = try (try py.PyString.of(try names.getItem(i))).asSlice();
+                const kwname = try names.getItem([]const u8, i);
                 var exists = false;
                 for (fieldNames) |name| {
                     if (std.mem.eql(u8, name, kwname)) {

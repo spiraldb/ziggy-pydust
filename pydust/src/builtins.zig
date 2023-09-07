@@ -64,7 +64,7 @@ pub fn str(object: anytype) !py.PyString {
 pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
     const imported = try import(py.findContainingModule(Super));
     const superPyType = try imported.get(py.getClassName(Super));
-    const pyObj = py.PyObject.of(selfInstance);
+    const pyObj = py.object(selfInstance);
 
     const superBuiltin = py.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
     return superBuiltin.call(py.PyObject, .{ superPyType, pyObj }, .{});

@@ -128,8 +128,8 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
             // Allow the definition to initialize the state field.
             self.state = tp_new_internal(
-                if (pyargs) |pa| py.PyTuple.of(.{ .py = pa }) catch return null else null,
-                if (pykwargs) |pk| py.PyDict.of(.{ .py = pk }) catch return null else null,
+                if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null,
+                if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null,
             ) catch return null;
 
             return pyself;

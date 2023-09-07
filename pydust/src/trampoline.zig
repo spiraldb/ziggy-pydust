@@ -228,6 +228,7 @@ pub fn Trampoline(comptime T: type) type {
                             // Recursively unwrap the field value
                             const fieldValue = try tuple.getItem(i);
                             @field(result, field.name) = try Trampoline(field.type.?).unwrap(fieldValue);
+                            @field(result, field.name) = try tuple.getItem(field.type.?, i);
                         }
                         return result;
                     }
@@ -264,12 +265,12 @@ pub fn Trampoline(comptime T: type) type {
 
             pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
                 const args = self.args orelse return py.TypeError.raise("missing args");
-                return py.as(R, try args.getItem(idx));
+                return try args.getItem(R, idx);
             }
 
             pub fn getKwarg(self: CallArgs, comptime R: type, name: []const u8) !?R {
                 const kwargs = self.kwargs orelse return null;
-                return py.as(R, kwargs.getItemStr(name));
+                return kwargs.getItem(R, name);
             }
 
             pub fn decref(self: CallArgs) void {

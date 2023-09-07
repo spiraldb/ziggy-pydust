@@ -3,7 +3,7 @@ const py = @import("pydust");
 // --8<-- [start:append]
 pub fn append(args: struct { left: py.PyString }) !py.PyString {
     // Since we create right, we must also decref it.
-    const right = try py.PyString.fromSlice("right");
+    const right = try py.PyString.create("right");
     defer right.decref();
 
     // Left is given to us as a borrowed reference from the caller.

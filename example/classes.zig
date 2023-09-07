@@ -18,9 +18,9 @@ pub const Animal = py.class("Animal", struct {
 
     pub fn get_kind_name(self: *Self) !py.PyString {
         return switch (self.kind) {
-            1 => py.PyString.fromSlice("Dog"),
-            2 => py.PyString.fromSlice("Cat"),
-            3 => py.PyString.fromSlice("Parrot"),
+            1 => py.PyString.create("Dog"),
+            2 => py.PyString.create("Cat"),
+            3 => py.PyString.create("Parrot"),
             else => py.RuntimeError.raise("Unknown animal kind"),
         };
     }
@@ -66,7 +66,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub fn get_kind_name(self: *Self) !py.PyString {
         var super = try py.super(Dog, self);
         var superKind = try super.get("get_kind_name");
-        var kindStr = try py.PyString.of(try superKind.call0());
+        var kindStr = try py.PyString.checked(try superKind.call0());
         kindStr = try kindStr.appendSlice(" named ");
         kindStr = try kindStr.append(self.name);
         return kindStr;

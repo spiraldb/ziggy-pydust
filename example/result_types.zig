@@ -1,11 +1,11 @@
 const py = @import("pydust");
 
 pub fn pyobject() !py.PyObject {
-    return (try py.PyString.fromSlice("hello")).obj;
+    return (try py.PyString.create("hello")).obj;
 }
 
 pub fn pystring() !py.PyString {
-    return try py.PyString.fromSlice("hello");
+    return py.PyString.create("hello");
 }
 
 pub fn zigvoid() void {}

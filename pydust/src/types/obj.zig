@@ -93,7 +93,7 @@ pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, com
         }
 
         /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: py.PyObject) !Self {
+        pub fn unchecked(obj: py.PyObject) Self {
             return .{ .obj = obj };
         }
 
