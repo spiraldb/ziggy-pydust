@@ -61,7 +61,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
     const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
     return struct {
-        const methods = Methods(definition, Instance);
+        const methods = funcs.Methods(definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -212,41 +212,5 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             }
             return null;
         }
-    };
-}
-
-fn Methods(comptime definition: type, comptime Instance: type) type {
-    _ = Instance;
-    const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
-
-    return struct {
-        const defs: []const type = blk: {
-            var defs_: []const type = &.{};
-
-            for (@typeInfo(definition).Struct.decls) |decl| {
-                const value = @field(definition, decl.name);
-                const typeInfo = @typeInfo(@TypeOf(value));
-
-                // For now, we skip non-function declarations.
-                if (typeInfo != .Fn or funcs.isReserved(decl.name)) {
-                    continue;
-                }
-
-                // The valid types for a "self" parameter are either the module state struct (definition), or a py.PyModule.
-                const sig = funcs.parseSignature(decl.name, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
-                const def = funcs.wrap(value, sig, 0);
-                defs_ = defs_ ++ .{def};
-            }
-
-            break :blk defs_;
-        };
-
-        pub const pydefs: [defs.len:empty]ffi.PyMethodDef = blk: {
-            var pydefs_: [defs.len:empty]ffi.PyMethodDef = undefined;
-            for (0..defs.len) |i| {
-                pydefs_[i] = defs[i].aspy();
-            }
-            break :blk pydefs_;
-        };
     };
 }

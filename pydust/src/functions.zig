@@ -80,7 +80,7 @@ pub fn kwargCount(comptime argsParam: type) usize {
     return n;
 }
 
-pub fn isReserved(comptime name: []const u8) bool {
+fn isReserved(comptime name: []const u8) bool {
     for (reservedNames) |reserved| {
         if (std.mem.eql(u8, name, reserved)) {
             return true;
@@ -151,7 +151,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                 // Create an args struct and populate it with pyargs.
                 var args: Args = undefined;
                 if (argCount(Args) != pyargs.len) {
-                    return py.TypeError.raiseComptimeFmt("expected {d} args", .{argCount(Args)});
+                    return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
                 }
                 inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
                     @field(args, field.name) = try py.as(field.type, pyargs[i]);
@@ -194,7 +194,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             var args: Args = undefined;
 
             if (pyargs.len < argCount(Args)) {
-                return py.TypeError.raiseComptimeFmt("expected {d} args", .{argCount(Args)});
+                return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
             }
 
             inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
@@ -251,6 +251,47 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
     };
 }
 
+pub fn Methods(comptime definition: type) type {
+    const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
+
+    return struct {
+        const methodCount = b: {
+            var mc: u32 = 0;
+            for (@typeInfo(definition).Struct.decls) |decl| {
+                const value = @field(definition, decl.name);
+                const typeInfo = @typeInfo(@TypeOf(value));
+
+                if (typeInfo != .Fn or isReserved(decl.name)) {
+                    continue;
+                }
+                mc += 1;
+            }
+            break :b mc;
+        };
+
+        pub const pydefs: [methodCount:empty]ffi.PyMethodDef = blk: {
+            var defs: [methodCount:empty]ffi.PyMethodDef = undefined;
+
+            var idx: u32 = 0;
+            for (@typeInfo(definition).Struct.decls) |decl| {
+                const value = @field(definition, decl.name);
+                const typeInfo = @typeInfo(@TypeOf(value));
+
+                // For now, we skip non-function declarations.
+                if (typeInfo != .Fn or isReserved(decl.name)) {
+                    continue;
+                }
+
+                const sig = parseSignature(decl.name, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
+                defs[idx] = wrap(value, sig, 0).aspy();
+                idx += 1;
+            }
+
+            break :blk defs;
+        };
+    };
+}
+
 /// Generate minimal function docstring to populate __text_signature__ function field.
 /// Format is `funcName($self, arg0Name...)\n--\n\n`.
 /// Self arg can be named however but must start with `$`
@@ -296,7 +337,8 @@ fn sigSize(comptime sig: Signature) usize {
 }
 
 fn sigArgs(comptime sig: Signature) ![]const []const u8 {
-    var sigargs: std.BoundedArray([]const u8, 100) = std.BoundedArray([]const u8, 100).init(0) catch @compileError("OOM");
+    const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs * 2 + 3);
+    var sigargs = ArgBuf.init(0) catch @compileError("OOM");
     if (sig.selfParam) |_| {
         try sigargs.append("$self");
     }
@@ -306,10 +348,7 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
 
         var inKwargs = false;
         for (fields) |field| {
-            if (field.default_value == null) {
-                // We have an arg
-                try sigargs.append(field.name);
-            } else {
+            if (field.default_value) |def| {
                 // We have a kwarg
                 if (!inKwargs) {
                     inKwargs = true;
@@ -318,6 +357,9 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
                     // Marker for start of keyword only args
                     try sigargs.append("*");
                 }
+                try sigargs.append(std.fmt.comptimePrint("{s}={any}", .{ field.name, @as(*const field.type, @alignCast(@ptrCast(def))).* }));
+            } else {
+                // We have an arg
                 try sigargs.append(field.name);
             }
         }
