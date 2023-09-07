@@ -34,23 +34,23 @@ pub const PyObject = extern struct {
     pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
         var argsPy: py.PyTuple = undefined;
         if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
-            argsPy = py.PyTuple.new(0);
+            argsPy = try py.PyTuple.new(0);
         } else {
-            argsPy = py.PyTuple.checked(try py.create(args));
+            argsPy = try py.PyTuple.checked(try py.create(args));
         }
         defer argsPy.decref();
 
         // FIXME(ngates): avoid creating empty dict for kwargs
-        const kwargsPy: py.PyDict = undefined;
+        var kwargsPy: py.PyDict = undefined;
         if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
-            kwargsPy = py.PyDict.new(0);
+            kwargsPy = try py.PyDict.new();
         } else {
             const kwobj = try py.create(kwargs);
             if (try py.len(kwobj) == 0) {
                 kwobj.decref();
-                kwargsPy = py.PyDict.new();
+                kwargsPy = try py.PyDict.new();
             } else {
-                kwargsPy = py.PyDict.checked(kwobj);
+                kwargsPy = try py.PyDict.checked(kwobj);
             }
         }
         defer kwargsPy.decref();
