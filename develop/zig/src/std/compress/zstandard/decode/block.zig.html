@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>compress/zstandard/decode/block.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> RingBuffer = std.RingBuffer;</span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-kw">const</span> types = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../types.zig&quot;</span>);</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> frame = types.frame;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> Table = types.compressed_block.Table;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> LiteralsSection = types.compressed_block.LiteralsSection;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> SequencesSection = types.compressed_block.SequencesSection;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-kw">const</span> huffman = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;huffman.zig&quot;</span>);</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> readers = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../readers.zig&quot;</span>);</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-kw">const</span> decodeFseTable = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;fse.zig&quot;</span>).decodeFseTable;</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16"><span class="tok-kw">const</span> readInt = std.mem.readIntLittle;</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L19">    BlockSizeOverMaximum,</span>
+<span class="line" id="L20">    MalformedBlockSize,</span>
+<span class="line" id="L21">    ReservedBlock,</span>
+<span class="line" id="L22">    MalformedRleBlock,</span>
+<span class="line" id="L23">    MalformedCompressedBlock,</span>
+<span class="line" id="L24">};</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DecodeState = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L27">    repeat_offsets: [<span class="tok-number">3</span>]<span class="tok-type">u32</span>,</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">    offset: StateData(<span class="tok-number">8</span>),</span>
+<span class="line" id="L30">    match: StateData(<span class="tok-number">9</span>),</span>
+<span class="line" id="L31">    literal: StateData(<span class="tok-number">9</span>),</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">    offset_fse_buffer: []Table.Fse,</span>
+<span class="line" id="L34">    match_fse_buffer: []Table.Fse,</span>
+<span class="line" id="L35">    literal_fse_buffer: []Table.Fse,</span>
+<span class="line" id="L36"></span>
+<span class="line" id="L37">    fse_tables_undefined: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39">    literal_stream_reader: readers.ReverseBitReader,</span>
+<span class="line" id="L40">    literal_stream_index: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L41">    literal_streams: LiteralsSection.Streams,</span>
+<span class="line" id="L42">    literal_header: LiteralsSection.Header,</span>
+<span class="line" id="L43">    huffman_tree: ?LiteralsSection.HuffmanTree,</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45">    literal_written_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L46">    written_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">    <span class="tok-kw">fn</span> <span class="tok-fn">StateData</span>(<span class="tok-kw">comptime</span> max_accuracy_log: <span class="tok-type">comptime_int</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L49">        <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L50">            state: State,</span>
+<span class="line" id="L51">            table: Table,</span>
+<span class="line" id="L52">            accuracy_log: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54">            <span class="tok-kw">const</span> State = std.meta.Int(.unsigned, max_accuracy_log);</span>
+<span class="line" id="L55">        };</span>
+<span class="line" id="L56">    }</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(</span>
+<span class="line" id="L59">        literal_fse_buffer: []Table.Fse,</span>
+<span class="line" id="L60">        match_fse_buffer: []Table.Fse,</span>
+<span class="line" id="L61">        offset_fse_buffer: []Table.Fse,</span>
+<span class="line" id="L62">    ) DecodeState {</span>
+<span class="line" id="L63">        <span class="tok-kw">return</span> DecodeState{</span>
+<span class="line" id="L64">            .repeat_offsets = .{</span>
+<span class="line" id="L65">                types.compressed_block.start_repeated_offset_1,</span>
+<span class="line" id="L66">                types.compressed_block.start_repeated_offset_2,</span>
+<span class="line" id="L67">                types.compressed_block.start_repeated_offset_3,</span>
+<span class="line" id="L68">            },</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">            .offset = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L71">            .match = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L72">            .literal = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74">            .literal_fse_buffer = literal_fse_buffer,</span>
+<span class="line" id="L75">            .match_fse_buffer = match_fse_buffer,</span>
+<span class="line" id="L76">            .offset_fse_buffer = offset_fse_buffer,</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">            .fse_tables_undefined = <span class="tok-null">true</span>,</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">            .literal_written_count = <span class="tok-number">0</span>,</span>
+<span class="line" id="L81">            .literal_header = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L82">            .literal_streams = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L83">            .literal_stream_reader = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L84">            .literal_stream_index = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L85">            .huffman_tree = <span class="tok-null">null</span>,</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">            .written_count = <span class="tok-number">0</span>,</span>
+<span class="line" id="L88">        };</span>
+<span class="line" id="L89">    }</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91">    <span class="tok-comment">/// Prepare the decoder to decode a compressed block. Loads the literals</span></span>
+<span class="line" id="L92">    <span class="tok-comment">/// stream and Huffman tree from `literals` and reads the FSE tables from</span></span>
+<span class="line" id="L93">    <span class="tok-comment">/// `source`.</span></span>
+<span class="line" id="L94">    <span class="tok-comment">///</span></span>
+<span class="line" id="L95">    <span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L96">    <span class="tok-comment">///   - `error.BitStreamHasNoStartBit` if the (reversed) literal bitstream's</span></span>
+<span class="line" id="L97">    <span class="tok-comment">///     first byte does not have any bits set</span></span>
+<span class="line" id="L98">    <span class="tok-comment">///   - `error.TreelessLiteralsFirst` `literals` is a treeless literals</span></span>
+<span class="line" id="L99">    <span class="tok-comment">///     section and the decode state does not have a Huffman tree from a</span></span>
+<span class="line" id="L100">    <span class="tok-comment">///     previous block</span></span>
+<span class="line" id="L101">    <span class="tok-comment">///   - `error.RepeatModeFirst` on the first call if one of the sequence FSE</span></span>
+<span class="line" id="L102">    <span class="tok-comment">///     tables is set to repeat mode</span></span>
+<span class="line" id="L103">    <span class="tok-comment">///   - `error.MalformedAccuracyLog` if an FSE table has an invalid accuracy</span></span>
+<span class="line" id="L104">    <span class="tok-comment">///   - `error.MalformedFseTable` if there are errors decoding an FSE table</span></span>
+<span class="line" id="L105">    <span class="tok-comment">///   - `error.EndOfStream` if `source` ends before all FSE tables are read</span></span>
+<span class="line" id="L106">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">prepare</span>(</span>
+<span class="line" id="L107">        self: *DecodeState,</span>
+<span class="line" id="L108">        source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L109">        literals: LiteralsSection,</span>
+<span class="line" id="L110">        sequences_header: SequencesSection.Header,</span>
+<span class="line" id="L111">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L112">        self.literal_written_count = <span class="tok-number">0</span>;</span>
+<span class="line" id="L113">        self.literal_header = literals.header;</span>
+<span class="line" id="L114">        self.literal_streams = literals.streams;</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116">        <span class="tok-kw">if</span> (literals.huffman_tree) |tree| {</span>
+<span class="line" id="L117">            self.huffman_tree = tree;</span>
+<span class="line" id="L118">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (literals.header.block_type == .treeless <span class="tok-kw">and</span> self.huffman_tree == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L119">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TreelessLiteralsFirst;</span>
+<span class="line" id="L120">        }</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">        <span class="tok-kw">switch</span> (literals.header.block_type) {</span>
+<span class="line" id="L123">            .raw, .rle =&gt; {},</span>
+<span class="line" id="L124">            .compressed, .treeless =&gt; {</span>
+<span class="line" id="L125">                self.literal_stream_index = <span class="tok-number">0</span>;</span>
+<span class="line" id="L126">                <span class="tok-kw">switch</span> (literals.streams) {</span>
+<span class="line" id="L127">                    .one =&gt; |slice| <span class="tok-kw">try</span> self.initLiteralStream(slice),</span>
+<span class="line" id="L128">                    .four =&gt; |streams| <span class="tok-kw">try</span> self.initLiteralStream(streams[<span class="tok-number">0</span>]),</span>
+<span class="line" id="L129">                }</span>
+<span class="line" id="L130">            },</span>
+<span class="line" id="L131">        }</span>
+<span class="line" id="L132"></span>
+<span class="line" id="L133">        <span class="tok-kw">if</span> (sequences_header.sequence_count &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L134">            <span class="tok-kw">try</span> self.updateFseTable(source, .literal, sequences_header.literal_lengths);</span>
+<span class="line" id="L135">            <span class="tok-kw">try</span> self.updateFseTable(source, .offset, sequences_header.offsets);</span>
+<span class="line" id="L136">            <span class="tok-kw">try</span> self.updateFseTable(source, .match, sequences_header.match_lengths);</span>
+<span class="line" id="L137">            self.fse_tables_undefined = <span class="tok-null">false</span>;</span>
+<span class="line" id="L138">        }</span>
+<span class="line" id="L139">    }</span>
+<span class="line" id="L140"></span>
+<span class="line" id="L141">    <span class="tok-comment">/// Read initial FSE states for sequence decoding.</span></span>
+<span class="line" id="L142">    <span class="tok-comment">///</span></span>
+<span class="line" id="L143">    <span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L144">    <span class="tok-comment">///   - `error.EndOfStream` if `bit_reader` does not contain enough bits.</span></span>
+<span class="line" id="L145">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readInitialFseState</span>(self: *DecodeState, bit_reader: *readers.ReverseBitReader) <span class="tok-kw">error</span>{EndOfStream}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L146">        self.literal.state = <span class="tok-kw">try</span> bit_reader.readBitsNoEof(<span class="tok-type">u9</span>, self.literal.accuracy_log);</span>
+<span class="line" id="L147">        self.offset.state = <span class="tok-kw">try</span> bit_reader.readBitsNoEof(<span class="tok-type">u8</span>, self.offset.accuracy_log);</span>
+<span class="line" id="L148">        self.match.state = <span class="tok-kw">try</span> bit_reader.readBitsNoEof(<span class="tok-type">u9</span>, self.match.accuracy_log);</span>
+<span class="line" id="L149">    }</span>
+<span class="line" id="L150"></span>
+<span class="line" id="L151">    <span class="tok-kw">fn</span> <span class="tok-fn">updateRepeatOffset</span>(self: *DecodeState, offset: <span class="tok-type">u32</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L152">        self.repeat_offsets[<span class="tok-number">2</span>] = self.repeat_offsets[<span class="tok-number">1</span>];</span>
+<span class="line" id="L153">        self.repeat_offsets[<span class="tok-number">1</span>] = self.repeat_offsets[<span class="tok-number">0</span>];</span>
+<span class="line" id="L154">        self.repeat_offsets[<span class="tok-number">0</span>] = offset;</span>
+<span class="line" id="L155">    }</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157">    <span class="tok-kw">fn</span> <span class="tok-fn">useRepeatOffset</span>(self: *DecodeState, index: <span class="tok-type">usize</span>) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L158">        <span class="tok-kw">if</span> (index == <span class="tok-number">1</span>)</span>
+<span class="line" id="L159">            std.mem.swap(<span class="tok-type">u32</span>, &amp;self.repeat_offsets[<span class="tok-number">0</span>], &amp;self.repeat_offsets[<span class="tok-number">1</span>])</span>
+<span class="line" id="L160">        <span class="tok-kw">else</span> <span class="tok-kw">if</span> (index == <span class="tok-number">2</span>) {</span>
+<span class="line" id="L161">            std.mem.swap(<span class="tok-type">u32</span>, &amp;self.repeat_offsets[<span class="tok-number">0</span>], &amp;self.repeat_offsets[<span class="tok-number">2</span>]);</span>
+<span class="line" id="L162">            std.mem.swap(<span class="tok-type">u32</span>, &amp;self.repeat_offsets[<span class="tok-number">1</span>], &amp;self.repeat_offsets[<span class="tok-number">2</span>]);</span>
+<span class="line" id="L163">        }</span>
+<span class="line" id="L164">        <span class="tok-kw">return</span> self.repeat_offsets[<span class="tok-number">0</span>];</span>
+<span class="line" id="L165">    }</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167">    <span class="tok-kw">const</span> DataType = <span class="tok-kw">enum</span> { offset, match, literal };</span>
+<span class="line" id="L168"></span>
+<span class="line" id="L169">    <span class="tok-kw">fn</span> <span class="tok-fn">updateState</span>(</span>
+<span class="line" id="L170">        self: *DecodeState,</span>
+<span class="line" id="L171">        <span class="tok-kw">comptime</span> choice: DataType,</span>
+<span class="line" id="L172">        bit_reader: *readers.ReverseBitReader,</span>
+<span class="line" id="L173">    ) <span class="tok-kw">error</span>{ MalformedFseBits, EndOfStream }!<span class="tok-type">void</span> {</span>
+<span class="line" id="L174">        <span class="tok-kw">switch</span> (<span class="tok-builtin">@field</span>(self, <span class="tok-builtin">@tagName</span>(choice)).table) {</span>
+<span class="line" id="L175">            .rle =&gt; {},</span>
+<span class="line" id="L176">            .fse =&gt; |table| {</span>
+<span class="line" id="L177">                <span class="tok-kw">const</span> data = table[<span class="tok-builtin">@field</span>(self, <span class="tok-builtin">@tagName</span>(choice)).state];</span>
+<span class="line" id="L178">                <span class="tok-kw">const</span> T = <span class="tok-builtin">@TypeOf</span>(<span class="tok-builtin">@field</span>(self, <span class="tok-builtin">@tagName</span>(choice))).State;</span>
+<span class="line" id="L179">                <span class="tok-kw">const</span> bits_summand = <span class="tok-kw">try</span> bit_reader.readBitsNoEof(T, data.bits);</span>
+<span class="line" id="L180">                <span class="tok-kw">const</span> next_state = std.math.cast(</span>
+<span class="line" id="L181">                    <span class="tok-builtin">@TypeOf</span>(<span class="tok-builtin">@field</span>(self, <span class="tok-builtin">@tagName</span>(choice))).State,</span>
+<span class="line" id="L182">                    data.baseline + bits_summand,</span>
+<span class="line" id="L183">                ) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedFseBits;</span>
+<span class="line" id="L184">                <span class="tok-builtin">@field</span>(self, <span class="tok-builtin">@tagName</span>(choice)).state = next_state;</span>
+<span class="line" id="L185">            },</span>
+<span class="line" id="L186">        }</span>
+<span class="line" id="L187">    }</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189">    <span class="tok-kw">const</span> FseTableError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L190">        MalformedFseTable,</span>
+<span class="line" id="L191">        MalformedAccuracyLog,</span>
+<span class="line" id="L192">        RepeatModeFirst,</span>
+<span class="line" id="L193">        EndOfStream,</span>
+<span class="line" id="L194">    };</span>
+<span class="line" id="L195"></span>
+<span class="line" id="L196">    <span class="tok-kw">fn</span> <span class="tok-fn">updateFseTable</span>(</span>
+<span class="line" id="L197">        self: *DecodeState,</span>
+<span class="line" id="L198">        source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L199">        <span class="tok-kw">comptime</span> choice: DataType,</span>
+<span class="line" id="L200">        mode: SequencesSection.Header.Mode,</span>
+<span class="line" id="L201">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L202">        <span class="tok-kw">const</span> field_name = <span class="tok-builtin">@tagName</span>(choice);</span>
+<span class="line" id="L203">        <span class="tok-kw">switch</span> (mode) {</span>
+<span class="line" id="L204">            .predefined =&gt; {</span>
+<span class="line" id="L205">                <span class="tok-builtin">@field</span>(self, field_name).accuracy_log =</span>
+<span class="line" id="L206">                    <span class="tok-builtin">@field</span>(types.compressed_block.default_accuracy_log, field_name);</span>
+<span class="line" id="L207"></span>
+<span class="line" id="L208">                <span class="tok-builtin">@field</span>(self, field_name).table =</span>
+<span class="line" id="L209">                    <span class="tok-builtin">@field</span>(types.compressed_block, <span class="tok-str">&quot;predefined_&quot;</span> ++ field_name ++ <span class="tok-str">&quot;_fse_table&quot;</span>);</span>
+<span class="line" id="L210">            },</span>
+<span class="line" id="L211">            .rle =&gt; {</span>
+<span class="line" id="L212">                <span class="tok-builtin">@field</span>(self, field_name).accuracy_log = <span class="tok-number">0</span>;</span>
+<span class="line" id="L213">                <span class="tok-builtin">@field</span>(self, field_name).table = .{ .rle = <span class="tok-kw">try</span> source.readByte() };</span>
+<span class="line" id="L214">            },</span>
+<span class="line" id="L215">            .fse =&gt; {</span>
+<span class="line" id="L216">                <span class="tok-kw">var</span> bit_reader = readers.bitReader(source);</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218">                <span class="tok-kw">const</span> table_size = <span class="tok-kw">try</span> decodeFseTable(</span>
+<span class="line" id="L219">                    &amp;bit_reader,</span>
+<span class="line" id="L220">                    <span class="tok-builtin">@field</span>(types.compressed_block.table_symbol_count_max, field_name),</span>
+<span class="line" id="L221">                    <span class="tok-builtin">@field</span>(types.compressed_block.table_accuracy_log_max, field_name),</span>
+<span class="line" id="L222">                    <span class="tok-builtin">@field</span>(self, field_name ++ <span class="tok-str">&quot;_fse_buffer&quot;</span>),</span>
+<span class="line" id="L223">                );</span>
+<span class="line" id="L224">                <span class="tok-builtin">@field</span>(self, field_name).table = .{</span>
+<span class="line" id="L225">                    .fse = <span class="tok-builtin">@field</span>(self, field_name ++ <span class="tok-str">&quot;_fse_buffer&quot;</span>)[<span class="tok-number">0</span>..table_size],</span>
+<span class="line" id="L226">                };</span>
+<span class="line" id="L227">                <span class="tok-builtin">@field</span>(self, field_name).accuracy_log = std.math.log2_int_ceil(<span class="tok-type">usize</span>, table_size);</span>
+<span class="line" id="L228">            },</span>
+<span class="line" id="L229">            .repeat =&gt; <span class="tok-kw">if</span> (self.fse_tables_undefined) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.RepeatModeFirst,</span>
+<span class="line" id="L230">        }</span>
+<span class="line" id="L231">    }</span>
+<span class="line" id="L232"></span>
+<span class="line" id="L233">    <span class="tok-kw">const</span> Sequence = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L234">        literal_length: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L235">        match_length: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L236">        offset: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L237">    };</span>
+<span class="line" id="L238"></span>
+<span class="line" id="L239">    <span class="tok-kw">fn</span> <span class="tok-fn">nextSequence</span>(</span>
+<span class="line" id="L240">        self: *DecodeState,</span>
+<span class="line" id="L241">        bit_reader: *readers.ReverseBitReader,</span>
+<span class="line" id="L242">    ) <span class="tok-kw">error</span>{ InvalidBitStream, EndOfStream }!Sequence {</span>
+<span class="line" id="L243">        <span class="tok-kw">const</span> raw_code = self.getCode(.offset);</span>
+<span class="line" id="L244">        <span class="tok-kw">const</span> offset_code = std.math.cast(<span class="tok-type">u5</span>, raw_code) <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L245">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidBitStream;</span>
+<span class="line" id="L246">        };</span>
+<span class="line" id="L247">        <span class="tok-kw">const</span> offset_value = (<span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">1</span>) &lt;&lt; offset_code) + <span class="tok-kw">try</span> bit_reader.readBitsNoEof(<span class="tok-type">u32</span>, offset_code);</span>
+<span class="line" id="L248"></span>
+<span class="line" id="L249">        <span class="tok-kw">const</span> match_code = self.getCode(.match);</span>
+<span class="line" id="L250">        <span class="tok-kw">if</span> (match_code &gt;= types.compressed_block.match_length_code_table.len)</span>
+<span class="line" id="L251">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidBitStream;</span>
+<span class="line" id="L252">        <span class="tok-kw">const</span> match = types.compressed_block.match_length_code_table[match_code];</span>
+<span class="line" id="L253">        <span class="tok-kw">const</span> match_length = match[<span class="tok-number">0</span>] + <span class="tok-kw">try</span> bit_reader.readBitsNoEof(<span class="tok-type">u32</span>, match[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L254"></span>
+<span class="line" id="L255">        <span class="tok-kw">const</span> literal_code = self.getCode(.literal);</span>
+<span class="line" id="L256">        <span class="tok-kw">if</span> (literal_code &gt;= types.compressed_block.literals_length_code_table.len)</span>
+<span class="line" id="L257">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidBitStream;</span>
+<span class="line" id="L258">        <span class="tok-kw">const</span> literal = types.compressed_block.literals_length_code_table[literal_code];</span>
+<span class="line" id="L259">        <span class="tok-kw">const</span> literal_length = literal[<span class="tok-number">0</span>] + <span class="tok-kw">try</span> bit_reader.readBitsNoEof(<span class="tok-type">u32</span>, literal[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L260"></span>
+<span class="line" id="L261">        <span class="tok-kw">const</span> offset = <span class="tok-kw">if</span> (offset_value &gt; <span class="tok-number">3</span>) offset: {</span>
+<span class="line" id="L262">            <span class="tok-kw">const</span> offset = offset_value - <span class="tok-number">3</span>;</span>
+<span class="line" id="L263">            self.updateRepeatOffset(offset);</span>
+<span class="line" id="L264">            <span class="tok-kw">break</span> :offset offset;</span>
+<span class="line" id="L265">        } <span class="tok-kw">else</span> offset: {</span>
+<span class="line" id="L266">            <span class="tok-kw">if</span> (literal_length == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L267">                <span class="tok-kw">if</span> (offset_value == <span class="tok-number">3</span>) {</span>
+<span class="line" id="L268">                    <span class="tok-kw">const</span> offset = self.repeat_offsets[<span class="tok-number">0</span>] - <span class="tok-number">1</span>;</span>
+<span class="line" id="L269">                    self.updateRepeatOffset(offset);</span>
+<span class="line" id="L270">                    <span class="tok-kw">break</span> :offset offset;</span>
+<span class="line" id="L271">                }</span>
+<span class="line" id="L272">                <span class="tok-kw">break</span> :offset self.useRepeatOffset(offset_value);</span>
+<span class="line" id="L273">            }</span>
+<span class="line" id="L274">            <span class="tok-kw">break</span> :offset self.useRepeatOffset(offset_value - <span class="tok-number">1</span>);</span>
+<span class="line" id="L275">        };</span>
+<span class="line" id="L276"></span>
+<span class="line" id="L277">        <span class="tok-kw">if</span> (offset == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidBitStream;</span>
+<span class="line" id="L278"></span>
+<span class="line" id="L279">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L280">            .literal_length = literal_length,</span>
+<span class="line" id="L281">            .match_length = match_length,</span>
+<span class="line" id="L282">            .offset = offset,</span>
+<span class="line" id="L283">        };</span>
+<span class="line" id="L284">    }</span>
+<span class="line" id="L285"></span>
+<span class="line" id="L286">    <span class="tok-kw">fn</span> <span class="tok-fn">executeSequenceSlice</span>(</span>
+<span class="line" id="L287">        self: *DecodeState,</span>
+<span class="line" id="L288">        dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L289">        write_pos: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L290">        sequence: Sequence,</span>
+<span class="line" id="L291">    ) (<span class="tok-kw">error</span>{MalformedSequence} || DecodeLiteralsError)!<span class="tok-type">void</span> {</span>
+<span class="line" id="L292">        <span class="tok-kw">if</span> (sequence.offset &gt; write_pos + sequence.literal_length) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedSequence;</span>
+<span class="line" id="L293"></span>
+<span class="line" id="L294">        <span class="tok-kw">try</span> self.decodeLiteralsSlice(dest[write_pos..], sequence.literal_length);</span>
+<span class="line" id="L295">        <span class="tok-kw">const</span> copy_start = write_pos + sequence.literal_length - sequence.offset;</span>
+<span class="line" id="L296">        <span class="tok-kw">for</span> (</span>
+<span class="line" id="L297">            dest[write_pos + sequence.literal_length ..][<span class="tok-number">0</span>..sequence.match_length],</span>
+<span class="line" id="L298">            dest[copy_start..][<span class="tok-number">0</span>..sequence.match_length],</span>
+<span class="line" id="L299">        ) |*d, s| d.* = s;</span>
+<span class="line" id="L300">        self.written_count += sequence.match_length;</span>
+<span class="line" id="L301">    }</span>
+<span class="line" id="L302"></span>
+<span class="line" id="L303">    <span class="tok-kw">fn</span> <span class="tok-fn">executeSequenceRingBuffer</span>(</span>
+<span class="line" id="L304">        self: *DecodeState,</span>
+<span class="line" id="L305">        dest: *RingBuffer,</span>
+<span class="line" id="L306">        sequence: Sequence,</span>
+<span class="line" id="L307">    ) (<span class="tok-kw">error</span>{MalformedSequence} || DecodeLiteralsError)!<span class="tok-type">void</span> {</span>
+<span class="line" id="L308">        <span class="tok-kw">if</span> (sequence.offset &gt; <span class="tok-builtin">@min</span>(dest.data.len, self.written_count + sequence.literal_length))</span>
+<span class="line" id="L309">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedSequence;</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311">        <span class="tok-kw">try</span> self.decodeLiteralsRingBuffer(dest, sequence.literal_length);</span>
+<span class="line" id="L312">        <span class="tok-kw">const</span> copy_start = dest.write_index + dest.data.len - sequence.offset;</span>
+<span class="line" id="L313">        <span class="tok-kw">const</span> copy_slice = dest.sliceAt(copy_start, sequence.match_length);</span>
+<span class="line" id="L314">        <span class="tok-kw">for</span> (copy_slice.first) |b| dest.writeAssumeCapacity(b);</span>
+<span class="line" id="L315">        <span class="tok-kw">for</span> (copy_slice.second) |b| dest.writeAssumeCapacity(b);</span>
+<span class="line" id="L316">        self.written_count += sequence.match_length;</span>
+<span class="line" id="L317">    }</span>
+<span class="line" id="L318"></span>
+<span class="line" id="L319">    <span class="tok-kw">const</span> DecodeSequenceError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L320">        InvalidBitStream,</span>
+<span class="line" id="L321">        EndOfStream,</span>
+<span class="line" id="L322">        MalformedSequence,</span>
+<span class="line" id="L323">        MalformedFseBits,</span>
+<span class="line" id="L324">    } || DecodeLiteralsError;</span>
+<span class="line" id="L325"></span>
+<span class="line" id="L326">    <span class="tok-comment">/// Decode one sequence from `bit_reader` into `dest`, written starting at</span></span>
+<span class="line" id="L327">    <span class="tok-comment">/// `write_pos` and update FSE states if `last_sequence` is `false`.</span></span>
+<span class="line" id="L328">    <span class="tok-comment">/// `prepare()` must be called for the block before attempting to decode</span></span>
+<span class="line" id="L329">    <span class="tok-comment">/// sequences.</span></span>
+<span class="line" id="L330">    <span class="tok-comment">///</span></span>
+<span class="line" id="L331">    <span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L332">    <span class="tok-comment">///   - `error.MalformedSequence` if the decompressed sequence would be</span></span>
+<span class="line" id="L333">    <span class="tok-comment">///     longer than `sequence_size_limit` or the sequence's offset is too</span></span>
+<span class="line" id="L334">    <span class="tok-comment">///     large</span></span>
+<span class="line" id="L335">    <span class="tok-comment">///   - `error.UnexpectedEndOfLiteralStream` if the decoder state's literal</span></span>
+<span class="line" id="L336">    <span class="tok-comment">///     streams do not contain enough literals for the sequence (this may</span></span>
+<span class="line" id="L337">    <span class="tok-comment">///     mean the literal stream or the sequence is malformed).</span></span>
+<span class="line" id="L338">    <span class="tok-comment">///   - `error.InvalidBitStream` if the FSE sequence bitstream is malformed</span></span>
+<span class="line" id="L339">    <span class="tok-comment">///   - `error.EndOfStream` if `bit_reader` does not contain enough bits</span></span>
+<span class="line" id="L340">    <span class="tok-comment">///   - `error.DestTooSmall` if `dest` is not large enough to holde the</span></span>
+<span class="line" id="L341">    <span class="tok-comment">///     decompressed sequence</span></span>
+<span class="line" id="L342">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeSequenceSlice</span>(</span>
+<span class="line" id="L343">        self: *DecodeState,</span>
+<span class="line" id="L344">        dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L345">        write_pos: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L346">        bit_reader: *readers.ReverseBitReader,</span>
+<span class="line" id="L347">        sequence_size_limit: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L348">        last_sequence: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L349">    ) (<span class="tok-kw">error</span>{DestTooSmall} || DecodeSequenceError)!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L350">        <span class="tok-kw">const</span> sequence = <span class="tok-kw">try</span> self.nextSequence(bit_reader);</span>
+<span class="line" id="L351">        <span class="tok-kw">const</span> sequence_length = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, sequence.literal_length) + sequence.match_length;</span>
+<span class="line" id="L352">        <span class="tok-kw">if</span> (sequence_length &gt; sequence_size_limit) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedSequence;</span>
+<span class="line" id="L353">        <span class="tok-kw">if</span> (sequence_length &gt; dest[write_pos..].len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DestTooSmall;</span>
+<span class="line" id="L354"></span>
+<span class="line" id="L355">        <span class="tok-kw">try</span> self.executeSequenceSlice(dest, write_pos, sequence);</span>
+<span class="line" id="L356">        <span class="tok-kw">if</span> (!last_sequence) {</span>
+<span class="line" id="L357">            <span class="tok-kw">try</span> self.updateState(.literal, bit_reader);</span>
+<span class="line" id="L358">            <span class="tok-kw">try</span> self.updateState(.match, bit_reader);</span>
+<span class="line" id="L359">            <span class="tok-kw">try</span> self.updateState(.offset, bit_reader);</span>
+<span class="line" id="L360">        }</span>
+<span class="line" id="L361">        <span class="tok-kw">return</span> sequence_length;</span>
+<span class="line" id="L362">    }</span>
+<span class="line" id="L363"></span>
+<span class="line" id="L364">    <span class="tok-comment">/// Decode one sequence from `bit_reader` into `dest`; see</span></span>
+<span class="line" id="L365">    <span class="tok-comment">/// `decodeSequenceSlice`.</span></span>
+<span class="line" id="L366">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeSequenceRingBuffer</span>(</span>
+<span class="line" id="L367">        self: *DecodeState,</span>
+<span class="line" id="L368">        dest: *RingBuffer,</span>
+<span class="line" id="L369">        bit_reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L370">        sequence_size_limit: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L371">        last_sequence: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L372">    ) DecodeSequenceError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L373">        <span class="tok-kw">const</span> sequence = <span class="tok-kw">try</span> self.nextSequence(bit_reader);</span>
+<span class="line" id="L374">        <span class="tok-kw">const</span> sequence_length = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, sequence.literal_length) + sequence.match_length;</span>
+<span class="line" id="L375">        <span class="tok-kw">if</span> (sequence_length &gt; sequence_size_limit) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedSequence;</span>
+<span class="line" id="L376"></span>
+<span class="line" id="L377">        <span class="tok-kw">try</span> self.executeSequenceRingBuffer(dest, sequence);</span>
+<span class="line" id="L378">        <span class="tok-kw">if</span> (!last_sequence) {</span>
+<span class="line" id="L379">            <span class="tok-kw">try</span> self.updateState(.literal, bit_reader);</span>
+<span class="line" id="L380">            <span class="tok-kw">try</span> self.updateState(.match, bit_reader);</span>
+<span class="line" id="L381">            <span class="tok-kw">try</span> self.updateState(.offset, bit_reader);</span>
+<span class="line" id="L382">        }</span>
+<span class="line" id="L383">        <span class="tok-kw">return</span> sequence_length;</span>
+<span class="line" id="L384">    }</span>
+<span class="line" id="L385"></span>
+<span class="line" id="L386">    <span class="tok-kw">fn</span> <span class="tok-fn">nextLiteralMultiStream</span>(</span>
+<span class="line" id="L387">        self: *DecodeState,</span>
+<span class="line" id="L388">    ) <span class="tok-kw">error</span>{BitStreamHasNoStartBit}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L389">        self.literal_stream_index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L390">        <span class="tok-kw">try</span> self.initLiteralStream(self.literal_streams.four[self.literal_stream_index]);</span>
+<span class="line" id="L391">    }</span>
+<span class="line" id="L392"></span>
+<span class="line" id="L393">    <span class="tok-kw">fn</span> <span class="tok-fn">initLiteralStream</span>(self: *DecodeState, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-kw">error</span>{BitStreamHasNoStartBit}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L394">        <span class="tok-kw">try</span> self.literal_stream_reader.init(bytes);</span>
+<span class="line" id="L395">    }</span>
+<span class="line" id="L396"></span>
+<span class="line" id="L397">    <span class="tok-kw">fn</span> <span class="tok-fn">isLiteralStreamEmpty</span>(self: *DecodeState) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L398">        <span class="tok-kw">switch</span> (self.literal_streams) {</span>
+<span class="line" id="L399">            .one =&gt; <span class="tok-kw">return</span> self.literal_stream_reader.isEmpty(),</span>
+<span class="line" id="L400">            .four =&gt; <span class="tok-kw">return</span> self.literal_stream_index == <span class="tok-number">3</span> <span class="tok-kw">and</span> self.literal_stream_reader.isEmpty(),</span>
+<span class="line" id="L401">        }</span>
+<span class="line" id="L402">    }</span>
+<span class="line" id="L403"></span>
+<span class="line" id="L404">    <span class="tok-kw">const</span> LiteralBitsError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L405">        BitStreamHasNoStartBit,</span>
+<span class="line" id="L406">        UnexpectedEndOfLiteralStream,</span>
+<span class="line" id="L407">    };</span>
+<span class="line" id="L408">    <span class="tok-kw">fn</span> <span class="tok-fn">readLiteralsBits</span>(</span>
+<span class="line" id="L409">        self: *DecodeState,</span>
+<span class="line" id="L410">        bit_count_to_read: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L411">    ) LiteralBitsError!<span class="tok-type">u16</span> {</span>
+<span class="line" id="L412">        <span class="tok-kw">return</span> self.literal_stream_reader.readBitsNoEof(<span class="tok-type">u16</span>, bit_count_to_read) <span class="tok-kw">catch</span> bits: {</span>
+<span class="line" id="L413">            <span class="tok-kw">if</span> (self.literal_streams == .four <span class="tok-kw">and</span> self.literal_stream_index &lt; <span class="tok-number">3</span>) {</span>
+<span class="line" id="L414">                <span class="tok-kw">try</span> self.nextLiteralMultiStream();</span>
+<span class="line" id="L415">                <span class="tok-kw">break</span> :bits self.literal_stream_reader.readBitsNoEof(<span class="tok-type">u16</span>, bit_count_to_read) <span class="tok-kw">catch</span></span>
+<span class="line" id="L416">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedEndOfLiteralStream;</span>
+<span class="line" id="L417">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L418">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedEndOfLiteralStream;</span>
+<span class="line" id="L419">            }</span>
+<span class="line" id="L420">        };</span>
+<span class="line" id="L421">    }</span>
+<span class="line" id="L422"></span>
+<span class="line" id="L423">    <span class="tok-kw">const</span> DecodeLiteralsError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L424">        MalformedLiteralsLength,</span>
+<span class="line" id="L425">        NotFound,</span>
+<span class="line" id="L426">    } || LiteralBitsError;</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">    <span class="tok-comment">/// Decode `len` bytes of literals into `dest`.</span></span>
+<span class="line" id="L429">    <span class="tok-comment">///</span></span>
+<span class="line" id="L430">    <span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L431">    <span class="tok-comment">///   - `error.MalformedLiteralsLength` if the number of literal bytes</span></span>
+<span class="line" id="L432">    <span class="tok-comment">///     decoded by `self` plus `len` is greater than the regenerated size of</span></span>
+<span class="line" id="L433">    <span class="tok-comment">///     `literals`</span></span>
+<span class="line" id="L434">    <span class="tok-comment">///   - `error.UnexpectedEndOfLiteralStream` and `error.NotFound` if there</span></span>
+<span class="line" id="L435">    <span class="tok-comment">///     are problems decoding Huffman compressed literals</span></span>
+<span class="line" id="L436">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeLiteralsSlice</span>(</span>
+<span class="line" id="L437">        self: *DecodeState,</span>
+<span class="line" id="L438">        dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L439">        len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L440">    ) DecodeLiteralsError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L441">        <span class="tok-kw">if</span> (self.literal_written_count + len &gt; self.literal_header.regenerated_size)</span>
+<span class="line" id="L442">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsLength;</span>
+<span class="line" id="L443"></span>
+<span class="line" id="L444">        <span class="tok-kw">switch</span> (self.literal_header.block_type) {</span>
+<span class="line" id="L445">            .raw =&gt; {</span>
+<span class="line" id="L446">                <span class="tok-kw">const</span> literal_data = self.literal_streams.one[self.literal_written_count..][<span class="tok-number">0</span>..len];</span>
+<span class="line" id="L447">                <span class="tok-builtin">@memcpy</span>(dest[<span class="tok-number">0</span>..len], literal_data);</span>
+<span class="line" id="L448">                self.literal_written_count += len;</span>
+<span class="line" id="L449">                self.written_count += len;</span>
+<span class="line" id="L450">            },</span>
+<span class="line" id="L451">            .rle =&gt; {</span>
+<span class="line" id="L452">                <span class="tok-kw">for</span> (<span class="tok-number">0</span>..len) |i| {</span>
+<span class="line" id="L453">                    dest[i] = self.literal_streams.one[<span class="tok-number">0</span>];</span>
+<span class="line" id="L454">                }</span>
+<span class="line" id="L455">                self.literal_written_count += len;</span>
+<span class="line" id="L456">                self.written_count += len;</span>
+<span class="line" id="L457">            },</span>
+<span class="line" id="L458">            .compressed, .treeless =&gt; {</span>
+<span class="line" id="L459">                <span class="tok-comment">// const written_bytes_per_stream = (literals.header.regenerated_size + 3) / 4;</span>
+</span>
+<span class="line" id="L460">                <span class="tok-kw">const</span> huffman_tree = self.huffman_tree <span class="tok-kw">orelse</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L461">                <span class="tok-kw">const</span> max_bit_count = huffman_tree.max_bit_count;</span>
+<span class="line" id="L462">                <span class="tok-kw">const</span> starting_bit_count = LiteralsSection.HuffmanTree.weightToBitCount(</span>
+<span class="line" id="L463">                    huffman_tree.nodes[huffman_tree.symbol_count_minus_one].weight,</span>
+<span class="line" id="L464">                    max_bit_count,</span>
+<span class="line" id="L465">                );</span>
+<span class="line" id="L466">                <span class="tok-kw">var</span> bits_read: <span class="tok-type">u4</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L467">                <span class="tok-kw">var</span> huffman_tree_index: <span class="tok-type">usize</span> = huffman_tree.symbol_count_minus_one;</span>
+<span class="line" id="L468">                <span class="tok-kw">var</span> bit_count_to_read: <span class="tok-type">u4</span> = starting_bit_count;</span>
+<span class="line" id="L469">                <span class="tok-kw">for</span> (<span class="tok-number">0</span>..len) |i| {</span>
+<span class="line" id="L470">                    <span class="tok-kw">var</span> prefix: <span class="tok-type">u16</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L471">                    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L472">                        <span class="tok-kw">const</span> new_bits = self.readLiteralsBits(bit_count_to_read) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L473">                            <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L474">                        };</span>
+<span class="line" id="L475">                        prefix &lt;&lt;= bit_count_to_read;</span>
+<span class="line" id="L476">                        prefix |= new_bits;</span>
+<span class="line" id="L477">                        bits_read += bit_count_to_read;</span>
+<span class="line" id="L478">                        <span class="tok-kw">const</span> result = huffman_tree.query(huffman_tree_index, prefix) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L479">                            <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L480">                        };</span>
+<span class="line" id="L481"></span>
+<span class="line" id="L482">                        <span class="tok-kw">switch</span> (result) {</span>
+<span class="line" id="L483">                            .symbol =&gt; |sym| {</span>
+<span class="line" id="L484">                                dest[i] = sym;</span>
+<span class="line" id="L485">                                bit_count_to_read = starting_bit_count;</span>
+<span class="line" id="L486">                                bits_read = <span class="tok-number">0</span>;</span>
+<span class="line" id="L487">                                huffman_tree_index = huffman_tree.symbol_count_minus_one;</span>
+<span class="line" id="L488">                                <span class="tok-kw">break</span>;</span>
+<span class="line" id="L489">                            },</span>
+<span class="line" id="L490">                            .index =&gt; |index| {</span>
+<span class="line" id="L491">                                huffman_tree_index = index;</span>
+<span class="line" id="L492">                                <span class="tok-kw">const</span> bit_count = LiteralsSection.HuffmanTree.weightToBitCount(</span>
+<span class="line" id="L493">                                    huffman_tree.nodes[index].weight,</span>
+<span class="line" id="L494">                                    max_bit_count,</span>
+<span class="line" id="L495">                                );</span>
+<span class="line" id="L496">                                bit_count_to_read = bit_count - bits_read;</span>
+<span class="line" id="L497">                            },</span>
+<span class="line" id="L498">                        }</span>
+<span class="line" id="L499">                    }</span>
+<span class="line" id="L500">                }</span>
+<span class="line" id="L501">                self.literal_written_count += len;</span>
+<span class="line" id="L502">                self.written_count += len;</span>
+<span class="line" id="L503">            },</span>
+<span class="line" id="L504">        }</span>
+<span class="line" id="L505">    }</span>
+<span class="line" id="L506"></span>
+<span class="line" id="L507">    <span class="tok-comment">/// Decode literals into `dest`; see `decodeLiteralsSlice()`.</span></span>
+<span class="line" id="L508">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeLiteralsRingBuffer</span>(</span>
+<span class="line" id="L509">        self: *DecodeState,</span>
+<span class="line" id="L510">        dest: *RingBuffer,</span>
+<span class="line" id="L511">        len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L512">    ) DecodeLiteralsError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L513">        <span class="tok-kw">if</span> (self.literal_written_count + len &gt; self.literal_header.regenerated_size)</span>
+<span class="line" id="L514">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsLength;</span>
+<span class="line" id="L515"></span>
+<span class="line" id="L516">        <span class="tok-kw">switch</span> (self.literal_header.block_type) {</span>
+<span class="line" id="L517">            .raw =&gt; {</span>
+<span class="line" id="L518">                <span class="tok-kw">const</span> literals_end = self.literal_written_count + len;</span>
+<span class="line" id="L519">                <span class="tok-kw">const</span> literal_data = self.literal_streams.one[self.literal_written_count..literals_end];</span>
+<span class="line" id="L520">                dest.writeSliceAssumeCapacity(literal_data);</span>
+<span class="line" id="L521">                self.literal_written_count += len;</span>
+<span class="line" id="L522">                self.written_count += len;</span>
+<span class="line" id="L523">            },</span>
+<span class="line" id="L524">            .rle =&gt; {</span>
+<span class="line" id="L525">                <span class="tok-kw">for</span> (<span class="tok-number">0</span>..len) |_| {</span>
+<span class="line" id="L526">                    dest.writeAssumeCapacity(self.literal_streams.one[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L527">                }</span>
+<span class="line" id="L528">                self.literal_written_count += len;</span>
+<span class="line" id="L529">                self.written_count += len;</span>
+<span class="line" id="L530">            },</span>
+<span class="line" id="L531">            .compressed, .treeless =&gt; {</span>
+<span class="line" id="L532">                <span class="tok-comment">// const written_bytes_per_stream = (literals.header.regenerated_size + 3) / 4;</span>
+</span>
+<span class="line" id="L533">                <span class="tok-kw">const</span> huffman_tree = self.huffman_tree <span class="tok-kw">orelse</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L534">                <span class="tok-kw">const</span> max_bit_count = huffman_tree.max_bit_count;</span>
+<span class="line" id="L535">                <span class="tok-kw">const</span> starting_bit_count = LiteralsSection.HuffmanTree.weightToBitCount(</span>
+<span class="line" id="L536">                    huffman_tree.nodes[huffman_tree.symbol_count_minus_one].weight,</span>
+<span class="line" id="L537">                    max_bit_count,</span>
+<span class="line" id="L538">                );</span>
+<span class="line" id="L539">                <span class="tok-kw">var</span> bits_read: <span class="tok-type">u4</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L540">                <span class="tok-kw">var</span> huffman_tree_index: <span class="tok-type">usize</span> = huffman_tree.symbol_count_minus_one;</span>
+<span class="line" id="L541">                <span class="tok-kw">var</span> bit_count_to_read: <span class="tok-type">u4</span> = starting_bit_count;</span>
+<span class="line" id="L542">                <span class="tok-kw">for</span> (<span class="tok-number">0</span>..len) |_| {</span>
+<span class="line" id="L543">                    <span class="tok-kw">var</span> prefix: <span class="tok-type">u16</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L544">                    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L545">                        <span class="tok-kw">const</span> new_bits = <span class="tok-kw">try</span> self.readLiteralsBits(bit_count_to_read);</span>
+<span class="line" id="L546">                        prefix &lt;&lt;= bit_count_to_read;</span>
+<span class="line" id="L547">                        prefix |= new_bits;</span>
+<span class="line" id="L548">                        bits_read += bit_count_to_read;</span>
+<span class="line" id="L549">                        <span class="tok-kw">const</span> result = <span class="tok-kw">try</span> huffman_tree.query(huffman_tree_index, prefix);</span>
+<span class="line" id="L550"></span>
+<span class="line" id="L551">                        <span class="tok-kw">switch</span> (result) {</span>
+<span class="line" id="L552">                            .symbol =&gt; |sym| {</span>
+<span class="line" id="L553">                                dest.writeAssumeCapacity(sym);</span>
+<span class="line" id="L554">                                bit_count_to_read = starting_bit_count;</span>
+<span class="line" id="L555">                                bits_read = <span class="tok-number">0</span>;</span>
+<span class="line" id="L556">                                huffman_tree_index = huffman_tree.symbol_count_minus_one;</span>
+<span class="line" id="L557">                                <span class="tok-kw">break</span>;</span>
+<span class="line" id="L558">                            },</span>
+<span class="line" id="L559">                            .index =&gt; |index| {</span>
+<span class="line" id="L560">                                huffman_tree_index = index;</span>
+<span class="line" id="L561">                                <span class="tok-kw">const</span> bit_count = LiteralsSection.HuffmanTree.weightToBitCount(</span>
+<span class="line" id="L562">                                    huffman_tree.nodes[index].weight,</span>
+<span class="line" id="L563">                                    max_bit_count,</span>
+<span class="line" id="L564">                                );</span>
+<span class="line" id="L565">                                bit_count_to_read = bit_count - bits_read;</span>
+<span class="line" id="L566">                            },</span>
+<span class="line" id="L567">                        }</span>
+<span class="line" id="L568">                    }</span>
+<span class="line" id="L569">                }</span>
+<span class="line" id="L570">                self.literal_written_count += len;</span>
+<span class="line" id="L571">                self.written_count += len;</span>
+<span class="line" id="L572">            },</span>
+<span class="line" id="L573">        }</span>
+<span class="line" id="L574">    }</span>
+<span class="line" id="L575"></span>
+<span class="line" id="L576">    <span class="tok-kw">fn</span> <span class="tok-fn">getCode</span>(self: *DecodeState, <span class="tok-kw">comptime</span> choice: DataType) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L577">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (<span class="tok-builtin">@field</span>(self, <span class="tok-builtin">@tagName</span>(choice)).table) {</span>
+<span class="line" id="L578">            .rle =&gt; |value| value,</span>
+<span class="line" id="L579">            .fse =&gt; |table| table[<span class="tok-builtin">@field</span>(self, <span class="tok-builtin">@tagName</span>(choice)).state].symbol,</span>
+<span class="line" id="L580">        };</span>
+<span class="line" id="L581">    }</span>
+<span class="line" id="L582">};</span>
+<span class="line" id="L583"></span>
+<span class="line" id="L584"><span class="tok-comment">/// Decode a single block from `src` into `dest`. The beginning of `src` must be</span></span>
+<span class="line" id="L585"><span class="tok-comment">/// the start of the block content (i.e. directly after the block header).</span></span>
+<span class="line" id="L586"><span class="tok-comment">/// Increments `consumed_count` by the number of bytes read from `src` to decode</span></span>
+<span class="line" id="L587"><span class="tok-comment">/// the block and returns the decompressed size of the block.</span></span>
+<span class="line" id="L588"><span class="tok-comment">///</span></span>
+<span class="line" id="L589"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L590"><span class="tok-comment">///</span></span>
+<span class="line" id="L591"><span class="tok-comment">///   - `error.BlockSizeOverMaximum` if block's size is larger than 1 &lt;&lt; 17 or</span></span>
+<span class="line" id="L592"><span class="tok-comment">///     `dest[written_count..].len`</span></span>
+<span class="line" id="L593"><span class="tok-comment">///   - `error.MalformedBlockSize` if `src.len` is smaller than the block size</span></span>
+<span class="line" id="L594"><span class="tok-comment">///     and the block is a raw or compressed block</span></span>
+<span class="line" id="L595"><span class="tok-comment">///   - `error.ReservedBlock` if the block is a reserved block</span></span>
+<span class="line" id="L596"><span class="tok-comment">///   - `error.MalformedRleBlock` if the block is an RLE block and `src.len &lt; 1`</span></span>
+<span class="line" id="L597"><span class="tok-comment">///   - `error.MalformedCompressedBlock` if there are errors decoding a</span></span>
+<span class="line" id="L598"><span class="tok-comment">///     compressed block</span></span>
+<span class="line" id="L599"><span class="tok-comment">///   - `error.DestTooSmall` is `dest` is not large enough to hold the</span></span>
+<span class="line" id="L600"><span class="tok-comment">///     decompressed block</span></span>
+<span class="line" id="L601"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeBlock</span>(</span>
+<span class="line" id="L602">    dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L603">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L604">    block_header: frame.Zstandard.Block.Header,</span>
+<span class="line" id="L605">    decode_state: *DecodeState,</span>
+<span class="line" id="L606">    consumed_count: *<span class="tok-type">usize</span>,</span>
+<span class="line" id="L607">    block_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L608">    written_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L609">) (<span class="tok-kw">error</span>{DestTooSmall} || Error)!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L610">    <span class="tok-kw">const</span> block_size = block_header.block_size;</span>
+<span class="line" id="L611">    <span class="tok-kw">if</span> (block_size_max &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BlockSizeOverMaximum;</span>
+<span class="line" id="L612">    <span class="tok-kw">switch</span> (block_header.block_type) {</span>
+<span class="line" id="L613">        .raw =&gt; {</span>
+<span class="line" id="L614">            <span class="tok-kw">if</span> (src.len &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedBlockSize;</span>
+<span class="line" id="L615">            <span class="tok-kw">if</span> (dest[written_count..].len &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DestTooSmall;</span>
+<span class="line" id="L616">            <span class="tok-builtin">@memcpy</span>(dest[written_count..][<span class="tok-number">0</span>..block_size], src[<span class="tok-number">0</span>..block_size]);</span>
+<span class="line" id="L617">            consumed_count.* += block_size;</span>
+<span class="line" id="L618">            decode_state.written_count += block_size;</span>
+<span class="line" id="L619">            <span class="tok-kw">return</span> block_size;</span>
+<span class="line" id="L620">        },</span>
+<span class="line" id="L621">        .rle =&gt; {</span>
+<span class="line" id="L622">            <span class="tok-kw">if</span> (src.len &lt; <span class="tok-number">1</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedRleBlock;</span>
+<span class="line" id="L623">            <span class="tok-kw">if</span> (dest[written_count..].len &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DestTooSmall;</span>
+<span class="line" id="L624">            <span class="tok-kw">for</span> (written_count..block_size + written_count) |write_pos| {</span>
+<span class="line" id="L625">                dest[write_pos] = src[<span class="tok-number">0</span>];</span>
+<span class="line" id="L626">            }</span>
+<span class="line" id="L627">            consumed_count.* += <span class="tok-number">1</span>;</span>
+<span class="line" id="L628">            decode_state.written_count += block_size;</span>
+<span class="line" id="L629">            <span class="tok-kw">return</span> block_size;</span>
+<span class="line" id="L630">        },</span>
+<span class="line" id="L631">        .compressed =&gt; {</span>
+<span class="line" id="L632">            <span class="tok-kw">if</span> (src.len &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedBlockSize;</span>
+<span class="line" id="L633">            <span class="tok-kw">var</span> bytes_read: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L634">            <span class="tok-kw">const</span> literals = decodeLiteralsSectionSlice(src[<span class="tok-number">0</span>..block_size], &amp;bytes_read) <span class="tok-kw">catch</span></span>
+<span class="line" id="L635">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L636">            <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src[bytes_read..block_size]);</span>
+<span class="line" id="L637">            <span class="tok-kw">const</span> fbs_reader = fbs.reader();</span>
+<span class="line" id="L638">            <span class="tok-kw">const</span> sequences_header = decodeSequencesHeader(fbs_reader) <span class="tok-kw">catch</span></span>
+<span class="line" id="L639">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L640"></span>
+<span class="line" id="L641">            decode_state.prepare(fbs_reader, literals, sequences_header) <span class="tok-kw">catch</span></span>
+<span class="line" id="L642">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L643"></span>
+<span class="line" id="L644">            bytes_read += fbs.pos;</span>
+<span class="line" id="L645"></span>
+<span class="line" id="L646">            <span class="tok-kw">var</span> bytes_written: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L647">            {</span>
+<span class="line" id="L648">                <span class="tok-kw">const</span> bit_stream_bytes = src[bytes_read..block_size];</span>
+<span class="line" id="L649">                <span class="tok-kw">var</span> bit_stream: readers.ReverseBitReader = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L650">                bit_stream.init(bit_stream_bytes) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L651"></span>
+<span class="line" id="L652">                <span class="tok-kw">if</span> (sequences_header.sequence_count &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L653">                    decode_state.readInitialFseState(&amp;bit_stream) <span class="tok-kw">catch</span></span>
+<span class="line" id="L654">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L655"></span>
+<span class="line" id="L656">                    <span class="tok-kw">var</span> sequence_size_limit = block_size_max;</span>
+<span class="line" id="L657">                    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..sequences_header.sequence_count) |i| {</span>
+<span class="line" id="L658">                        <span class="tok-kw">const</span> write_pos = written_count + bytes_written;</span>
+<span class="line" id="L659">                        <span class="tok-kw">const</span> decompressed_size = decode_state.decodeSequenceSlice(</span>
+<span class="line" id="L660">                            dest,</span>
+<span class="line" id="L661">                            write_pos,</span>
+<span class="line" id="L662">                            &amp;bit_stream,</span>
+<span class="line" id="L663">                            sequence_size_limit,</span>
+<span class="line" id="L664">                            i == sequences_header.sequence_count - <span class="tok-number">1</span>,</span>
+<span class="line" id="L665">                        ) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L666">                            <span class="tok-kw">error</span>.DestTooSmall =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DestTooSmall,</span>
+<span class="line" id="L667">                            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock,</span>
+<span class="line" id="L668">                        };</span>
+<span class="line" id="L669">                        bytes_written += decompressed_size;</span>
+<span class="line" id="L670">                        sequence_size_limit -= decompressed_size;</span>
+<span class="line" id="L671">                    }</span>
+<span class="line" id="L672">                }</span>
+<span class="line" id="L673"></span>
+<span class="line" id="L674">                <span class="tok-kw">if</span> (!bit_stream.isEmpty()) {</span>
+<span class="line" id="L675">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L676">                }</span>
+<span class="line" id="L677">            }</span>
+<span class="line" id="L678"></span>
+<span class="line" id="L679">            <span class="tok-kw">if</span> (decode_state.literal_written_count &lt; literals.header.regenerated_size) {</span>
+<span class="line" id="L680">                <span class="tok-kw">const</span> len = literals.header.regenerated_size - decode_state.literal_written_count;</span>
+<span class="line" id="L681">                <span class="tok-kw">if</span> (len &gt; dest[written_count + bytes_written ..].len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DestTooSmall;</span>
+<span class="line" id="L682">                decode_state.decodeLiteralsSlice(dest[written_count + bytes_written ..], len) <span class="tok-kw">catch</span></span>
+<span class="line" id="L683">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L684">                bytes_written += len;</span>
+<span class="line" id="L685">            }</span>
+<span class="line" id="L686"></span>
+<span class="line" id="L687">            <span class="tok-kw">switch</span> (decode_state.literal_header.block_type) {</span>
+<span class="line" id="L688">                .treeless, .compressed =&gt; {</span>
+<span class="line" id="L689">                    <span class="tok-kw">if</span> (!decode_state.isLiteralStreamEmpty()) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L690">                },</span>
+<span class="line" id="L691">                .raw, .rle =&gt; {},</span>
+<span class="line" id="L692">            }</span>
+<span class="line" id="L693"></span>
+<span class="line" id="L694">            consumed_count.* += block_size;</span>
+<span class="line" id="L695">            <span class="tok-kw">return</span> bytes_written;</span>
+<span class="line" id="L696">        },</span>
+<span class="line" id="L697">        .reserved =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReservedBlock,</span>
+<span class="line" id="L698">    }</span>
+<span class="line" id="L699">}</span>
+<span class="line" id="L700"></span>
+<span class="line" id="L701"><span class="tok-comment">/// Decode a single block from `src` into `dest`; see `decodeBlock()`. Returns</span></span>
+<span class="line" id="L702"><span class="tok-comment">/// the size of the decompressed block, which can be used with `dest.sliceLast()`</span></span>
+<span class="line" id="L703"><span class="tok-comment">/// to get the decompressed bytes. `error.BlockSizeOverMaximum` is returned if</span></span>
+<span class="line" id="L704"><span class="tok-comment">/// the block's compressed or decompressed size is larger than `block_size_max`.</span></span>
+<span class="line" id="L705"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeBlockRingBuffer</span>(</span>
+<span class="line" id="L706">    dest: *RingBuffer,</span>
+<span class="line" id="L707">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L708">    block_header: frame.Zstandard.Block.Header,</span>
+<span class="line" id="L709">    decode_state: *DecodeState,</span>
+<span class="line" id="L710">    consumed_count: *<span class="tok-type">usize</span>,</span>
+<span class="line" id="L711">    block_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L712">) Error!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L713">    <span class="tok-kw">const</span> block_size = block_header.block_size;</span>
+<span class="line" id="L714">    <span class="tok-kw">if</span> (block_size_max &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BlockSizeOverMaximum;</span>
+<span class="line" id="L715">    <span class="tok-kw">switch</span> (block_header.block_type) {</span>
+<span class="line" id="L716">        .raw =&gt; {</span>
+<span class="line" id="L717">            <span class="tok-kw">if</span> (src.len &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedBlockSize;</span>
+<span class="line" id="L718">            <span class="tok-kw">const</span> data = src[<span class="tok-number">0</span>..block_size];</span>
+<span class="line" id="L719">            dest.writeSliceAssumeCapacity(data);</span>
+<span class="line" id="L720">            consumed_count.* += block_size;</span>
+<span class="line" id="L721">            decode_state.written_count += block_size;</span>
+<span class="line" id="L722">            <span class="tok-kw">return</span> block_size;</span>
+<span class="line" id="L723">        },</span>
+<span class="line" id="L724">        .rle =&gt; {</span>
+<span class="line" id="L725">            <span class="tok-kw">if</span> (src.len &lt; <span class="tok-number">1</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedRleBlock;</span>
+<span class="line" id="L726">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..block_size) |_| {</span>
+<span class="line" id="L727">                dest.writeAssumeCapacity(src[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L728">            }</span>
+<span class="line" id="L729">            consumed_count.* += <span class="tok-number">1</span>;</span>
+<span class="line" id="L730">            decode_state.written_count += block_size;</span>
+<span class="line" id="L731">            <span class="tok-kw">return</span> block_size;</span>
+<span class="line" id="L732">        },</span>
+<span class="line" id="L733">        .compressed =&gt; {</span>
+<span class="line" id="L734">            <span class="tok-kw">if</span> (src.len &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedBlockSize;</span>
+<span class="line" id="L735">            <span class="tok-kw">var</span> bytes_read: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L736">            <span class="tok-kw">const</span> literals = decodeLiteralsSectionSlice(src[<span class="tok-number">0</span>..block_size], &amp;bytes_read) <span class="tok-kw">catch</span></span>
+<span class="line" id="L737">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L738">            <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src[bytes_read..block_size]);</span>
+<span class="line" id="L739">            <span class="tok-kw">const</span> fbs_reader = fbs.reader();</span>
+<span class="line" id="L740">            <span class="tok-kw">const</span> sequences_header = decodeSequencesHeader(fbs_reader) <span class="tok-kw">catch</span></span>
+<span class="line" id="L741">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L742"></span>
+<span class="line" id="L743">            decode_state.prepare(fbs_reader, literals, sequences_header) <span class="tok-kw">catch</span></span>
+<span class="line" id="L744">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L745"></span>
+<span class="line" id="L746">            bytes_read += fbs.pos;</span>
+<span class="line" id="L747"></span>
+<span class="line" id="L748">            <span class="tok-kw">var</span> bytes_written: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L749">            {</span>
+<span class="line" id="L750">                <span class="tok-kw">const</span> bit_stream_bytes = src[bytes_read..block_size];</span>
+<span class="line" id="L751">                <span class="tok-kw">var</span> bit_stream: readers.ReverseBitReader = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L752">                bit_stream.init(bit_stream_bytes) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L753"></span>
+<span class="line" id="L754">                <span class="tok-kw">if</span> (sequences_header.sequence_count &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L755">                    decode_state.readInitialFseState(&amp;bit_stream) <span class="tok-kw">catch</span></span>
+<span class="line" id="L756">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L757"></span>
+<span class="line" id="L758">                    <span class="tok-kw">var</span> sequence_size_limit = block_size_max;</span>
+<span class="line" id="L759">                    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..sequences_header.sequence_count) |i| {</span>
+<span class="line" id="L760">                        <span class="tok-kw">const</span> decompressed_size = decode_state.decodeSequenceRingBuffer(</span>
+<span class="line" id="L761">                            dest,</span>
+<span class="line" id="L762">                            &amp;bit_stream,</span>
+<span class="line" id="L763">                            sequence_size_limit,</span>
+<span class="line" id="L764">                            i == sequences_header.sequence_count - <span class="tok-number">1</span>,</span>
+<span class="line" id="L765">                        ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L766">                        bytes_written += decompressed_size;</span>
+<span class="line" id="L767">                        sequence_size_limit -= decompressed_size;</span>
+<span class="line" id="L768">                    }</span>
+<span class="line" id="L769">                }</span>
+<span class="line" id="L770"></span>
+<span class="line" id="L771">                <span class="tok-kw">if</span> (!bit_stream.isEmpty()) {</span>
+<span class="line" id="L772">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L773">                }</span>
+<span class="line" id="L774">            }</span>
+<span class="line" id="L775"></span>
+<span class="line" id="L776">            <span class="tok-kw">if</span> (decode_state.literal_written_count &lt; literals.header.regenerated_size) {</span>
+<span class="line" id="L777">                <span class="tok-kw">const</span> len = literals.header.regenerated_size - decode_state.literal_written_count;</span>
+<span class="line" id="L778">                decode_state.decodeLiteralsRingBuffer(dest, len) <span class="tok-kw">catch</span></span>
+<span class="line" id="L779">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L780">                bytes_written += len;</span>
+<span class="line" id="L781">            }</span>
+<span class="line" id="L782"></span>
+<span class="line" id="L783">            <span class="tok-kw">switch</span> (decode_state.literal_header.block_type) {</span>
+<span class="line" id="L784">                .treeless, .compressed =&gt; {</span>
+<span class="line" id="L785">                    <span class="tok-kw">if</span> (!decode_state.isLiteralStreamEmpty()) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L786">                },</span>
+<span class="line" id="L787">                .raw, .rle =&gt; {},</span>
+<span class="line" id="L788">            }</span>
+<span class="line" id="L789"></span>
+<span class="line" id="L790">            consumed_count.* += block_size;</span>
+<span class="line" id="L791">            <span class="tok-kw">if</span> (bytes_written &gt; block_size_max) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BlockSizeOverMaximum;</span>
+<span class="line" id="L792">            <span class="tok-kw">return</span> bytes_written;</span>
+<span class="line" id="L793">        },</span>
+<span class="line" id="L794">        .reserved =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReservedBlock,</span>
+<span class="line" id="L795">    }</span>
+<span class="line" id="L796">}</span>
+<span class="line" id="L797"></span>
+<span class="line" id="L798"><span class="tok-comment">/// Decode a single block from `source` into `dest`. Literal and sequence data</span></span>
+<span class="line" id="L799"><span class="tok-comment">/// from the block is copied into `literals_buffer` and `sequence_buffer`, which</span></span>
+<span class="line" id="L800"><span class="tok-comment">/// must be large enough or `error.LiteralsBufferTooSmall` and</span></span>
+<span class="line" id="L801"><span class="tok-comment">/// `error.SequenceBufferTooSmall` are returned (the maximum block size is an</span></span>
+<span class="line" id="L802"><span class="tok-comment">/// upper bound for the size of both buffers). See `decodeBlock`</span></span>
+<span class="line" id="L803"><span class="tok-comment">/// and `decodeBlockRingBuffer` for function that can decode a block without</span></span>
+<span class="line" id="L804"><span class="tok-comment">/// these extra copies. `error.EndOfStream` is returned if `source` does not</span></span>
+<span class="line" id="L805"><span class="tok-comment">/// contain enough bytes.</span></span>
+<span class="line" id="L806"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeBlockReader</span>(</span>
+<span class="line" id="L807">    dest: *RingBuffer,</span>
+<span class="line" id="L808">    source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L809">    block_header: frame.Zstandard.Block.Header,</span>
+<span class="line" id="L810">    decode_state: *DecodeState,</span>
+<span class="line" id="L811">    block_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L812">    literals_buffer: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L813">    sequence_buffer: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L814">) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L815">    <span class="tok-kw">const</span> block_size = block_header.block_size;</span>
+<span class="line" id="L816">    <span class="tok-kw">var</span> block_reader_limited = std.io.limitedReader(source, block_size);</span>
+<span class="line" id="L817">    <span class="tok-kw">const</span> block_reader = block_reader_limited.reader();</span>
+<span class="line" id="L818">    <span class="tok-kw">if</span> (block_size_max &lt; block_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BlockSizeOverMaximum;</span>
+<span class="line" id="L819">    <span class="tok-kw">switch</span> (block_header.block_type) {</span>
+<span class="line" id="L820">        .raw =&gt; {</span>
+<span class="line" id="L821">            <span class="tok-kw">if</span> (block_size == <span class="tok-number">0</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L822">            <span class="tok-kw">const</span> slice = dest.sliceAt(dest.write_index, block_size);</span>
+<span class="line" id="L823">            <span class="tok-kw">try</span> source.readNoEof(slice.first);</span>
+<span class="line" id="L824">            <span class="tok-kw">try</span> source.readNoEof(slice.second);</span>
+<span class="line" id="L825">            dest.write_index = dest.mask2(dest.write_index + block_size);</span>
+<span class="line" id="L826">            decode_state.written_count += block_size;</span>
+<span class="line" id="L827">        },</span>
+<span class="line" id="L828">        .rle =&gt; {</span>
+<span class="line" id="L829">            <span class="tok-kw">const</span> byte = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L830">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..block_size) |_| {</span>
+<span class="line" id="L831">                dest.writeAssumeCapacity(byte);</span>
+<span class="line" id="L832">            }</span>
+<span class="line" id="L833">            decode_state.written_count += block_size;</span>
+<span class="line" id="L834">        },</span>
+<span class="line" id="L835">        .compressed =&gt; {</span>
+<span class="line" id="L836">            <span class="tok-kw">const</span> literals = <span class="tok-kw">try</span> decodeLiteralsSection(block_reader, literals_buffer);</span>
+<span class="line" id="L837">            <span class="tok-kw">const</span> sequences_header = <span class="tok-kw">try</span> decodeSequencesHeader(block_reader);</span>
+<span class="line" id="L838"></span>
+<span class="line" id="L839">            <span class="tok-kw">try</span> decode_state.prepare(block_reader, literals, sequences_header);</span>
+<span class="line" id="L840"></span>
+<span class="line" id="L841">            <span class="tok-kw">var</span> bytes_written: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L842">            {</span>
+<span class="line" id="L843">                <span class="tok-kw">const</span> size = <span class="tok-kw">try</span> block_reader.readAll(sequence_buffer);</span>
+<span class="line" id="L844">                <span class="tok-kw">var</span> bit_stream: readers.ReverseBitReader = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L845">                <span class="tok-kw">try</span> bit_stream.init(sequence_buffer[<span class="tok-number">0</span>..size]);</span>
+<span class="line" id="L846"></span>
+<span class="line" id="L847">                <span class="tok-kw">if</span> (sequences_header.sequence_count &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L848">                    <span class="tok-kw">if</span> (sequence_buffer.len &lt; block_reader_limited.bytes_left)</span>
+<span class="line" id="L849">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SequenceBufferTooSmall;</span>
+<span class="line" id="L850"></span>
+<span class="line" id="L851">                    decode_state.readInitialFseState(&amp;bit_stream) <span class="tok-kw">catch</span></span>
+<span class="line" id="L852">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L853"></span>
+<span class="line" id="L854">                    <span class="tok-kw">var</span> sequence_size_limit = block_size_max;</span>
+<span class="line" id="L855">                    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..sequences_header.sequence_count) |i| {</span>
+<span class="line" id="L856">                        <span class="tok-kw">const</span> decompressed_size = decode_state.decodeSequenceRingBuffer(</span>
+<span class="line" id="L857">                            dest,</span>
+<span class="line" id="L858">                            &amp;bit_stream,</span>
+<span class="line" id="L859">                            sequence_size_limit,</span>
+<span class="line" id="L860">                            i == sequences_header.sequence_count - <span class="tok-number">1</span>,</span>
+<span class="line" id="L861">                        ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L862">                        sequence_size_limit -= decompressed_size;</span>
+<span class="line" id="L863">                        bytes_written += decompressed_size;</span>
+<span class="line" id="L864">                    }</span>
+<span class="line" id="L865">                }</span>
+<span class="line" id="L866"></span>
+<span class="line" id="L867">                <span class="tok-kw">if</span> (!bit_stream.isEmpty()) {</span>
+<span class="line" id="L868">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L869">                }</span>
+<span class="line" id="L870">            }</span>
+<span class="line" id="L871"></span>
+<span class="line" id="L872">            <span class="tok-kw">if</span> (decode_state.literal_written_count &lt; literals.header.regenerated_size) {</span>
+<span class="line" id="L873">                <span class="tok-kw">const</span> len = literals.header.regenerated_size - decode_state.literal_written_count;</span>
+<span class="line" id="L874">                decode_state.decodeLiteralsRingBuffer(dest, len) <span class="tok-kw">catch</span></span>
+<span class="line" id="L875">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L876">                bytes_written += len;</span>
+<span class="line" id="L877">            }</span>
+<span class="line" id="L878"></span>
+<span class="line" id="L879">            <span class="tok-kw">switch</span> (decode_state.literal_header.block_type) {</span>
+<span class="line" id="L880">                .treeless, .compressed =&gt; {</span>
+<span class="line" id="L881">                    <span class="tok-kw">if</span> (!decode_state.isLiteralStreamEmpty()) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L882">                },</span>
+<span class="line" id="L883">                .raw, .rle =&gt; {},</span>
+<span class="line" id="L884">            }</span>
+<span class="line" id="L885"></span>
+<span class="line" id="L886">            <span class="tok-kw">if</span> (bytes_written &gt; block_size_max) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BlockSizeOverMaximum;</span>
+<span class="line" id="L887">            <span class="tok-kw">if</span> (block_reader_limited.bytes_left != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedCompressedBlock;</span>
+<span class="line" id="L888">            decode_state.literal_written_count = <span class="tok-number">0</span>;</span>
+<span class="line" id="L889">        },</span>
+<span class="line" id="L890">        .reserved =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReservedBlock,</span>
+<span class="line" id="L891">    }</span>
+<span class="line" id="L892">}</span>
+<span class="line" id="L893"></span>
+<span class="line" id="L894"><span class="tok-comment">/// Decode the header of a block.</span></span>
+<span class="line" id="L895"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeBlockHeader</span>(src: *<span class="tok-kw">const</span> [<span class="tok-number">3</span>]<span class="tok-type">u8</span>) frame.Zstandard.Block.Header {</span>
+<span class="line" id="L896">    <span class="tok-kw">const</span> last_block = src[<span class="tok-number">0</span>] &amp; <span class="tok-number">1</span> == <span class="tok-number">1</span>;</span>
+<span class="line" id="L897">    <span class="tok-kw">const</span> block_type = <span class="tok-builtin">@as</span>(frame.Zstandard.Block.Type, <span class="tok-builtin">@enumFromInt</span>((src[<span class="tok-number">0</span>] &amp; <span class="tok-number">0b110</span>) &gt;&gt; <span class="tok-number">1</span>));</span>
+<span class="line" id="L898">    <span class="tok-kw">const</span> block_size = ((src[<span class="tok-number">0</span>] &amp; <span class="tok-number">0b11111000</span>) &gt;&gt; <span class="tok-number">3</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u21</span>, src[<span class="tok-number">1</span>]) &lt;&lt; <span class="tok-number">5</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u21</span>, src[<span class="tok-number">2</span>]) &lt;&lt; <span class="tok-number">13</span>);</span>
+<span class="line" id="L899">    <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L900">        .last_block = last_block,</span>
+<span class="line" id="L901">        .block_type = block_type,</span>
+<span class="line" id="L902">        .block_size = block_size,</span>
+<span class="line" id="L903">    };</span>
+<span class="line" id="L904">}</span>
+<span class="line" id="L905"></span>
+<span class="line" id="L906"><span class="tok-comment">/// Decode the header of a block.</span></span>
+<span class="line" id="L907"><span class="tok-comment">///</span></span>
+<span class="line" id="L908"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L909"><span class="tok-comment">///   - `error.EndOfStream` if `src.len &lt; 3`</span></span>
+<span class="line" id="L910"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeBlockHeaderSlice</span>(src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-kw">error</span>{EndOfStream}!frame.Zstandard.Block.Header {</span>
+<span class="line" id="L911">    <span class="tok-kw">if</span> (src.len &lt; <span class="tok-number">3</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.EndOfStream;</span>
+<span class="line" id="L912">    <span class="tok-kw">return</span> decodeBlockHeader(src[<span class="tok-number">0</span>..<span class="tok-number">3</span>]);</span>
+<span class="line" id="L913">}</span>
+<span class="line" id="L914"></span>
+<span class="line" id="L915"><span class="tok-comment">/// Decode a `LiteralsSection` from `src`, incrementing `consumed_count` by the</span></span>
+<span class="line" id="L916"><span class="tok-comment">/// number of bytes the section uses.</span></span>
+<span class="line" id="L917"><span class="tok-comment">///</span></span>
+<span class="line" id="L918"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L919"><span class="tok-comment">///   - `error.MalformedLiteralsHeader` if the header is invalid</span></span>
+<span class="line" id="L920"><span class="tok-comment">///   - `error.MalformedLiteralsSection` if there are decoding errors</span></span>
+<span class="line" id="L921"><span class="tok-comment">///   - `error.MalformedAccuracyLog` if compressed literals have invalid</span></span>
+<span class="line" id="L922"><span class="tok-comment">///     accuracy</span></span>
+<span class="line" id="L923"><span class="tok-comment">///   - `error.MalformedFseTable` if compressed literals have invalid FSE table</span></span>
+<span class="line" id="L924"><span class="tok-comment">///   - `error.MalformedHuffmanTree` if there are errors decoding a Huffamn tree</span></span>
+<span class="line" id="L925"><span class="tok-comment">///   - `error.EndOfStream` if there are not enough bytes in `src`</span></span>
+<span class="line" id="L926"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeLiteralsSectionSlice</span>(</span>
+<span class="line" id="L927">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L928">    consumed_count: *<span class="tok-type">usize</span>,</span>
+<span class="line" id="L929">) (<span class="tok-kw">error</span>{ MalformedLiteralsHeader, MalformedLiteralsSection, EndOfStream } || huffman.Error)!LiteralsSection {</span>
+<span class="line" id="L930">    <span class="tok-kw">var</span> bytes_read: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L931">    <span class="tok-kw">const</span> header = header: {</span>
+<span class="line" id="L932">        <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src);</span>
+<span class="line" id="L933">        <span class="tok-kw">defer</span> bytes_read = fbs.pos;</span>
+<span class="line" id="L934">        <span class="tok-kw">break</span> :header decodeLiteralsHeader(fbs.reader()) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsHeader;</span>
+<span class="line" id="L935">    };</span>
+<span class="line" id="L936">    <span class="tok-kw">switch</span> (header.block_type) {</span>
+<span class="line" id="L937">        .raw =&gt; {</span>
+<span class="line" id="L938">            <span class="tok-kw">if</span> (src.len &lt; bytes_read + header.regenerated_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsSection;</span>
+<span class="line" id="L939">            <span class="tok-kw">const</span> stream = src[bytes_read .. bytes_read + header.regenerated_size];</span>
+<span class="line" id="L940">            consumed_count.* += header.regenerated_size + bytes_read;</span>
+<span class="line" id="L941">            <span class="tok-kw">return</span> LiteralsSection{</span>
+<span class="line" id="L942">                .header = header,</span>
+<span class="line" id="L943">                .huffman_tree = <span class="tok-null">null</span>,</span>
+<span class="line" id="L944">                .streams = .{ .one = stream },</span>
+<span class="line" id="L945">            };</span>
+<span class="line" id="L946">        },</span>
+<span class="line" id="L947">        .rle =&gt; {</span>
+<span class="line" id="L948">            <span class="tok-kw">if</span> (src.len &lt; bytes_read + <span class="tok-number">1</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsSection;</span>
+<span class="line" id="L949">            <span class="tok-kw">const</span> stream = src[bytes_read .. bytes_read + <span class="tok-number">1</span>];</span>
+<span class="line" id="L950">            consumed_count.* += <span class="tok-number">1</span> + bytes_read;</span>
+<span class="line" id="L951">            <span class="tok-kw">return</span> LiteralsSection{</span>
+<span class="line" id="L952">                .header = header,</span>
+<span class="line" id="L953">                .huffman_tree = <span class="tok-null">null</span>,</span>
+<span class="line" id="L954">                .streams = .{ .one = stream },</span>
+<span class="line" id="L955">            };</span>
+<span class="line" id="L956">        },</span>
+<span class="line" id="L957">        .compressed, .treeless =&gt; {</span>
+<span class="line" id="L958">            <span class="tok-kw">const</span> huffman_tree_start = bytes_read;</span>
+<span class="line" id="L959">            <span class="tok-kw">const</span> huffman_tree = <span class="tok-kw">if</span> (header.block_type == .compressed)</span>
+<span class="line" id="L960">                <span class="tok-kw">try</span> huffman.decodeHuffmanTreeSlice(src[bytes_read..], &amp;bytes_read)</span>
+<span class="line" id="L961">            <span class="tok-kw">else</span></span>
+<span class="line" id="L962">                <span class="tok-null">null</span>;</span>
+<span class="line" id="L963">            <span class="tok-kw">const</span> huffman_tree_size = bytes_read - huffman_tree_start;</span>
+<span class="line" id="L964">            <span class="tok-kw">const</span> total_streams_size = std.math.sub(<span class="tok-type">usize</span>, header.compressed_size.?, huffman_tree_size) <span class="tok-kw">catch</span></span>
+<span class="line" id="L965">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsSection;</span>
+<span class="line" id="L966"></span>
+<span class="line" id="L967">            <span class="tok-kw">if</span> (src.len &lt; bytes_read + total_streams_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsSection;</span>
+<span class="line" id="L968">            <span class="tok-kw">const</span> stream_data = src[bytes_read .. bytes_read + total_streams_size];</span>
+<span class="line" id="L969"></span>
+<span class="line" id="L970">            <span class="tok-kw">const</span> streams = <span class="tok-kw">try</span> decodeStreams(header.size_format, stream_data);</span>
+<span class="line" id="L971">            consumed_count.* += bytes_read + total_streams_size;</span>
+<span class="line" id="L972">            <span class="tok-kw">return</span> LiteralsSection{</span>
+<span class="line" id="L973">                .header = header,</span>
+<span class="line" id="L974">                .huffman_tree = huffman_tree,</span>
+<span class="line" id="L975">                .streams = streams,</span>
+<span class="line" id="L976">            };</span>
+<span class="line" id="L977">        },</span>
+<span class="line" id="L978">    }</span>
+<span class="line" id="L979">}</span>
+<span class="line" id="L980"></span>
+<span class="line" id="L981"><span class="tok-comment">/// Decode a `LiteralsSection` from `src`, incrementing `consumed_count` by the</span></span>
+<span class="line" id="L982"><span class="tok-comment">/// number of bytes the section uses. See `decodeLiterasSectionSlice()`.</span></span>
+<span class="line" id="L983"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeLiteralsSection</span>(</span>
+<span class="line" id="L984">    source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L985">    buffer: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L986">) !LiteralsSection {</span>
+<span class="line" id="L987">    <span class="tok-kw">const</span> header = <span class="tok-kw">try</span> decodeLiteralsHeader(source);</span>
+<span class="line" id="L988">    <span class="tok-kw">switch</span> (header.block_type) {</span>
+<span class="line" id="L989">        .raw =&gt; {</span>
+<span class="line" id="L990">            <span class="tok-kw">try</span> source.readNoEof(buffer[<span class="tok-number">0</span>..header.regenerated_size]);</span>
+<span class="line" id="L991">            <span class="tok-kw">return</span> LiteralsSection{</span>
+<span class="line" id="L992">                .header = header,</span>
+<span class="line" id="L993">                .huffman_tree = <span class="tok-null">null</span>,</span>
+<span class="line" id="L994">                .streams = .{ .one = buffer },</span>
+<span class="line" id="L995">            };</span>
+<span class="line" id="L996">        },</span>
+<span class="line" id="L997">        .rle =&gt; {</span>
+<span class="line" id="L998">            buffer[<span class="tok-number">0</span>] = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L999">            <span class="tok-kw">return</span> LiteralsSection{</span>
+<span class="line" id="L1000">                .header = header,</span>
+<span class="line" id="L1001">                .huffman_tree = <span class="tok-null">null</span>,</span>
+<span class="line" id="L1002">                .streams = .{ .one = buffer[<span class="tok-number">0</span>..<span class="tok-number">1</span>] },</span>
+<span class="line" id="L1003">            };</span>
+<span class="line" id="L1004">        },</span>
+<span class="line" id="L1005">        .compressed, .treeless =&gt; {</span>
+<span class="line" id="L1006">            <span class="tok-kw">var</span> counting_reader = std.io.countingReader(source);</span>
+<span class="line" id="L1007">            <span class="tok-kw">const</span> huffman_tree = <span class="tok-kw">if</span> (header.block_type == .compressed)</span>
+<span class="line" id="L1008">                <span class="tok-kw">try</span> huffman.decodeHuffmanTree(counting_reader.reader(), buffer)</span>
+<span class="line" id="L1009">            <span class="tok-kw">else</span></span>
+<span class="line" id="L1010">                <span class="tok-null">null</span>;</span>
+<span class="line" id="L1011">            <span class="tok-kw">const</span> huffman_tree_size = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(counting_reader.bytes_read));</span>
+<span class="line" id="L1012">            <span class="tok-kw">const</span> total_streams_size = std.math.sub(<span class="tok-type">usize</span>, header.compressed_size.?, huffman_tree_size) <span class="tok-kw">catch</span></span>
+<span class="line" id="L1013">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsSection;</span>
+<span class="line" id="L1014"></span>
+<span class="line" id="L1015">            <span class="tok-kw">if</span> (total_streams_size &gt; buffer.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.LiteralsBufferTooSmall;</span>
+<span class="line" id="L1016">            <span class="tok-kw">try</span> source.readNoEof(buffer[<span class="tok-number">0</span>..total_streams_size]);</span>
+<span class="line" id="L1017">            <span class="tok-kw">const</span> stream_data = buffer[<span class="tok-number">0</span>..total_streams_size];</span>
+<span class="line" id="L1018"></span>
+<span class="line" id="L1019">            <span class="tok-kw">const</span> streams = <span class="tok-kw">try</span> decodeStreams(header.size_format, stream_data);</span>
+<span class="line" id="L1020">            <span class="tok-kw">return</span> LiteralsSection{</span>
+<span class="line" id="L1021">                .header = header,</span>
+<span class="line" id="L1022">                .huffman_tree = huffman_tree,</span>
+<span class="line" id="L1023">                .streams = streams,</span>
+<span class="line" id="L1024">            };</span>
+<span class="line" id="L1025">        },</span>
+<span class="line" id="L1026">    }</span>
+<span class="line" id="L1027">}</span>
+<span class="line" id="L1028"></span>
+<span class="line" id="L1029"><span class="tok-kw">fn</span> <span class="tok-fn">decodeStreams</span>(size_format: <span class="tok-type">u2</span>, stream_data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !LiteralsSection.Streams {</span>
+<span class="line" id="L1030">    <span class="tok-kw">if</span> (size_format == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1031">        <span class="tok-kw">return</span> .{ .one = stream_data };</span>
+<span class="line" id="L1032">    }</span>
+<span class="line" id="L1033"></span>
+<span class="line" id="L1034">    <span class="tok-kw">if</span> (stream_data.len &lt; <span class="tok-number">6</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsSection;</span>
+<span class="line" id="L1035"></span>
+<span class="line" id="L1036">    <span class="tok-kw">const</span> stream_1_length = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, readInt(<span class="tok-type">u16</span>, stream_data[<span class="tok-number">0</span>..<span class="tok-number">2</span>]));</span>
+<span class="line" id="L1037">    <span class="tok-kw">const</span> stream_2_length = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, readInt(<span class="tok-type">u16</span>, stream_data[<span class="tok-number">2</span>..<span class="tok-number">4</span>]));</span>
+<span class="line" id="L1038">    <span class="tok-kw">const</span> stream_3_length = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, readInt(<span class="tok-type">u16</span>, stream_data[<span class="tok-number">4</span>..<span class="tok-number">6</span>]));</span>
+<span class="line" id="L1039"></span>
+<span class="line" id="L1040">    <span class="tok-kw">const</span> stream_1_start = <span class="tok-number">6</span>;</span>
+<span class="line" id="L1041">    <span class="tok-kw">const</span> stream_2_start = stream_1_start + stream_1_length;</span>
+<span class="line" id="L1042">    <span class="tok-kw">const</span> stream_3_start = stream_2_start + stream_2_length;</span>
+<span class="line" id="L1043">    <span class="tok-kw">const</span> stream_4_start = stream_3_start + stream_3_length;</span>
+<span class="line" id="L1044"></span>
+<span class="line" id="L1045">    <span class="tok-kw">if</span> (stream_data.len &lt; stream_4_start) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedLiteralsSection;</span>
+<span class="line" id="L1046"></span>
+<span class="line" id="L1047">    <span class="tok-kw">return</span> .{ .four = .{</span>
+<span class="line" id="L1048">        stream_data[stream_1_start .. stream_1_start + stream_1_length],</span>
+<span class="line" id="L1049">        stream_data[stream_2_start .. stream_2_start + stream_2_length],</span>
+<span class="line" id="L1050">        stream_data[stream_3_start .. stream_3_start + stream_3_length],</span>
+<span class="line" id="L1051">        stream_data[stream_4_start..],</span>
+<span class="line" id="L1052">    } };</span>
+<span class="line" id="L1053">}</span>
+<span class="line" id="L1054"></span>
+<span class="line" id="L1055"><span class="tok-comment">/// Decode a literals section header.</span></span>
+<span class="line" id="L1056"><span class="tok-comment">///</span></span>
+<span class="line" id="L1057"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L1058"><span class="tok-comment">///   - `error.EndOfStream` if there are not enough bytes in `source`</span></span>
+<span class="line" id="L1059"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeLiteralsHeader</span>(source: <span class="tok-kw">anytype</span>) !LiteralsSection.Header {</span>
+<span class="line" id="L1060">    <span class="tok-kw">const</span> byte0 = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1061">    <span class="tok-kw">const</span> block_type = <span class="tok-builtin">@as</span>(LiteralsSection.BlockType, <span class="tok-builtin">@enumFromInt</span>(byte0 &amp; <span class="tok-number">0b11</span>));</span>
+<span class="line" id="L1062">    <span class="tok-kw">const</span> size_format = <span class="tok-builtin">@as</span>(<span class="tok-type">u2</span>, <span class="tok-builtin">@intCast</span>((byte0 &amp; <span class="tok-number">0b1100</span>) &gt;&gt; <span class="tok-number">2</span>));</span>
+<span class="line" id="L1063">    <span class="tok-kw">var</span> regenerated_size: <span class="tok-type">u20</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1064">    <span class="tok-kw">var</span> compressed_size: ?<span class="tok-type">u18</span> = <span class="tok-null">null</span>;</span>
+<span class="line" id="L1065">    <span class="tok-kw">switch</span> (block_type) {</span>
+<span class="line" id="L1066">        .raw, .rle =&gt; {</span>
+<span class="line" id="L1067">            <span class="tok-kw">switch</span> (size_format) {</span>
+<span class="line" id="L1068">                <span class="tok-number">0</span>, <span class="tok-number">2</span> =&gt; {</span>
+<span class="line" id="L1069">                    regenerated_size = byte0 &gt;&gt; <span class="tok-number">3</span>;</span>
+<span class="line" id="L1070">                },</span>
+<span class="line" id="L1071">                <span class="tok-number">1</span> =&gt; regenerated_size = (byte0 &gt;&gt; <span class="tok-number">4</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, <span class="tok-kw">try</span> source.readByte()) &lt;&lt; <span class="tok-number">4</span>),</span>
+<span class="line" id="L1072">                <span class="tok-number">3</span> =&gt; regenerated_size = (byte0 &gt;&gt; <span class="tok-number">4</span>) +</span>
+<span class="line" id="L1073">                    (<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, <span class="tok-kw">try</span> source.readByte()) &lt;&lt; <span class="tok-number">4</span>) +</span>
+<span class="line" id="L1074">                    (<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, <span class="tok-kw">try</span> source.readByte()) &lt;&lt; <span class="tok-number">12</span>),</span>
+<span class="line" id="L1075">            }</span>
+<span class="line" id="L1076">        },</span>
+<span class="line" id="L1077">        .compressed, .treeless =&gt; {</span>
+<span class="line" id="L1078">            <span class="tok-kw">const</span> byte1 = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1079">            <span class="tok-kw">const</span> byte2 = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1080">            <span class="tok-kw">switch</span> (size_format) {</span>
+<span class="line" id="L1081">                <span class="tok-number">0</span>, <span class="tok-number">1</span> =&gt; {</span>
+<span class="line" id="L1082">                    regenerated_size = (byte0 &gt;&gt; <span class="tok-number">4</span>) + ((<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, byte1) &amp; <span class="tok-number">0b00111111</span>) &lt;&lt; <span class="tok-number">4</span>);</span>
+<span class="line" id="L1083">                    compressed_size = ((byte1 &amp; <span class="tok-number">0b11000000</span>) &gt;&gt; <span class="tok-number">6</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u18</span>, byte2) &lt;&lt; <span class="tok-number">2</span>);</span>
+<span class="line" id="L1084">                },</span>
+<span class="line" id="L1085">                <span class="tok-number">2</span> =&gt; {</span>
+<span class="line" id="L1086">                    <span class="tok-kw">const</span> byte3 = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1087">                    regenerated_size = (byte0 &gt;&gt; <span class="tok-number">4</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, byte1) &lt;&lt; <span class="tok-number">4</span>) + ((<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, byte2) &amp; <span class="tok-number">0b00000011</span>) &lt;&lt; <span class="tok-number">12</span>);</span>
+<span class="line" id="L1088">                    compressed_size = ((byte2 &amp; <span class="tok-number">0b11111100</span>) &gt;&gt; <span class="tok-number">2</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u18</span>, byte3) &lt;&lt; <span class="tok-number">6</span>);</span>
+<span class="line" id="L1089">                },</span>
+<span class="line" id="L1090">                <span class="tok-number">3</span> =&gt; {</span>
+<span class="line" id="L1091">                    <span class="tok-kw">const</span> byte3 = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1092">                    <span class="tok-kw">const</span> byte4 = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1093">                    regenerated_size = (byte0 &gt;&gt; <span class="tok-number">4</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, byte1) &lt;&lt; <span class="tok-number">4</span>) + ((<span class="tok-builtin">@as</span>(<span class="tok-type">u20</span>, byte2) &amp; <span class="tok-number">0b00111111</span>) &lt;&lt; <span class="tok-number">12</span>);</span>
+<span class="line" id="L1094">                    compressed_size = ((byte2 &amp; <span class="tok-number">0b11000000</span>) &gt;&gt; <span class="tok-number">6</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u18</span>, byte3) &lt;&lt; <span class="tok-number">2</span>) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u18</span>, byte4) &lt;&lt; <span class="tok-number">10</span>);</span>
+<span class="line" id="L1095">                },</span>
+<span class="line" id="L1096">            }</span>
+<span class="line" id="L1097">        },</span>
+<span class="line" id="L1098">    }</span>
+<span class="line" id="L1099">    <span class="tok-kw">return</span> LiteralsSection.Header{</span>
+<span class="line" id="L1100">        .block_type = block_type,</span>
+<span class="line" id="L1101">        .size_format = size_format,</span>
+<span class="line" id="L1102">        .regenerated_size = regenerated_size,</span>
+<span class="line" id="L1103">        .compressed_size = compressed_size,</span>
+<span class="line" id="L1104">    };</span>
+<span class="line" id="L1105">}</span>
+<span class="line" id="L1106"></span>
+<span class="line" id="L1107"><span class="tok-comment">/// Decode a sequences section header.</span></span>
+<span class="line" id="L1108"><span class="tok-comment">///</span></span>
+<span class="line" id="L1109"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L1110"><span class="tok-comment">///   - `error.ReservedBitSet` if the reserved bit is set</span></span>
+<span class="line" id="L1111"><span class="tok-comment">///   - `error.EndOfStream` if there are not enough bytes in `source`</span></span>
+<span class="line" id="L1112"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeSequencesHeader</span>(</span>
+<span class="line" id="L1113">    source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L1114">) !SequencesSection.Header {</span>
+<span class="line" id="L1115">    <span class="tok-kw">var</span> sequence_count: <span class="tok-type">u24</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1116"></span>
+<span class="line" id="L1117">    <span class="tok-kw">const</span> byte0 = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1118">    <span class="tok-kw">if</span> (byte0 == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1119">        <span class="tok-kw">return</span> SequencesSection.Header{</span>
+<span class="line" id="L1120">            .sequence_count = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1121">            .offsets = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1122">            .match_lengths = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1123">            .literal_lengths = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1124">        };</span>
+<span class="line" id="L1125">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (byte0 &lt; <span class="tok-number">128</span>) {</span>
+<span class="line" id="L1126">        sequence_count = byte0;</span>
+<span class="line" id="L1127">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (byte0 &lt; <span class="tok-number">255</span>) {</span>
+<span class="line" id="L1128">        sequence_count = (<span class="tok-builtin">@as</span>(<span class="tok-type">u24</span>, (byte0 - <span class="tok-number">128</span>)) &lt;&lt; <span class="tok-number">8</span>) + <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1129">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1130">        sequence_count = (<span class="tok-kw">try</span> source.readByte()) + (<span class="tok-builtin">@as</span>(<span class="tok-type">u24</span>, <span class="tok-kw">try</span> source.readByte()) &lt;&lt; <span class="tok-number">8</span>) + <span class="tok-number">0x7F00</span>;</span>
+<span class="line" id="L1131">    }</span>
+<span class="line" id="L1132"></span>
+<span class="line" id="L1133">    <span class="tok-kw">const</span> compression_modes = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L1134"></span>
+<span class="line" id="L1135">    <span class="tok-kw">const</span> matches_mode = <span class="tok-builtin">@as</span>(SequencesSection.Header.Mode, <span class="tok-builtin">@enumFromInt</span>((compression_modes &amp; <span class="tok-number">0b00001100</span>) &gt;&gt; <span class="tok-number">2</span>));</span>
+<span class="line" id="L1136">    <span class="tok-kw">const</span> offsets_mode = <span class="tok-builtin">@as</span>(SequencesSection.Header.Mode, <span class="tok-builtin">@enumFromInt</span>((compression_modes &amp; <span class="tok-number">0b00110000</span>) &gt;&gt; <span class="tok-number">4</span>));</span>
+<span class="line" id="L1137">    <span class="tok-kw">const</span> literal_mode = <span class="tok-builtin">@as</span>(SequencesSection.Header.Mode, <span class="tok-builtin">@enumFromInt</span>((compression_modes &amp; <span class="tok-number">0b11000000</span>) &gt;&gt; <span class="tok-number">6</span>));</span>
+<span class="line" id="L1138">    <span class="tok-kw">if</span> (compression_modes &amp; <span class="tok-number">0b11</span> != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReservedBitSet;</span>
+<span class="line" id="L1139"></span>
+<span class="line" id="L1140">    <span class="tok-kw">return</span> SequencesSection.Header{</span>
+<span class="line" id="L1141">        .sequence_count = sequence_count,</span>
+<span class="line" id="L1142">        .offsets = offsets_mode,</span>
+<span class="line" id="L1143">        .match_lengths = matches_mode,</span>
+<span class="line" id="L1144">        .literal_lengths = literal_mode,</span>
+<span class="line" id="L1145">    };</span>
+<span class="line" id="L1146">}</span>
+<span class="line" id="L1147"></span>
+</code></pre></body>
+</html>

@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Build/Step/InstallDir.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> Step = std.Build.Step;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> LazyPath = std.Build.LazyPath;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> InstallDir = std.Build.InstallDir;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> InstallDirStep = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9">step: Step,</span>
+<span class="line" id="L10">options: Options,</span>
+<span class="line" id="L11"><span class="tok-comment">/// This is used by the build system when a file being installed comes from one</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// package but is being installed by another.</span></span>
+<span class="line" id="L13">dest_builder: *std.Build,</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> base_id = .install_dir;</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L18">    source_dir: LazyPath,</span>
+<span class="line" id="L19">    install_dir: InstallDir,</span>
+<span class="line" id="L20">    install_subdir: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L21">    <span class="tok-comment">/// File paths which end in any of these suffixes will be excluded</span></span>
+<span class="line" id="L22">    <span class="tok-comment">/// from being installed.</span></span>
+<span class="line" id="L23">    exclude_extensions: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span> = &amp;.{},</span>
+<span class="line" id="L24">    <span class="tok-comment">/// File paths which end in any of these suffixes will result in</span></span>
+<span class="line" id="L25">    <span class="tok-comment">/// empty files being installed. This is mainly intended for large</span></span>
+<span class="line" id="L26">    <span class="tok-comment">/// test.zig files in order to prevent needless installation bloat.</span></span>
+<span class="line" id="L27">    <span class="tok-comment">/// However if the files were not present at all, then</span></span>
+<span class="line" id="L28">    <span class="tok-comment">/// `@import(&quot;test.zig&quot;)` would be a compile error.</span></span>
+<span class="line" id="L29">    blank_extensions: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span> = &amp;.{},</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31">    <span class="tok-kw">fn</span> <span class="tok-fn">dupe</span>(self: Options, b: *std.Build) Options {</span>
+<span class="line" id="L32">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L33">            .source_dir = self.source_dir.dupe(b),</span>
+<span class="line" id="L34">            .install_dir = self.install_dir.dupe(b),</span>
+<span class="line" id="L35">            .install_subdir = b.dupe(self.install_subdir),</span>
+<span class="line" id="L36">            .exclude_extensions = b.dupeStrings(self.exclude_extensions),</span>
+<span class="line" id="L37">            .blank_extensions = b.dupeStrings(self.blank_extensions),</span>
+<span class="line" id="L38">        };</span>
+<span class="line" id="L39">    }</span>
+<span class="line" id="L40">};</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(owner: *std.Build, options: Options) *InstallDirStep {</span>
+<span class="line" id="L43">    owner.pushInstalledFile(options.install_dir, options.install_subdir);</span>
+<span class="line" id="L44">    <span class="tok-kw">const</span> self = owner.allocator.create(InstallDirStep) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L45">    self.* = .{</span>
+<span class="line" id="L46">        .step = Step.init(.{</span>
+<span class="line" id="L47">            .id = .install_dir,</span>
+<span class="line" id="L48">            .name = owner.fmt(<span class="tok-str">&quot;install {s}/&quot;</span>, .{options.source_dir.getDisplayName()}),</span>
+<span class="line" id="L49">            .owner = owner,</span>
+<span class="line" id="L50">            .makeFn = make,</span>
+<span class="line" id="L51">        }),</span>
+<span class="line" id="L52">        .options = options.dupe(owner),</span>
+<span class="line" id="L53">        .dest_builder = owner,</span>
+<span class="line" id="L54">    };</span>
+<span class="line" id="L55">    options.source_dir.addStepDependencies(&amp;self.step);</span>
+<span class="line" id="L56">    <span class="tok-kw">return</span> self;</span>
+<span class="line" id="L57">}</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59"><span class="tok-kw">fn</span> <span class="tok-fn">make</span>(step: *Step, prog_node: *std.Progress.Node) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L60">    _ = prog_node;</span>
+<span class="line" id="L61">    <span class="tok-kw">const</span> self = <span class="tok-builtin">@fieldParentPtr</span>(InstallDirStep, <span class="tok-str">&quot;step&quot;</span>, step);</span>
+<span class="line" id="L62">    <span class="tok-kw">const</span> dest_builder = self.dest_builder;</span>
+<span class="line" id="L63">    <span class="tok-kw">const</span> arena = dest_builder.allocator;</span>
+<span class="line" id="L64">    <span class="tok-kw">const</span> dest_prefix = dest_builder.getInstallPath(self.options.install_dir, self.options.install_subdir);</span>
+<span class="line" id="L65">    <span class="tok-kw">const</span> src_builder = self.step.owner;</span>
+<span class="line" id="L66">    <span class="tok-kw">const</span> src_dir_path = self.options.source_dir.getPath2(src_builder, step);</span>
+<span class="line" id="L67">    <span class="tok-kw">var</span> src_dir = src_builder.build_root.handle.openIterableDir(src_dir_path, .{}) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L68">        <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;unable to open source directory '{}{s}': {s}&quot;</span>, .{</span>
+<span class="line" id="L69">            src_builder.build_root, src_dir_path, <span class="tok-builtin">@errorName</span>(err),</span>
+<span class="line" id="L70">        });</span>
+<span class="line" id="L71">    };</span>
+<span class="line" id="L72">    <span class="tok-kw">defer</span> src_dir.close();</span>
+<span class="line" id="L73">    <span class="tok-kw">var</span> it = <span class="tok-kw">try</span> src_dir.walk(arena);</span>
+<span class="line" id="L74">    <span class="tok-kw">var</span> all_cached = <span class="tok-null">true</span>;</span>
+<span class="line" id="L75">    next_entry: <span class="tok-kw">while</span> (<span class="tok-kw">try</span> it.next()) |entry| {</span>
+<span class="line" id="L76">        <span class="tok-kw">for</span> (self.options.exclude_extensions) |ext| {</span>
+<span class="line" id="L77">            <span class="tok-kw">if</span> (mem.endsWith(<span class="tok-type">u8</span>, entry.path, ext)) {</span>
+<span class="line" id="L78">                <span class="tok-kw">continue</span> :next_entry;</span>
+<span class="line" id="L79">            }</span>
+<span class="line" id="L80">        }</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">        <span class="tok-comment">// relative to src build root</span>
+</span>
+<span class="line" id="L83">        <span class="tok-kw">const</span> src_sub_path = <span class="tok-kw">try</span> fs.path.join(arena, &amp;.{ src_dir_path, entry.path });</span>
+<span class="line" id="L84">        <span class="tok-kw">const</span> dest_path = <span class="tok-kw">try</span> fs.path.join(arena, &amp;.{ dest_prefix, entry.path });</span>
+<span class="line" id="L85">        <span class="tok-kw">const</span> cwd = fs.cwd();</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">        <span class="tok-kw">switch</span> (entry.kind) {</span>
+<span class="line" id="L88">            .directory =&gt; <span class="tok-kw">try</span> cwd.makePath(dest_path),</span>
+<span class="line" id="L89">            .file =&gt; {</span>
+<span class="line" id="L90">                <span class="tok-kw">for</span> (self.options.blank_extensions) |ext| {</span>
+<span class="line" id="L91">                    <span class="tok-kw">if</span> (mem.endsWith(<span class="tok-type">u8</span>, entry.path, ext)) {</span>
+<span class="line" id="L92">                        <span class="tok-kw">try</span> dest_builder.truncateFile(dest_path);</span>
+<span class="line" id="L93">                        <span class="tok-kw">continue</span> :next_entry;</span>
+<span class="line" id="L94">                    }</span>
+<span class="line" id="L95">                }</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">                <span class="tok-kw">const</span> prev_status = fs.Dir.updateFile(</span>
+<span class="line" id="L98">                    src_builder.build_root.handle,</span>
+<span class="line" id="L99">                    src_sub_path,</span>
+<span class="line" id="L100">                    cwd,</span>
+<span class="line" id="L101">                    dest_path,</span>
+<span class="line" id="L102">                    .{},</span>
+<span class="line" id="L103">                ) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L104">                    <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;unable to update file from '{}{s}' to '{s}': {s}&quot;</span>, .{</span>
+<span class="line" id="L105">                        src_builder.build_root, src_sub_path, dest_path, <span class="tok-builtin">@errorName</span>(err),</span>
+<span class="line" id="L106">                    });</span>
+<span class="line" id="L107">                };</span>
+<span class="line" id="L108">                all_cached = all_cached <span class="tok-kw">and</span> prev_status == .fresh;</span>
+<span class="line" id="L109">            },</span>
+<span class="line" id="L110">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">continue</span>,</span>
+<span class="line" id="L111">        }</span>
+<span class="line" id="L112">    }</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">    step.result_cached = all_cached;</span>
+<span class="line" id="L115">}</span>
+<span class="line" id="L116"></span>
+</code></pre></body>
+</html>

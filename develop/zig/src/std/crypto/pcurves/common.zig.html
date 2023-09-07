@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/pcurves/common.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> debug = std.debug;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> meta = std.meta;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">const</span> NonCanonicalError = crypto.errors.NonCanonicalError;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> NotSquareError = crypto.errors.NotSquareError;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-comment">/// Parameters to create a finite field type.</span></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FieldParams = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L12">    fiat: <span class="tok-type">type</span>,</span>
+<span class="line" id="L13">    field_order: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L14">    field_bits: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L15">    saturated_bits: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L16">    encoded_length: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L17">};</span>
+<span class="line" id="L18"></span>
+<span class="line" id="L19"><span class="tok-comment">/// A field element, internally stored in Montgomery domain.</span></span>
+<span class="line" id="L20"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Field</span>(<span class="tok-kw">comptime</span> params: FieldParams) <span class="tok-type">type</span> {</span>
+<span class="line" id="L21">    <span class="tok-kw">const</span> fiat = params.fiat;</span>
+<span class="line" id="L22">    <span class="tok-kw">const</span> MontgomeryDomainFieldElement = fiat.MontgomeryDomainFieldElement;</span>
+<span class="line" id="L23">    <span class="tok-kw">const</span> NonMontgomeryDomainFieldElement = fiat.NonMontgomeryDomainFieldElement;</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L26">        <span class="tok-kw">const</span> Fe = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28">        limbs: MontgomeryDomainFieldElement,</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30">        <span class="tok-comment">/// Field size.</span></span>
+<span class="line" id="L31">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> field_order = params.field_order;</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">        <span class="tok-comment">/// Number of bits to represent the set of all elements.</span></span>
+<span class="line" id="L34">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> field_bits = params.field_bits;</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36">        <span class="tok-comment">/// Number of bits that can be saturated without overflowing.</span></span>
+<span class="line" id="L37">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> saturated_bits = params.saturated_bits;</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39">        <span class="tok-comment">/// Number of bytes required to encode an element.</span></span>
+<span class="line" id="L40">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> encoded_length = params.encoded_length;</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42">        <span class="tok-comment">/// Zero.</span></span>
+<span class="line" id="L43">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> zero: Fe = Fe{ .limbs = mem.zeroes(MontgomeryDomainFieldElement) };</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45">        <span class="tok-comment">/// One.</span></span>
+<span class="line" id="L46">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> one = one: {</span>
+<span class="line" id="L47">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L48">            fiat.setOne(&amp;fe.limbs);</span>
+<span class="line" id="L49">            <span class="tok-kw">break</span> :one fe;</span>
+<span class="line" id="L50">        };</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52">        <span class="tok-comment">/// Reject non-canonical encodings of an element.</span></span>
+<span class="line" id="L53">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rejectNonCanonical</span>(s_: [encoded_length]<span class="tok-type">u8</span>, endian: std.builtin.Endian) NonCanonicalError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L54">            <span class="tok-kw">var</span> s = <span class="tok-kw">if</span> (endian == .Little) s_ <span class="tok-kw">else</span> orderSwap(s_);</span>
+<span class="line" id="L55">            <span class="tok-kw">const</span> field_order_s = <span class="tok-kw">comptime</span> fos: {</span>
+<span class="line" id="L56">                <span class="tok-kw">var</span> fos: [encoded_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L57">                mem.writeIntLittle(std.meta.Int(.unsigned, encoded_length * <span class="tok-number">8</span>), &amp;fos, field_order);</span>
+<span class="line" id="L58">                <span class="tok-kw">break</span> :fos fos;</span>
+<span class="line" id="L59">            };</span>
+<span class="line" id="L60">            <span class="tok-kw">if</span> (crypto.utils.timingSafeCompare(<span class="tok-type">u8</span>, &amp;s, &amp;field_order_s, .Little) != .lt) {</span>
+<span class="line" id="L61">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NonCanonical;</span>
+<span class="line" id="L62">            }</span>
+<span class="line" id="L63">        }</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">        <span class="tok-comment">/// Swap the endianness of an encoded element.</span></span>
+<span class="line" id="L66">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">orderSwap</span>(s: [encoded_length]<span class="tok-type">u8</span>) [encoded_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L67">            <span class="tok-kw">var</span> t = s;</span>
+<span class="line" id="L68">            <span class="tok-kw">for</span> (s, <span class="tok-number">0</span>..) |x, i| t[t.len - <span class="tok-number">1</span> - i] = x;</span>
+<span class="line" id="L69">            <span class="tok-kw">return</span> t;</span>
+<span class="line" id="L70">        }</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72">        <span class="tok-comment">/// Unpack a field element.</span></span>
+<span class="line" id="L73">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(s_: [encoded_length]<span class="tok-type">u8</span>, endian: std.builtin.Endian) NonCanonicalError!Fe {</span>
+<span class="line" id="L74">            <span class="tok-kw">var</span> s = <span class="tok-kw">if</span> (endian == .Little) s_ <span class="tok-kw">else</span> orderSwap(s_);</span>
+<span class="line" id="L75">            <span class="tok-kw">try</span> rejectNonCanonical(s, .Little);</span>
+<span class="line" id="L76">            <span class="tok-kw">var</span> limbs_z: NonMontgomeryDomainFieldElement = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L77">            fiat.fromBytes(&amp;limbs_z, s);</span>
+<span class="line" id="L78">            <span class="tok-kw">var</span> limbs: MontgomeryDomainFieldElement = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L79">            fiat.toMontgomery(&amp;limbs, limbs_z);</span>
+<span class="line" id="L80">            <span class="tok-kw">return</span> Fe{ .limbs = limbs };</span>
+<span class="line" id="L81">        }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">        <span class="tok-comment">/// Pack a field element.</span></span>
+<span class="line" id="L84">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toBytes</span>(fe: Fe, endian: std.builtin.Endian) [encoded_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L85">            <span class="tok-kw">var</span> limbs_z: NonMontgomeryDomainFieldElement = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L86">            fiat.fromMontgomery(&amp;limbs_z, fe.limbs);</span>
+<span class="line" id="L87">            <span class="tok-kw">var</span> s: [encoded_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L88">            fiat.toBytes(&amp;s, limbs_z);</span>
+<span class="line" id="L89">            <span class="tok-kw">return</span> <span class="tok-kw">if</span> (endian == .Little) s <span class="tok-kw">else</span> orderSwap(s);</span>
+<span class="line" id="L90">        }</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">        <span class="tok-comment">/// Element as an integer.</span></span>
+<span class="line" id="L93">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> IntRepr = meta.Int(.unsigned, params.field_bits);</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95">        <span class="tok-comment">/// Create a field element from an integer.</span></span>
+<span class="line" id="L96">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromInt</span>(<span class="tok-kw">comptime</span> x: IntRepr) NonCanonicalError!Fe {</span>
+<span class="line" id="L97">            <span class="tok-kw">var</span> s: [encoded_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L98">            mem.writeIntLittle(IntRepr, &amp;s, x);</span>
+<span class="line" id="L99">            <span class="tok-kw">return</span> fromBytes(s, .Little);</span>
+<span class="line" id="L100">        }</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">        <span class="tok-comment">/// Return the field element as an integer.</span></span>
+<span class="line" id="L103">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toInt</span>(fe: Fe) IntRepr {</span>
+<span class="line" id="L104">            <span class="tok-kw">const</span> s = fe.toBytes(.Little);</span>
+<span class="line" id="L105">            <span class="tok-kw">return</span> mem.readIntLittle(IntRepr, &amp;s);</span>
+<span class="line" id="L106">        }</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108">        <span class="tok-comment">/// Return true if the field element is zero.</span></span>
+<span class="line" id="L109">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isZero</span>(fe: Fe) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L110">            <span class="tok-kw">var</span> z: <span class="tok-builtin">@TypeOf</span>(fe.limbs[<span class="tok-number">0</span>]) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L111">            fiat.nonzero(&amp;z, fe.limbs);</span>
+<span class="line" id="L112">            <span class="tok-kw">return</span> z == <span class="tok-number">0</span>;</span>
+<span class="line" id="L113">        }</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115">        <span class="tok-comment">/// Return true if both field elements are equivalent.</span></span>
+<span class="line" id="L116">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">equivalent</span>(a: Fe, b: Fe) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L117">            <span class="tok-kw">return</span> a.sub(b).isZero();</span>
+<span class="line" id="L118">        }</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120">        <span class="tok-comment">/// Return true if the element is odd.</span></span>
+<span class="line" id="L121">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isOdd</span>(fe: Fe) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L122">            <span class="tok-kw">const</span> s = fe.toBytes(.Little);</span>
+<span class="line" id="L123">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(s[<span class="tok-number">0</span>])) != <span class="tok-number">0</span>;</span>
+<span class="line" id="L124">        }</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">        <span class="tok-comment">/// Conditonally replace a field element with `a` if `c` is positive.</span></span>
+<span class="line" id="L127">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">cMov</span>(fe: *Fe, a: Fe, c: <span class="tok-type">u1</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L128">            fiat.selectznz(&amp;fe.limbs, c, fe.limbs, a.limbs);</span>
+<span class="line" id="L129">        }</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131">        <span class="tok-comment">/// Add field elements.</span></span>
+<span class="line" id="L132">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(a: Fe, b: Fe) Fe {</span>
+<span class="line" id="L133">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L134">            fiat.add(&amp;fe.limbs, a.limbs, b.limbs);</span>
+<span class="line" id="L135">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L136">        }</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138">        <span class="tok-comment">/// Subtract field elements.</span></span>
+<span class="line" id="L139">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sub</span>(a: Fe, b: Fe) Fe {</span>
+<span class="line" id="L140">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L141">            fiat.sub(&amp;fe.limbs, a.limbs, b.limbs);</span>
+<span class="line" id="L142">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L143">        }</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145">        <span class="tok-comment">/// Double a field element.</span></span>
+<span class="line" id="L146">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">dbl</span>(a: Fe) Fe {</span>
+<span class="line" id="L147">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L148">            fiat.add(&amp;fe.limbs, a.limbs, a.limbs);</span>
+<span class="line" id="L149">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L150">        }</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">        <span class="tok-comment">/// Multiply field elements.</span></span>
+<span class="line" id="L153">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mul</span>(a: Fe, b: Fe) Fe {</span>
+<span class="line" id="L154">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L155">            fiat.mul(&amp;fe.limbs, a.limbs, b.limbs);</span>
+<span class="line" id="L156">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L157">        }</span>
+<span class="line" id="L158"></span>
+<span class="line" id="L159">        <span class="tok-comment">/// Square a field element.</span></span>
+<span class="line" id="L160">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sq</span>(a: Fe) Fe {</span>
+<span class="line" id="L161">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L162">            fiat.square(&amp;fe.limbs, a.limbs);</span>
+<span class="line" id="L163">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L164">        }</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">        <span class="tok-comment">/// Square a field element n times.</span></span>
+<span class="line" id="L167">        <span class="tok-kw">fn</span> <span class="tok-fn">sqn</span>(a: Fe, <span class="tok-kw">comptime</span> n: <span class="tok-type">comptime_int</span>) Fe {</span>
+<span class="line" id="L168">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L169">            <span class="tok-kw">var</span> fe = a;</span>
+<span class="line" id="L170">            <span class="tok-kw">while</span> (i &lt; n) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L171">                fe = fe.sq();</span>
+<span class="line" id="L172">            }</span>
+<span class="line" id="L173">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L174">        }</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176">        <span class="tok-comment">/// Compute a^n.</span></span>
+<span class="line" id="L177">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pow</span>(a: Fe, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> n: T) Fe {</span>
+<span class="line" id="L178">            <span class="tok-kw">var</span> fe = one;</span>
+<span class="line" id="L179">            <span class="tok-kw">var</span> x: T = n;</span>
+<span class="line" id="L180">            <span class="tok-kw">var</span> t = a;</span>
+<span class="line" id="L181">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L182">                <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(x)) != <span class="tok-number">0</span>) fe = fe.mul(t);</span>
+<span class="line" id="L183">                x &gt;&gt;= <span class="tok-number">1</span>;</span>
+<span class="line" id="L184">                <span class="tok-kw">if</span> (x == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L185">                t = t.sq();</span>
+<span class="line" id="L186">            }</span>
+<span class="line" id="L187">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L188">        }</span>
+<span class="line" id="L189"></span>
+<span class="line" id="L190">        <span class="tok-comment">/// Negate a field element.</span></span>
+<span class="line" id="L191">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">neg</span>(a: Fe) Fe {</span>
+<span class="line" id="L192">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L193">            fiat.opp(&amp;fe.limbs, a.limbs);</span>
+<span class="line" id="L194">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L195">        }</span>
+<span class="line" id="L196"></span>
+<span class="line" id="L197">        <span class="tok-comment">/// Return the inverse of a field element, or 0 if a=0.</span></span>
+<span class="line" id="L198">        <span class="tok-comment">// Field inversion from https://eprint.iacr.org/2021/549.pdf</span>
+</span>
+<span class="line" id="L199">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">invert</span>(a: Fe) Fe {</span>
+<span class="line" id="L200">            <span class="tok-kw">const</span> iterations = (<span class="tok-number">49</span> * field_bits + <span class="tok-number">57</span>) / <span class="tok-number">17</span>;</span>
+<span class="line" id="L201">            <span class="tok-kw">const</span> Limbs = <span class="tok-builtin">@TypeOf</span>(a.limbs);</span>
+<span class="line" id="L202">            <span class="tok-kw">const</span> Word = <span class="tok-builtin">@TypeOf</span>(a.limbs[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L203">            <span class="tok-kw">const</span> XLimbs = [a.limbs.len + <span class="tok-number">1</span>]Word;</span>
+<span class="line" id="L204"></span>
+<span class="line" id="L205">            <span class="tok-kw">var</span> d: Word = <span class="tok-number">1</span>;</span>
+<span class="line" id="L206">            <span class="tok-kw">var</span> f = <span class="tok-kw">comptime</span> blk: {</span>
+<span class="line" id="L207">                <span class="tok-kw">var</span> f: XLimbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L208">                fiat.msat(&amp;f);</span>
+<span class="line" id="L209">                <span class="tok-kw">break</span> :blk f;</span>
+<span class="line" id="L210">            };</span>
+<span class="line" id="L211">            <span class="tok-kw">var</span> g: XLimbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L212">            fiat.fromMontgomery(g[<span class="tok-number">0</span>..a.limbs.len], a.limbs);</span>
+<span class="line" id="L213">            g[g.len - <span class="tok-number">1</span>] = <span class="tok-number">0</span>;</span>
+<span class="line" id="L214"></span>
+<span class="line" id="L215">            <span class="tok-kw">var</span> r = Fe.one.limbs;</span>
+<span class="line" id="L216">            <span class="tok-kw">var</span> v = Fe.zero.limbs;</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218">            <span class="tok-kw">var</span> out1: Word = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L219">            <span class="tok-kw">var</span> out2: XLimbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L220">            <span class="tok-kw">var</span> out3: XLimbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L221">            <span class="tok-kw">var</span> out4: Limbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L222">            <span class="tok-kw">var</span> out5: Limbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L225">            <span class="tok-kw">while</span> (i &lt; iterations - iterations % <span class="tok-number">2</span>) : (i += <span class="tok-number">2</span>) {</span>
+<span class="line" id="L226">                fiat.divstep(&amp;out1, &amp;out2, &amp;out3, &amp;out4, &amp;out5, d, f, g, v, r);</span>
+<span class="line" id="L227">                fiat.divstep(&amp;d, &amp;f, &amp;g, &amp;v, &amp;r, out1, out2, out3, out4, out5);</span>
+<span class="line" id="L228">            }</span>
+<span class="line" id="L229">            <span class="tok-kw">if</span> (iterations % <span class="tok-number">2</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L230">                fiat.divstep(&amp;out1, &amp;out2, &amp;out3, &amp;out4, &amp;out5, d, f, g, v, r);</span>
+<span class="line" id="L231">                v = out4;</span>
+<span class="line" id="L232">                f = out2;</span>
+<span class="line" id="L233">            }</span>
+<span class="line" id="L234">            <span class="tok-kw">var</span> v_opp: Limbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L235">            fiat.opp(&amp;v_opp, v);</span>
+<span class="line" id="L236">            fiat.selectznz(&amp;v, <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(f[f.len - <span class="tok-number">1</span>] &gt;&gt; (<span class="tok-builtin">@bitSizeOf</span>(Word) - <span class="tok-number">1</span>))), v, v_opp);</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">            <span class="tok-kw">const</span> precomp = blk: {</span>
+<span class="line" id="L239">                <span class="tok-kw">var</span> precomp: Limbs = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L240">                fiat.divstepPrecomp(&amp;precomp);</span>
+<span class="line" id="L241">                <span class="tok-kw">break</span> :blk precomp;</span>
+<span class="line" id="L242">            };</span>
+<span class="line" id="L243">            <span class="tok-kw">var</span> fe: Fe = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L244">            fiat.mul(&amp;fe.limbs, v, precomp);</span>
+<span class="line" id="L245">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L246">        }</span>
+<span class="line" id="L247"></span>
+<span class="line" id="L248">        <span class="tok-comment">/// Return true if the field element is a square.</span></span>
+<span class="line" id="L249">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isSquare</span>(x2: Fe) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L250">            <span class="tok-kw">if</span> (field_order == <span class="tok-number">115792089210356248762697446949407573530086143415290314195533631308867097853951</span>) {</span>
+<span class="line" id="L251">                <span class="tok-kw">const</span> t110 = x2.mul(x2.sq()).sq();</span>
+<span class="line" id="L252">                <span class="tok-kw">const</span> t111 = x2.mul(t110);</span>
+<span class="line" id="L253">                <span class="tok-kw">const</span> t111111 = t111.mul(x2.mul(t110).sqn(<span class="tok-number">3</span>));</span>
+<span class="line" id="L254">                <span class="tok-kw">const</span> x15 = t111111.sqn(<span class="tok-number">6</span>).mul(t111111).sqn(<span class="tok-number">3</span>).mul(t111);</span>
+<span class="line" id="L255">                <span class="tok-kw">const</span> x16 = x15.sq().mul(x2);</span>
+<span class="line" id="L256">                <span class="tok-kw">const</span> x53 = x16.sqn(<span class="tok-number">16</span>).mul(x16).sqn(<span class="tok-number">15</span>);</span>
+<span class="line" id="L257">                <span class="tok-kw">const</span> x47 = x15.mul(x53);</span>
+<span class="line" id="L258">                <span class="tok-kw">const</span> ls = x47.mul(((x53.sqn(<span class="tok-number">17</span>).mul(x2)).sqn(<span class="tok-number">143</span>).mul(x47)).sqn(<span class="tok-number">47</span>)).sq().mul(x2);</span>
+<span class="line" id="L259">                <span class="tok-kw">return</span> ls.equivalent(Fe.one);</span>
+<span class="line" id="L260">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field_order == <span class="tok-number">39402006196394479212279040100143613805079739270465446667948293404245721771496870329047266088258938001861606973112319</span>) {</span>
+<span class="line" id="L261">                <span class="tok-kw">const</span> t111 = x2.mul(x2.mul(x2.sq()).sq());</span>
+<span class="line" id="L262">                <span class="tok-kw">const</span> t111111 = t111.mul(t111.sqn(<span class="tok-number">3</span>));</span>
+<span class="line" id="L263">                <span class="tok-kw">const</span> t1111110 = t111111.sq();</span>
+<span class="line" id="L264">                <span class="tok-kw">const</span> t1111111 = x2.mul(t1111110);</span>
+<span class="line" id="L265">                <span class="tok-kw">const</span> x12 = t1111110.sqn(<span class="tok-number">5</span>).mul(t111111);</span>
+<span class="line" id="L266">                <span class="tok-kw">const</span> x31 = x12.sqn(<span class="tok-number">12</span>).mul(x12).sqn(<span class="tok-number">7</span>).mul(t1111111);</span>
+<span class="line" id="L267">                <span class="tok-kw">const</span> x32 = x31.sq().mul(x2);</span>
+<span class="line" id="L268">                <span class="tok-kw">const</span> x63 = x32.sqn(<span class="tok-number">31</span>).mul(x31);</span>
+<span class="line" id="L269">                <span class="tok-kw">const</span> x126 = x63.sqn(<span class="tok-number">63</span>).mul(x63);</span>
+<span class="line" id="L270">                <span class="tok-kw">const</span> ls = x126.sqn(<span class="tok-number">126</span>).mul(x126).sqn(<span class="tok-number">3</span>).mul(t111).sqn(<span class="tok-number">33</span>).mul(x32).sqn(<span class="tok-number">95</span>).mul(x31);</span>
+<span class="line" id="L271">                <span class="tok-kw">return</span> ls.equivalent(Fe.one);</span>
+<span class="line" id="L272">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L273">                <span class="tok-kw">const</span> ls = x2.pow(std.meta.Int(.unsigned, field_bits), (field_order - <span class="tok-number">1</span>) / <span class="tok-number">2</span>); <span class="tok-comment">// Legendre symbol</span>
+</span>
+<span class="line" id="L274">                <span class="tok-kw">return</span> ls.equivalent(Fe.one);</span>
+<span class="line" id="L275">            }</span>
+<span class="line" id="L276">        }</span>
+<span class="line" id="L277"></span>
+<span class="line" id="L278">        <span class="tok-comment">// x=x2^((field_order+1)/4) w/ field order=3 (mod 4).</span>
+</span>
+<span class="line" id="L279">        <span class="tok-kw">fn</span> <span class="tok-fn">uncheckedSqrt</span>(x2: Fe) Fe {</span>
+<span class="line" id="L280">            <span class="tok-kw">comptime</span> debug.assert(field_order % <span class="tok-number">4</span> == <span class="tok-number">3</span>);</span>
+<span class="line" id="L281">            <span class="tok-kw">if</span> (field_order == <span class="tok-number">115792089210356248762697446949407573530086143415290314195533631308867097853951</span>) {</span>
+<span class="line" id="L282">                <span class="tok-kw">const</span> t11 = x2.mul(x2.sq());</span>
+<span class="line" id="L283">                <span class="tok-kw">const</span> t1111 = t11.mul(t11.sqn(<span class="tok-number">2</span>));</span>
+<span class="line" id="L284">                <span class="tok-kw">const</span> t11111111 = t1111.mul(t1111.sqn(<span class="tok-number">4</span>));</span>
+<span class="line" id="L285">                <span class="tok-kw">const</span> x16 = t11111111.sqn(<span class="tok-number">8</span>).mul(t11111111);</span>
+<span class="line" id="L286">                <span class="tok-kw">return</span> x16.sqn(<span class="tok-number">16</span>).mul(x16).sqn(<span class="tok-number">32</span>).mul(x2).sqn(<span class="tok-number">96</span>).mul(x2).sqn(<span class="tok-number">94</span>);</span>
+<span class="line" id="L287">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field_order == <span class="tok-number">39402006196394479212279040100143613805079739270465446667948293404245721771496870329047266088258938001861606973112319</span>) {</span>
+<span class="line" id="L288">                <span class="tok-kw">const</span> t111 = x2.mul(x2.mul(x2.sq()).sq());</span>
+<span class="line" id="L289">                <span class="tok-kw">const</span> t111111 = t111.mul(t111.sqn(<span class="tok-number">3</span>));</span>
+<span class="line" id="L290">                <span class="tok-kw">const</span> t1111110 = t111111.sq();</span>
+<span class="line" id="L291">                <span class="tok-kw">const</span> t1111111 = x2.mul(t1111110);</span>
+<span class="line" id="L292">                <span class="tok-kw">const</span> x12 = t1111110.sqn(<span class="tok-number">5</span>).mul(t111111);</span>
+<span class="line" id="L293">                <span class="tok-kw">const</span> x31 = x12.sqn(<span class="tok-number">12</span>).mul(x12).sqn(<span class="tok-number">7</span>).mul(t1111111);</span>
+<span class="line" id="L294">                <span class="tok-kw">const</span> x32 = x31.sq().mul(x2);</span>
+<span class="line" id="L295">                <span class="tok-kw">const</span> x63 = x32.sqn(<span class="tok-number">31</span>).mul(x31);</span>
+<span class="line" id="L296">                <span class="tok-kw">const</span> x126 = x63.sqn(<span class="tok-number">63</span>).mul(x63);</span>
+<span class="line" id="L297">                <span class="tok-kw">return</span> x126.sqn(<span class="tok-number">126</span>).mul(x126).sqn(<span class="tok-number">3</span>).mul(t111).sqn(<span class="tok-number">33</span>).mul(x32).sqn(<span class="tok-number">64</span>).mul(x2).sqn(<span class="tok-number">30</span>);</span>
+<span class="line" id="L298">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field_order == <span class="tok-number">115792089237316195423570985008687907853269984665640564039457584007908834671663</span>) {</span>
+<span class="line" id="L299">                <span class="tok-kw">const</span> t11 = x2.mul(x2.sq());</span>
+<span class="line" id="L300">                <span class="tok-kw">const</span> t1111 = t11.mul(t11.sqn(<span class="tok-number">2</span>));</span>
+<span class="line" id="L301">                <span class="tok-kw">const</span> t11111 = x2.mul(t1111.sq());</span>
+<span class="line" id="L302">                <span class="tok-kw">const</span> t1111111 = t11.mul(t11111.sqn(<span class="tok-number">2</span>));</span>
+<span class="line" id="L303">                <span class="tok-kw">const</span> x11 = t1111111.sqn(<span class="tok-number">4</span>).mul(t1111);</span>
+<span class="line" id="L304">                <span class="tok-kw">const</span> x22 = x11.sqn(<span class="tok-number">11</span>).mul(x11);</span>
+<span class="line" id="L305">                <span class="tok-kw">const</span> x27 = x22.sqn(<span class="tok-number">5</span>).mul(t11111);</span>
+<span class="line" id="L306">                <span class="tok-kw">const</span> x54 = x27.sqn(<span class="tok-number">27</span>).mul(x27);</span>
+<span class="line" id="L307">                <span class="tok-kw">const</span> x108 = x54.sqn(<span class="tok-number">54</span>).mul(x54);</span>
+<span class="line" id="L308">                <span class="tok-kw">return</span> x108.sqn(<span class="tok-number">108</span>).mul(x108).sqn(<span class="tok-number">7</span>).mul(t1111111).sqn(<span class="tok-number">23</span>).mul(x22).sqn(<span class="tok-number">6</span>).mul(t11).sqn(<span class="tok-number">2</span>);</span>
+<span class="line" id="L309">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L310">                <span class="tok-kw">return</span> x2.pow(std.meta.Int(.unsigned, field_bits), (field_order + <span class="tok-number">1</span>) / <span class="tok-number">4</span>);</span>
+<span class="line" id="L311">            }</span>
+<span class="line" id="L312">        }</span>
+<span class="line" id="L313"></span>
+<span class="line" id="L314">        <span class="tok-comment">/// Compute the square root of `x2`, returning `error.NotSquare` if `x2` was not a square.</span></span>
+<span class="line" id="L315">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sqrt</span>(x2: Fe) NotSquareError!Fe {</span>
+<span class="line" id="L316">            <span class="tok-kw">const</span> x = x2.uncheckedSqrt();</span>
+<span class="line" id="L317">            <span class="tok-kw">if</span> (x.sq().equivalent(x2)) {</span>
+<span class="line" id="L318">                <span class="tok-kw">return</span> x;</span>
+<span class="line" id="L319">            }</span>
+<span class="line" id="L320">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NotSquare;</span>
+<span class="line" id="L321">        }</span>
+<span class="line" id="L322">    };</span>
+<span class="line" id="L323">}</span>
+<span class="line" id="L324"></span>
+</code></pre></body>
+</html>

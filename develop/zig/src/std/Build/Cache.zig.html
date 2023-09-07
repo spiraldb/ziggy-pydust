@@ -1,0 +1,1437 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Build/Cache.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! Manages `zig-cache` directories.</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! This is not a general-purpose cache. It is designed to be fast and simple,</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! not to withstand attacks using specially-crafted input.</span></span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Directory = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L6">    <span class="tok-comment">/// This field is redundant for operations that can act on the open directory handle</span></span>
+<span class="line" id="L7">    <span class="tok-comment">/// directly, but it is needed when passing the directory to a child process.</span></span>
+<span class="line" id="L8">    <span class="tok-comment">/// `null` means cwd.</span></span>
+<span class="line" id="L9">    path: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L10">    handle: fs.Dir,</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">join</span>(self: Directory, allocator: Allocator, paths: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ![]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L13">        <span class="tok-kw">if</span> (self.path) |p| {</span>
+<span class="line" id="L14">            <span class="tok-comment">// TODO clean way to do this with only 1 allocation</span>
+</span>
+<span class="line" id="L15">            <span class="tok-kw">const</span> part2 = <span class="tok-kw">try</span> fs.path.join(allocator, paths);</span>
+<span class="line" id="L16">            <span class="tok-kw">defer</span> allocator.free(part2);</span>
+<span class="line" id="L17">            <span class="tok-kw">return</span> fs.path.join(allocator, &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{ p, part2 });</span>
+<span class="line" id="L18">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L19">            <span class="tok-kw">return</span> fs.path.join(allocator, paths);</span>
+<span class="line" id="L20">        }</span>
+<span class="line" id="L21">    }</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">joinZ</span>(self: Directory, allocator: Allocator, paths: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ![:<span class="tok-number">0</span>]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L24">        <span class="tok-kw">if</span> (self.path) |p| {</span>
+<span class="line" id="L25">            <span class="tok-comment">// TODO clean way to do this with only 1 allocation</span>
+</span>
+<span class="line" id="L26">            <span class="tok-kw">const</span> part2 = <span class="tok-kw">try</span> fs.path.join(allocator, paths);</span>
+<span class="line" id="L27">            <span class="tok-kw">defer</span> allocator.free(part2);</span>
+<span class="line" id="L28">            <span class="tok-kw">return</span> fs.path.joinZ(allocator, &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{ p, part2 });</span>
+<span class="line" id="L29">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L30">            <span class="tok-kw">return</span> fs.path.joinZ(allocator, paths);</span>
+<span class="line" id="L31">        }</span>
+<span class="line" id="L32">    }</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">    <span class="tok-comment">/// Whether or not the handle should be closed, or the path should be freed</span></span>
+<span class="line" id="L35">    <span class="tok-comment">/// is determined by usage, however this function is provided for convenience</span></span>
+<span class="line" id="L36">    <span class="tok-comment">/// if it happens to be what the caller needs.</span></span>
+<span class="line" id="L37">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">closeAndFree</span>(self: *Directory, gpa: Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L38">        self.handle.close();</span>
+<span class="line" id="L39">        <span class="tok-kw">if</span> (self.path) |p| gpa.free(p);</span>
+<span class="line" id="L40">        self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L41">    }</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">format</span>(</span>
+<span class="line" id="L44">        self: Directory,</span>
+<span class="line" id="L45">        <span class="tok-kw">comptime</span> fmt_string: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L46">        options: fmt.FormatOptions,</span>
+<span class="line" id="L47">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L48">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L49">        _ = options;</span>
+<span class="line" id="L50">        <span class="tok-kw">if</span> (fmt_string.len != <span class="tok-number">0</span>) fmt.invalidFmtError(fmt, self);</span>
+<span class="line" id="L51">        <span class="tok-kw">if</span> (self.path) |p| {</span>
+<span class="line" id="L52">            <span class="tok-kw">try</span> writer.writeAll(p);</span>
+<span class="line" id="L53">            <span class="tok-kw">try</span> writer.writeAll(fs.path.sep_str);</span>
+<span class="line" id="L54">        }</span>
+<span class="line" id="L55">    }</span>
+<span class="line" id="L56">};</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58">gpa: Allocator,</span>
+<span class="line" id="L59">manifest_dir: fs.Dir,</span>
+<span class="line" id="L60">hash: HashHelper = .{},</span>
+<span class="line" id="L61"><span class="tok-comment">/// This value is accessed from multiple threads, protected by mutex.</span></span>
+<span class="line" id="L62">recent_problematic_timestamp: <span class="tok-type">i128</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L63">mutex: std.Thread.Mutex = .{},</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65"><span class="tok-comment">/// A set of strings such as the zig library directory or project source root, which</span></span>
+<span class="line" id="L66"><span class="tok-comment">/// are stripped from the file paths before putting into the cache. They</span></span>
+<span class="line" id="L67"><span class="tok-comment">/// are replaced with single-character indicators. This is not to save</span></span>
+<span class="line" id="L68"><span class="tok-comment">/// space but to eliminate absolute file paths. This improves portability</span></span>
+<span class="line" id="L69"><span class="tok-comment">/// and usefulness of the cache for advanced use cases.</span></span>
+<span class="line" id="L70">prefixes_buffer: [<span class="tok-number">4</span>]Directory = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L71">prefixes_len: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DepTokenizer = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Cache/DepTokenizer.zig&quot;</span>);</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75"><span class="tok-kw">const</span> Cache = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L76"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L77"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L78"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L79"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L80"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L81"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L82"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L83"><span class="tok-kw">const</span> fmt = std.fmt;</span>
+<span class="line" id="L84"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L85"><span class="tok-kw">const</span> log = std.log.scoped(.cache);</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addPrefix</span>(cache: *Cache, directory: Directory) <span class="tok-type">void</span> {</span>
+<span class="line" id="L88">    cache.prefixes_buffer[cache.prefixes_len] = directory;</span>
+<span class="line" id="L89">    cache.prefixes_len += <span class="tok-number">1</span>;</span>
+<span class="line" id="L90">}</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92"><span class="tok-comment">/// Be sure to call `Manifest.deinit` after successful initialization.</span></span>
+<span class="line" id="L93"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">obtain</span>(cache: *Cache) Manifest {</span>
+<span class="line" id="L94">    <span class="tok-kw">return</span> Manifest{</span>
+<span class="line" id="L95">        .cache = cache,</span>
+<span class="line" id="L96">        .hash = cache.hash,</span>
+<span class="line" id="L97">        .manifest_file = <span class="tok-null">null</span>,</span>
+<span class="line" id="L98">        .manifest_dirty = <span class="tok-null">false</span>,</span>
+<span class="line" id="L99">        .hex_digest = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L100">    };</span>
+<span class="line" id="L101">}</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">prefixes</span>(cache: *<span class="tok-kw">const</span> Cache) []<span class="tok-kw">const</span> Directory {</span>
+<span class="line" id="L104">    <span class="tok-kw">return</span> cache.prefixes_buffer[<span class="tok-number">0</span>..cache.prefixes_len];</span>
+<span class="line" id="L105">}</span>
+<span class="line" id="L106"></span>
+<span class="line" id="L107"><span class="tok-kw">const</span> PrefixedPath = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L108">    prefix: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L109">    sub_path: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L110">};</span>
+<span class="line" id="L111"></span>
+<span class="line" id="L112"><span class="tok-kw">fn</span> <span class="tok-fn">findPrefix</span>(cache: *<span class="tok-kw">const</span> Cache, file_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !PrefixedPath {</span>
+<span class="line" id="L113">    <span class="tok-kw">const</span> gpa = cache.gpa;</span>
+<span class="line" id="L114">    <span class="tok-kw">const</span> resolved_path = <span class="tok-kw">try</span> fs.path.resolve(gpa, &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{file_path});</span>
+<span class="line" id="L115">    <span class="tok-kw">errdefer</span> gpa.free(resolved_path);</span>
+<span class="line" id="L116">    <span class="tok-kw">return</span> findPrefixResolved(cache, resolved_path);</span>
+<span class="line" id="L117">}</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119"><span class="tok-comment">/// Takes ownership of `resolved_path` on success.</span></span>
+<span class="line" id="L120"><span class="tok-kw">fn</span> <span class="tok-fn">findPrefixResolved</span>(cache: *<span class="tok-kw">const</span> Cache, resolved_path: []<span class="tok-type">u8</span>) !PrefixedPath {</span>
+<span class="line" id="L121">    <span class="tok-kw">const</span> gpa = cache.gpa;</span>
+<span class="line" id="L122">    <span class="tok-kw">const</span> prefixes_slice = cache.prefixes();</span>
+<span class="line" id="L123">    <span class="tok-kw">var</span> i: <span class="tok-type">u8</span> = <span class="tok-number">1</span>; <span class="tok-comment">// Start at 1 to skip over checking the null prefix.</span>
+</span>
+<span class="line" id="L124">    <span class="tok-kw">while</span> (i &lt; prefixes_slice.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L125">        <span class="tok-kw">const</span> p = prefixes_slice[i].path.?;</span>
+<span class="line" id="L126">        <span class="tok-kw">if</span> (p.len &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> mem.startsWith(<span class="tok-type">u8</span>, resolved_path, p)) {</span>
+<span class="line" id="L127">            <span class="tok-comment">// +1 to skip over the path separator here</span>
+</span>
+<span class="line" id="L128">            <span class="tok-kw">const</span> sub_path = <span class="tok-kw">try</span> gpa.dupe(<span class="tok-type">u8</span>, resolved_path[p.len + <span class="tok-number">1</span> ..]);</span>
+<span class="line" id="L129">            gpa.free(resolved_path);</span>
+<span class="line" id="L130">            <span class="tok-kw">return</span> PrefixedPath{</span>
+<span class="line" id="L131">                .prefix = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(i)),</span>
+<span class="line" id="L132">                .sub_path = sub_path,</span>
+<span class="line" id="L133">            };</span>
+<span class="line" id="L134">        }</span>
+<span class="line" id="L135">    }</span>
+<span class="line" id="L136"></span>
+<span class="line" id="L137">    <span class="tok-kw">return</span> PrefixedPath{</span>
+<span class="line" id="L138">        .prefix = <span class="tok-number">0</span>,</span>
+<span class="line" id="L139">        .sub_path = resolved_path,</span>
+<span class="line" id="L140">    };</span>
+<span class="line" id="L141">}</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143"><span class="tok-comment">/// This is 128 bits - Even with 2^54 cache entries, the probably of a collision would be under 10^-6</span></span>
+<span class="line" id="L144"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> bin_digest_len = <span class="tok-number">16</span>;</span>
+<span class="line" id="L145"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> hex_digest_len = bin_digest_len * <span class="tok-number">2</span>;</span>
+<span class="line" id="L146"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> BinDigest = [bin_digest_len]<span class="tok-type">u8</span>;</span>
+<span class="line" id="L147"></span>
+<span class="line" id="L148"><span class="tok-comment">/// This is currently just an arbitrary non-empty string that can't match another manifest line.</span></span>
+<span class="line" id="L149"><span class="tok-kw">const</span> manifest_header = <span class="tok-str">&quot;0&quot;</span>;</span>
+<span class="line" id="L150"><span class="tok-kw">const</span> manifest_file_size_max = <span class="tok-number">50</span> * <span class="tok-number">1024</span> * <span class="tok-number">1024</span>;</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152"><span class="tok-comment">/// The type used for hashing file contents. Currently, this is SipHash128(1, 3), because it</span></span>
+<span class="line" id="L153"><span class="tok-comment">/// provides enough collision resistance for the Manifest use cases, while being one of our</span></span>
+<span class="line" id="L154"><span class="tok-comment">/// fastest options right now.</span></span>
+<span class="line" id="L155"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Hasher = crypto.auth.siphash.SipHash128(<span class="tok-number">1</span>, <span class="tok-number">3</span>);</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157"><span class="tok-comment">/// Initial state with random bytes, that can be copied.</span></span>
+<span class="line" id="L158"><span class="tok-comment">/// Refresh this with new random bytes when the manifest</span></span>
+<span class="line" id="L159"><span class="tok-comment">/// format is modified in a non-backwards-compatible way.</span></span>
+<span class="line" id="L160"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> hasher_init: Hasher = Hasher.init(&amp;[_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L161">    <span class="tok-number">0x33</span>, <span class="tok-number">0x52</span>, <span class="tok-number">0xa2</span>, <span class="tok-number">0x84</span>,</span>
+<span class="line" id="L162">    <span class="tok-number">0xcf</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0x56</span>, <span class="tok-number">0x57</span>,</span>
+<span class="line" id="L163">    <span class="tok-number">0x01</span>, <span class="tok-number">0xbb</span>, <span class="tok-number">0xcd</span>, <span class="tok-number">0xe4</span>,</span>
+<span class="line" id="L164">    <span class="tok-number">0x77</span>, <span class="tok-number">0xd6</span>, <span class="tok-number">0xf0</span>, <span class="tok-number">0x60</span>,</span>
+<span class="line" id="L165">});</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> File = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L168">    prefixed_path: ?PrefixedPath,</span>
+<span class="line" id="L169">    max_file_size: ?<span class="tok-type">usize</span>,</span>
+<span class="line" id="L170">    stat: Stat,</span>
+<span class="line" id="L171">    bin_digest: BinDigest,</span>
+<span class="line" id="L172">    contents: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L173"></span>
+<span class="line" id="L174">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Stat = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L175">        inode: fs.File.INode,</span>
+<span class="line" id="L176">        size: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L177">        mtime: <span class="tok-type">i128</span>,</span>
+<span class="line" id="L178">    };</span>
+<span class="line" id="L179"></span>
+<span class="line" id="L180">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *File, gpa: Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L181">        <span class="tok-kw">if</span> (self.prefixed_path) |pp| {</span>
+<span class="line" id="L182">            gpa.free(pp.sub_path);</span>
+<span class="line" id="L183">            self.prefixed_path = <span class="tok-null">null</span>;</span>
+<span class="line" id="L184">        }</span>
+<span class="line" id="L185">        <span class="tok-kw">if</span> (self.contents) |contents| {</span>
+<span class="line" id="L186">            gpa.free(contents);</span>
+<span class="line" id="L187">            self.contents = <span class="tok-null">null</span>;</span>
+<span class="line" id="L188">        }</span>
+<span class="line" id="L189">        self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L190">    }</span>
+<span class="line" id="L191">};</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> HashHelper = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L194">    hasher: Hasher = hasher_init,</span>
+<span class="line" id="L195"></span>
+<span class="line" id="L196">    <span class="tok-comment">/// Record a slice of bytes as a dependency of the process being cached.</span></span>
+<span class="line" id="L197">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addBytes</span>(hh: *HashHelper, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L198">        hh.hasher.update(mem.asBytes(&amp;bytes.len));</span>
+<span class="line" id="L199">        hh.hasher.update(bytes);</span>
+<span class="line" id="L200">    }</span>
+<span class="line" id="L201"></span>
+<span class="line" id="L202">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addOptionalBytes</span>(hh: *HashHelper, optional_bytes: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L203">        hh.add(optional_bytes != <span class="tok-null">null</span>);</span>
+<span class="line" id="L204">        hh.addBytes(optional_bytes <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>);</span>
+<span class="line" id="L205">    }</span>
+<span class="line" id="L206"></span>
+<span class="line" id="L207">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addListOfBytes</span>(hh: *HashHelper, list_of_bytes: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L208">        hh.add(list_of_bytes.len);</span>
+<span class="line" id="L209">        <span class="tok-kw">for</span> (list_of_bytes) |bytes| hh.addBytes(bytes);</span>
+<span class="line" id="L210">    }</span>
+<span class="line" id="L211"></span>
+<span class="line" id="L212">    <span class="tok-comment">/// Convert the input value into bytes and record it as a dependency of the process being cached.</span></span>
+<span class="line" id="L213">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(hh: *HashHelper, x: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L214">        <span class="tok-kw">switch</span> (<span class="tok-builtin">@TypeOf</span>(x)) {</span>
+<span class="line" id="L215">            std.SemanticVersion =&gt; {</span>
+<span class="line" id="L216">                hh.add(x.major);</span>
+<span class="line" id="L217">                hh.add(x.minor);</span>
+<span class="line" id="L218">                hh.add(x.patch);</span>
+<span class="line" id="L219">            },</span>
+<span class="line" id="L220">            std.Target.Os.TaggedVersionRange =&gt; {</span>
+<span class="line" id="L221">                <span class="tok-kw">switch</span> (x) {</span>
+<span class="line" id="L222">                    .linux =&gt; |linux| {</span>
+<span class="line" id="L223">                        hh.add(linux.range.min);</span>
+<span class="line" id="L224">                        hh.add(linux.range.max);</span>
+<span class="line" id="L225">                        hh.add(linux.glibc);</span>
+<span class="line" id="L226">                    },</span>
+<span class="line" id="L227">                    .windows =&gt; |windows| {</span>
+<span class="line" id="L228">                        hh.add(windows.min);</span>
+<span class="line" id="L229">                        hh.add(windows.max);</span>
+<span class="line" id="L230">                    },</span>
+<span class="line" id="L231">                    .semver =&gt; |semver| {</span>
+<span class="line" id="L232">                        hh.add(semver.min);</span>
+<span class="line" id="L233">                        hh.add(semver.max);</span>
+<span class="line" id="L234">                    },</span>
+<span class="line" id="L235">                    .none =&gt; {},</span>
+<span class="line" id="L236">                }</span>
+<span class="line" id="L237">            },</span>
+<span class="line" id="L238">            std.Build.Step.Compile.BuildId =&gt; <span class="tok-kw">switch</span> (x) {</span>
+<span class="line" id="L239">                .none, .fast, .uuid, .sha1, .md5 =&gt; hh.add(std.meta.activeTag(x)),</span>
+<span class="line" id="L240">                .hexstring =&gt; |hex_string| hh.addBytes(hex_string.toSlice()),</span>
+<span class="line" id="L241">            },</span>
+<span class="line" id="L242">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(x))) {</span>
+<span class="line" id="L243">                .Bool, .Int, .Enum, .Array =&gt; hh.addBytes(mem.asBytes(&amp;x)),</span>
+<span class="line" id="L244">                <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;unable to hash type &quot;</span> ++ <span class="tok-builtin">@typeName</span>(<span class="tok-builtin">@TypeOf</span>(x))),</span>
+<span class="line" id="L245">            },</span>
+<span class="line" id="L246">        }</span>
+<span class="line" id="L247">    }</span>
+<span class="line" id="L248"></span>
+<span class="line" id="L249">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addOptional</span>(hh: *HashHelper, optional: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L250">        hh.add(optional != <span class="tok-null">null</span>);</span>
+<span class="line" id="L251">        hh.add(optional <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>);</span>
+<span class="line" id="L252">    }</span>
+<span class="line" id="L253"></span>
+<span class="line" id="L254">    <span class="tok-comment">/// Returns a hex encoded hash of the inputs, without modifying state.</span></span>
+<span class="line" id="L255">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">peek</span>(hh: HashHelper) [hex_digest_len]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L256">        <span class="tok-kw">var</span> copy = hh;</span>
+<span class="line" id="L257">        <span class="tok-kw">return</span> copy.final();</span>
+<span class="line" id="L258">    }</span>
+<span class="line" id="L259"></span>
+<span class="line" id="L260">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">peekBin</span>(hh: HashHelper) BinDigest {</span>
+<span class="line" id="L261">        <span class="tok-kw">var</span> copy = hh;</span>
+<span class="line" id="L262">        <span class="tok-kw">var</span> bin_digest: BinDigest = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L263">        copy.hasher.final(&amp;bin_digest);</span>
+<span class="line" id="L264">        <span class="tok-kw">return</span> bin_digest;</span>
+<span class="line" id="L265">    }</span>
+<span class="line" id="L266"></span>
+<span class="line" id="L267">    <span class="tok-comment">/// Returns a hex encoded hash of the inputs, mutating the state of the hasher.</span></span>
+<span class="line" id="L268">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">final</span>(hh: *HashHelper) [hex_digest_len]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L269">        <span class="tok-kw">var</span> bin_digest: BinDigest = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L270">        hh.hasher.final(&amp;bin_digest);</span>
+<span class="line" id="L271"></span>
+<span class="line" id="L272">        <span class="tok-kw">var</span> out_digest: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L273">        _ = fmt.bufPrint(</span>
+<span class="line" id="L274">            &amp;out_digest,</span>
+<span class="line" id="L275">            <span class="tok-str">&quot;{s}&quot;</span>,</span>
+<span class="line" id="L276">            .{fmt.fmtSliceHexLower(&amp;bin_digest)},</span>
+<span class="line" id="L277">        ) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L278">        <span class="tok-kw">return</span> out_digest;</span>
+<span class="line" id="L279">    }</span>
+<span class="line" id="L280">};</span>
+<span class="line" id="L281"></span>
+<span class="line" id="L282"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Lock = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L283">    manifest_file: fs.File,</span>
+<span class="line" id="L284"></span>
+<span class="line" id="L285">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">release</span>(lock: *Lock) <span class="tok-type">void</span> {</span>
+<span class="line" id="L286">        <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L287">            <span class="tok-comment">// Windows does not guarantee that locks are immediately unlocked when</span>
+</span>
+<span class="line" id="L288">            <span class="tok-comment">// the file handle is closed. See LockFileEx documentation.</span>
+</span>
+<span class="line" id="L289">            lock.manifest_file.unlock();</span>
+<span class="line" id="L290">        }</span>
+<span class="line" id="L291"></span>
+<span class="line" id="L292">        lock.manifest_file.close();</span>
+<span class="line" id="L293">        lock.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L294">    }</span>
+<span class="line" id="L295">};</span>
+<span class="line" id="L296"></span>
+<span class="line" id="L297"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Manifest = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L298">    cache: *Cache,</span>
+<span class="line" id="L299">    <span class="tok-comment">/// Current state for incremental hashing.</span></span>
+<span class="line" id="L300">    hash: HashHelper,</span>
+<span class="line" id="L301">    manifest_file: ?fs.File,</span>
+<span class="line" id="L302">    manifest_dirty: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L303">    <span class="tok-comment">/// Set this flag to true before calling hit() in order to indicate that</span></span>
+<span class="line" id="L304">    <span class="tok-comment">/// upon a cache hit, the code using the cache will not modify the files</span></span>
+<span class="line" id="L305">    <span class="tok-comment">/// within the cache directory. This allows multiple processes to utilize</span></span>
+<span class="line" id="L306">    <span class="tok-comment">/// the same cache directory at the same time.</span></span>
+<span class="line" id="L307">    want_shared_lock: <span class="tok-type">bool</span> = <span class="tok-null">true</span>,</span>
+<span class="line" id="L308">    have_exclusive_lock: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L309">    <span class="tok-comment">// Indicate that we want isProblematicTimestamp to perform a filesystem write in</span>
+</span>
+<span class="line" id="L310">    <span class="tok-comment">// order to obtain a problematic timestamp for the next call. Calls after that</span>
+</span>
+<span class="line" id="L311">    <span class="tok-comment">// will then use the same timestamp, to avoid unnecessary filesystem writes.</span>
+</span>
+<span class="line" id="L312">    want_refresh_timestamp: <span class="tok-type">bool</span> = <span class="tok-null">true</span>,</span>
+<span class="line" id="L313">    files: std.ArrayListUnmanaged(File) = .{},</span>
+<span class="line" id="L314">    hex_digest: [hex_digest_len]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L315">    <span class="tok-comment">/// Populated when hit() returns an error because of one</span></span>
+<span class="line" id="L316">    <span class="tok-comment">/// of the files listed in the manifest.</span></span>
+<span class="line" id="L317">    failed_file_index: ?<span class="tok-type">usize</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L318">    <span class="tok-comment">/// Keeps track of the last time we performed a file system write to observe</span></span>
+<span class="line" id="L319">    <span class="tok-comment">/// what time the file system thinks it is, according to its own granularity.</span></span>
+<span class="line" id="L320">    recent_problematic_timestamp: <span class="tok-type">i128</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L321"></span>
+<span class="line" id="L322">    <span class="tok-comment">/// Add a file as a dependency of process being cached. When `hit` is</span></span>
+<span class="line" id="L323">    <span class="tok-comment">/// called, the file's contents will be checked to ensure that it matches</span></span>
+<span class="line" id="L324">    <span class="tok-comment">/// the contents from previous times.</span></span>
+<span class="line" id="L325">    <span class="tok-comment">///</span></span>
+<span class="line" id="L326">    <span class="tok-comment">/// Max file size will be used to determine the amount of space the file contents</span></span>
+<span class="line" id="L327">    <span class="tok-comment">/// are allowed to take up in memory. If max_file_size is null, then the contents</span></span>
+<span class="line" id="L328">    <span class="tok-comment">/// will not be loaded into memory.</span></span>
+<span class="line" id="L329">    <span class="tok-comment">///</span></span>
+<span class="line" id="L330">    <span class="tok-comment">/// Returns the index of the entry in the `files` array list. You can use it</span></span>
+<span class="line" id="L331">    <span class="tok-comment">/// to access the contents of the file after calling `hit()` like so:</span></span>
+<span class="line" id="L332">    <span class="tok-comment">///</span></span>
+<span class="line" id="L333">    <span class="tok-comment">/// ```</span></span>
+<span class="line" id="L334">    <span class="tok-comment">/// var file_contents = cache_hash.files.items[file_index].contents.?;</span></span>
+<span class="line" id="L335">    <span class="tok-comment">/// ```</span></span>
+<span class="line" id="L336">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addFile</span>(self: *Manifest, file_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, max_file_size: ?<span class="tok-type">usize</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L337">        assert(self.manifest_file == <span class="tok-null">null</span>);</span>
+<span class="line" id="L338"></span>
+<span class="line" id="L339">        <span class="tok-kw">const</span> gpa = self.cache.gpa;</span>
+<span class="line" id="L340">        <span class="tok-kw">try</span> self.files.ensureUnusedCapacity(gpa, <span class="tok-number">1</span>);</span>
+<span class="line" id="L341">        <span class="tok-kw">const</span> prefixed_path = <span class="tok-kw">try</span> self.cache.findPrefix(file_path);</span>
+<span class="line" id="L342">        <span class="tok-kw">errdefer</span> gpa.free(prefixed_path.sub_path);</span>
+<span class="line" id="L343"></span>
+<span class="line" id="L344">        self.files.addOneAssumeCapacity().* = .{</span>
+<span class="line" id="L345">            .prefixed_path = prefixed_path,</span>
+<span class="line" id="L346">            .contents = <span class="tok-null">null</span>,</span>
+<span class="line" id="L347">            .max_file_size = max_file_size,</span>
+<span class="line" id="L348">            .stat = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L349">            .bin_digest = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L350">        };</span>
+<span class="line" id="L351"></span>
+<span class="line" id="L352">        self.hash.add(prefixed_path.prefix);</span>
+<span class="line" id="L353">        self.hash.addBytes(prefixed_path.sub_path);</span>
+<span class="line" id="L354"></span>
+<span class="line" id="L355">        <span class="tok-kw">return</span> self.files.items.len - <span class="tok-number">1</span>;</span>
+<span class="line" id="L356">    }</span>
+<span class="line" id="L357"></span>
+<span class="line" id="L358">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addOptionalFile</span>(self: *Manifest, optional_file_path: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L359">        self.hash.add(optional_file_path != <span class="tok-null">null</span>);</span>
+<span class="line" id="L360">        <span class="tok-kw">const</span> file_path = optional_file_path <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>;</span>
+<span class="line" id="L361">        _ = <span class="tok-kw">try</span> self.addFile(file_path, <span class="tok-null">null</span>);</span>
+<span class="line" id="L362">    }</span>
+<span class="line" id="L363"></span>
+<span class="line" id="L364">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addListOfFiles</span>(self: *Manifest, list_of_files: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L365">        self.hash.add(list_of_files.len);</span>
+<span class="line" id="L366">        <span class="tok-kw">for</span> (list_of_files) |file_path| {</span>
+<span class="line" id="L367">            _ = <span class="tok-kw">try</span> self.addFile(file_path, <span class="tok-null">null</span>);</span>
+<span class="line" id="L368">        }</span>
+<span class="line" id="L369">    }</span>
+<span class="line" id="L370"></span>
+<span class="line" id="L371">    <span class="tok-comment">/// Check the cache to see if the input exists in it. If it exists, returns `true`.</span></span>
+<span class="line" id="L372">    <span class="tok-comment">/// A hex encoding of its hash is available by calling `final`.</span></span>
+<span class="line" id="L373">    <span class="tok-comment">///</span></span>
+<span class="line" id="L374">    <span class="tok-comment">/// This function will also acquire an exclusive lock to the manifest file. This means</span></span>
+<span class="line" id="L375">    <span class="tok-comment">/// that a process holding a Manifest will block any other process attempting to</span></span>
+<span class="line" id="L376">    <span class="tok-comment">/// acquire the lock. If `want_shared_lock` is `true`, a cache hit guarantees the</span></span>
+<span class="line" id="L377">    <span class="tok-comment">/// manifest file to be locked in shared mode, and a cache miss guarantees the manifest</span></span>
+<span class="line" id="L378">    <span class="tok-comment">/// file to be locked in exclusive mode.</span></span>
+<span class="line" id="L379">    <span class="tok-comment">///</span></span>
+<span class="line" id="L380">    <span class="tok-comment">/// The lock on the manifest file is released when `deinit` is called. As another</span></span>
+<span class="line" id="L381">    <span class="tok-comment">/// option, one may call `toOwnedLock` to obtain a smaller object which can represent</span></span>
+<span class="line" id="L382">    <span class="tok-comment">/// the lock. `deinit` is safe to call whether or not `toOwnedLock` has been called.</span></span>
+<span class="line" id="L383">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">hit</span>(self: *Manifest) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L384">        <span class="tok-kw">const</span> gpa = self.cache.gpa;</span>
+<span class="line" id="L385">        assert(self.manifest_file == <span class="tok-null">null</span>);</span>
+<span class="line" id="L386"></span>
+<span class="line" id="L387">        self.failed_file_index = <span class="tok-null">null</span>;</span>
+<span class="line" id="L388"></span>
+<span class="line" id="L389">        <span class="tok-kw">const</span> ext = <span class="tok-str">&quot;.txt&quot;</span>;</span>
+<span class="line" id="L390">        <span class="tok-kw">var</span> manifest_file_path: [hex_digest_len + ext.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L391"></span>
+<span class="line" id="L392">        <span class="tok-kw">var</span> bin_digest: BinDigest = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L393">        self.hash.hasher.final(&amp;bin_digest);</span>
+<span class="line" id="L394"></span>
+<span class="line" id="L395">        _ = fmt.bufPrint(</span>
+<span class="line" id="L396">            &amp;self.hex_digest,</span>
+<span class="line" id="L397">            <span class="tok-str">&quot;{s}&quot;</span>,</span>
+<span class="line" id="L398">            .{fmt.fmtSliceHexLower(&amp;bin_digest)},</span>
+<span class="line" id="L399">        ) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L400"></span>
+<span class="line" id="L401">        self.hash.hasher = hasher_init;</span>
+<span class="line" id="L402">        self.hash.hasher.update(&amp;bin_digest);</span>
+<span class="line" id="L403"></span>
+<span class="line" id="L404">        <span class="tok-builtin">@memcpy</span>(manifest_file_path[<span class="tok-number">0</span>..self.hex_digest.len], &amp;self.hex_digest);</span>
+<span class="line" id="L405">        manifest_file_path[hex_digest_len..][<span class="tok-number">0</span>..ext.len].* = ext.*;</span>
+<span class="line" id="L406"></span>
+<span class="line" id="L407">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L408">            <span class="tok-kw">if</span> (self.cache.manifest_dir.createFile(&amp;manifest_file_path, .{</span>
+<span class="line" id="L409">                .read = <span class="tok-null">true</span>,</span>
+<span class="line" id="L410">                .truncate = <span class="tok-null">false</span>,</span>
+<span class="line" id="L411">                .lock = .exclusive,</span>
+<span class="line" id="L412">                .lock_nonblocking = self.want_shared_lock,</span>
+<span class="line" id="L413">            })) |manifest_file| {</span>
+<span class="line" id="L414">                self.manifest_file = manifest_file;</span>
+<span class="line" id="L415">                self.have_exclusive_lock = <span class="tok-null">true</span>;</span>
+<span class="line" id="L416">                <span class="tok-kw">break</span>;</span>
+<span class="line" id="L417">            } <span class="tok-kw">else</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L418">                <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L419">                    self.manifest_file = <span class="tok-kw">try</span> self.cache.manifest_dir.openFile(&amp;manifest_file_path, .{</span>
+<span class="line" id="L420">                        .mode = .read_write,</span>
+<span class="line" id="L421">                        .lock = .shared,</span>
+<span class="line" id="L422">                    });</span>
+<span class="line" id="L423">                    <span class="tok-kw">break</span>;</span>
+<span class="line" id="L424">                },</span>
+<span class="line" id="L425">                <span class="tok-comment">// There are no dir components, so you would think that this was</span>
+</span>
+<span class="line" id="L426">                <span class="tok-comment">// unreachable, however we have observed on macOS two processes racing</span>
+</span>
+<span class="line" id="L427">                <span class="tok-comment">// to do openat() with O_CREAT manifest in ENOENT.</span>
+</span>
+<span class="line" id="L428">                <span class="tok-kw">error</span>.FileNotFound =&gt; <span class="tok-kw">continue</span>,</span>
+<span class="line" id="L429">                <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L430">            }</span>
+<span class="line" id="L431">        }</span>
+<span class="line" id="L432"></span>
+<span class="line" id="L433">        self.want_refresh_timestamp = <span class="tok-null">true</span>;</span>
+<span class="line" id="L434"></span>
+<span class="line" id="L435">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L436">            <span class="tok-kw">const</span> file_contents = <span class="tok-kw">try</span> self.manifest_file.?.reader().readAllAlloc(gpa, manifest_file_size_max);</span>
+<span class="line" id="L437">            <span class="tok-kw">defer</span> gpa.free(file_contents);</span>
+<span class="line" id="L438"></span>
+<span class="line" id="L439">            <span class="tok-kw">const</span> input_file_count = self.files.items.len;</span>
+<span class="line" id="L440">            <span class="tok-kw">var</span> any_file_changed = <span class="tok-null">false</span>;</span>
+<span class="line" id="L441">            <span class="tok-kw">var</span> line_iter = mem.tokenizeScalar(<span class="tok-type">u8</span>, file_contents, <span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L442">            <span class="tok-kw">var</span> idx: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L443">            <span class="tok-kw">if</span> (<span class="tok-kw">if</span> (line_iter.next()) |line| !std.mem.eql(<span class="tok-type">u8</span>, line, manifest_header) <span class="tok-kw">else</span> <span class="tok-null">true</span>) {</span>
+<span class="line" id="L444">                <span class="tok-kw">if</span> (<span class="tok-kw">try</span> self.upgradeToExclusiveLock()) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L445">                self.manifest_dirty = <span class="tok-null">true</span>;</span>
+<span class="line" id="L446">                <span class="tok-kw">while</span> (idx &lt; input_file_count) : (idx += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L447">                    <span class="tok-kw">const</span> ch_file = &amp;self.files.items[idx];</span>
+<span class="line" id="L448">                    self.populateFileHash(ch_file) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L449">                        self.failed_file_index = idx;</span>
+<span class="line" id="L450">                        <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L451">                    };</span>
+<span class="line" id="L452">                }</span>
+<span class="line" id="L453">                <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L454">            }</span>
+<span class="line" id="L455">            <span class="tok-kw">while</span> (line_iter.next()) |line| {</span>
+<span class="line" id="L456">                <span class="tok-kw">defer</span> idx += <span class="tok-number">1</span>;</span>
+<span class="line" id="L457"></span>
+<span class="line" id="L458">                <span class="tok-kw">const</span> cache_hash_file = <span class="tok-kw">if</span> (idx &lt; input_file_count) &amp;self.files.items[idx] <span class="tok-kw">else</span> blk: {</span>
+<span class="line" id="L459">                    <span class="tok-kw">const</span> new = <span class="tok-kw">try</span> self.files.addOne(gpa);</span>
+<span class="line" id="L460">                    new.* = .{</span>
+<span class="line" id="L461">                        .prefixed_path = <span class="tok-null">null</span>,</span>
+<span class="line" id="L462">                        .contents = <span class="tok-null">null</span>,</span>
+<span class="line" id="L463">                        .max_file_size = <span class="tok-null">null</span>,</span>
+<span class="line" id="L464">                        .stat = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L465">                        .bin_digest = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L466">                    };</span>
+<span class="line" id="L467">                    <span class="tok-kw">break</span> :blk new;</span>
+<span class="line" id="L468">                };</span>
+<span class="line" id="L469"></span>
+<span class="line" id="L470">                <span class="tok-kw">var</span> iter = mem.tokenizeScalar(<span class="tok-type">u8</span>, line, <span class="tok-str">' '</span>);</span>
+<span class="line" id="L471">                <span class="tok-kw">const</span> size = iter.next() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L472">                <span class="tok-kw">const</span> inode = iter.next() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L473">                <span class="tok-kw">const</span> mtime_nsec_str = iter.next() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L474">                <span class="tok-kw">const</span> digest_str = iter.next() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L475">                <span class="tok-kw">const</span> prefix_str = iter.next() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L476">                <span class="tok-kw">const</span> file_path = iter.rest();</span>
+<span class="line" id="L477"></span>
+<span class="line" id="L478">                cache_hash_file.stat.size = fmt.parseInt(<span class="tok-type">u64</span>, size, <span class="tok-number">10</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L479">                cache_hash_file.stat.inode = fmt.parseInt(fs.File.INode, inode, <span class="tok-number">10</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L480">                cache_hash_file.stat.mtime = fmt.parseInt(<span class="tok-type">i64</span>, mtime_nsec_str, <span class="tok-number">10</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L481">                _ = fmt.hexToBytes(&amp;cache_hash_file.bin_digest, digest_str) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L482">                <span class="tok-kw">const</span> prefix = fmt.parseInt(<span class="tok-type">u8</span>, prefix_str, <span class="tok-number">10</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L483">                <span class="tok-kw">if</span> (prefix &gt;= self.cache.prefixes_len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L484"></span>
+<span class="line" id="L485">                <span class="tok-kw">if</span> (file_path.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L486">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L487">                }</span>
+<span class="line" id="L488">                <span class="tok-kw">if</span> (cache_hash_file.prefixed_path) |pp| {</span>
+<span class="line" id="L489">                    <span class="tok-kw">if</span> (pp.prefix != prefix <span class="tok-kw">or</span> !mem.eql(<span class="tok-type">u8</span>, file_path, pp.sub_path)) {</span>
+<span class="line" id="L490">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidFormat;</span>
+<span class="line" id="L491">                    }</span>
+<span class="line" id="L492">                }</span>
+<span class="line" id="L493"></span>
+<span class="line" id="L494">                <span class="tok-kw">if</span> (cache_hash_file.prefixed_path == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L495">                    cache_hash_file.prefixed_path = .{</span>
+<span class="line" id="L496">                        .prefix = prefix,</span>
+<span class="line" id="L497">                        .sub_path = <span class="tok-kw">try</span> gpa.dupe(<span class="tok-type">u8</span>, file_path),</span>
+<span class="line" id="L498">                    };</span>
+<span class="line" id="L499">                }</span>
+<span class="line" id="L500"></span>
+<span class="line" id="L501">                <span class="tok-kw">const</span> pp = cache_hash_file.prefixed_path.?;</span>
+<span class="line" id="L502">                <span class="tok-kw">const</span> dir = self.cache.prefixes()[pp.prefix].handle;</span>
+<span class="line" id="L503">                <span class="tok-kw">const</span> this_file = dir.openFile(pp.sub_path, .{ .mode = .read_only }) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L504">                    <span class="tok-kw">error</span>.FileNotFound =&gt; {</span>
+<span class="line" id="L505">                        <span class="tok-kw">if</span> (<span class="tok-kw">try</span> self.upgradeToExclusiveLock()) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L506">                        <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L507">                    },</span>
+<span class="line" id="L508">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CacheUnavailable,</span>
+<span class="line" id="L509">                };</span>
+<span class="line" id="L510">                <span class="tok-kw">defer</span> this_file.close();</span>
+<span class="line" id="L511"></span>
+<span class="line" id="L512">                <span class="tok-kw">const</span> actual_stat = this_file.stat() <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L513">                    self.failed_file_index = idx;</span>
+<span class="line" id="L514">                    <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L515">                };</span>
+<span class="line" id="L516">                <span class="tok-kw">const</span> size_match = actual_stat.size == cache_hash_file.stat.size;</span>
+<span class="line" id="L517">                <span class="tok-kw">const</span> mtime_match = actual_stat.mtime == cache_hash_file.stat.mtime;</span>
+<span class="line" id="L518">                <span class="tok-kw">const</span> inode_match = actual_stat.inode == cache_hash_file.stat.inode;</span>
+<span class="line" id="L519"></span>
+<span class="line" id="L520">                <span class="tok-kw">if</span> (!size_match <span class="tok-kw">or</span> !mtime_match <span class="tok-kw">or</span> !inode_match) {</span>
+<span class="line" id="L521">                    self.manifest_dirty = <span class="tok-null">true</span>;</span>
+<span class="line" id="L522"></span>
+<span class="line" id="L523">                    cache_hash_file.stat = .{</span>
+<span class="line" id="L524">                        .size = actual_stat.size,</span>
+<span class="line" id="L525">                        .mtime = actual_stat.mtime,</span>
+<span class="line" id="L526">                        .inode = actual_stat.inode,</span>
+<span class="line" id="L527">                    };</span>
+<span class="line" id="L528"></span>
+<span class="line" id="L529">                    <span class="tok-kw">if</span> (self.isProblematicTimestamp(cache_hash_file.stat.mtime)) {</span>
+<span class="line" id="L530">                        <span class="tok-comment">// The actual file has an unreliable timestamp, force it to be hashed</span>
+</span>
+<span class="line" id="L531">                        cache_hash_file.stat.mtime = <span class="tok-number">0</span>;</span>
+<span class="line" id="L532">                        cache_hash_file.stat.inode = <span class="tok-number">0</span>;</span>
+<span class="line" id="L533">                    }</span>
+<span class="line" id="L534"></span>
+<span class="line" id="L535">                    <span class="tok-kw">var</span> actual_digest: BinDigest = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L536">                    hashFile(this_file, &amp;actual_digest) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L537">                        self.failed_file_index = idx;</span>
+<span class="line" id="L538">                        <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L539">                    };</span>
+<span class="line" id="L540"></span>
+<span class="line" id="L541">                    <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, &amp;cache_hash_file.bin_digest, &amp;actual_digest)) {</span>
+<span class="line" id="L542">                        cache_hash_file.bin_digest = actual_digest;</span>
+<span class="line" id="L543">                        <span class="tok-comment">// keep going until we have the input file digests</span>
+</span>
+<span class="line" id="L544">                        any_file_changed = <span class="tok-null">true</span>;</span>
+<span class="line" id="L545">                    }</span>
+<span class="line" id="L546">                }</span>
+<span class="line" id="L547"></span>
+<span class="line" id="L548">                <span class="tok-kw">if</span> (!any_file_changed) {</span>
+<span class="line" id="L549">                    self.hash.hasher.update(&amp;cache_hash_file.bin_digest);</span>
+<span class="line" id="L550">                }</span>
+<span class="line" id="L551">            }</span>
+<span class="line" id="L552"></span>
+<span class="line" id="L553">            <span class="tok-kw">if</span> (any_file_changed) {</span>
+<span class="line" id="L554">                <span class="tok-kw">if</span> (<span class="tok-kw">try</span> self.upgradeToExclusiveLock()) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L555">                <span class="tok-comment">// cache miss</span>
+</span>
+<span class="line" id="L556">                <span class="tok-comment">// keep the manifest file open</span>
+</span>
+<span class="line" id="L557">                self.unhit(bin_digest, input_file_count);</span>
+<span class="line" id="L558">                <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L559">            }</span>
+<span class="line" id="L560"></span>
+<span class="line" id="L561">            <span class="tok-kw">if</span> (idx &lt; input_file_count) {</span>
+<span class="line" id="L562">                <span class="tok-kw">if</span> (<span class="tok-kw">try</span> self.upgradeToExclusiveLock()) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L563">                self.manifest_dirty = <span class="tok-null">true</span>;</span>
+<span class="line" id="L564">                <span class="tok-kw">while</span> (idx &lt; input_file_count) : (idx += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L565">                    <span class="tok-kw">const</span> ch_file = &amp;self.files.items[idx];</span>
+<span class="line" id="L566">                    self.populateFileHash(ch_file) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L567">                        self.failed_file_index = idx;</span>
+<span class="line" id="L568">                        <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L569">                    };</span>
+<span class="line" id="L570">                }</span>
+<span class="line" id="L571">                <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L572">            }</span>
+<span class="line" id="L573"></span>
+<span class="line" id="L574">            <span class="tok-kw">if</span> (self.want_shared_lock) {</span>
+<span class="line" id="L575">                <span class="tok-kw">try</span> self.downgradeToSharedLock();</span>
+<span class="line" id="L576">            }</span>
+<span class="line" id="L577"></span>
+<span class="line" id="L578">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L579">        }</span>
+<span class="line" id="L580">    }</span>
+<span class="line" id="L581"></span>
+<span class="line" id="L582">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">unhit</span>(self: *Manifest, bin_digest: BinDigest, input_file_count: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L583">        <span class="tok-comment">// Reset the hash.</span>
+</span>
+<span class="line" id="L584">        self.hash.hasher = hasher_init;</span>
+<span class="line" id="L585">        self.hash.hasher.update(&amp;bin_digest);</span>
+<span class="line" id="L586"></span>
+<span class="line" id="L587">        <span class="tok-comment">// Remove files not in the initial hash.</span>
+</span>
+<span class="line" id="L588">        <span class="tok-kw">for</span> (self.files.items[input_file_count..]) |*file| {</span>
+<span class="line" id="L589">            file.deinit(self.cache.gpa);</span>
+<span class="line" id="L590">        }</span>
+<span class="line" id="L591">        self.files.shrinkRetainingCapacity(input_file_count);</span>
+<span class="line" id="L592"></span>
+<span class="line" id="L593">        <span class="tok-kw">for</span> (self.files.items) |file| {</span>
+<span class="line" id="L594">            self.hash.hasher.update(&amp;file.bin_digest);</span>
+<span class="line" id="L595">        }</span>
+<span class="line" id="L596">    }</span>
+<span class="line" id="L597"></span>
+<span class="line" id="L598">    <span class="tok-kw">fn</span> <span class="tok-fn">isProblematicTimestamp</span>(man: *Manifest, file_time: <span class="tok-type">i128</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L599">        <span class="tok-comment">// If the file_time is prior to the most recent problematic timestamp</span>
+</span>
+<span class="line" id="L600">        <span class="tok-comment">// then we don't need to access the filesystem.</span>
+</span>
+<span class="line" id="L601">        <span class="tok-kw">if</span> (file_time &lt; man.recent_problematic_timestamp)</span>
+<span class="line" id="L602">            <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L603"></span>
+<span class="line" id="L604">        <span class="tok-comment">// Next we will check the globally shared Cache timestamp, which is accessed</span>
+</span>
+<span class="line" id="L605">        <span class="tok-comment">// from multiple threads.</span>
+</span>
+<span class="line" id="L606">        man.cache.mutex.lock();</span>
+<span class="line" id="L607">        <span class="tok-kw">defer</span> man.cache.mutex.unlock();</span>
+<span class="line" id="L608"></span>
+<span class="line" id="L609">        <span class="tok-comment">// Save the global one to our local one to avoid locking next time.</span>
+</span>
+<span class="line" id="L610">        man.recent_problematic_timestamp = man.cache.recent_problematic_timestamp;</span>
+<span class="line" id="L611">        <span class="tok-kw">if</span> (file_time &lt; man.recent_problematic_timestamp)</span>
+<span class="line" id="L612">            <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L613"></span>
+<span class="line" id="L614">        <span class="tok-comment">// This flag prevents multiple filesystem writes for the same hit() call.</span>
+</span>
+<span class="line" id="L615">        <span class="tok-kw">if</span> (man.want_refresh_timestamp) {</span>
+<span class="line" id="L616">            man.want_refresh_timestamp = <span class="tok-null">false</span>;</span>
+<span class="line" id="L617"></span>
+<span class="line" id="L618">            <span class="tok-kw">var</span> file = man.cache.manifest_dir.createFile(<span class="tok-str">&quot;timestamp&quot;</span>, .{</span>
+<span class="line" id="L619">                .read = <span class="tok-null">true</span>,</span>
+<span class="line" id="L620">                .truncate = <span class="tok-null">true</span>,</span>
+<span class="line" id="L621">            }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L622">            <span class="tok-kw">defer</span> file.close();</span>
+<span class="line" id="L623"></span>
+<span class="line" id="L624">            <span class="tok-comment">// Save locally and also save globally (we still hold the global lock).</span>
+</span>
+<span class="line" id="L625">            man.recent_problematic_timestamp = (file.stat() <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">true</span>).mtime;</span>
+<span class="line" id="L626">            man.cache.recent_problematic_timestamp = man.recent_problematic_timestamp;</span>
+<span class="line" id="L627">        }</span>
+<span class="line" id="L628"></span>
+<span class="line" id="L629">        <span class="tok-kw">return</span> file_time &gt;= man.recent_problematic_timestamp;</span>
+<span class="line" id="L630">    }</span>
+<span class="line" id="L631"></span>
+<span class="line" id="L632">    <span class="tok-kw">fn</span> <span class="tok-fn">populateFileHash</span>(self: *Manifest, ch_file: *File) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L633">        <span class="tok-kw">const</span> pp = ch_file.prefixed_path.?;</span>
+<span class="line" id="L634">        <span class="tok-kw">const</span> dir = self.cache.prefixes()[pp.prefix].handle;</span>
+<span class="line" id="L635">        <span class="tok-kw">const</span> file = <span class="tok-kw">try</span> dir.openFile(pp.sub_path, .{});</span>
+<span class="line" id="L636">        <span class="tok-kw">defer</span> file.close();</span>
+<span class="line" id="L637"></span>
+<span class="line" id="L638">        <span class="tok-kw">const</span> actual_stat = <span class="tok-kw">try</span> file.stat();</span>
+<span class="line" id="L639">        ch_file.stat = .{</span>
+<span class="line" id="L640">            .size = actual_stat.size,</span>
+<span class="line" id="L641">            .mtime = actual_stat.mtime,</span>
+<span class="line" id="L642">            .inode = actual_stat.inode,</span>
+<span class="line" id="L643">        };</span>
+<span class="line" id="L644"></span>
+<span class="line" id="L645">        <span class="tok-kw">if</span> (self.isProblematicTimestamp(ch_file.stat.mtime)) {</span>
+<span class="line" id="L646">            <span class="tok-comment">// The actual file has an unreliable timestamp, force it to be hashed</span>
+</span>
+<span class="line" id="L647">            ch_file.stat.mtime = <span class="tok-number">0</span>;</span>
+<span class="line" id="L648">            ch_file.stat.inode = <span class="tok-number">0</span>;</span>
+<span class="line" id="L649">        }</span>
+<span class="line" id="L650"></span>
+<span class="line" id="L651">        <span class="tok-kw">if</span> (ch_file.max_file_size) |max_file_size| {</span>
+<span class="line" id="L652">            <span class="tok-kw">if</span> (ch_file.stat.size &gt; max_file_size) {</span>
+<span class="line" id="L653">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.FileTooBig;</span>
+<span class="line" id="L654">            }</span>
+<span class="line" id="L655"></span>
+<span class="line" id="L656">            <span class="tok-kw">const</span> contents = <span class="tok-kw">try</span> self.cache.gpa.alloc(<span class="tok-type">u8</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(ch_file.stat.size)));</span>
+<span class="line" id="L657">            <span class="tok-kw">errdefer</span> self.cache.gpa.free(contents);</span>
+<span class="line" id="L658"></span>
+<span class="line" id="L659">            <span class="tok-comment">// Hash while reading from disk, to keep the contents in the cpu cache while</span>
+</span>
+<span class="line" id="L660">            <span class="tok-comment">// doing hashing.</span>
+</span>
+<span class="line" id="L661">            <span class="tok-kw">var</span> hasher = hasher_init;</span>
+<span class="line" id="L662">            <span class="tok-kw">var</span> off: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L663">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L664">                <span class="tok-comment">// give me everything you've got, captain</span>
+</span>
+<span class="line" id="L665">                <span class="tok-kw">const</span> bytes_read = <span class="tok-kw">try</span> file.read(contents[off..]);</span>
+<span class="line" id="L666">                <span class="tok-kw">if</span> (bytes_read == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L667">                hasher.update(contents[off..][<span class="tok-number">0</span>..bytes_read]);</span>
+<span class="line" id="L668">                off += bytes_read;</span>
+<span class="line" id="L669">            }</span>
+<span class="line" id="L670">            hasher.final(&amp;ch_file.bin_digest);</span>
+<span class="line" id="L671"></span>
+<span class="line" id="L672">            ch_file.contents = contents;</span>
+<span class="line" id="L673">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L674">            <span class="tok-kw">try</span> hashFile(file, &amp;ch_file.bin_digest);</span>
+<span class="line" id="L675">        }</span>
+<span class="line" id="L676"></span>
+<span class="line" id="L677">        self.hash.hasher.update(&amp;ch_file.bin_digest);</span>
+<span class="line" id="L678">    }</span>
+<span class="line" id="L679"></span>
+<span class="line" id="L680">    <span class="tok-comment">/// Add a file as a dependency of process being cached, after the initial hash has been</span></span>
+<span class="line" id="L681">    <span class="tok-comment">/// calculated. This is useful for processes that don't know all the files that</span></span>
+<span class="line" id="L682">    <span class="tok-comment">/// are depended on ahead of time. For example, a source file that can import other files</span></span>
+<span class="line" id="L683">    <span class="tok-comment">/// will need to be recompiled if the imported file is changed.</span></span>
+<span class="line" id="L684">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addFilePostFetch</span>(self: *Manifest, file_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, max_file_size: <span class="tok-type">usize</span>) ![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L685">        assert(self.manifest_file != <span class="tok-null">null</span>);</span>
+<span class="line" id="L686"></span>
+<span class="line" id="L687">        <span class="tok-kw">const</span> gpa = self.cache.gpa;</span>
+<span class="line" id="L688">        <span class="tok-kw">const</span> prefixed_path = <span class="tok-kw">try</span> self.cache.findPrefix(file_path);</span>
+<span class="line" id="L689">        <span class="tok-kw">errdefer</span> gpa.free(prefixed_path.sub_path);</span>
+<span class="line" id="L690"></span>
+<span class="line" id="L691">        <span class="tok-kw">const</span> new_ch_file = <span class="tok-kw">try</span> self.files.addOne(gpa);</span>
+<span class="line" id="L692">        new_ch_file.* = .{</span>
+<span class="line" id="L693">            .prefixed_path = prefixed_path,</span>
+<span class="line" id="L694">            .max_file_size = max_file_size,</span>
+<span class="line" id="L695">            .stat = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L696">            .bin_digest = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L697">            .contents = <span class="tok-null">null</span>,</span>
+<span class="line" id="L698">        };</span>
+<span class="line" id="L699">        <span class="tok-kw">errdefer</span> self.files.shrinkRetainingCapacity(self.files.items.len - <span class="tok-number">1</span>);</span>
+<span class="line" id="L700"></span>
+<span class="line" id="L701">        <span class="tok-kw">try</span> self.populateFileHash(new_ch_file);</span>
+<span class="line" id="L702"></span>
+<span class="line" id="L703">        <span class="tok-kw">return</span> new_ch_file.contents.?;</span>
+<span class="line" id="L704">    }</span>
+<span class="line" id="L705"></span>
+<span class="line" id="L706">    <span class="tok-comment">/// Add a file as a dependency of process being cached, after the initial hash has been</span></span>
+<span class="line" id="L707">    <span class="tok-comment">/// calculated. This is useful for processes that don't know the all the files that</span></span>
+<span class="line" id="L708">    <span class="tok-comment">/// are depended on ahead of time. For example, a source file that can import other files</span></span>
+<span class="line" id="L709">    <span class="tok-comment">/// will need to be recompiled if the imported file is changed.</span></span>
+<span class="line" id="L710">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addFilePost</span>(self: *Manifest, file_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L711">        assert(self.manifest_file != <span class="tok-null">null</span>);</span>
+<span class="line" id="L712"></span>
+<span class="line" id="L713">        <span class="tok-kw">const</span> gpa = self.cache.gpa;</span>
+<span class="line" id="L714">        <span class="tok-kw">const</span> prefixed_path = <span class="tok-kw">try</span> self.cache.findPrefix(file_path);</span>
+<span class="line" id="L715">        <span class="tok-kw">errdefer</span> gpa.free(prefixed_path.sub_path);</span>
+<span class="line" id="L716"></span>
+<span class="line" id="L717">        <span class="tok-kw">const</span> new_ch_file = <span class="tok-kw">try</span> self.files.addOne(gpa);</span>
+<span class="line" id="L718">        new_ch_file.* = .{</span>
+<span class="line" id="L719">            .prefixed_path = prefixed_path,</span>
+<span class="line" id="L720">            .max_file_size = <span class="tok-null">null</span>,</span>
+<span class="line" id="L721">            .stat = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L722">            .bin_digest = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L723">            .contents = <span class="tok-null">null</span>,</span>
+<span class="line" id="L724">        };</span>
+<span class="line" id="L725">        <span class="tok-kw">errdefer</span> self.files.shrinkRetainingCapacity(self.files.items.len - <span class="tok-number">1</span>);</span>
+<span class="line" id="L726"></span>
+<span class="line" id="L727">        <span class="tok-kw">try</span> self.populateFileHash(new_ch_file);</span>
+<span class="line" id="L728">    }</span>
+<span class="line" id="L729"></span>
+<span class="line" id="L730">    <span class="tok-comment">/// Like `addFilePost` but when the file contents have already been loaded from disk.</span></span>
+<span class="line" id="L731">    <span class="tok-comment">/// On success, cache takes ownership of `resolved_path`.</span></span>
+<span class="line" id="L732">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addFilePostContents</span>(</span>
+<span class="line" id="L733">        self: *Manifest,</span>
+<span class="line" id="L734">        resolved_path: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L735">        bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L736">        stat: File.Stat,</span>
+<span class="line" id="L737">    ) <span class="tok-kw">error</span>{OutOfMemory}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L738">        assert(self.manifest_file != <span class="tok-null">null</span>);</span>
+<span class="line" id="L739">        <span class="tok-kw">const</span> gpa = self.cache.gpa;</span>
+<span class="line" id="L740"></span>
+<span class="line" id="L741">        <span class="tok-kw">const</span> ch_file = <span class="tok-kw">try</span> self.files.addOne(gpa);</span>
+<span class="line" id="L742">        <span class="tok-kw">errdefer</span> self.files.shrinkRetainingCapacity(self.files.items.len - <span class="tok-number">1</span>);</span>
+<span class="line" id="L743"></span>
+<span class="line" id="L744">        <span class="tok-kw">const</span> prefixed_path = <span class="tok-kw">try</span> self.cache.findPrefixResolved(resolved_path);</span>
+<span class="line" id="L745">        <span class="tok-kw">errdefer</span> gpa.free(prefixed_path.sub_path);</span>
+<span class="line" id="L746"></span>
+<span class="line" id="L747">        ch_file.* = .{</span>
+<span class="line" id="L748">            .prefixed_path = prefixed_path,</span>
+<span class="line" id="L749">            .max_file_size = <span class="tok-null">null</span>,</span>
+<span class="line" id="L750">            .stat = stat,</span>
+<span class="line" id="L751">            .bin_digest = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L752">            .contents = <span class="tok-null">null</span>,</span>
+<span class="line" id="L753">        };</span>
+<span class="line" id="L754"></span>
+<span class="line" id="L755">        <span class="tok-kw">if</span> (self.isProblematicTimestamp(ch_file.stat.mtime)) {</span>
+<span class="line" id="L756">            <span class="tok-comment">// The actual file has an unreliable timestamp, force it to be hashed</span>
+</span>
+<span class="line" id="L757">            ch_file.stat.mtime = <span class="tok-number">0</span>;</span>
+<span class="line" id="L758">            ch_file.stat.inode = <span class="tok-number">0</span>;</span>
+<span class="line" id="L759">        }</span>
+<span class="line" id="L760"></span>
+<span class="line" id="L761">        {</span>
+<span class="line" id="L762">            <span class="tok-kw">var</span> hasher = hasher_init;</span>
+<span class="line" id="L763">            hasher.update(bytes);</span>
+<span class="line" id="L764">            hasher.final(&amp;ch_file.bin_digest);</span>
+<span class="line" id="L765">        }</span>
+<span class="line" id="L766"></span>
+<span class="line" id="L767">        self.hash.hasher.update(&amp;ch_file.bin_digest);</span>
+<span class="line" id="L768">    }</span>
+<span class="line" id="L769"></span>
+<span class="line" id="L770">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addDepFilePost</span>(self: *Manifest, dir: fs.Dir, dep_file_basename: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L771">        assert(self.manifest_file != <span class="tok-null">null</span>);</span>
+<span class="line" id="L772"></span>
+<span class="line" id="L773">        <span class="tok-kw">const</span> dep_file_contents = <span class="tok-kw">try</span> dir.readFileAlloc(self.cache.gpa, dep_file_basename, manifest_file_size_max);</span>
+<span class="line" id="L774">        <span class="tok-kw">defer</span> self.cache.gpa.free(dep_file_contents);</span>
+<span class="line" id="L775"></span>
+<span class="line" id="L776">        <span class="tok-kw">var</span> error_buf = std.ArrayList(<span class="tok-type">u8</span>).init(self.cache.gpa);</span>
+<span class="line" id="L777">        <span class="tok-kw">defer</span> error_buf.deinit();</span>
+<span class="line" id="L778"></span>
+<span class="line" id="L779">        <span class="tok-kw">var</span> it: DepTokenizer = .{ .bytes = dep_file_contents };</span>
+<span class="line" id="L780"></span>
+<span class="line" id="L781">        <span class="tok-comment">// Skip first token: target.</span>
+</span>
+<span class="line" id="L782">        <span class="tok-kw">switch</span> (it.next() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>) { <span class="tok-comment">// Empty dep file OK.</span>
+</span>
+<span class="line" id="L783">            .target, .target_must_resolve, .prereq =&gt; {},</span>
+<span class="line" id="L784">            <span class="tok-kw">else</span> =&gt; |err| {</span>
+<span class="line" id="L785">                <span class="tok-kw">try</span> err.printError(error_buf.writer());</span>
+<span class="line" id="L786">                log.err(<span class="tok-str">&quot;failed parsing {s}: {s}&quot;</span>, .{ dep_file_basename, error_buf.items });</span>
+<span class="line" id="L787">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidDepFile;</span>
+<span class="line" id="L788">            },</span>
+<span class="line" id="L789">        }</span>
+<span class="line" id="L790">        <span class="tok-comment">// Process 0+ preqreqs.</span>
+</span>
+<span class="line" id="L791">        <span class="tok-comment">// Clang is invoked in single-source mode so we never get more targets.</span>
+</span>
+<span class="line" id="L792">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L793">            <span class="tok-kw">switch</span> (it.next() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>) {</span>
+<span class="line" id="L794">                .target, .target_must_resolve =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L795">                .prereq =&gt; |file_path| <span class="tok-kw">try</span> self.addFilePost(file_path),</span>
+<span class="line" id="L796">                <span class="tok-kw">else</span> =&gt; |err| {</span>
+<span class="line" id="L797">                    <span class="tok-kw">try</span> err.printError(error_buf.writer());</span>
+<span class="line" id="L798">                    log.err(<span class="tok-str">&quot;failed parsing {s}: {s}&quot;</span>, .{ dep_file_basename, error_buf.items });</span>
+<span class="line" id="L799">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidDepFile;</span>
+<span class="line" id="L800">                },</span>
+<span class="line" id="L801">            }</span>
+<span class="line" id="L802">        }</span>
+<span class="line" id="L803">    }</span>
+<span class="line" id="L804"></span>
+<span class="line" id="L805">    <span class="tok-comment">/// Returns a hex encoded hash of the inputs.</span></span>
+<span class="line" id="L806">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">final</span>(self: *Manifest) [hex_digest_len]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L807">        assert(self.manifest_file != <span class="tok-null">null</span>);</span>
+<span class="line" id="L808"></span>
+<span class="line" id="L809">        <span class="tok-comment">// We don't close the manifest file yet, because we want to</span>
+</span>
+<span class="line" id="L810">        <span class="tok-comment">// keep it locked until the API user is done using it.</span>
+</span>
+<span class="line" id="L811">        <span class="tok-comment">// We also don't write out the manifest yet, because until</span>
+</span>
+<span class="line" id="L812">        <span class="tok-comment">// cache_release is called we still might be working on creating</span>
+</span>
+<span class="line" id="L813">        <span class="tok-comment">// the artifacts to cache.</span>
+</span>
+<span class="line" id="L814"></span>
+<span class="line" id="L815">        <span class="tok-kw">var</span> bin_digest: BinDigest = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L816">        self.hash.hasher.final(&amp;bin_digest);</span>
+<span class="line" id="L817"></span>
+<span class="line" id="L818">        <span class="tok-kw">var</span> out_digest: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L819">        _ = fmt.bufPrint(</span>
+<span class="line" id="L820">            &amp;out_digest,</span>
+<span class="line" id="L821">            <span class="tok-str">&quot;{s}&quot;</span>,</span>
+<span class="line" id="L822">            .{fmt.fmtSliceHexLower(&amp;bin_digest)},</span>
+<span class="line" id="L823">        ) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L824"></span>
+<span class="line" id="L825">        <span class="tok-kw">return</span> out_digest;</span>
+<span class="line" id="L826">    }</span>
+<span class="line" id="L827"></span>
+<span class="line" id="L828">    <span class="tok-comment">/// If `want_shared_lock` is true, this function automatically downgrades the</span></span>
+<span class="line" id="L829">    <span class="tok-comment">/// lock from exclusive to shared.</span></span>
+<span class="line" id="L830">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeManifest</span>(self: *Manifest) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L831">        assert(self.have_exclusive_lock);</span>
+<span class="line" id="L832"></span>
+<span class="line" id="L833">        <span class="tok-kw">const</span> manifest_file = self.manifest_file.?;</span>
+<span class="line" id="L834">        <span class="tok-kw">if</span> (self.manifest_dirty) {</span>
+<span class="line" id="L835">            self.manifest_dirty = <span class="tok-null">false</span>;</span>
+<span class="line" id="L836"></span>
+<span class="line" id="L837">            <span class="tok-kw">var</span> contents = std.ArrayList(<span class="tok-type">u8</span>).init(self.cache.gpa);</span>
+<span class="line" id="L838">            <span class="tok-kw">defer</span> contents.deinit();</span>
+<span class="line" id="L839"></span>
+<span class="line" id="L840">            <span class="tok-kw">const</span> writer = contents.writer();</span>
+<span class="line" id="L841">            <span class="tok-kw">try</span> writer.writeAll(manifest_header ++ <span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L842">            <span class="tok-kw">for</span> (self.files.items) |file| {</span>
+<span class="line" id="L843">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{d} {d} {d} {} {d} {s}\n&quot;</span>, .{</span>
+<span class="line" id="L844">                    file.stat.size,</span>
+<span class="line" id="L845">                    file.stat.inode,</span>
+<span class="line" id="L846">                    file.stat.mtime,</span>
+<span class="line" id="L847">                    fmt.fmtSliceHexLower(&amp;file.bin_digest),</span>
+<span class="line" id="L848">                    file.prefixed_path.?.prefix,</span>
+<span class="line" id="L849">                    file.prefixed_path.?.sub_path,</span>
+<span class="line" id="L850">                });</span>
+<span class="line" id="L851">            }</span>
+<span class="line" id="L852"></span>
+<span class="line" id="L853">            <span class="tok-kw">try</span> manifest_file.setEndPos(contents.items.len);</span>
+<span class="line" id="L854">            <span class="tok-kw">try</span> manifest_file.pwriteAll(contents.items, <span class="tok-number">0</span>);</span>
+<span class="line" id="L855">        }</span>
+<span class="line" id="L856"></span>
+<span class="line" id="L857">        <span class="tok-kw">if</span> (self.want_shared_lock) {</span>
+<span class="line" id="L858">            <span class="tok-kw">try</span> self.downgradeToSharedLock();</span>
+<span class="line" id="L859">        }</span>
+<span class="line" id="L860">    }</span>
+<span class="line" id="L861"></span>
+<span class="line" id="L862">    <span class="tok-kw">fn</span> <span class="tok-fn">downgradeToSharedLock</span>(self: *Manifest) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L863">        <span class="tok-kw">if</span> (!self.have_exclusive_lock) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L864"></span>
+<span class="line" id="L865">        <span class="tok-comment">// WASI does not currently support flock, so we bypass it here.</span>
+</span>
+<span class="line" id="L866">        <span class="tok-comment">// TODO: If/when flock is supported on WASI, this check should be removed.</span>
+</span>
+<span class="line" id="L867">        <span class="tok-comment">//       See https://github.com/WebAssembly/wasi-filesystem/issues/2</span>
+</span>
+<span class="line" id="L868">        <span class="tok-kw">if</span> (builtin.os.tag != .wasi <span class="tok-kw">or</span> std.process.can_spawn <span class="tok-kw">or</span> !builtin.single_threaded) {</span>
+<span class="line" id="L869">            <span class="tok-kw">const</span> manifest_file = self.manifest_file.?;</span>
+<span class="line" id="L870">            <span class="tok-kw">try</span> manifest_file.downgradeLock();</span>
+<span class="line" id="L871">        }</span>
+<span class="line" id="L872"></span>
+<span class="line" id="L873">        self.have_exclusive_lock = <span class="tok-null">false</span>;</span>
+<span class="line" id="L874">    }</span>
+<span class="line" id="L875"></span>
+<span class="line" id="L876">    <span class="tok-kw">fn</span> <span class="tok-fn">upgradeToExclusiveLock</span>(self: *Manifest) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L877">        <span class="tok-kw">if</span> (self.have_exclusive_lock) <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L878">        assert(self.manifest_file != <span class="tok-null">null</span>);</span>
+<span class="line" id="L879"></span>
+<span class="line" id="L880">        <span class="tok-comment">// WASI does not currently support flock, so we bypass it here.</span>
+</span>
+<span class="line" id="L881">        <span class="tok-comment">// TODO: If/when flock is supported on WASI, this check should be removed.</span>
+</span>
+<span class="line" id="L882">        <span class="tok-comment">//       See https://github.com/WebAssembly/wasi-filesystem/issues/2</span>
+</span>
+<span class="line" id="L883">        <span class="tok-kw">if</span> (builtin.os.tag != .wasi <span class="tok-kw">or</span> std.process.can_spawn <span class="tok-kw">or</span> !builtin.single_threaded) {</span>
+<span class="line" id="L884">            <span class="tok-kw">const</span> manifest_file = self.manifest_file.?;</span>
+<span class="line" id="L885">            <span class="tok-comment">// Here we intentionally have a period where the lock is released, in case there are</span>
+</span>
+<span class="line" id="L886">            <span class="tok-comment">// other processes holding a shared lock.</span>
+</span>
+<span class="line" id="L887">            manifest_file.unlock();</span>
+<span class="line" id="L888">            <span class="tok-kw">try</span> manifest_file.lock(.exclusive);</span>
+<span class="line" id="L889">        }</span>
+<span class="line" id="L890">        self.have_exclusive_lock = <span class="tok-null">true</span>;</span>
+<span class="line" id="L891">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L892">    }</span>
+<span class="line" id="L893"></span>
+<span class="line" id="L894">    <span class="tok-comment">/// Obtain only the data needed to maintain a lock on the manifest file.</span></span>
+<span class="line" id="L895">    <span class="tok-comment">/// The `Manifest` remains safe to deinit.</span></span>
+<span class="line" id="L896">    <span class="tok-comment">/// Don't forget to call `writeManifest` before this!</span></span>
+<span class="line" id="L897">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toOwnedLock</span>(self: *Manifest) Lock {</span>
+<span class="line" id="L898">        <span class="tok-kw">const</span> lock: Lock = .{</span>
+<span class="line" id="L899">            .manifest_file = self.manifest_file.?,</span>
+<span class="line" id="L900">        };</span>
+<span class="line" id="L901"></span>
+<span class="line" id="L902">        self.manifest_file = <span class="tok-null">null</span>;</span>
+<span class="line" id="L903">        <span class="tok-kw">return</span> lock;</span>
+<span class="line" id="L904">    }</span>
+<span class="line" id="L905"></span>
+<span class="line" id="L906">    <span class="tok-comment">/// Releases the manifest file and frees any memory the Manifest was using.</span></span>
+<span class="line" id="L907">    <span class="tok-comment">/// `Manifest.hit` must be called first.</span></span>
+<span class="line" id="L908">    <span class="tok-comment">/// Don't forget to call `writeManifest` before this!</span></span>
+<span class="line" id="L909">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *Manifest) <span class="tok-type">void</span> {</span>
+<span class="line" id="L910">        <span class="tok-kw">if</span> (self.manifest_file) |file| {</span>
+<span class="line" id="L911">            <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L912">                <span class="tok-comment">// See Lock.release for why this is required on Windows</span>
+</span>
+<span class="line" id="L913">                file.unlock();</span>
+<span class="line" id="L914">            }</span>
+<span class="line" id="L915"></span>
+<span class="line" id="L916">            file.close();</span>
+<span class="line" id="L917">        }</span>
+<span class="line" id="L918">        <span class="tok-kw">for</span> (self.files.items) |*file| {</span>
+<span class="line" id="L919">            file.deinit(self.cache.gpa);</span>
+<span class="line" id="L920">        }</span>
+<span class="line" id="L921">        self.files.deinit(self.cache.gpa);</span>
+<span class="line" id="L922">    }</span>
+<span class="line" id="L923">};</span>
+<span class="line" id="L924"></span>
+<span class="line" id="L925"><span class="tok-comment">/// On operating systems that support symlinks, does a readlink. On other operating systems,</span></span>
+<span class="line" id="L926"><span class="tok-comment">/// uses the file contents. Windows supports symlinks but only with elevated privileges, so</span></span>
+<span class="line" id="L927"><span class="tok-comment">/// it is treated as not supporting symlinks.</span></span>
+<span class="line" id="L928"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readSmallFile</span>(dir: fs.Dir, sub_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, buffer: []<span class="tok-type">u8</span>) ![]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L929">    <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L930">        <span class="tok-kw">return</span> dir.readFile(sub_path, buffer);</span>
+<span class="line" id="L931">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L932">        <span class="tok-kw">return</span> dir.readLink(sub_path, buffer);</span>
+<span class="line" id="L933">    }</span>
+<span class="line" id="L934">}</span>
+<span class="line" id="L935"></span>
+<span class="line" id="L936"><span class="tok-comment">/// On operating systems that support symlinks, does a symlink. On other operating systems,</span></span>
+<span class="line" id="L937"><span class="tok-comment">/// uses the file contents. Windows supports symlinks but only with elevated privileges, so</span></span>
+<span class="line" id="L938"><span class="tok-comment">/// it is treated as not supporting symlinks.</span></span>
+<span class="line" id="L939"><span class="tok-comment">/// `data` must be a valid UTF-8 encoded file path and 255 bytes or fewer.</span></span>
+<span class="line" id="L940"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeSmallFile</span>(dir: fs.Dir, sub_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L941">    assert(data.len &lt;= <span class="tok-number">255</span>);</span>
+<span class="line" id="L942">    <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L943">        <span class="tok-kw">return</span> dir.writeFile(sub_path, data);</span>
+<span class="line" id="L944">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L945">        <span class="tok-kw">return</span> dir.symLink(data, sub_path, .{});</span>
+<span class="line" id="L946">    }</span>
+<span class="line" id="L947">}</span>
+<span class="line" id="L948"></span>
+<span class="line" id="L949"><span class="tok-kw">fn</span> <span class="tok-fn">hashFile</span>(file: fs.File, bin_digest: *[Hasher.mac_length]<span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L950">    <span class="tok-kw">var</span> buf: [<span class="tok-number">1024</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L951"></span>
+<span class="line" id="L952">    <span class="tok-kw">var</span> hasher = hasher_init;</span>
+<span class="line" id="L953">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L954">        <span class="tok-kw">const</span> bytes_read = <span class="tok-kw">try</span> file.read(&amp;buf);</span>
+<span class="line" id="L955">        <span class="tok-kw">if</span> (bytes_read == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L956">        hasher.update(buf[<span class="tok-number">0</span>..bytes_read]);</span>
+<span class="line" id="L957">    }</span>
+<span class="line" id="L958"></span>
+<span class="line" id="L959">    hasher.final(bin_digest);</span>
+<span class="line" id="L960">}</span>
+<span class="line" id="L961"></span>
+<span class="line" id="L962"><span class="tok-comment">// Create/Write a file, close it, then grab its stat.mtime timestamp.</span>
+</span>
+<span class="line" id="L963"><span class="tok-kw">fn</span> <span class="tok-fn">testGetCurrentFileTimestamp</span>(dir: fs.Dir) !<span class="tok-type">i128</span> {</span>
+<span class="line" id="L964">    <span class="tok-kw">const</span> test_out_file = <span class="tok-str">&quot;test-filetimestamp.tmp&quot;</span>;</span>
+<span class="line" id="L965"></span>
+<span class="line" id="L966">    <span class="tok-kw">var</span> file = <span class="tok-kw">try</span> dir.createFile(test_out_file, .{</span>
+<span class="line" id="L967">        .read = <span class="tok-null">true</span>,</span>
+<span class="line" id="L968">        .truncate = <span class="tok-null">true</span>,</span>
+<span class="line" id="L969">    });</span>
+<span class="line" id="L970">    <span class="tok-kw">defer</span> {</span>
+<span class="line" id="L971">        file.close();</span>
+<span class="line" id="L972">        dir.deleteFile(test_out_file) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L973">    }</span>
+<span class="line" id="L974"></span>
+<span class="line" id="L975">    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> file.stat()).mtime;</span>
+<span class="line" id="L976">}</span>
+<span class="line" id="L977"></span>
+<span class="line" id="L978"><span class="tok-kw">test</span> <span class="tok-str">&quot;cache file and then recall it&quot;</span> {</span>
+<span class="line" id="L979">    <span class="tok-kw">if</span> (builtin.os.tag == .wasi) {</span>
+<span class="line" id="L980">        <span class="tok-comment">// https://github.com/ziglang/zig/issues/5437</span>
+</span>
+<span class="line" id="L981">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L982">    }</span>
+<span class="line" id="L983"></span>
+<span class="line" id="L984">    <span class="tok-kw">var</span> tmp = testing.tmpDir(.{});</span>
+<span class="line" id="L985">    <span class="tok-kw">defer</span> tmp.cleanup();</span>
+<span class="line" id="L986"></span>
+<span class="line" id="L987">    <span class="tok-kw">const</span> temp_file = <span class="tok-str">&quot;test.txt&quot;</span>;</span>
+<span class="line" id="L988">    <span class="tok-kw">const</span> temp_manifest_dir = <span class="tok-str">&quot;temp_manifest_dir&quot;</span>;</span>
+<span class="line" id="L989"></span>
+<span class="line" id="L990">    <span class="tok-kw">try</span> tmp.dir.writeFile(temp_file, <span class="tok-str">&quot;Hello, world!\n&quot;</span>);</span>
+<span class="line" id="L991"></span>
+<span class="line" id="L992">    <span class="tok-comment">// Wait for file timestamps to tick</span>
+</span>
+<span class="line" id="L993">    <span class="tok-kw">const</span> initial_time = <span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir);</span>
+<span class="line" id="L994">    <span class="tok-kw">while</span> ((<span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir)) == initial_time) {</span>
+<span class="line" id="L995">        std.time.sleep(<span class="tok-number">1</span>);</span>
+<span class="line" id="L996">    }</span>
+<span class="line" id="L997"></span>
+<span class="line" id="L998">    <span class="tok-kw">var</span> digest1: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L999">    <span class="tok-kw">var</span> digest2: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1000"></span>
+<span class="line" id="L1001">    {</span>
+<span class="line" id="L1002">        <span class="tok-kw">var</span> cache = Cache{</span>
+<span class="line" id="L1003">            .gpa = testing.allocator,</span>
+<span class="line" id="L1004">            .manifest_dir = <span class="tok-kw">try</span> tmp.dir.makeOpenPath(temp_manifest_dir, .{}),</span>
+<span class="line" id="L1005">        };</span>
+<span class="line" id="L1006">        cache.addPrefix(.{ .path = <span class="tok-null">null</span>, .handle = tmp.dir });</span>
+<span class="line" id="L1007">        <span class="tok-kw">defer</span> cache.manifest_dir.close();</span>
+<span class="line" id="L1008"></span>
+<span class="line" id="L1009">        {</span>
+<span class="line" id="L1010">            <span class="tok-kw">var</span> ch = cache.obtain();</span>
+<span class="line" id="L1011">            <span class="tok-kw">defer</span> ch.deinit();</span>
+<span class="line" id="L1012"></span>
+<span class="line" id="L1013">            ch.hash.add(<span class="tok-null">true</span>);</span>
+<span class="line" id="L1014">            ch.hash.add(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">1234</span>));</span>
+<span class="line" id="L1015">            ch.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1016">            _ = <span class="tok-kw">try</span> ch.addFile(temp_file, <span class="tok-null">null</span>);</span>
+<span class="line" id="L1017"></span>
+<span class="line" id="L1018">            <span class="tok-comment">// There should be nothing in the cache</span>
+</span>
+<span class="line" id="L1019">            <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, <span class="tok-kw">try</span> ch.hit());</span>
+<span class="line" id="L1020"></span>
+<span class="line" id="L1021">            digest1 = ch.final();</span>
+<span class="line" id="L1022">            <span class="tok-kw">try</span> ch.writeManifest();</span>
+<span class="line" id="L1023">        }</span>
+<span class="line" id="L1024">        {</span>
+<span class="line" id="L1025">            <span class="tok-kw">var</span> ch = cache.obtain();</span>
+<span class="line" id="L1026">            <span class="tok-kw">defer</span> ch.deinit();</span>
+<span class="line" id="L1027"></span>
+<span class="line" id="L1028">            ch.hash.add(<span class="tok-null">true</span>);</span>
+<span class="line" id="L1029">            ch.hash.add(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">1234</span>));</span>
+<span class="line" id="L1030">            ch.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1031">            _ = <span class="tok-kw">try</span> ch.addFile(temp_file, <span class="tok-null">null</span>);</span>
+<span class="line" id="L1032"></span>
+<span class="line" id="L1033">            <span class="tok-comment">// Cache hit! We just &quot;built&quot; the same file</span>
+</span>
+<span class="line" id="L1034">            <span class="tok-kw">try</span> testing.expect(<span class="tok-kw">try</span> ch.hit());</span>
+<span class="line" id="L1035">            digest2 = ch.final();</span>
+<span class="line" id="L1036"></span>
+<span class="line" id="L1037">            <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, ch.have_exclusive_lock);</span>
+<span class="line" id="L1038">        }</span>
+<span class="line" id="L1039"></span>
+<span class="line" id="L1040">        <span class="tok-kw">try</span> testing.expectEqual(digest1, digest2);</span>
+<span class="line" id="L1041">    }</span>
+<span class="line" id="L1042">}</span>
+<span class="line" id="L1043"></span>
+<span class="line" id="L1044"><span class="tok-kw">test</span> <span class="tok-str">&quot;check that changing a file makes cache fail&quot;</span> {</span>
+<span class="line" id="L1045">    <span class="tok-kw">if</span> (builtin.os.tag == .wasi) {</span>
+<span class="line" id="L1046">        <span class="tok-comment">// https://github.com/ziglang/zig/issues/5437</span>
+</span>
+<span class="line" id="L1047">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1048">    }</span>
+<span class="line" id="L1049">    <span class="tok-kw">var</span> tmp = testing.tmpDir(.{});</span>
+<span class="line" id="L1050">    <span class="tok-kw">defer</span> tmp.cleanup();</span>
+<span class="line" id="L1051"></span>
+<span class="line" id="L1052">    <span class="tok-kw">const</span> temp_file = <span class="tok-str">&quot;cache_hash_change_file_test.txt&quot;</span>;</span>
+<span class="line" id="L1053">    <span class="tok-kw">const</span> temp_manifest_dir = <span class="tok-str">&quot;cache_hash_change_file_manifest_dir&quot;</span>;</span>
+<span class="line" id="L1054">    <span class="tok-kw">const</span> original_temp_file_contents = <span class="tok-str">&quot;Hello, world!\n&quot;</span>;</span>
+<span class="line" id="L1055">    <span class="tok-kw">const</span> updated_temp_file_contents = <span class="tok-str">&quot;Hello, world; but updated!\n&quot;</span>;</span>
+<span class="line" id="L1056"></span>
+<span class="line" id="L1057">    <span class="tok-kw">try</span> tmp.dir.writeFile(temp_file, original_temp_file_contents);</span>
+<span class="line" id="L1058"></span>
+<span class="line" id="L1059">    <span class="tok-comment">// Wait for file timestamps to tick</span>
+</span>
+<span class="line" id="L1060">    <span class="tok-kw">const</span> initial_time = <span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir);</span>
+<span class="line" id="L1061">    <span class="tok-kw">while</span> ((<span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir)) == initial_time) {</span>
+<span class="line" id="L1062">        std.time.sleep(<span class="tok-number">1</span>);</span>
+<span class="line" id="L1063">    }</span>
+<span class="line" id="L1064"></span>
+<span class="line" id="L1065">    <span class="tok-kw">var</span> digest1: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1066">    <span class="tok-kw">var</span> digest2: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1067"></span>
+<span class="line" id="L1068">    {</span>
+<span class="line" id="L1069">        <span class="tok-kw">var</span> cache = Cache{</span>
+<span class="line" id="L1070">            .gpa = testing.allocator,</span>
+<span class="line" id="L1071">            .manifest_dir = <span class="tok-kw">try</span> tmp.dir.makeOpenPath(temp_manifest_dir, .{}),</span>
+<span class="line" id="L1072">        };</span>
+<span class="line" id="L1073">        cache.addPrefix(.{ .path = <span class="tok-null">null</span>, .handle = tmp.dir });</span>
+<span class="line" id="L1074">        <span class="tok-kw">defer</span> cache.manifest_dir.close();</span>
+<span class="line" id="L1075"></span>
+<span class="line" id="L1076">        {</span>
+<span class="line" id="L1077">            <span class="tok-kw">var</span> ch = cache.obtain();</span>
+<span class="line" id="L1078">            <span class="tok-kw">defer</span> ch.deinit();</span>
+<span class="line" id="L1079"></span>
+<span class="line" id="L1080">            ch.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1081">            <span class="tok-kw">const</span> temp_file_idx = <span class="tok-kw">try</span> ch.addFile(temp_file, <span class="tok-number">100</span>);</span>
+<span class="line" id="L1082"></span>
+<span class="line" id="L1083">            <span class="tok-comment">// There should be nothing in the cache</span>
+</span>
+<span class="line" id="L1084">            <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, <span class="tok-kw">try</span> ch.hit());</span>
+<span class="line" id="L1085"></span>
+<span class="line" id="L1086">            <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, original_temp_file_contents, ch.files.items[temp_file_idx].contents.?));</span>
+<span class="line" id="L1087"></span>
+<span class="line" id="L1088">            digest1 = ch.final();</span>
+<span class="line" id="L1089"></span>
+<span class="line" id="L1090">            <span class="tok-kw">try</span> ch.writeManifest();</span>
+<span class="line" id="L1091">        }</span>
+<span class="line" id="L1092"></span>
+<span class="line" id="L1093">        <span class="tok-kw">try</span> tmp.dir.writeFile(temp_file, updated_temp_file_contents);</span>
+<span class="line" id="L1094"></span>
+<span class="line" id="L1095">        {</span>
+<span class="line" id="L1096">            <span class="tok-kw">var</span> ch = cache.obtain();</span>
+<span class="line" id="L1097">            <span class="tok-kw">defer</span> ch.deinit();</span>
+<span class="line" id="L1098"></span>
+<span class="line" id="L1099">            ch.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1100">            <span class="tok-kw">const</span> temp_file_idx = <span class="tok-kw">try</span> ch.addFile(temp_file, <span class="tok-number">100</span>);</span>
+<span class="line" id="L1101"></span>
+<span class="line" id="L1102">            <span class="tok-comment">// A file that we depend on has been updated, so the cache should not contain an entry for it</span>
+</span>
+<span class="line" id="L1103">            <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, <span class="tok-kw">try</span> ch.hit());</span>
+<span class="line" id="L1104"></span>
+<span class="line" id="L1105">            <span class="tok-comment">// The cache system does not keep the contents of re-hashed input files.</span>
+</span>
+<span class="line" id="L1106">            <span class="tok-kw">try</span> testing.expect(ch.files.items[temp_file_idx].contents == <span class="tok-null">null</span>);</span>
+<span class="line" id="L1107"></span>
+<span class="line" id="L1108">            digest2 = ch.final();</span>
+<span class="line" id="L1109"></span>
+<span class="line" id="L1110">            <span class="tok-kw">try</span> ch.writeManifest();</span>
+<span class="line" id="L1111">        }</span>
+<span class="line" id="L1112"></span>
+<span class="line" id="L1113">        <span class="tok-kw">try</span> testing.expect(!mem.eql(<span class="tok-type">u8</span>, digest1[<span class="tok-number">0</span>..], digest2[<span class="tok-number">0</span>..]));</span>
+<span class="line" id="L1114">    }</span>
+<span class="line" id="L1115">}</span>
+<span class="line" id="L1116"></span>
+<span class="line" id="L1117"><span class="tok-kw">test</span> <span class="tok-str">&quot;no file inputs&quot;</span> {</span>
+<span class="line" id="L1118">    <span class="tok-kw">if</span> (builtin.os.tag == .wasi) {</span>
+<span class="line" id="L1119">        <span class="tok-comment">// https://github.com/ziglang/zig/issues/5437</span>
+</span>
+<span class="line" id="L1120">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1121">    }</span>
+<span class="line" id="L1122"></span>
+<span class="line" id="L1123">    <span class="tok-kw">var</span> tmp = testing.tmpDir(.{});</span>
+<span class="line" id="L1124">    <span class="tok-kw">defer</span> tmp.cleanup();</span>
+<span class="line" id="L1125"></span>
+<span class="line" id="L1126">    <span class="tok-kw">const</span> temp_manifest_dir = <span class="tok-str">&quot;no_file_inputs_manifest_dir&quot;</span>;</span>
+<span class="line" id="L1127"></span>
+<span class="line" id="L1128">    <span class="tok-kw">var</span> digest1: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1129">    <span class="tok-kw">var</span> digest2: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1130"></span>
+<span class="line" id="L1131">    <span class="tok-kw">var</span> cache = Cache{</span>
+<span class="line" id="L1132">        .gpa = testing.allocator,</span>
+<span class="line" id="L1133">        .manifest_dir = <span class="tok-kw">try</span> tmp.dir.makeOpenPath(temp_manifest_dir, .{}),</span>
+<span class="line" id="L1134">    };</span>
+<span class="line" id="L1135">    cache.addPrefix(.{ .path = <span class="tok-null">null</span>, .handle = tmp.dir });</span>
+<span class="line" id="L1136">    <span class="tok-kw">defer</span> cache.manifest_dir.close();</span>
+<span class="line" id="L1137"></span>
+<span class="line" id="L1138">    {</span>
+<span class="line" id="L1139">        <span class="tok-kw">var</span> man = cache.obtain();</span>
+<span class="line" id="L1140">        <span class="tok-kw">defer</span> man.deinit();</span>
+<span class="line" id="L1141"></span>
+<span class="line" id="L1142">        man.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1143"></span>
+<span class="line" id="L1144">        <span class="tok-comment">// There should be nothing in the cache</span>
+</span>
+<span class="line" id="L1145">        <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, <span class="tok-kw">try</span> man.hit());</span>
+<span class="line" id="L1146"></span>
+<span class="line" id="L1147">        digest1 = man.final();</span>
+<span class="line" id="L1148"></span>
+<span class="line" id="L1149">        <span class="tok-kw">try</span> man.writeManifest();</span>
+<span class="line" id="L1150">    }</span>
+<span class="line" id="L1151">    {</span>
+<span class="line" id="L1152">        <span class="tok-kw">var</span> man = cache.obtain();</span>
+<span class="line" id="L1153">        <span class="tok-kw">defer</span> man.deinit();</span>
+<span class="line" id="L1154"></span>
+<span class="line" id="L1155">        man.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1156"></span>
+<span class="line" id="L1157">        <span class="tok-kw">try</span> testing.expect(<span class="tok-kw">try</span> man.hit());</span>
+<span class="line" id="L1158">        digest2 = man.final();</span>
+<span class="line" id="L1159">        <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, man.have_exclusive_lock);</span>
+<span class="line" id="L1160">    }</span>
+<span class="line" id="L1161"></span>
+<span class="line" id="L1162">    <span class="tok-kw">try</span> testing.expectEqual(digest1, digest2);</span>
+<span class="line" id="L1163">}</span>
+<span class="line" id="L1164"></span>
+<span class="line" id="L1165"><span class="tok-kw">test</span> <span class="tok-str">&quot;Manifest with files added after initial hash work&quot;</span> {</span>
+<span class="line" id="L1166">    <span class="tok-kw">if</span> (builtin.os.tag == .wasi) {</span>
+<span class="line" id="L1167">        <span class="tok-comment">// https://github.com/ziglang/zig/issues/5437</span>
+</span>
+<span class="line" id="L1168">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1169">    }</span>
+<span class="line" id="L1170">    <span class="tok-kw">var</span> tmp = testing.tmpDir(.{});</span>
+<span class="line" id="L1171">    <span class="tok-kw">defer</span> tmp.cleanup();</span>
+<span class="line" id="L1172"></span>
+<span class="line" id="L1173">    <span class="tok-kw">const</span> temp_file1 = <span class="tok-str">&quot;cache_hash_post_file_test1.txt&quot;</span>;</span>
+<span class="line" id="L1174">    <span class="tok-kw">const</span> temp_file2 = <span class="tok-str">&quot;cache_hash_post_file_test2.txt&quot;</span>;</span>
+<span class="line" id="L1175">    <span class="tok-kw">const</span> temp_manifest_dir = <span class="tok-str">&quot;cache_hash_post_file_manifest_dir&quot;</span>;</span>
+<span class="line" id="L1176"></span>
+<span class="line" id="L1177">    <span class="tok-kw">try</span> tmp.dir.writeFile(temp_file1, <span class="tok-str">&quot;Hello, world!\n&quot;</span>);</span>
+<span class="line" id="L1178">    <span class="tok-kw">try</span> tmp.dir.writeFile(temp_file2, <span class="tok-str">&quot;Hello world the second!\n&quot;</span>);</span>
+<span class="line" id="L1179"></span>
+<span class="line" id="L1180">    <span class="tok-comment">// Wait for file timestamps to tick</span>
+</span>
+<span class="line" id="L1181">    <span class="tok-kw">const</span> initial_time = <span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir);</span>
+<span class="line" id="L1182">    <span class="tok-kw">while</span> ((<span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir)) == initial_time) {</span>
+<span class="line" id="L1183">        std.time.sleep(<span class="tok-number">1</span>);</span>
+<span class="line" id="L1184">    }</span>
+<span class="line" id="L1185"></span>
+<span class="line" id="L1186">    <span class="tok-kw">var</span> digest1: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1187">    <span class="tok-kw">var</span> digest2: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1188">    <span class="tok-kw">var</span> digest3: [hex_digest_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1189"></span>
+<span class="line" id="L1190">    {</span>
+<span class="line" id="L1191">        <span class="tok-kw">var</span> cache = Cache{</span>
+<span class="line" id="L1192">            .gpa = testing.allocator,</span>
+<span class="line" id="L1193">            .manifest_dir = <span class="tok-kw">try</span> tmp.dir.makeOpenPath(temp_manifest_dir, .{}),</span>
+<span class="line" id="L1194">        };</span>
+<span class="line" id="L1195">        cache.addPrefix(.{ .path = <span class="tok-null">null</span>, .handle = tmp.dir });</span>
+<span class="line" id="L1196">        <span class="tok-kw">defer</span> cache.manifest_dir.close();</span>
+<span class="line" id="L1197"></span>
+<span class="line" id="L1198">        {</span>
+<span class="line" id="L1199">            <span class="tok-kw">var</span> ch = cache.obtain();</span>
+<span class="line" id="L1200">            <span class="tok-kw">defer</span> ch.deinit();</span>
+<span class="line" id="L1201"></span>
+<span class="line" id="L1202">            ch.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1203">            _ = <span class="tok-kw">try</span> ch.addFile(temp_file1, <span class="tok-null">null</span>);</span>
+<span class="line" id="L1204"></span>
+<span class="line" id="L1205">            <span class="tok-comment">// There should be nothing in the cache</span>
+</span>
+<span class="line" id="L1206">            <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, <span class="tok-kw">try</span> ch.hit());</span>
+<span class="line" id="L1207"></span>
+<span class="line" id="L1208">            _ = <span class="tok-kw">try</span> ch.addFilePost(temp_file2);</span>
+<span class="line" id="L1209"></span>
+<span class="line" id="L1210">            digest1 = ch.final();</span>
+<span class="line" id="L1211">            <span class="tok-kw">try</span> ch.writeManifest();</span>
+<span class="line" id="L1212">        }</span>
+<span class="line" id="L1213">        {</span>
+<span class="line" id="L1214">            <span class="tok-kw">var</span> ch = cache.obtain();</span>
+<span class="line" id="L1215">            <span class="tok-kw">defer</span> ch.deinit();</span>
+<span class="line" id="L1216"></span>
+<span class="line" id="L1217">            ch.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1218">            _ = <span class="tok-kw">try</span> ch.addFile(temp_file1, <span class="tok-null">null</span>);</span>
+<span class="line" id="L1219"></span>
+<span class="line" id="L1220">            <span class="tok-kw">try</span> testing.expect(<span class="tok-kw">try</span> ch.hit());</span>
+<span class="line" id="L1221">            digest2 = ch.final();</span>
+<span class="line" id="L1222"></span>
+<span class="line" id="L1223">            <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, ch.have_exclusive_lock);</span>
+<span class="line" id="L1224">        }</span>
+<span class="line" id="L1225">        <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, &amp;digest1, &amp;digest2));</span>
+<span class="line" id="L1226"></span>
+<span class="line" id="L1227">        <span class="tok-comment">// Modify the file added after initial hash</span>
+</span>
+<span class="line" id="L1228">        <span class="tok-kw">try</span> tmp.dir.writeFile(temp_file2, <span class="tok-str">&quot;Hello world the second, updated\n&quot;</span>);</span>
+<span class="line" id="L1229"></span>
+<span class="line" id="L1230">        <span class="tok-comment">// Wait for file timestamps to tick</span>
+</span>
+<span class="line" id="L1231">        <span class="tok-kw">const</span> initial_time2 = <span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir);</span>
+<span class="line" id="L1232">        <span class="tok-kw">while</span> ((<span class="tok-kw">try</span> testGetCurrentFileTimestamp(tmp.dir)) == initial_time2) {</span>
+<span class="line" id="L1233">            std.time.sleep(<span class="tok-number">1</span>);</span>
+<span class="line" id="L1234">        }</span>
+<span class="line" id="L1235"></span>
+<span class="line" id="L1236">        {</span>
+<span class="line" id="L1237">            <span class="tok-kw">var</span> ch = cache.obtain();</span>
+<span class="line" id="L1238">            <span class="tok-kw">defer</span> ch.deinit();</span>
+<span class="line" id="L1239"></span>
+<span class="line" id="L1240">            ch.hash.addBytes(<span class="tok-str">&quot;1234&quot;</span>);</span>
+<span class="line" id="L1241">            _ = <span class="tok-kw">try</span> ch.addFile(temp_file1, <span class="tok-null">null</span>);</span>
+<span class="line" id="L1242"></span>
+<span class="line" id="L1243">            <span class="tok-comment">// A file that we depend on has been updated, so the cache should not contain an entry for it</span>
+</span>
+<span class="line" id="L1244">            <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, <span class="tok-kw">try</span> ch.hit());</span>
+<span class="line" id="L1245"></span>
+<span class="line" id="L1246">            _ = <span class="tok-kw">try</span> ch.addFilePost(temp_file2);</span>
+<span class="line" id="L1247"></span>
+<span class="line" id="L1248">            digest3 = ch.final();</span>
+<span class="line" id="L1249"></span>
+<span class="line" id="L1250">            <span class="tok-kw">try</span> ch.writeManifest();</span>
+<span class="line" id="L1251">        }</span>
+<span class="line" id="L1252"></span>
+<span class="line" id="L1253">        <span class="tok-kw">try</span> testing.expect(!mem.eql(<span class="tok-type">u8</span>, &amp;digest1, &amp;digest3));</span>
+<span class="line" id="L1254">    }</span>
+<span class="line" id="L1255">}</span>
+<span class="line" id="L1256"></span>
+</code></pre></body>
+</html>

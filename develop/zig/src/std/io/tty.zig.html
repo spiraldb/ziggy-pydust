@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>io/tty.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> File = std.fs.File;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> process = std.process;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> windows = std.os.windows;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> native_os = builtin.os.tag;</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-comment">/// Detect suitable TTY configuration options for the given file (commonly stdout/stderr).</span></span>
+<span class="line" id="L9"><span class="tok-comment">/// This includes feature checks for ANSI escape codes and the Windows console API, as well as</span></span>
+<span class="line" id="L10"><span class="tok-comment">/// respecting the `NO_COLOR` and `YES_COLOR` environment variables to override the default.</span></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">detectConfig</span>(file: File) Config {</span>
+<span class="line" id="L12">    <span class="tok-kw">const</span> force_color: ?<span class="tok-type">bool</span> = <span class="tok-kw">if</span> (builtin.os.tag == .wasi)</span>
+<span class="line" id="L13">        <span class="tok-null">null</span> <span class="tok-comment">// wasi does not support environment variables</span>
+</span>
+<span class="line" id="L14">    <span class="tok-kw">else</span> <span class="tok-kw">if</span> (process.hasEnvVarConstant(<span class="tok-str">&quot;NO_COLOR&quot;</span>))</span>
+<span class="line" id="L15">        <span class="tok-null">false</span></span>
+<span class="line" id="L16">    <span class="tok-kw">else</span> <span class="tok-kw">if</span> (process.hasEnvVarConstant(<span class="tok-str">&quot;YES_COLOR&quot;</span>))</span>
+<span class="line" id="L17">        <span class="tok-null">true</span></span>
+<span class="line" id="L18">    <span class="tok-kw">else</span></span>
+<span class="line" id="L19">        <span class="tok-null">null</span>;</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">    <span class="tok-kw">if</span> (force_color == <span class="tok-null">false</span>) <span class="tok-kw">return</span> .no_color;</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23">    <span class="tok-kw">if</span> (file.supportsAnsiEscapeCodes()) <span class="tok-kw">return</span> .escape_codes;</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">    <span class="tok-kw">if</span> (native_os == .windows <span class="tok-kw">and</span> file.isTty()) {</span>
+<span class="line" id="L26">        <span class="tok-kw">var</span> info: windows.CONSOLE_SCREEN_BUFFER_INFO = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L27">        <span class="tok-kw">if</span> (windows.kernel32.GetConsoleScreenBufferInfo(file.handle, &amp;info) != windows.TRUE) {</span>
+<span class="line" id="L28">            <span class="tok-kw">return</span> <span class="tok-kw">if</span> (force_color == <span class="tok-null">true</span>) .escape_codes <span class="tok-kw">else</span> .no_color;</span>
+<span class="line" id="L29">        }</span>
+<span class="line" id="L30">        <span class="tok-kw">return</span> .{ .windows_api = .{</span>
+<span class="line" id="L31">            .handle = file.handle,</span>
+<span class="line" id="L32">            .reset_attributes = info.wAttributes,</span>
+<span class="line" id="L33">        } };</span>
+<span class="line" id="L34">    }</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36">    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (force_color == <span class="tok-null">true</span>) .escape_codes <span class="tok-kw">else</span> .no_color;</span>
+<span class="line" id="L37">}</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Color = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L40">    black,</span>
+<span class="line" id="L41">    red,</span>
+<span class="line" id="L42">    green,</span>
+<span class="line" id="L43">    yellow,</span>
+<span class="line" id="L44">    blue,</span>
+<span class="line" id="L45">    magenta,</span>
+<span class="line" id="L46">    cyan,</span>
+<span class="line" id="L47">    white,</span>
+<span class="line" id="L48">    bright_black,</span>
+<span class="line" id="L49">    bright_red,</span>
+<span class="line" id="L50">    bright_green,</span>
+<span class="line" id="L51">    bright_yellow,</span>
+<span class="line" id="L52">    bright_blue,</span>
+<span class="line" id="L53">    bright_magenta,</span>
+<span class="line" id="L54">    bright_cyan,</span>
+<span class="line" id="L55">    bright_white,</span>
+<span class="line" id="L56">    dim,</span>
+<span class="line" id="L57">    bold,</span>
+<span class="line" id="L58">    reset,</span>
+<span class="line" id="L59">};</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61"><span class="tok-comment">/// Provides simple functionality for manipulating the terminal in some way,</span></span>
+<span class="line" id="L62"><span class="tok-comment">/// such as coloring text, etc.</span></span>
+<span class="line" id="L63"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Config = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L64">    no_color,</span>
+<span class="line" id="L65">    escape_codes,</span>
+<span class="line" id="L66">    windows_api: <span class="tok-kw">if</span> (native_os == .windows) WindowsContext <span class="tok-kw">else</span> <span class="tok-type">void</span>,</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> WindowsContext = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L69">        handle: File.Handle,</span>
+<span class="line" id="L70">        reset_attributes: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L71">    };</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setColor</span>(conf: Config, out_stream: <span class="tok-kw">anytype</span>, color: Color) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L74">        <span class="tok-kw">nosuspend</span> <span class="tok-kw">switch</span> (conf) {</span>
+<span class="line" id="L75">            .no_color =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L76">            .escape_codes =&gt; {</span>
+<span class="line" id="L77">                <span class="tok-kw">const</span> color_string = <span class="tok-kw">switch</span> (color) {</span>
+<span class="line" id="L78">                    .black =&gt; <span class="tok-str">&quot;\x1b[30m&quot;</span>,</span>
+<span class="line" id="L79">                    .red =&gt; <span class="tok-str">&quot;\x1b[31m&quot;</span>,</span>
+<span class="line" id="L80">                    .green =&gt; <span class="tok-str">&quot;\x1b[32m&quot;</span>,</span>
+<span class="line" id="L81">                    .yellow =&gt; <span class="tok-str">&quot;\x1b[33m&quot;</span>,</span>
+<span class="line" id="L82">                    .blue =&gt; <span class="tok-str">&quot;\x1b[34m&quot;</span>,</span>
+<span class="line" id="L83">                    .magenta =&gt; <span class="tok-str">&quot;\x1b[35m&quot;</span>,</span>
+<span class="line" id="L84">                    .cyan =&gt; <span class="tok-str">&quot;\x1b[36m&quot;</span>,</span>
+<span class="line" id="L85">                    .white =&gt; <span class="tok-str">&quot;\x1b[37m&quot;</span>,</span>
+<span class="line" id="L86">                    .bright_black =&gt; <span class="tok-str">&quot;\x1b[90m&quot;</span>,</span>
+<span class="line" id="L87">                    .bright_red =&gt; <span class="tok-str">&quot;\x1b[91m&quot;</span>,</span>
+<span class="line" id="L88">                    .bright_green =&gt; <span class="tok-str">&quot;\x1b[92m&quot;</span>,</span>
+<span class="line" id="L89">                    .bright_yellow =&gt; <span class="tok-str">&quot;\x1b[93m&quot;</span>,</span>
+<span class="line" id="L90">                    .bright_blue =&gt; <span class="tok-str">&quot;\x1b[94m&quot;</span>,</span>
+<span class="line" id="L91">                    .bright_magenta =&gt; <span class="tok-str">&quot;\x1b[95m&quot;</span>,</span>
+<span class="line" id="L92">                    .bright_cyan =&gt; <span class="tok-str">&quot;\x1b[96m&quot;</span>,</span>
+<span class="line" id="L93">                    .bright_white =&gt; <span class="tok-str">&quot;\x1b[97m&quot;</span>,</span>
+<span class="line" id="L94">                    .bold =&gt; <span class="tok-str">&quot;\x1b[1m&quot;</span>,</span>
+<span class="line" id="L95">                    .dim =&gt; <span class="tok-str">&quot;\x1b[2m&quot;</span>,</span>
+<span class="line" id="L96">                    .reset =&gt; <span class="tok-str">&quot;\x1b[0m&quot;</span>,</span>
+<span class="line" id="L97">                };</span>
+<span class="line" id="L98">                <span class="tok-kw">try</span> out_stream.writeAll(color_string);</span>
+<span class="line" id="L99">            },</span>
+<span class="line" id="L100">            .windows_api =&gt; |ctx| <span class="tok-kw">if</span> (native_os == .windows) {</span>
+<span class="line" id="L101">                <span class="tok-kw">const</span> attributes = <span class="tok-kw">switch</span> (color) {</span>
+<span class="line" id="L102">                    .black =&gt; <span class="tok-number">0</span>,</span>
+<span class="line" id="L103">                    .red =&gt; windows.FOREGROUND_RED,</span>
+<span class="line" id="L104">                    .green =&gt; windows.FOREGROUND_GREEN,</span>
+<span class="line" id="L105">                    .yellow =&gt; windows.FOREGROUND_RED | windows.FOREGROUND_GREEN,</span>
+<span class="line" id="L106">                    .blue =&gt; windows.FOREGROUND_BLUE,</span>
+<span class="line" id="L107">                    .magenta =&gt; windows.FOREGROUND_RED | windows.FOREGROUND_BLUE,</span>
+<span class="line" id="L108">                    .cyan =&gt; windows.FOREGROUND_GREEN | windows.FOREGROUND_BLUE,</span>
+<span class="line" id="L109">                    .white =&gt; windows.FOREGROUND_RED | windows.FOREGROUND_GREEN | windows.FOREGROUND_BLUE,</span>
+<span class="line" id="L110">                    .bright_black =&gt; windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L111">                    .bright_red =&gt; windows.FOREGROUND_RED | windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L112">                    .bright_green =&gt; windows.FOREGROUND_GREEN | windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L113">                    .bright_yellow =&gt; windows.FOREGROUND_RED | windows.FOREGROUND_GREEN | windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L114">                    .bright_blue =&gt; windows.FOREGROUND_BLUE | windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L115">                    .bright_magenta =&gt; windows.FOREGROUND_RED | windows.FOREGROUND_BLUE | windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L116">                    .bright_cyan =&gt; windows.FOREGROUND_GREEN | windows.FOREGROUND_BLUE | windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L117">                    .bright_white, .bold =&gt; windows.FOREGROUND_RED | windows.FOREGROUND_GREEN | windows.FOREGROUND_BLUE | windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L118">                    <span class="tok-comment">// &quot;dim&quot; is not supported using basic character attributes, but let's still make it do *something*.</span>
+</span>
+<span class="line" id="L119">                    <span class="tok-comment">// This matches the old behavior of TTY.Color before the bright variants were added.</span>
+</span>
+<span class="line" id="L120">                    .dim =&gt; windows.FOREGROUND_INTENSITY,</span>
+<span class="line" id="L121">                    .reset =&gt; ctx.reset_attributes,</span>
+<span class="line" id="L122">                };</span>
+<span class="line" id="L123">                <span class="tok-kw">try</span> windows.SetConsoleTextAttribute(ctx.handle, attributes);</span>
+<span class="line" id="L124">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L125">                <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L126">            },</span>
+<span class="line" id="L127">        };</span>
+<span class="line" id="L128">    }</span>
+<span class="line" id="L129">};</span>
+<span class="line" id="L130"></span>
+</code></pre></body>
+</html>

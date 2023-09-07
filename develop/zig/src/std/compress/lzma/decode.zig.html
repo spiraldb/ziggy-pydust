@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>compress/lzma/decode.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> lzbuffer = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;decode/lzbuffer.zig&quot;</span>);</span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> rangecoder = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;decode/rangecoder.zig&quot;</span>);</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-kw">const</span> LzCircularBuffer = lzbuffer.LzCircularBuffer;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> BitTree = rangecoder.BitTree;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> LenDecoder = rangecoder.LenDecoder;</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> RangeDecoder = rangecoder.RangeDecoder;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> Vec2D = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;vec2d.zig&quot;</span>).Vec2D;</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L16">    unpacked_size: UnpackedSize = .read_from_header,</span>
+<span class="line" id="L17">    memlimit: ?<span class="tok-type">usize</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L18">    allow_incomplete: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L19">};</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> UnpackedSize = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L22">    read_from_header,</span>
+<span class="line" id="L23">    read_header_but_use_provided: ?<span class="tok-type">u64</span>,</span>
+<span class="line" id="L24">    use_provided: ?<span class="tok-type">u64</span>,</span>
+<span class="line" id="L25">};</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27"><span class="tok-kw">const</span> ProcessingStatus = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L28">    continue_,</span>
+<span class="line" id="L29">    finished,</span>
+<span class="line" id="L30">};</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Properties = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L33">    lc: <span class="tok-type">u4</span>,</span>
+<span class="line" id="L34">    lp: <span class="tok-type">u3</span>,</span>
+<span class="line" id="L35">    pb: <span class="tok-type">u3</span>,</span>
+<span class="line" id="L36"></span>
+<span class="line" id="L37">    <span class="tok-kw">fn</span> <span class="tok-fn">validate</span>(self: Properties) <span class="tok-type">void</span> {</span>
+<span class="line" id="L38">        assert(self.lc &lt;= <span class="tok-number">8</span>);</span>
+<span class="line" id="L39">        assert(self.lp &lt;= <span class="tok-number">4</span>);</span>
+<span class="line" id="L40">        assert(self.pb &lt;= <span class="tok-number">4</span>);</span>
+<span class="line" id="L41">    }</span>
+<span class="line" id="L42">};</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Params = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L45">    properties: Properties,</span>
+<span class="line" id="L46">    dict_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L47">    unpacked_size: ?<span class="tok-type">u64</span>,</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readHeader</span>(reader: <span class="tok-kw">anytype</span>, options: Options) !Params {</span>
+<span class="line" id="L50">        <span class="tok-kw">var</span> props = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L51">        <span class="tok-kw">if</span> (props &gt;= <span class="tok-number">225</span>) {</span>
+<span class="line" id="L52">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CorruptInput;</span>
+<span class="line" id="L53">        }</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">        <span class="tok-kw">const</span> lc = <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@intCast</span>(props % <span class="tok-number">9</span>));</span>
+<span class="line" id="L56">        props /= <span class="tok-number">9</span>;</span>
+<span class="line" id="L57">        <span class="tok-kw">const</span> lp = <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(props % <span class="tok-number">5</span>));</span>
+<span class="line" id="L58">        props /= <span class="tok-number">5</span>;</span>
+<span class="line" id="L59">        <span class="tok-kw">const</span> pb = <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(props));</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61">        <span class="tok-kw">const</span> dict_size_provided = <span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L62">        <span class="tok-kw">const</span> dict_size = <span class="tok-builtin">@max</span>(<span class="tok-number">0x1000</span>, dict_size_provided);</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">        <span class="tok-kw">const</span> unpacked_size = <span class="tok-kw">switch</span> (options.unpacked_size) {</span>
+<span class="line" id="L65">            .read_from_header =&gt; blk: {</span>
+<span class="line" id="L66">                <span class="tok-kw">const</span> unpacked_size_provided = <span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u64</span>);</span>
+<span class="line" id="L67">                <span class="tok-kw">const</span> marker_mandatory = unpacked_size_provided == <span class="tok-number">0xFFFF_FFFF_FFFF_FFFF</span>;</span>
+<span class="line" id="L68">                <span class="tok-kw">break</span> :blk <span class="tok-kw">if</span> (marker_mandatory)</span>
+<span class="line" id="L69">                    <span class="tok-null">null</span></span>
+<span class="line" id="L70">                <span class="tok-kw">else</span></span>
+<span class="line" id="L71">                    unpacked_size_provided;</span>
+<span class="line" id="L72">            },</span>
+<span class="line" id="L73">            .read_header_but_use_provided =&gt; |x| blk: {</span>
+<span class="line" id="L74">                _ = <span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u64</span>);</span>
+<span class="line" id="L75">                <span class="tok-kw">break</span> :blk x;</span>
+<span class="line" id="L76">            },</span>
+<span class="line" id="L77">            .use_provided =&gt; |x| x,</span>
+<span class="line" id="L78">        };</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">        <span class="tok-kw">return</span> Params{</span>
+<span class="line" id="L81">            .properties = Properties{ .lc = lc, .lp = lp, .pb = pb },</span>
+<span class="line" id="L82">            .dict_size = dict_size,</span>
+<span class="line" id="L83">            .unpacked_size = unpacked_size,</span>
+<span class="line" id="L84">        };</span>
+<span class="line" id="L85">    }</span>
+<span class="line" id="L86">};</span>
+<span class="line" id="L87"></span>
+<span class="line" id="L88"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DecoderState = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L89">    lzma_props: Properties,</span>
+<span class="line" id="L90">    unpacked_size: ?<span class="tok-type">u64</span>,</span>
+<span class="line" id="L91">    literal_probs: Vec2D(<span class="tok-type">u16</span>),</span>
+<span class="line" id="L92">    pos_slot_decoder: [<span class="tok-number">4</span>]BitTree(<span class="tok-number">6</span>),</span>
+<span class="line" id="L93">    align_decoder: BitTree(<span class="tok-number">4</span>),</span>
+<span class="line" id="L94">    pos_decoders: [<span class="tok-number">115</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L95">    is_match: [<span class="tok-number">192</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L96">    is_rep: [<span class="tok-number">12</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L97">    is_rep_g0: [<span class="tok-number">12</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L98">    is_rep_g1: [<span class="tok-number">12</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L99">    is_rep_g2: [<span class="tok-number">12</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L100">    is_rep_0long: [<span class="tok-number">192</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L101">    state: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L102">    rep: [<span class="tok-number">4</span>]<span class="tok-type">usize</span>,</span>
+<span class="line" id="L103">    len_decoder: LenDecoder,</span>
+<span class="line" id="L104">    rep_len_decoder: LenDecoder,</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(</span>
+<span class="line" id="L107">        allocator: Allocator,</span>
+<span class="line" id="L108">        lzma_props: Properties,</span>
+<span class="line" id="L109">        unpacked_size: ?<span class="tok-type">u64</span>,</span>
+<span class="line" id="L110">    ) !DecoderState {</span>
+<span class="line" id="L111">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L112">            .lzma_props = lzma_props,</span>
+<span class="line" id="L113">            .unpacked_size = unpacked_size,</span>
+<span class="line" id="L114">            .literal_probs = <span class="tok-kw">try</span> Vec2D(<span class="tok-type">u16</span>).init(allocator, <span class="tok-number">0x400</span>, .{ <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; (lzma_props.lc + lzma_props.lp), <span class="tok-number">0x300</span> }),</span>
+<span class="line" id="L115">            .pos_slot_decoder = .{.{}} ** <span class="tok-number">4</span>,</span>
+<span class="line" id="L116">            .align_decoder = .{},</span>
+<span class="line" id="L117">            .pos_decoders = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">115</span>,</span>
+<span class="line" id="L118">            .is_match = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">192</span>,</span>
+<span class="line" id="L119">            .is_rep = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>,</span>
+<span class="line" id="L120">            .is_rep_g0 = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>,</span>
+<span class="line" id="L121">            .is_rep_g1 = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>,</span>
+<span class="line" id="L122">            .is_rep_g2 = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>,</span>
+<span class="line" id="L123">            .is_rep_0long = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">192</span>,</span>
+<span class="line" id="L124">            .state = <span class="tok-number">0</span>,</span>
+<span class="line" id="L125">            .rep = .{<span class="tok-number">0</span>} ** <span class="tok-number">4</span>,</span>
+<span class="line" id="L126">            .len_decoder = .{},</span>
+<span class="line" id="L127">            .rep_len_decoder = .{},</span>
+<span class="line" id="L128">        };</span>
+<span class="line" id="L129">    }</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *DecoderState, allocator: Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L132">        self.literal_probs.deinit(allocator);</span>
+<span class="line" id="L133">        self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L134">    }</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">resetState</span>(self: *DecoderState, allocator: Allocator, new_props: Properties) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L137">        new_props.validate();</span>
+<span class="line" id="L138">        <span class="tok-kw">if</span> (self.lzma_props.lc + self.lzma_props.lp == new_props.lc + new_props.lp) {</span>
+<span class="line" id="L139">            self.literal_probs.fill(<span class="tok-number">0x400</span>);</span>
+<span class="line" id="L140">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L141">            self.literal_probs.deinit(allocator);</span>
+<span class="line" id="L142">            self.literal_probs = <span class="tok-kw">try</span> Vec2D(<span class="tok-type">u16</span>).init(allocator, <span class="tok-number">0x400</span>, .{ <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; (new_props.lc + new_props.lp), <span class="tok-number">0x300</span> });</span>
+<span class="line" id="L143">        }</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145">        self.lzma_props = new_props;</span>
+<span class="line" id="L146">        <span class="tok-kw">for</span> (&amp;self.pos_slot_decoder) |*t| t.reset();</span>
+<span class="line" id="L147">        self.align_decoder.reset();</span>
+<span class="line" id="L148">        self.pos_decoders = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">115</span>;</span>
+<span class="line" id="L149">        self.is_match = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">192</span>;</span>
+<span class="line" id="L150">        self.is_rep = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>;</span>
+<span class="line" id="L151">        self.is_rep_g0 = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>;</span>
+<span class="line" id="L152">        self.is_rep_g1 = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>;</span>
+<span class="line" id="L153">        self.is_rep_g2 = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">12</span>;</span>
+<span class="line" id="L154">        self.is_rep_0long = .{<span class="tok-number">0x400</span>} ** <span class="tok-number">192</span>;</span>
+<span class="line" id="L155">        self.state = <span class="tok-number">0</span>;</span>
+<span class="line" id="L156">        self.rep = .{<span class="tok-number">0</span>} ** <span class="tok-number">4</span>;</span>
+<span class="line" id="L157">        self.len_decoder.reset();</span>
+<span class="line" id="L158">        self.rep_len_decoder.reset();</span>
+<span class="line" id="L159">    }</span>
+<span class="line" id="L160"></span>
+<span class="line" id="L161">    <span class="tok-kw">fn</span> <span class="tok-fn">processNextInner</span>(</span>
+<span class="line" id="L162">        self: *DecoderState,</span>
+<span class="line" id="L163">        allocator: Allocator,</span>
+<span class="line" id="L164">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L165">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L166">        buffer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L167">        decoder: *RangeDecoder,</span>
+<span class="line" id="L168">        update: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L169">    ) !ProcessingStatus {</span>
+<span class="line" id="L170">        <span class="tok-kw">const</span> pos_state = buffer.len &amp; ((<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; self.lzma_props.pb) - <span class="tok-number">1</span>);</span>
+<span class="line" id="L171"></span>
+<span class="line" id="L172">        <span class="tok-kw">if</span> (!<span class="tok-kw">try</span> decoder.decodeBit(</span>
+<span class="line" id="L173">            reader,</span>
+<span class="line" id="L174">            &amp;self.is_match[(self.state &lt;&lt; <span class="tok-number">4</span>) + pos_state],</span>
+<span class="line" id="L175">            update,</span>
+<span class="line" id="L176">        )) {</span>
+<span class="line" id="L177">            <span class="tok-kw">const</span> byte: <span class="tok-type">u8</span> = <span class="tok-kw">try</span> self.decodeLiteral(reader, buffer, decoder, update);</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179">            <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L180">                <span class="tok-kw">try</span> buffer.appendLiteral(allocator, byte, writer);</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182">                self.state = <span class="tok-kw">if</span> (self.state &lt; <span class="tok-number">4</span>)</span>
+<span class="line" id="L183">                    <span class="tok-number">0</span></span>
+<span class="line" id="L184">                <span class="tok-kw">else</span> <span class="tok-kw">if</span> (self.state &lt; <span class="tok-number">10</span>)</span>
+<span class="line" id="L185">                    self.state - <span class="tok-number">3</span></span>
+<span class="line" id="L186">                <span class="tok-kw">else</span></span>
+<span class="line" id="L187">                    self.state - <span class="tok-number">6</span>;</span>
+<span class="line" id="L188">            }</span>
+<span class="line" id="L189">            <span class="tok-kw">return</span> .continue_;</span>
+<span class="line" id="L190">        }</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192">        <span class="tok-kw">var</span> len: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L193">        <span class="tok-kw">if</span> (<span class="tok-kw">try</span> decoder.decodeBit(reader, &amp;self.is_rep[self.state], update)) {</span>
+<span class="line" id="L194">            <span class="tok-kw">if</span> (!<span class="tok-kw">try</span> decoder.decodeBit(reader, &amp;self.is_rep_g0[self.state], update)) {</span>
+<span class="line" id="L195">                <span class="tok-kw">if</span> (!<span class="tok-kw">try</span> decoder.decodeBit(</span>
+<span class="line" id="L196">                    reader,</span>
+<span class="line" id="L197">                    &amp;self.is_rep_0long[(self.state &lt;&lt; <span class="tok-number">4</span>) + pos_state],</span>
+<span class="line" id="L198">                    update,</span>
+<span class="line" id="L199">                )) {</span>
+<span class="line" id="L200">                    <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L201">                        self.state = <span class="tok-kw">if</span> (self.state &lt; <span class="tok-number">7</span>) <span class="tok-number">9</span> <span class="tok-kw">else</span> <span class="tok-number">11</span>;</span>
+<span class="line" id="L202">                        <span class="tok-kw">const</span> dist = self.rep[<span class="tok-number">0</span>] + <span class="tok-number">1</span>;</span>
+<span class="line" id="L203">                        <span class="tok-kw">try</span> buffer.appendLz(allocator, <span class="tok-number">1</span>, dist, writer);</span>
+<span class="line" id="L204">                    }</span>
+<span class="line" id="L205">                    <span class="tok-kw">return</span> .continue_;</span>
+<span class="line" id="L206">                }</span>
+<span class="line" id="L207">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L208">                <span class="tok-kw">const</span> idx: <span class="tok-type">usize</span> = <span class="tok-kw">if</span> (!<span class="tok-kw">try</span> decoder.decodeBit(reader, &amp;self.is_rep_g1[self.state], update))</span>
+<span class="line" id="L209">                    <span class="tok-number">1</span></span>
+<span class="line" id="L210">                <span class="tok-kw">else</span> <span class="tok-kw">if</span> (!<span class="tok-kw">try</span> decoder.decodeBit(reader, &amp;self.is_rep_g2[self.state], update))</span>
+<span class="line" id="L211">                    <span class="tok-number">2</span></span>
+<span class="line" id="L212">                <span class="tok-kw">else</span></span>
+<span class="line" id="L213">                    <span class="tok-number">3</span>;</span>
+<span class="line" id="L214">                <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L215">                    <span class="tok-kw">const</span> dist = self.rep[idx];</span>
+<span class="line" id="L216">                    <span class="tok-kw">var</span> i = idx;</span>
+<span class="line" id="L217">                    <span class="tok-kw">while</span> (i &gt; <span class="tok-number">0</span>) : (i -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L218">                        self.rep[i] = self.rep[i - <span class="tok-number">1</span>];</span>
+<span class="line" id="L219">                    }</span>
+<span class="line" id="L220">                    self.rep[<span class="tok-number">0</span>] = dist;</span>
+<span class="line" id="L221">                }</span>
+<span class="line" id="L222">            }</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">            len = <span class="tok-kw">try</span> self.rep_len_decoder.decode(reader, decoder, pos_state, update);</span>
+<span class="line" id="L225"></span>
+<span class="line" id="L226">            <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L227">                self.state = <span class="tok-kw">if</span> (self.state &lt; <span class="tok-number">7</span>) <span class="tok-number">8</span> <span class="tok-kw">else</span> <span class="tok-number">11</span>;</span>
+<span class="line" id="L228">            }</span>
+<span class="line" id="L229">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L230">            <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L231">                self.rep[<span class="tok-number">3</span>] = self.rep[<span class="tok-number">2</span>];</span>
+<span class="line" id="L232">                self.rep[<span class="tok-number">2</span>] = self.rep[<span class="tok-number">1</span>];</span>
+<span class="line" id="L233">                self.rep[<span class="tok-number">1</span>] = self.rep[<span class="tok-number">0</span>];</span>
+<span class="line" id="L234">            }</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236">            len = <span class="tok-kw">try</span> self.len_decoder.decode(reader, decoder, pos_state, update);</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">            <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L239">                self.state = <span class="tok-kw">if</span> (self.state &lt; <span class="tok-number">7</span>) <span class="tok-number">7</span> <span class="tok-kw">else</span> <span class="tok-number">10</span>;</span>
+<span class="line" id="L240">            }</span>
+<span class="line" id="L241"></span>
+<span class="line" id="L242">            <span class="tok-kw">const</span> rep_0 = <span class="tok-kw">try</span> self.decodeDistance(reader, decoder, len, update);</span>
+<span class="line" id="L243"></span>
+<span class="line" id="L244">            <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L245">                self.rep[<span class="tok-number">0</span>] = rep_0;</span>
+<span class="line" id="L246">                <span class="tok-kw">if</span> (self.rep[<span class="tok-number">0</span>] == <span class="tok-number">0xFFFF_FFFF</span>) {</span>
+<span class="line" id="L247">                    <span class="tok-kw">if</span> (decoder.isFinished()) {</span>
+<span class="line" id="L248">                        <span class="tok-kw">return</span> .finished;</span>
+<span class="line" id="L249">                    }</span>
+<span class="line" id="L250">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CorruptInput;</span>
+<span class="line" id="L251">                }</span>
+<span class="line" id="L252">            }</span>
+<span class="line" id="L253">        }</span>
+<span class="line" id="L254"></span>
+<span class="line" id="L255">        <span class="tok-kw">if</span> (update) {</span>
+<span class="line" id="L256">            len += <span class="tok-number">2</span>;</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258">            <span class="tok-kw">const</span> dist = self.rep[<span class="tok-number">0</span>] + <span class="tok-number">1</span>;</span>
+<span class="line" id="L259">            <span class="tok-kw">try</span> buffer.appendLz(allocator, len, dist, writer);</span>
+<span class="line" id="L260">        }</span>
+<span class="line" id="L261"></span>
+<span class="line" id="L262">        <span class="tok-kw">return</span> .continue_;</span>
+<span class="line" id="L263">    }</span>
+<span class="line" id="L264"></span>
+<span class="line" id="L265">    <span class="tok-kw">fn</span> <span class="tok-fn">processNext</span>(</span>
+<span class="line" id="L266">        self: *DecoderState,</span>
+<span class="line" id="L267">        allocator: Allocator,</span>
+<span class="line" id="L268">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L269">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L270">        buffer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L271">        decoder: *RangeDecoder,</span>
+<span class="line" id="L272">    ) !ProcessingStatus {</span>
+<span class="line" id="L273">        <span class="tok-kw">return</span> self.processNextInner(allocator, reader, writer, buffer, decoder, <span class="tok-null">true</span>);</span>
+<span class="line" id="L274">    }</span>
+<span class="line" id="L275"></span>
+<span class="line" id="L276">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">process</span>(</span>
+<span class="line" id="L277">        self: *DecoderState,</span>
+<span class="line" id="L278">        allocator: Allocator,</span>
+<span class="line" id="L279">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L280">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L281">        buffer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L282">        decoder: *RangeDecoder,</span>
+<span class="line" id="L283">    ) !ProcessingStatus {</span>
+<span class="line" id="L284">        process_next: {</span>
+<span class="line" id="L285">            <span class="tok-kw">if</span> (self.unpacked_size) |unpacked_size| {</span>
+<span class="line" id="L286">                <span class="tok-kw">if</span> (buffer.len &gt;= unpacked_size) {</span>
+<span class="line" id="L287">                    <span class="tok-kw">break</span> :process_next;</span>
+<span class="line" id="L288">                }</span>
+<span class="line" id="L289">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (decoder.isFinished()) {</span>
+<span class="line" id="L290">                <span class="tok-kw">break</span> :process_next;</span>
+<span class="line" id="L291">            }</span>
+<span class="line" id="L292"></span>
+<span class="line" id="L293">            <span class="tok-kw">switch</span> (<span class="tok-kw">try</span> self.processNext(allocator, reader, writer, buffer, decoder)) {</span>
+<span class="line" id="L294">                .continue_ =&gt; <span class="tok-kw">return</span> .continue_,</span>
+<span class="line" id="L295">                .finished =&gt; <span class="tok-kw">break</span> :process_next,</span>
+<span class="line" id="L296">            }</span>
+<span class="line" id="L297">        }</span>
+<span class="line" id="L298"></span>
+<span class="line" id="L299">        <span class="tok-kw">if</span> (self.unpacked_size) |unpacked_size| {</span>
+<span class="line" id="L300">            <span class="tok-kw">if</span> (buffer.len != unpacked_size) {</span>
+<span class="line" id="L301">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CorruptInput;</span>
+<span class="line" id="L302">            }</span>
+<span class="line" id="L303">        }</span>
+<span class="line" id="L304"></span>
+<span class="line" id="L305">        <span class="tok-kw">return</span> .finished;</span>
+<span class="line" id="L306">    }</span>
+<span class="line" id="L307"></span>
+<span class="line" id="L308">    <span class="tok-kw">fn</span> <span class="tok-fn">decodeLiteral</span>(</span>
+<span class="line" id="L309">        self: *DecoderState,</span>
+<span class="line" id="L310">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L311">        buffer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L312">        decoder: *RangeDecoder,</span>
+<span class="line" id="L313">        update: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L314">    ) !<span class="tok-type">u8</span> {</span>
+<span class="line" id="L315">        <span class="tok-kw">const</span> def_prev_byte = <span class="tok-number">0</span>;</span>
+<span class="line" id="L316">        <span class="tok-kw">const</span> prev_byte = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, buffer.lastOr(def_prev_byte));</span>
+<span class="line" id="L317"></span>
+<span class="line" id="L318">        <span class="tok-kw">var</span> result: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L319">        <span class="tok-kw">const</span> lit_state = ((buffer.len &amp; ((<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; self.lzma_props.lp) - <span class="tok-number">1</span>)) &lt;&lt; self.lzma_props.lc) +</span>
+<span class="line" id="L320">            (prev_byte &gt;&gt; (<span class="tok-number">8</span> - self.lzma_props.lc));</span>
+<span class="line" id="L321">        <span class="tok-kw">const</span> probs = <span class="tok-kw">try</span> self.literal_probs.getMut(lit_state);</span>
+<span class="line" id="L322"></span>
+<span class="line" id="L323">        <span class="tok-kw">if</span> (self.state &gt;= <span class="tok-number">7</span>) {</span>
+<span class="line" id="L324">            <span class="tok-kw">var</span> match_byte = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-kw">try</span> buffer.lastN(self.rep[<span class="tok-number">0</span>] + <span class="tok-number">1</span>));</span>
+<span class="line" id="L325"></span>
+<span class="line" id="L326">            <span class="tok-kw">while</span> (result &lt; <span class="tok-number">0x100</span>) {</span>
+<span class="line" id="L327">                <span class="tok-kw">const</span> match_bit = (match_byte &gt;&gt; <span class="tok-number">7</span>) &amp; <span class="tok-number">1</span>;</span>
+<span class="line" id="L328">                match_byte &lt;&lt;= <span class="tok-number">1</span>;</span>
+<span class="line" id="L329">                <span class="tok-kw">const</span> bit = <span class="tok-builtin">@intFromBool</span>(<span class="tok-kw">try</span> decoder.decodeBit(</span>
+<span class="line" id="L330">                    reader,</span>
+<span class="line" id="L331">                    &amp;probs[((<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) + match_bit) &lt;&lt; <span class="tok-number">8</span>) + result],</span>
+<span class="line" id="L332">                    update,</span>
+<span class="line" id="L333">                ));</span>
+<span class="line" id="L334">                result = (result &lt;&lt; <span class="tok-number">1</span>) ^ bit;</span>
+<span class="line" id="L335">                <span class="tok-kw">if</span> (match_bit != bit) {</span>
+<span class="line" id="L336">                    <span class="tok-kw">break</span>;</span>
+<span class="line" id="L337">                }</span>
+<span class="line" id="L338">            }</span>
+<span class="line" id="L339">        }</span>
+<span class="line" id="L340"></span>
+<span class="line" id="L341">        <span class="tok-kw">while</span> (result &lt; <span class="tok-number">0x100</span>) {</span>
+<span class="line" id="L342">            result = (result &lt;&lt; <span class="tok-number">1</span>) ^ <span class="tok-builtin">@intFromBool</span>(<span class="tok-kw">try</span> decoder.decodeBit(reader, &amp;probs[result], update));</span>
+<span class="line" id="L343">        }</span>
+<span class="line" id="L344"></span>
+<span class="line" id="L345">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(result - <span class="tok-number">0x100</span>));</span>
+<span class="line" id="L346">    }</span>
+<span class="line" id="L347"></span>
+<span class="line" id="L348">    <span class="tok-kw">fn</span> <span class="tok-fn">decodeDistance</span>(</span>
+<span class="line" id="L349">        self: *DecoderState,</span>
+<span class="line" id="L350">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L351">        decoder: *RangeDecoder,</span>
+<span class="line" id="L352">        length: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L353">        update: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L354">    ) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L355">        <span class="tok-kw">const</span> len_state = <span class="tok-kw">if</span> (length &gt; <span class="tok-number">3</span>) <span class="tok-number">3</span> <span class="tok-kw">else</span> length;</span>
+<span class="line" id="L356"></span>
+<span class="line" id="L357">        <span class="tok-kw">const</span> pos_slot = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-kw">try</span> self.pos_slot_decoder[len_state].parse(reader, decoder, update));</span>
+<span class="line" id="L358">        <span class="tok-kw">if</span> (pos_slot &lt; <span class="tok-number">4</span>)</span>
+<span class="line" id="L359">            <span class="tok-kw">return</span> pos_slot;</span>
+<span class="line" id="L360"></span>
+<span class="line" id="L361">        <span class="tok-kw">const</span> num_direct_bits = <span class="tok-builtin">@as</span>(<span class="tok-type">u5</span>, <span class="tok-builtin">@intCast</span>((pos_slot &gt;&gt; <span class="tok-number">1</span>) - <span class="tok-number">1</span>));</span>
+<span class="line" id="L362">        <span class="tok-kw">var</span> result = (<span class="tok-number">2</span> ^ (pos_slot &amp; <span class="tok-number">1</span>)) &lt;&lt; num_direct_bits;</span>
+<span class="line" id="L363"></span>
+<span class="line" id="L364">        <span class="tok-kw">if</span> (pos_slot &lt; <span class="tok-number">14</span>) {</span>
+<span class="line" id="L365">            result += <span class="tok-kw">try</span> decoder.parseReverseBitTree(</span>
+<span class="line" id="L366">                reader,</span>
+<span class="line" id="L367">                num_direct_bits,</span>
+<span class="line" id="L368">                &amp;self.pos_decoders,</span>
+<span class="line" id="L369">                result - pos_slot,</span>
+<span class="line" id="L370">                update,</span>
+<span class="line" id="L371">            );</span>
+<span class="line" id="L372">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L373">            result += <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-kw">try</span> decoder.get(reader, num_direct_bits - <span class="tok-number">4</span>)) &lt;&lt; <span class="tok-number">4</span>;</span>
+<span class="line" id="L374">            result += <span class="tok-kw">try</span> self.align_decoder.parseReverse(reader, decoder, update);</span>
+<span class="line" id="L375">        }</span>
+<span class="line" id="L376"></span>
+<span class="line" id="L377">        <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L378">    }</span>
+<span class="line" id="L379">};</span>
+<span class="line" id="L380"></span>
+</code></pre></body>
+</html>
