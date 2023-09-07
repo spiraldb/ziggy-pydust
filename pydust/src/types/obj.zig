@@ -32,18 +32,27 @@ pub const PyObject = extern struct {
 
     /// Call this object with the given args and kwargs.
     pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
-        const argsPy = try if (@typeInfo(@TypeOf(args)) == .Optional and args == null)
-            py.PyTuple.new(0)
-        else
-            py.PyTuple.checked(try py.create(args));
+        var argsPy: py.PyTuple = undefined;
+        if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
+            argsPy = py.PyTuple.new(0);
+        } else {
+            argsPy = py.PyTuple.checked(try py.create(args));
+        }
         defer argsPy.decref();
 
         // FIXME(ngates): avoid creating empty dict for kwargs
-        const kwargsPy = try if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null)
-            py.PyDict.new(0)
-        else
-            py.PyDict.checked(try py.create(kwargs));
-
+        const kwargsPy: py.PyDict = undefined;
+        if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
+            kwargsPy = py.PyDict.new(0);
+        } else {
+            const kwobj = try py.create(kwargs);
+            if (try py.len(kwobj) == 0) {
+                kwobj.decref();
+                kwargsPy = py.PyDict.new();
+            } else {
+                kwargsPy = py.PyDict.checked(kwobj);
+            }
+        }
         defer kwargsPy.decref();
 
         const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.Propagate;
