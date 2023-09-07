@@ -32,19 +32,18 @@ pub const PyObject = extern struct {
 
     /// Call this object with the given args and kwargs.
     pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
-        const argsPy = if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
-            try py.PyTuple.new(0);
-        } else {
-            try py.PyTuple.checked(try py.create(args));
-        };
+        const argsPy = try if (@typeInfo(@TypeOf(args)) == .Optional and args == null)
+            py.PyTuple.new(0)
+        else
+            py.PyTuple.checked(try py.create(args));
         defer argsPy.decref();
 
         // FIXME(ngates): avoid creating empty dict for kwargs
-        const kwargsPy = if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
-            try py.PyDict.new(0);
-        } else {
-            try py.PyDict.checked(try py.create(kwargs));
-        };
+        const kwargsPy = try if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null)
+            py.PyDict.new(0)
+        else
+            py.PyDict.checked(try py.create(kwargs));
+
         defer kwargsPy.decref();
 
         const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.Propagate;
@@ -122,7 +121,7 @@ test "call" {
     defer math.decref();
 
     const pow = try math.get("pow");
-    const result = try pow.call(f32, .{ @as(i32, 2), @as(i32, 3) }, .{});
+    const result = try pow.call(f32, .{ 2, 3 }, .{});
 
     try std.testing.expectEqual(@as(f32, 8.0), result);
 }
