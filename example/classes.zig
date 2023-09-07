@@ -57,9 +57,9 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 
     pub fn make_noise(args: struct { is_loud: bool = false }) !py.PyString {
         if (args.is_loud) {
-            return py.PyString.fromSlice("Bark!");
+            return py.PyString.create("Bark!");
         } else {
-            return py.PyString.fromSlice("bark...");
+            return py.PyString.create("bark...");
         }
     }
 

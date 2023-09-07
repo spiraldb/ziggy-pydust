@@ -17,8 +17,8 @@ pub const PyTuple = extern struct {
     /// Construct a PyTuple from the given Zig tuple.
     pub fn create(values: anytype) !PyTuple {
         const s = @typeInfo(@TypeOf(values)).Struct;
-        if (!s.is_tuple) {
-            @compileError("Expected a struct tuple");
+        if (!s.is_tuple and s.fields.len > 0) {
+            @compileError("Expected a struct tuple " ++ @typeName(@TypeOf(values)));
         }
 
         const tuple = try new(s.fields.len);

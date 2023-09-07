@@ -30,6 +30,12 @@ pub fn callable(object: anytype) bool {
     return ffi.PyCallable_Check(obj.py) == 1;
 }
 
+/// Convert an object into a dictionary. Equivalent of Python dict(o).
+pub fn dict(object: anytype) !py.PyDict {
+    const Dict: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PyDict_Type)) };
+    return Dict.call(py.PyDict, .{object}, .{});
+}
+
 /// Checks whether a given object is None. Avoids incref'ing None to do the check.
 pub fn is_none(object: anytype) bool {
     const obj = try py.object(object);
@@ -68,4 +74,9 @@ pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
 
     const superBuiltin = py.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
     return superBuiltin.call(py.PyObject, .{ superPyType, pyObj }, .{});
+}
+
+pub fn tuple(object: anytype) !py.PyTuple {
+    const pytuple = ffi.PySequence_Tuple(py.object(object).py) orelse return PyError.Propagate;
+    return py.PyTuple.unchecked(.{ .py = pytuple });
 }
