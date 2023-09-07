@@ -6,6 +6,28 @@ A framework for writing and packaging native Python extension modules written in
 * Pytest plugin to discover and run Zig tests.
 * Comptime argument wrapping / unwrapping for interop with native Zig types.
 
+```zig
+const py = @import("pydust");
+
+pub fn fibonacci(args: struct { n: u64 }) u64 {
+    if (args.n < 2) return args.n;
+
+    var sum: u64 = 0;
+    var last: u64 = 0;
+    var curr: u64 = 1;
+    for (1..args.n) {
+        sum = last + curr;
+        last = curr;
+        curr = sum;
+    }
+    return sum;
+}
+
+comptime {
+    py.module(@This());
+}
+```
+
 ## Compatibility
 
 Pydust supports:
@@ -14,6 +36,12 @@ Pydust supports:
 * [CPython >=3.11](https://docs.python.org/3.11/c-api/stable.html)
 
 Please reach out if you're interested in helping us to expand compatibility.
+
+## Getting Started
+
+Pydust docs can be found [here](https://pydust.fulcrum.so).
+
+There is also a [template repository](https://github.com/fulcrum-so/ziggy-pydust-template) including Poetry build, Pytest and publishing from Github Actions.
 
 ## Contributing
 
