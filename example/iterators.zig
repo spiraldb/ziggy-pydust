@@ -19,7 +19,7 @@ pub const Range = py.class("Range", struct {
     }
 });
 
-pub const RangeIterator = py.class("Iterable", struct {
+pub const RangeIterator = py.class("RangeIterator", struct {
     pub const __doc__ = "Range iterator";
 
     const Self = @This();
