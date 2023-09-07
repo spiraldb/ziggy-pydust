@@ -10,47 +10,69 @@ If you do struggle or find any issues with the examples, please do [let us know!
 Pydust maintains a consistent set of conventions around structs, function naming, and memory 
 management to assist with development. 
 
-### PyObject
+### Conversion Functions
 
-A Pydust `py.PyObject` is an extern struct containing _only_ a pointer to an `ffi.PyObject`. In other words,
-wherever a `*ffi.PyObject` appears in CPython docs, it can be replaced with a `py.PyObject` (notice not a 
-pointer).
+When converting from Python to Zig types:
 
-``` zig title="PyObject.zig"
-const PyObject = extern struct {
-    py: *ffi.PyObject,
-};
-```
-
-### Python Type Wrappers
-
-Pydust ships with type wrappers for CPython built-ins, such as PyFloat, PyTuple, etc. These type wrappers
-are extern structs containing a single `#!c py.PyObject` field. This again enables them to be used in place
-of `#!c *ffi.PyObject`.
+* `.as(T)` - return a view of the object *as* the given type. This will leave the `refcnt` of the original object untouched.
+* `.into(T)` - convert the object *into* the given type. This will decref the Python object when converting into Zig primitive
+types. This is also known as "stealing the reference", or "moving the reference". After calling `into` on an object, you 
+should consider the original object to be invalid.
 
 ## Type Conversions
 
-At comptime, Pydust wraps your function definitions such that native Zig types can be returned
-from functions and automatically converted into Python objects.
+At comptime, Pydust wraps your function definitions such that native Zig types can be accepted
+or returned from functions and automatically converted into Python objects.
 
-!!! note
+### Zig Primitives
 
-    Currently only return types are wrapped into Python objects. Argument types must be specified
-    as `py.PyObject` or any of the other Pydust `py.Py<Name>` native Python object types.
+| Zig Type       | Python Type  |
+|:---------------| :----------- |
+| `void`         | `None`       |
+| `bool`         | `bool`       |
+| `i32`, `i64`   | `int`        |
+| `u32`, `u64`   | `int`        |
+| `f32`, `f64`   | `float`      |
+| `struct`       | `dict`       |
+| `tuple struct` | `tuple`      |
+| `[]const u8`   | `str`        |
+| `*[_]u8`       | `str`        |
 
-### Result Types
+!!! Note
 
-Currently, only function return types are automatically wrapped into Python objects. As expected, 
-any of the Pydust native types (such as `py.PyString`) convert to their respective Python type.
+    We have found that generally we use a `[]const u8` to mean a string, and therefore
+    our default conversion logic is to a Python unicode str object.
 
-For native Zig types however, the following conversions apply:
+    If you wish to return a Python bytes object, you must explicitly wrap your slice
+    with `py.PyBytes`.
+
+### Pydust Objects
+
+Pointers to any Pydust Zig structs will convert to their corresponding Python instance. 
+
+For example, given the class `Foo` below,
+if the class is initialized with `const foo: *Foo = py.init(Foo, .{})`,
+then a result of `foo` will be wrapped into the corresponding Python instance of
+`Foo`. 
+
+```zig title="foo.zig"
+const Foo = py.class("Foo", struct { a: u32 = 0 });
+
+pub fn create_foo() *const Foo {
+    return py.init(Foo, .{});
+} 
+```
+
+### Pydust Type Wrappers
+
+The Pydust Python type wrappers convert as expected.
 
 | Zig Type      | Python Type  |
 | :------------ | :----------- |
-| `void`        | `None`       |
-| `bool`        | `bool`       |
-| `i32`, `i64`  | `int`        |
-| `u32`, `u64`  | `int`        |
-| `f32`, `f64`  | `float`      |
-| `struct`      | `dict`       |
-| `tuple struct`| `tuple`      |
+| `py.PyObject` | `object`     |
+| `py.PyBool`   | `bool`       |
+| `py.PyLong`   | `int`        |
+| `py.PyFloat`  | `float`      |
+| `py.PyTuple`  | `tuple`      |
+| `py.PyDict`   | `dict`       |
+| `py.PyString` | `str`        |

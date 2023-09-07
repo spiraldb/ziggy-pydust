@@ -1,19 +1,17 @@
+//! This file exposes functions equivalent to the Python builtins module (or other builtin syntax).
+//! These functions similarly operate over all types of PyObject-like values.
+//!
+//! See https://docs.python.org/3/library/functions.html for full reference.
 const py = @import("./pydust.zig");
 const ffi = @import("./ffi.zig");
 const PyError = @import("./errors.zig").PyError;
 
 /// Returns a new reference to Py_None.
-pub inline fn None() py.PyObject {
+pub fn None() py.PyObject {
     // It's important that we incref the Py_None singleton
     const none = py.PyObject{ .py = ffi.Py_None };
     none.incref();
     return none;
-}
-
-/// Checks whether a given object is None. Avoids incref'ing None to do the check.
-pub inline fn is_none(object: anytype) bool {
-    const obj = try py.object(object);
-    return ffi.Py_IsNone(obj.py) == 1;
 }
 
 /// Returns a new reference to Py_False.
@@ -24,6 +22,18 @@ pub inline fn False() py.PyBool {
 /// Returns a new reference to Py_True.
 pub inline fn True() py.PyBool {
     return py.PyBool.true_();
+}
+
+/// Checks whether a given object is callable. Equivalent to Python's callable(o).
+pub fn callable(object: anytype) bool {
+    const obj = try py.object(object);
+    return ffi.PyCallable_Check(obj.py) == 1;
+}
+
+/// Checks whether a given object is None. Avoids incref'ing None to do the check.
+pub fn is_none(object: anytype) bool {
+    const obj = try py.object(object);
+    return ffi.Py_IsNone(obj.py) == 1;
 }
 
 /// Get the length of the given object. Equivalent to len(obj) in Python.
@@ -37,6 +47,18 @@ pub fn len(object: anytype) !usize {
 /// Import a module by fully-qualified name returning a PyObject.
 pub fn import(module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule.import(module_name)).obj;
+}
+
+/// Return the reference count of the object.
+pub fn refcnt(object: anytype) isize {
+    const pyobj = py.PyObject.of(object);
+    return pyobj.py.ob_refcnt;
+}
+
+/// Compute a string representation of object o.
+pub fn str(object: anytype) !py.PyString {
+    const pyobj = py.PyObject.of(object);
+    return try py.PyString.of(ffi.PyObject_Str(pyobj.py) orelse return PyError.Propagate);
 }
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.

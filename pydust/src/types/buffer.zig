@@ -1,7 +1,6 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
-const tramp = @import("../trampoline.zig");
 const PyError = @import("../errors.zig").PyError;
 
 /// Wrapper for Python Py_buffer.

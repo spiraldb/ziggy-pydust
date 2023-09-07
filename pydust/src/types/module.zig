@@ -4,7 +4,6 @@ const mem = @import("../mem.zig");
 const ffi = @import("../ffi.zig");
 const py = @import("../types.zig");
 const PyError = @import("../errors.zig").PyError;
-const tramp = @import("../trampoline.zig");
 
 pub const PyModule = extern struct {
     obj: py.PyObject,

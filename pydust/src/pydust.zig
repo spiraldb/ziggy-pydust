@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtins = @import("builtins.zig");
+const conversions = @import("conversions.zig");
 const mem = @import("mem.zig");
 const modules = @import("modules.zig");
 const types = @import("types.zig");
@@ -10,6 +11,7 @@ const PyError = @import("errors.zig").PyError;
 
 // Export some useful things for users
 pub usingnamespace builtins;
+pub usingnamespace conversions;
 pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
@@ -133,27 +135,6 @@ inline fn NewArgs(comptime Cls: type) type {
     const typeInfo = @typeInfo(@TypeOf(func));
     const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
     return sig.argsParam orelse struct {};
-}
-
-/// Create a new Python object from a Zig object.
-/// Note this will always create a new strong reference.
-pub fn toObject(value: anytype) !types.PyObject {
-    if (@TypeOf(value) == comptime_int) {
-        return tramp.Trampoline(i64).wrap(value);
-    }
-
-    if (@TypeOf(value) == comptime_float) {
-        return tramp.Trampoline(f64).wrap(value);
-    }
-
-    return tramp.Trampoline(@TypeOf(value)).wrap(value);
-}
-
-/// Convert a Python object into a Zig object.
-pub fn as(comptime T: type, obj: types.PyObject) !T {
-    // FIXME(ngates): ensure that we eat a reference to whatever the input object is.
-    // Unless we return as a Python object type.
-    return tramp.Trampoline(T).unwrap(obj);
 }
 
 pub fn getClassName(comptime definition: type) [:0]const u8 {

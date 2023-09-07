@@ -9,6 +9,14 @@ const PyError = @import("errors.zig").PyError;
 
 /// Generate functions to convert comptime-known Zig types to/from py.PyObject.
 pub fn Trampoline(comptime T: type) type {
+    // Catch and handle comptime literals
+    if (T == comptime_int) {
+        return Trampoline(i64);
+    }
+    if (T == comptime_float) {
+        return Trampoline(f64);
+    }
+
     return struct {
         /// Wraps object that already represent existing Python objects.
         /// In other words, Zig primitive types are not supported.
@@ -49,7 +57,7 @@ pub fn Trampoline(comptime T: type) type {
                 },
                 inline else => {},
             }
-            @compileLog("Cannot convert into PyObject" ++ @typeName(T));
+            @compileError("Cannot convert into PyObject" ++ @typeName(T));
         }
 
         inline fn isObjectLike() bool {
@@ -116,6 +124,18 @@ pub fn Trampoline(comptime T: type) type {
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return (try py.PyFloat.from(T, obj)).obj,
                 .Int => return (try py.PyLong.from(T, obj)).obj,
+                .Pointer => |p| {
+                    // We make the assumption that []const u8 is converted to a PyUnicode.
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
+                        return (try py.PyString.fromSlice(obj)).obj;
+                    }
+
+                    // Also pointers to u8 arrays *[_]u8
+                    const childInfo = @typeInfo(p.child);
+                    if (childInfo == .Array and childInfo.Array.child == u8) {
+                        return (try py.PyString.fromSlice(obj)).obj;
+                    }
+                },
                 .Struct => |s| {
                     // If the struct is a tuple, return a Python tuple
                     if (s.is_tuple) {
@@ -136,7 +156,7 @@ pub fn Trampoline(comptime T: type) type {
                     inline for (s.fields) |field| {
                         // Recursively unwrap the field value
                         const fieldValue = try Trampoline(field.type).wrap(@field(obj, field.name));
-                        try dict.setItemStr(field.name, fieldValue);
+                        try dict.setItem(field.name, fieldValue);
                     }
                     return dict.obj;
                 },
@@ -144,10 +164,20 @@ pub fn Trampoline(comptime T: type) type {
                 else => {},
             }
 
-            @compileError("Unsupported return type " ++ @typeName(T) ++ " from Pydust function");
+            @compileError("Unsupported return type " ++ @typeName(T));
         }
 
-        /// Unwrap a Python object into a Zig object.
+        /// Unwrap a Python object into a Zig object. DOES steal a reference.
+        pub inline fn unwrapInto(object: ?py.PyObject) !T {
+            if (!isObjectLike()) {
+                // If we're unwrapping into another Python object, then we don't want to decref.
+                // If we're unwrapping into a Zig, then we do want to decref.
+                defer object.decref();
+            }
+            return unwrap(object);
+        }
+
+        /// Unwrap a Python object into a Zig object. Does not steal a reference.
         pub inline fn unwrap(object: ?py.PyObject) !T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
@@ -189,6 +219,11 @@ pub fn Trampoline(comptime T: type) type {
                         return try mod.getState(p.child);
                     }
 
+                    // We make the assumption that []const u8 is converted from a PyString
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
+                        return (try py.PyString.of(obj)).obj;
+                    }
+
                     @compileLog("Unsupported pointer type " ++ @typeName(p.child), py.State.classes(), py.State.modules());
                 },
                 .Struct => |s| {
@@ -216,7 +251,7 @@ pub fn Trampoline(comptime T: type) type {
                     var result: R = undefined;
                     inline for (s.fields) |field| {
                         // Recursively unwrap the field value
-                        const fieldValue = try dict.getItemStr(field.name ++ "") orelse {
+                        const fieldValue = try dict.getItem(field.name ++ "") orelse {
                             return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
                         };
                         @field(result, field.name) = try Trampoline(field.type).unwrap(fieldValue);
@@ -227,7 +262,7 @@ pub fn Trampoline(comptime T: type) type {
                 else => {},
             }
 
-            @compileError("Unsupported argument type " ++ @typeName(T) ++ " for Pydust function");
+            @compileLog("Unsupported argument type", @typeName(T));
         }
 
         pub const CallArgs = struct {
@@ -306,7 +341,7 @@ pub fn Trampoline(comptime T: type) type {
             if (callArgs.kwargs) |kwargs| {
                 var iter = kwargs.itemsIterator();
                 while (iter.next()) |item| {
-                    const itemName = try (try py.PyString.of(item.key)).asSlice();
+                    const itemName = try (try item.key(py.PyString)).asSlice();
 
                     var exists = false;
                     for (fieldNames) |name| {
