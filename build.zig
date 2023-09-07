@@ -8,6 +8,26 @@ pub fn build(b: *std.Build) void {
     const pythonLib = getPythonLibraryPath(b.allocator) catch @panic("Missing python");
 
     const test_step = b.step("test", "Run library tests");
+    const docs_step = b.step("docs", "Generate docs");
+
+    // We never build this lib, but we use it to generate docs.
+    const pydust_lib = b.addSharedLibrary(.{
+        .name = "pydust",
+        .root_source_file = .{ .path = "pydust/src/pydust.zig" },
+        .main_pkg_path = .{ .path = "pydust/src" },
+        .target = target,
+        .optimize = optimize,
+    });
+    pydust_lib.addIncludePath(.{ .path = pythonInc });
+    pydust_lib.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
+
+    const pydust_docs = b.addInstallDirectory(.{
+        .source_dir = pydust_lib.getEmittedDocs(),
+        // Emit the Zig docs into zig-out/../docs/zig
+        .install_dir = .{ .custom = "../docs" },
+        .install_subdir = "zig",
+    });
+    docs_step.dependOn(&pydust_docs.step);
 
     const main_tests = b.addTest(.{
         .root_source_file = .{ .path = "pydust/src/pydust.zig" },
