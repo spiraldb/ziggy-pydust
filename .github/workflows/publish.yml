@@ -20,6 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          # Needed for docs to discover gh-pages branch
+          fetch-depth: 0
       - uses: actions/setup-python@v4
         id: setup-python
         with:
@@ -58,17 +61,14 @@ jobs:
         run: poetry install -v --only=docs
       - name: Zig Docs Build
         run: poetry run python -m ziglang build docs
+      - name: Setup doc deploy
+        run: |
+          git config --global user.name Docs Deploy
+          git config --global user.email docs@dummy.bot.com
       - name: MKDocs Build
-        run: poetry run mkdocs build
+        run: poetry run mike deploy ${{  github.ref_name }} latest --push
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
-      - uses: actions/cache@v3
-        with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: .cache
-          restore-keys: |
-            mkdocs-material-
-      - run: poetry run mkdocs gh-deploy --force
+
