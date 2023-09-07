@@ -14,12 +14,30 @@ pub const PyDict = extern struct {
     pub fn create(value: anytype) !PyDict {
         const s = @typeInfo(@TypeOf(value)).Struct;
 
-        const dict = try py.PyDict.new();
+        const dict = try new();
         inline for (s.fields) |field| {
             // Recursively create the field values
             try dict.setItem(field.name, try py.create(@field(value, field.name)));
         }
         return dict;
+    }
+
+    /// Convert this dictionary into the provided Zig struct.
+    /// If the dictionary has extra fields not present in the struct, no error is raised.
+    pub fn as(self: PyDict, comptime T: type) !T {
+        const s = @typeInfo(T).Struct;
+        var result: T = undefined;
+        inline for (s.fields) |field| {
+            const value = try self.getItem(field.type, field.name ++ "");
+            if (value) |val| {
+                @field(result, field.name) = val;
+            } else if (field.default_value) {
+                @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(field.default_value))).*;
+            } else {
+                return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+            }
+        }
+        return result;
     }
 
     /// Return a new empty dictionary.

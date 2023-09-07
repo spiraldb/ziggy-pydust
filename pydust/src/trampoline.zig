@@ -45,7 +45,6 @@ pub fn Trampoline(comptime T: type) type {
                     if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
                         return obj.obj;
                     }
-
                     if (T == py.PyObject) {
                         return obj;
                     }
@@ -105,6 +104,11 @@ pub fn Trampoline(comptime T: type) type {
 
         /// Wraps a Zig object into a new Python object.
         pub inline fn wrap(obj: T) !py.PyObject {
+            // Check the user is not accidentally returning a Pydust class or Module without a pointer
+            if (py.findClassName(T) != null or py.findModuleName(T) != null) {
+                @compileError("Pydust objects can only be returned as pointers");
+            }
+
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
@@ -146,10 +150,7 @@ pub fn Trampoline(comptime T: type) type {
                     if (s.is_tuple) {
                         return (try py.PyTuple.create(obj)).obj;
                     }
-                    // Check the user is not accidentally returning a Pydust class or Module without a pointer
-                    if (py.findClassName(T) != null or py.findModuleName(T) != null) {
-                        @compileError("Pydust objects can only be returned as pointers");
-                    }
+
                     // Otherwise, return a Python dictionary
                     return (try py.PyDict.create(obj)).obj;
                 },
@@ -173,6 +174,7 @@ pub fn Trampoline(comptime T: type) type {
         }
 
         /// Unwrap a Python object into a Zig object. Does not steal a reference.
+        /// The Python object must be the correct corresponding type (vs a cast which coerces values).
         pub inline fn unwrap(object: ?py.PyObject) !T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
@@ -227,32 +229,15 @@ pub fn Trampoline(comptime T: type) type {
                         return try @field(R, "checked")(obj);
                     }
                     // Support py.PyObject
-                    if (R == py.PyObject) {
+                    if (R == py.PyObject and @TypeOf(obj) == py.PyObject) {
                         return obj;
                     }
                     // If the struct is a tuple, extract from the PyTuple
                     if (s.is_tuple) {
-                        const tuple = try py.PyTuple.of(obj);
-                        var result: R = undefined;
-                        for (s.fields, 0..) |field, i| {
-                            // Recursively unwrap the field value
-                            const fieldValue = try tuple.getItem(i);
-                            @field(result, field.name) = try Trampoline(field.type.?).unwrap(fieldValue);
-                            @field(result, field.name) = try tuple.getItem(field.type.?, i);
-                        }
-                        return result;
+                        return (try py.PyTuple.checked(obj)).as(R);
                     }
                     // Otherwise, extract from a Python dictionary
-                    const dict = try py.PyDict.of(obj);
-                    var result: R = undefined;
-                    inline for (s.fields) |field| {
-                        // Recursively unwrap the field value
-                        const fieldValue = try dict.getItem(field.name ++ "") orelse {
-                            return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
-                        };
-                        @field(result, field.name) = try Trampoline(field.type).unwrap(fieldValue);
-                    }
-                    return result;
+                    return (try py.PyDict.checked(obj)).as(R);
                 },
                 .Void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
                 else => {},

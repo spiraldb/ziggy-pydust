@@ -29,6 +29,23 @@ pub const PyTuple = extern struct {
         return tuple;
     }
 
+    /// Convert this tuple into the given Zig tuple struct.
+    pub fn as(self: PyTuple, comptime T: type) !T {
+        const s = @typeInfo(T).Struct;
+        const result: T = undefined;
+        for (s.fields, 0..) |field, i| {
+            const value = try self.getItem(field.type, i);
+            if (value) |val| {
+                @field(result, field.name) = val;
+            } else if (field.default_value) {
+                @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(field.default_value))).*;
+            } else {
+                return py.TypeError.raise("tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+            }
+        }
+        return result;
+    }
+
     pub fn new(size: usize) !PyTuple {
         const tuple = ffi.PyTuple_New(@intCast(size)) orelse return PyError.Propagate;
         return .{ .obj = .{ .py = tuple } };

@@ -17,17 +17,15 @@ pub const PyFloat = extern struct {
         return .{ .obj = .{ .py = pyfloat } };
     }
 
-    pub fn as(self: PyFloat, comptime float_type: type) !float_type {
-        return switch (float_type) {
-            f32 => @floatCast(try self.asDouble()),
-            f64 => try self.asDouble(),
-            else => @compileError("Unsupported float type " ++ @typeName(float_type)),
+    pub fn as(self: PyFloat, comptime T: type) !T {
+        return switch (T) {
+            f32, f64 => {
+                const double = ffi.PyFloat_AsDouble(self.obj.py);
+                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
+                return @floatCast(double);
+            },
+            else => @compileError("Unsupported float type " ++ @typeName(T)),
         };
-    }
-
-    fn asDouble(self: PyFloat) !f64 {
-        var pd = ffi.PyFloat_AsDouble(self.obj.py);
-        return if (ffi.PyErr_Occurred() != null) PyError.Propagate else pd;
     }
 };
 

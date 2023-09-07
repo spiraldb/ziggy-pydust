@@ -26,48 +26,21 @@ pub const PyLong = extern struct {
         return .{ .obj = .{ .py = pylong } };
     }
 
-    pub fn as(self: PyLong, comptime int_type: type) !int_type {
-        const typeInfo = @typeInfo(int_type).Int;
+    pub fn as(self: PyLong, comptime T: type) !T {
+        // TODO(ngates): support non-int conversions
+        const typeInfo = @typeInfo(T).Int;
         return switch (typeInfo.signedness) {
             .signed => {
-                if (typeInfo.bits <= @bitSizeOf(c_long)) {
-                    return @intCast(try self.asLong());
-                } else if (typeInfo.bits <= @bitSizeOf(c_longlong)) {
-                    return @intCast(try self.asLongLong());
-                } else {
-                    @compileError("Unsupported long type" ++ @typeName(int_type));
-                }
+                const ll = ffi.PyLong_AsLongLong(self.obj.py);
+                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
+                return @intCast(ll);
             },
             .unsigned => {
-                if (typeInfo.bits <= @bitSizeOf(c_ulong)) {
-                    return @intCast(try self.asULong());
-                } else if (typeInfo.bits <= @bitSizeOf(c_ulonglong)) {
-                    return @intCast(try self.asULongLong());
-                } else {
-                    @compileError("Unsupported long type" ++ @typeName(int_type));
-                }
+                const ull = ffi.PyLong_AsUnsignedLongLong(self.obj.py);
+                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
+                return @intCast(ull);
             },
         };
-    }
-
-    fn asLong(self: PyLong) !c_long {
-        var pl = ffi.PyLong_AsLong(self.obj.py);
-        return if (ffi.PyErr_Occurred() != null) PyError.Propagate else pl;
-    }
-
-    fn asLongLong(self: PyLong) !c_longlong {
-        var pl = ffi.PyLong_AsLongLong(self.obj.py);
-        return if (ffi.PyErr_Occurred() != null) PyError.Propagate else pl;
-    }
-
-    fn asULong(self: PyLong) !c_ulong {
-        var pl = ffi.PyLong_AsUnsignedLong(self.obj.py);
-        return if (ffi.PyErr_Occurred() != null) PyError.Propagate else pl;
-    }
-
-    fn asULongLong(self: PyLong) !c_ulonglong {
-        var pl = ffi.PyLong_AsUnsignedLongLong(self.obj.py);
-        return if (ffi.PyErr_Occurred() != null) PyError.Propagate else pl;
     }
 };
 
