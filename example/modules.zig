@@ -15,7 +15,7 @@ count: u32 = 0, // (2)!
 name: py.PyString,
 
 pub fn __new__() !Self { // (3)!
-    return .{ .name = try py.PyString.fromSlice("Ziggy") };
+    return .{ .name = try py.PyString.create("Ziggy") };
 }
 
 pub fn increment(self: *Self) void { // (4)!
@@ -34,7 +34,7 @@ pub fn hello(
     self: *const Self,
     args: struct { name: py.PyString }, // (5)!
 ) !py.PyString {
-    var str = try py.PyString.fromSlice("Hello, ");
+    var str = try py.PyString.create("Hello, ");
     str = try str.append(args.name);
     str = try str.appendSlice(". It's ");
     str = try str.append(self.name);

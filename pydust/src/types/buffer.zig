@@ -1,7 +1,6 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
-const tramp = @import("../trampoline.zig");
 const PyError = @import("../errors.zig").PyError;
 
 /// Wrapper for Python Py_buffer.
@@ -68,7 +67,7 @@ pub const PyBuffer = extern struct {
 
     pub fn initFromSlice(self: *Self, comptime T: type, values: []T, shape: []const isize, owner: anytype) void {
         // We need to incref the owner object because it's being used by the view.
-        const ownerObj = py.PyObject.of(owner);
+        const ownerObj = py.object(owner);
         ownerObj.incref();
 
         self.* = .{

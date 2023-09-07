@@ -1,5 +1,6 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 
@@ -11,31 +12,27 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyBool = extern struct {
     obj: py.PyObject,
 
-    pub fn of(obj: py.PyObject) !PyBool {
-        if (ffi.PyBool_Check(obj.py) == 0) {
-            return py.TypeError.raise("expected bool");
-        }
-        return .{ .obj = obj };
-    }
+    pub usingnamespace PyObjectMixin("bool", "PyBool", @This());
 
-    pub fn incref(self: PyBool) void {
-        self.obj.incref();
-    }
-
-    pub fn decref(self: PyBool) void {
-        self.obj.decref();
-    }
-
-    pub inline fn true_() PyBool {
-        return .{ .obj = .{ .py = ffi.PyBool_FromLong(1) } };
-    }
-
-    pub inline fn false_() PyBool {
-        return .{ .obj = .{ .py = ffi.PyBool_FromLong(0) } };
+    pub fn create(value: bool) !PyBool {
+        return if (value) true_() else false_();
     }
 
     pub fn asbool(self: PyBool) bool {
         return ffi.Py_IsTrue(self.obj.py) == 1;
+    }
+
+    pub fn intobool(self: PyBool) bool {
+        self.decref();
+        return self.asbool();
+    }
+
+    pub fn true_() PyBool {
+        return .{ .obj = .{ .py = ffi.PyBool_FromLong(1) } };
+    }
+
+    pub fn false_() PyBool {
+        return .{ .obj = .{ .py = ffi.PyBool_FromLong(0) } };
     }
 };
 

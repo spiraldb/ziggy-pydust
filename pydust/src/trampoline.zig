@@ -9,14 +9,18 @@ const PyError = @import("errors.zig").PyError;
 
 /// Generate functions to convert comptime-known Zig types to/from py.PyObject.
 pub fn Trampoline(comptime T: type) type {
-    return struct {
-        /// Wraps object that already represent existing Python objects.
-        /// In other words, Zig primitive types are not supported.
-        pub fn wrapObject(obj: T) py.PyObject {
-            if (!isObjectLike()) {
-                @compileError("Cannot convert " ++ @typeName(T) ++ " into a Python object");
-            }
+    // Catch and handle comptime literals
+    if (T == comptime_int) {
+        return Trampoline(i64);
+    }
+    if (T == comptime_float) {
+        return Trampoline(f64);
+    }
 
+    return struct {
+        /// Wraps an object that already represents an existing Python object.
+        /// In other words, Zig primitive types are not supported.
+        pub inline fn asObject(obj: T) py.PyObject {
             switch (@typeInfo(T)) {
                 .Pointer => |p| {
                     // The object is an ffi.PyObject
@@ -41,15 +45,13 @@ pub fn Trampoline(comptime T: type) type {
                     if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
                         return obj.obj;
                     }
-
-                    // Support py.PyObject
                     if (T == py.PyObject) {
                         return obj;
                     }
                 },
                 inline else => {},
             }
-            @compileLog("Cannot convert into PyObject" ++ @typeName(T));
+            @compileError("Cannot convert into PyObject: " ++ @typeName(T));
         }
 
         inline fn isObjectLike() bool {
@@ -87,9 +89,44 @@ pub fn Trampoline(comptime T: type) type {
             return false;
         }
 
-        /// Wraps a Zig object into a new Python object.
+        /// Wraps a Zig object into a Python object.
         /// Always creates a new strong reference.
+        pub inline fn wrapNew(obj: T) !py.PyObject {
+            // For existing object types, we just incref and return the object.
+            if (isObjectLike()) {
+                const pyobj = asObject(obj);
+                pyobj.incref();
+                return pyobj;
+            }
+
+            // Since we're allowed to create a new reference, we can support string conversions
+            switch (@typeInfo(T)) {
+                .Pointer => |p| {
+                    // We make the assumption that []const u8 is converted to a PyUnicode.
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
+                        return (try py.PyString.create(obj)).obj;
+                    }
+
+                    // Also pointers to u8 arrays *[_]u8
+                    const childInfo = @typeInfo(p.child);
+                    if (childInfo == .Array and childInfo.Array.child == u8) {
+                        return (try py.PyString.create(obj)).obj;
+                    }
+                },
+                else => {},
+            }
+
+            return wrap(obj);
+        }
+
+        /// Wraps a Zig object into a Python object.
+        /// Does not create a new reference.
         pub inline fn wrap(obj: T) !py.PyObject {
+            // Check the user is not accidentally returning a Pydust class or Module without a pointer
+            if (py.findClassName(T) != null or py.findModuleName(T) != null) {
+                @compileError("Pydust objects can only be returned as pointers");
+            }
+
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
@@ -106,52 +143,39 @@ pub fn Trampoline(comptime T: type) type {
 
             // Shortcut for object types
             if (isObjectLike()) {
-                const pyobj = wrapObject(obj);
-                pyobj.incref();
-                return pyobj;
+                return asObject(obj);
             }
 
             switch (@typeInfo(T)) {
                 .Bool => return if (obj) py.True().obj else py.False().obj,
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
-                .Float => return (try py.PyFloat.from(T, obj)).obj,
-                .Int => return (try py.PyLong.from(T, obj)).obj,
+                .Float => return (try py.PyFloat.create(obj)).obj,
+                .Int => return (try py.PyLong.create(obj)).obj,
+                .Pointer => {
+                    // We cannot wrap a []const u8 since PyString.create will make a copy of the string
+                    // and we have no way of de-allocating the original slice.
+                },
                 .Struct => |s| {
                     // If the struct is a tuple, return a Python tuple
                     if (s.is_tuple) {
-                        const tuple = try py.PyTuple.new(s.fields.len);
-                        inline for (s.fields, 0..) |field, i| {
-                            // Recursively unwrap the field value
-                            const fieldValue = try Trampoline(field.type).wrap(@field(obj, field.name));
-                            try tuple.setItem(@intCast(i), fieldValue);
-                        }
-                        return tuple.obj;
+                        return (try py.PyTuple.create(obj)).obj;
                     }
-                    // Check the user is not accidentally returning a Pydust class or Module without a pointer
-                    if (py.findClassName(T) != null or py.findModuleName(T) != null) {
-                        @compileError("Pydust objects can only be returned as pointers");
-                    }
+
                     // Otherwise, return a Python dictionary
-                    const dict = try py.PyDict.new();
-                    inline for (s.fields) |field| {
-                        // Recursively unwrap the field value
-                        const fieldValue = try Trampoline(field.type).wrap(@field(obj, field.name));
-                        try dict.setItemStr(field.name, fieldValue);
-                    }
-                    return dict.obj;
+                    return (try py.PyDict.create(obj)).obj;
                 },
                 .Void => return py.None(),
                 else => {},
             }
 
-            @compileError("Unsupported return type " ++ @typeName(T) ++ " from Pydust function");
+            @compileError("Unsupported return type " ++ @typeName(T));
         }
 
-        /// Unwrap a Python object into a Zig object.
+        /// Unwrap a Python object into a Zig object. Does not steal a reference.
+        /// The Python object must be the correct corresponding type (vs a cast which coerces values).
         pub inline fn unwrap(object: ?py.PyObject) !T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
-            comptime var R = T;
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
@@ -168,11 +192,11 @@ pub fn Trampoline(comptime T: type) type {
             // Otherwise we can unwrap the object.
             var obj = object orelse @panic("Unexpected null");
 
-            switch (@typeInfo(R)) {
-                .Bool => return if ((try py.PyBool.of(obj)).asbool()) true else false,
+            switch (@typeInfo(T)) {
+                .Bool => return (try py.PyBool.checked(obj)).asbool(),
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
-                .Float => return try (try py.PyFloat.of(obj)).as(T),
-                .Int => return try (try py.PyLong.of(obj)).as(T),
+                .Float => return try (try py.PyFloat.checked(obj)).as(T),
+                .Int => return try (try py.PyLong.checked(obj)).as(T),
                 .Optional => @compileError("Optional already handled"),
                 .Pointer => |p| {
                     // If the pointer is for a Pydust class
@@ -185,49 +209,38 @@ pub fn Trampoline(comptime T: type) type {
 
                     // If the pointer is for a Pydust module
                     if (py.findModuleName(p.child)) |_| {
-                        const mod = try py.PyModule.of(obj);
+                        const mod = try py.PyModule.checked(obj);
                         return try mod.getState(p.child);
                     }
 
-                    @compileLog("Unsupported pointer type " ++ @typeName(p.child), py.State.classes(), py.State.modules());
+                    // We make the assumption that []const u8 is converted from a PyString
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
+                        return (try py.PyString.checked(obj)).asSlice();
+                    }
+
+                    @compileLog("Unsupported pointer type " ++ @typeName(p.child));
                 },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
-                    if (@hasField(R, "obj") and @hasField(std.meta.fieldInfo(R, .obj).type, "py")) {
-                        return try @field(R, "of")(obj);
+                    if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
+                        return try @field(T, "checked")(obj);
                     }
                     // Support py.PyObject
-                    if (R == py.PyObject) {
+                    if (T == py.PyObject and @TypeOf(obj) == py.PyObject) {
                         return obj;
                     }
                     // If the struct is a tuple, extract from the PyTuple
                     if (s.is_tuple) {
-                        const tuple = try py.PyTuple.of(obj);
-                        var result: R = undefined;
-                        for (s.fields, 0..) |field, i| {
-                            // Recursively unwrap the field value
-                            const fieldValue = try tuple.getItem(i);
-                            @field(result, field.name) = try Trampoline(field.type.?).unwrap(fieldValue);
-                        }
-                        return result;
+                        return (try py.PyTuple.checked(obj)).as(T);
                     }
                     // Otherwise, extract from a Python dictionary
-                    const dict = try py.PyDict.of(obj);
-                    var result: R = undefined;
-                    inline for (s.fields) |field| {
-                        // Recursively unwrap the field value
-                        const fieldValue = try dict.getItemStr(field.name ++ "") orelse {
-                            return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
-                        };
-                        @field(result, field.name) = try Trampoline(field.type).unwrap(fieldValue);
-                    }
-                    return result;
+                    return (try py.PyDict.checked(obj)).as(T);
                 },
                 .Void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
                 else => {},
             }
 
-            @compileError("Unsupported argument type " ++ @typeName(T) ++ " for Pydust function");
+            @compileError("Unsupported argument type " ++ @typeName(T));
         }
 
         pub const CallArgs = struct {
@@ -244,12 +257,12 @@ pub fn Trampoline(comptime T: type) type {
 
             pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
                 const args = self.args orelse return py.TypeError.raise("missing args");
-                return py.as(R, try args.getItem(idx));
+                return try args.getItem(R, idx);
             }
 
             pub fn getKwarg(self: CallArgs, comptime R: type, name: []const u8) !?R {
                 const kwargs = self.kwargs orelse return null;
-                return py.as(R, kwargs.getItemStr(name));
+                return kwargs.getItem(R, name);
             }
 
             pub fn decref(self: CallArgs) void {
@@ -306,7 +319,7 @@ pub fn Trampoline(comptime T: type) type {
             if (callArgs.kwargs) |kwargs| {
                 var iter = kwargs.itemsIterator();
                 while (iter.next()) |item| {
-                    const itemName = try (try py.PyString.of(item.key)).asSlice();
+                    const itemName = try (try item.key(py.PyString)).asSlice();
 
                     var exists = false;
                     for (fieldNames) |name| {

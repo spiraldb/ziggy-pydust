@@ -1,7 +1,7 @@
 const py = @import("pydust");
 
 pub fn hello() !py.PyString {
-    return try py.PyString.fromSlice("Hello!");
+    return try py.PyString.create("Hello!");
 }
 
 comptime {

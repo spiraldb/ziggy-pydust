@@ -3,7 +3,6 @@ const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
 const pytypes = @import("pytypes.zig");
 const funcs = @import("functions.zig");
-const tramp = @import("trampoline.zig");
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 
 pub fn define(comptime mod: py.ModuleDef) type {
@@ -20,7 +19,10 @@ pub fn define(comptime mod: py.ModuleDef) type {
             var pyModuleDef = py.allocator.create(ffi.PyModuleDef) catch @panic("OOM");
             pyModuleDef.* = ffi.PyModuleDef{
                 .m_base = ffi.PyModuleDef_Base{
-                    .ob_base = py.PyObject.HEAD,
+                    .ob_base = ffi.PyObject{
+                        .ob_refcnt = 1,
+                        .ob_type = null,
+                    },
                     .m_init = null,
                     .m_index = 0,
                     .m_copy = null,

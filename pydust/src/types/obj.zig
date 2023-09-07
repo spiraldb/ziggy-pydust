@@ -2,7 +2,6 @@ const std = @import("std");
 const ffi = @import("../ffi.zig");
 const str = @import("str.zig");
 const py = @import("../pydust.zig");
-const tramp = @import("../trampoline.zig");
 const PyError = @import("../errors.zig").PyError;
 
 /// PyTypeObject exists in Limited API only as an opaque pointer.
@@ -15,18 +14,7 @@ pub const PyType = extern struct {
 };
 
 pub const PyObject = extern struct {
-    pub const HEAD = ffi.PyObject{
-        .ob_refcnt = 1,
-        .ob_type = null,
-    };
-
     py: *ffi.PyObject,
-
-    /// Converts any PyObject-like value into its PyObject representation.
-    /// No new references are created.
-    pub fn of(obj: anytype) PyObject {
-        return tramp.Trampoline(@TypeOf(obj)).wrapObject(obj);
-    }
 
     pub fn incref(self: PyObject) void {
         ffi.Py_INCREF(self.py);
@@ -42,17 +30,33 @@ pub const PyObject = extern struct {
     }
 
     /// Call this object with the given args and kwargs.
-    pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
-        const argsObj = try tramp.Trampoline(@TypeOf(args)).wrap(args);
-        defer argsObj.decref();
-        const argsPy = if (try py.len(argsObj) == 0) null else (try py.PyTuple.of(argsObj)).obj.py;
+    pub fn call(self: PyObject, args: anytype, kwargs: anytype) !PyObject {
+        var argsPy: py.PyTuple = undefined;
+        if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
+            argsPy = try py.PyTuple.new(0);
+        } else {
+            argsPy = try py.PyTuple.checked(try py.create(args));
+        }
+        defer argsPy.decref();
 
-        const kwargsObj = try tramp.Trampoline(@TypeOf(kwargs)).wrap(kwargs);
-        defer kwargsObj.decref();
-        const kwargsPy = if (try py.len(kwargsObj) == 0) null else (try py.PyDict.of(kwargsObj)).obj.py;
+        // FIXME(ngates): avoid creating empty dict for kwargs
+        var kwargsPy: py.PyDict = undefined;
+        if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
+            kwargsPy = try py.PyDict.new();
+        } else {
+            const kwobj = try py.create(kwargs);
+            if (try py.len(kwobj) == 0) {
+                kwobj.decref();
+                kwargsPy = try py.PyDict.new();
+            } else {
+                kwargsPy = try py.PyDict.checked(kwobj);
+            }
+        }
+        defer kwargsPy.decref();
 
-        const result = ffi.PyObject_Call(self.py, argsPy, kwargsPy) orelse return PyError.Propagate;
-        return tramp.Trampoline(R).unwrap(.{ .py = result });
+        // We _must_ return a PyObject to the user to let them handle the lifetime of the object.
+        const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.Propagate;
+        return PyObject{ .py = result };
     }
 
     pub fn get(self: PyObject, attr: [:0]const u8) !PyObject {
@@ -89,6 +93,35 @@ pub const PyObject = extern struct {
     }
 };
 
+pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, comptime Self: type) type {
+    const PyCheck = @field(ffi, prefix ++ "_Check");
+
+    return struct {
+        /// Checked conversion from a PyObject.
+        pub fn checked(obj: py.PyObject) !Self {
+            if (PyCheck(obj.py) == 0) {
+                return py.TypeError.raise("expected " ++ name);
+            }
+            return .{ .obj = obj };
+        }
+
+        /// Unchecked conversion from a PyObject.
+        pub fn unchecked(obj: py.PyObject) Self {
+            return .{ .obj = obj };
+        }
+
+        /// Increment the object's refcnt.
+        pub fn incref(self: Self) void {
+            self.obj.incref();
+        }
+
+        /// Decrement the object's refcnt.
+        pub fn decref(self: Self) void {
+            self.obj.decref();
+        }
+    };
+}
+
 test "call" {
     py.initialize();
     defer py.finalize();
@@ -97,7 +130,7 @@ test "call" {
     defer math.decref();
 
     const pow = try math.get("pow");
-    const result = try pow.call(f32, .{ @as(i32, 2), @as(i32, 3) }, .{});
+    const result = try py.as(f32, try pow.call(.{ 2, 3 }, .{}));
 
     try std.testing.expectEqual(@as(f32, 8.0), result);
 }
