@@ -484,27 +484,38 @@
 <span class="line" id="L358">                    <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;*&quot;</span>);</span>
 <span class="line" id="L359">                }</span>
 <span class="line" id="L360"></span>
-<span class="line" id="L361">                <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(field.<span class="tok-type">type</span>) == .Pointer <span class="tok-kw">and</span> <span class="tok-builtin">@typeInfo</span>(field.<span class="tok-type">type</span>).Pointer.child == <span class="tok-type">u8</span>) {</span>
-<span class="line" id="L362">                    <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;{s}=\&quot;{s}\&quot;&quot;</span>, .{ field.name, <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> field.<span class="tok-type">type</span>, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(def))).* }));</span>
-<span class="line" id="L363">                } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L364">                    <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;{s}={any}&quot;</span>, .{ field.name, <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> field.<span class="tok-type">type</span>, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(def))).* }));</span>
-<span class="line" id="L365">                }</span>
-<span class="line" id="L366">            } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L367">                <span class="tok-comment">// We have an arg</span>
+<span class="line" id="L361">                <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;{s}={s}&quot;</span>, .{ field.name, valueToStr(field.<span class="tok-type">type</span>, def) }));</span>
+<span class="line" id="L362">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L363">                <span class="tok-comment">// We have an arg</span>
 </span>
-<span class="line" id="L368">                <span class="tok-kw">try</span> sigargs.append(field.name);</span>
-<span class="line" id="L369">            }</span>
-<span class="line" id="L370">        }</span>
-<span class="line" id="L371"></span>
-<span class="line" id="L372">        <span class="tok-kw">if</span> (!inKwargs) {</span>
-<span class="line" id="L373">            <span class="tok-comment">// Always mark end of positional only args</span>
+<span class="line" id="L364">                <span class="tok-kw">try</span> sigargs.append(field.name);</span>
+<span class="line" id="L365">            }</span>
+<span class="line" id="L366">        }</span>
+<span class="line" id="L367"></span>
+<span class="line" id="L368">        <span class="tok-kw">if</span> (!inKwargs) {</span>
+<span class="line" id="L369">            <span class="tok-comment">// Always mark end of positional only args</span>
 </span>
-<span class="line" id="L374">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
-<span class="line" id="L375">        }</span>
-<span class="line" id="L376">    }</span>
-<span class="line" id="L377"></span>
-<span class="line" id="L378">    <span class="tok-kw">return</span> sigargs.constSlice();</span>
-<span class="line" id="L379">}</span>
-<span class="line" id="L380"></span>
+<span class="line" id="L370">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
+<span class="line" id="L371">        }</span>
+<span class="line" id="L372">    }</span>
+<span class="line" id="L373"></span>
+<span class="line" id="L374">    <span class="tok-kw">return</span> sigargs.constSlice();</span>
+<span class="line" id="L375">}</span>
+<span class="line" id="L376"></span>
+<span class="line" id="L377"><span class="tok-kw">fn</span> <span class="tok-fn">valueToStr</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, value: *<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L378">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L379">        <span class="tok-kw">inline</span> .Pointer =&gt; |p| p: {</span>
+<span class="line" id="L380">            <span class="tok-kw">break</span> :p <span class="tok-kw">switch</span> (p.child) {</span>
+<span class="line" id="L381">                <span class="tok-kw">inline</span> <span class="tok-type">u8</span> =&gt; std.fmt.comptimePrint(<span class="tok-str">&quot;\&quot;{s}\&quot;&quot;</span>, .{<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> T, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).*}),</span>
+<span class="line" id="L382">                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; <span class="tok-str">&quot;...&quot;</span>,</span>
+<span class="line" id="L383">            };</span>
+<span class="line" id="L384">        },</span>
+<span class="line" id="L385">        <span class="tok-kw">inline</span> .Bool =&gt; <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> <span class="tok-type">bool</span>, <span class="tok-builtin">@ptrCast</span>(value)).*) <span class="tok-str">&quot;True&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;False&quot;</span>,</span>
+<span class="line" id="L386">        <span class="tok-kw">inline</span> .Struct =&gt; <span class="tok-str">&quot;...&quot;</span>,</span>
+<span class="line" id="L387">        <span class="tok-kw">inline</span> .Optional =&gt; <span class="tok-kw">if</span> (value == <span class="tok-null">null</span>) <span class="tok-str">&quot;None&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;...&quot;</span>,</span>
+<span class="line" id="L388">        <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; std.fmt.comptimePrint(<span class="tok-str">&quot;{any}&quot;</span>, .{<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> T, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).*}),</span>
+<span class="line" id="L389">    };</span>
+<span class="line" id="L390">}</span>
+<span class="line" id="L391"></span>
 </code></pre></body>
 </html>
