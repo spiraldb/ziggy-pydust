@@ -32,12 +32,12 @@ pub const RangeIterator = py.class("Iterable", struct {
         return .{ .next = args.next, .stop = args.stop, .step = args.step };
     }
 
-    pub fn __next__(self: *Self) !?py.PyLong {
+    pub fn __next__(self: *Self) ?i64 {
         if (self.next >= self.stop) {
             return null;
         }
         defer self.next += self.step;
-        return try py.PyLong.from(i64, self.next);
+        return self.next;
     }
 });
 
