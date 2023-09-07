@@ -3,7 +3,6 @@ const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
 const pytypes = @import("pytypes.zig");
 const funcs = @import("functions.zig");
-const tramp = @import("trampoline.zig");
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 
 pub fn define(comptime mod: py.ModuleDef) type {

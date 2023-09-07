@@ -201,14 +201,14 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *Instance = @ptrCast(pyself);
             const iterator = definition.__iter__(&self.state) catch return null;
-            return (py.aspy(iterator) catch return null).py;
+            return (py.createOwned(iterator) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *Instance = @ptrCast(pyself);
             const optionalNext = definition.__next__(&self.state) catch return null;
             if (optionalNext) |next| {
-                return (py.aspy(next) catch return null).py;
+                return (py.createOwned(next) catch return null).py;
             }
             return null;
         }

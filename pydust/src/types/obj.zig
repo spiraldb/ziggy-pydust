@@ -2,7 +2,6 @@ const std = @import("std");
 const ffi = @import("../ffi.zig");
 const str = @import("str.zig");
 const py = @import("../pydust.zig");
-const tramp = @import("../trampoline.zig");
 const PyError = @import("../errors.zig").PyError;
 
 /// PyTypeObject exists in Limited API only as an opaque pointer.
@@ -31,7 +30,7 @@ pub const PyObject = extern struct {
     }
 
     /// Call this object with the given args and kwargs.
-    pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
+    pub fn call(self: PyObject, args: anytype, kwargs: anytype) !PyObject {
         var argsPy: py.PyTuple = undefined;
         if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
             argsPy = try py.PyTuple.new(0);
@@ -55,8 +54,9 @@ pub const PyObject = extern struct {
         }
         defer kwargsPy.decref();
 
+        // We _must_ return a PyObject to the user to let them handle the lifetime of the object.
         const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.Propagate;
-        return tramp.Trampoline(R).unwrap(.{ .py = result });
+        return PyObject{ .py = result };
     }
 
     pub fn get(self: PyObject, attr: [:0]const u8) !PyObject {
@@ -130,7 +130,7 @@ test "call" {
     defer math.decref();
 
     const pow = try math.get("pow");
-    const result = try pow.call(f32, .{ 2, 3 }, .{});
+    const result = try py.as(f32, try pow.call(.{ 2, 3 }, .{}));
 
     try std.testing.expectEqual(@as(f32, 8.0), result);
 }

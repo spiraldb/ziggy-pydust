@@ -99,10 +99,28 @@ pub fn Trampoline(comptime T: type) type {
                 return pyobj;
             }
 
+            // Since we're allowed to create a new reference, we can support string conversions
+            switch (@typeInfo(T)) {
+                .Pointer => |p| {
+                    // We make the assumption that []const u8 is converted to a PyUnicode.
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
+                        return (try py.PyString.create(obj)).obj;
+                    }
+
+                    // Also pointers to u8 arrays *[_]u8
+                    const childInfo = @typeInfo(p.child);
+                    if (childInfo == .Array and childInfo.Array.child == u8) {
+                        return (try py.PyString.create(obj)).obj;
+                    }
+                },
+                else => {},
+            }
+
             return wrap(obj);
         }
 
-        /// Wraps a Zig object into a new Python object.
+        /// Wraps a Zig object into a Python object.
+        /// Does not create a new reference.
         pub inline fn wrap(obj: T) !py.PyObject {
             // Check the user is not accidentally returning a Pydust class or Module without a pointer
             if (py.findClassName(T) != null or py.findModuleName(T) != null) {
@@ -133,17 +151,9 @@ pub fn Trampoline(comptime T: type) type {
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return (try py.PyFloat.create(obj)).obj,
                 .Int => return (try py.PyLong.create(obj)).obj,
-                .Pointer => |p| {
-                    // We make the assumption that []const u8 is converted to a PyUnicode.
-                    if (p.child == u8 and p.size == .Slice and p.is_const) {
-                        return (try py.PyString.create(obj)).obj;
-                    }
-
-                    // Also pointers to u8 arrays *[_]u8
-                    const childInfo = @typeInfo(p.child);
-                    if (childInfo == .Array and childInfo.Array.child == u8) {
-                        return (try py.PyString.create(obj)).obj;
-                    }
+                .Pointer => {
+                    // We cannot wrap a []const u8 since PyString.create will make a copy of the string
+                    // and we have no way of de-allocating the original slice.
                 },
                 .Struct => |s| {
                     // If the struct is a tuple, return a Python tuple
@@ -161,24 +171,11 @@ pub fn Trampoline(comptime T: type) type {
             @compileError("Unsupported return type " ++ @typeName(T));
         }
 
-        /// Unwrap a Python object into a Zig object. DOES steal a reference.
-        pub inline fn unwrapInto(object: ?py.PyObject) !T {
-            if (!isObjectLike()) {
-                // If we're unwrapping into another Python object, then we don't want to decref.
-                // If we're unwrapping into a Zig, then we do want to decref.
-                if (object) |o| {
-                    defer o.decref();
-                }
-            }
-            return unwrap(object);
-        }
-
         /// Unwrap a Python object into a Zig object. Does not steal a reference.
         /// The Python object must be the correct corresponding type (vs a cast which coerces values).
         pub inline fn unwrap(object: ?py.PyObject) !T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
-            comptime var R = T;
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
@@ -195,8 +192,8 @@ pub fn Trampoline(comptime T: type) type {
             // Otherwise we can unwrap the object.
             var obj = object orelse @panic("Unexpected null");
 
-            switch (@typeInfo(R)) {
-                .Bool => return if ((try py.PyBool.checked(obj)).asbool()) true else false,
+            switch (@typeInfo(T)) {
+                .Bool => return (try py.PyBool.checked(obj)).asbool(),
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return try (try py.PyFloat.checked(obj)).as(T),
                 .Int => return try (try py.PyLong.checked(obj)).as(T),
@@ -225,19 +222,19 @@ pub fn Trampoline(comptime T: type) type {
                 },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
-                    if (@hasField(R, "obj") and @hasField(std.meta.fieldInfo(R, .obj).type, "py")) {
-                        return try @field(R, "checked")(obj);
+                    if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
+                        return try @field(T, "checked")(obj);
                     }
                     // Support py.PyObject
-                    if (R == py.PyObject and @TypeOf(obj) == py.PyObject) {
+                    if (T == py.PyObject and @TypeOf(obj) == py.PyObject) {
                         return obj;
                     }
                     // If the struct is a tuple, extract from the PyTuple
                     if (s.is_tuple) {
-                        return (try py.PyTuple.checked(obj)).as(R);
+                        return (try py.PyTuple.checked(obj)).as(T);
                     }
                     // Otherwise, extract from a Python dictionary
-                    return (try py.PyDict.checked(obj)).as(R);
+                    return (try py.PyDict.checked(obj)).as(T);
                 },
                 .Void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
                 else => {},

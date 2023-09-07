@@ -33,10 +33,7 @@ pub fn callable(object: anytype) bool {
 /// Convert an object into a dictionary. Equivalent of Python dict(o).
 pub fn dict(object: anytype) !py.PyDict {
     const Dict: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PyDict_Type)) };
-    const std = @import("std");
-    std.debug.print("OBJ {}\n", .{object});
     const pyobj = try py.create(object);
-    std.debug.print("PYOBJ {s}\n", .{try (try str(pyobj)).asSlice()});
     defer pyobj.decref();
     return Dict.call(py.PyDict, .{pyobj}, .{});
 }
@@ -77,8 +74,8 @@ pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
     const superPyType = try imported.get(py.getClassName(Super));
     const pyObj = py.object(selfInstance);
 
-    const superBuiltin = py.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
-    return superBuiltin.call(py.PyObject, .{ superPyType, pyObj }, .{});
+    const superBuiltin: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
+    return superBuiltin.call(.{ superPyType, pyObj }, .{});
 }
 
 pub fn tuple(object: anytype) !py.PyTuple {

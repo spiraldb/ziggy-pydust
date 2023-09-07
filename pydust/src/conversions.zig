@@ -8,8 +8,9 @@ pub fn object(value: anytype) py.PyObject {
 }
 
 /// Zig -> Python. Return a Python representation of a Zig object.
-/// If the value is already PyObject-like, this returns the value unchanged.
-pub fn aspy(value: anytype) !py.PyObject {
+/// For Zig primitives, this constructs a new Python object.
+/// For PyObject-like values, this returns the value without creating a new reference.
+pub fn createOwned(value: anytype) !py.PyObject {
     return tramp.Trampoline(@TypeOf(value)).wrap(value);
 }
 
@@ -21,11 +22,6 @@ pub fn create(value: anytype) !py.PyObject {
 /// Python -> Zig. Return a Zig object representing the Python object.
 pub fn as(comptime T: type, obj: anytype) !T {
     return tramp.Trampoline(T).unwrap(object(obj));
-}
-
-/// Python -> Zig. Convert a Python object into a Zig object. Stealing the reference.
-pub fn into(comptime T: type, obj: anytype) !T {
-    return tramp.Trampoline(T).unwrapInto(object(obj));
 }
 
 const testing = @import("std").testing;
@@ -46,30 +42,4 @@ test "as py -> zig" {
     // Return a PyObject representation of it, and ensure the refcnt is untouched.
     _ = try py.as(py.PyObject, str);
     try expect(py.refcnt(str) == 1);
-}
-
-test "into py -> zig" {
-    py.initialize();
-    defer py.finalize();
-
-    // Start with a Python object
-    const str = try py.PyString.create("hello");
-
-    str.incref();
-    try expect(py.refcnt(str) == 2);
-
-    // Turn it into a slice, ensuring we eat a reference
-    _ = try py.into([]const u8, str);
-    try expect(py.refcnt(str) == 1);
-
-    str.incref();
-    try expect(py.refcnt(str) == 2);
-
-    // Turn it into a PyObject, we expect the refcnt to remain the same.
-    // Can think of it as destroying the ref to str, but creating a new strong reference to the result.
-    _ = try py.into(py.PyObject, str);
-    try expect(py.refcnt(str) == 2);
-
-    // Clean up
-    str.decref();
 }

@@ -1,6 +1,5 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
-const tramp = @import("trampoline.zig");
 const py = @import("pydust.zig");
 const PyError = @import("errors.zig").PyError;
 const Type = std.builtin.Type;
@@ -146,8 +145,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
         }
 
         inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) PyError!py.PyObject {
-            const self = if (sig.selfParam) |Self| try tramp.Trampoline(Self).unwrap(pyself) else null;
-            const resultTrampoline = tramp.Trampoline(sig.returnType);
+            const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
 
             if (sig.argsParam) |Args| {
                 // Create an args struct and populate it with pyargs.
@@ -156,16 +154,17 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                     return py.TypeError.raiseComptimeFmt("expected {d} args", .{argCount(Args)});
                 }
                 inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
-                    @field(args, field.name) = try tramp.Trampoline(field.type).unwrap(pyargs[i]);
+                    @field(args, field.name) = try py.as(field.type, pyargs[i]);
                 }
 
                 var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
                 const result = @call(.always_inline, func, callArgs);
-                return resultTrampoline.wrap(result);
+
+                return py.createOwned(result);
             } else {
                 var callArgs = if (sig.selfParam) |_| .{self} else .{};
                 const result = @call(.always_inline, func, callArgs);
-                return resultTrampoline.wrap(result);
+                return py.createOwned(result);
             }
         }
 
@@ -209,7 +208,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                     if (kwnames) |names| {
                         if (try names.contains(fieldName)) {
                             const idx = try names.index(fieldName);
-                            const arg = try tramp.Trampoline(field.type).unwrap(pykwargs[idx]);
+                            const arg = try py.as(field.type, pykwargs[idx]);
                             @field(args, field.name) = arg;
                         } else {
                             @field(args, field.name) = defaultValue.*;
@@ -219,7 +218,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                     }
                 } else {
                     // We have an arg
-                    const arg = try tramp.Trampoline(field.type).unwrap(pyargs[i]);
+                    const arg = try py.as(field.type, pyargs[i]);
                     @field(args, field.name) = arg;
                 }
             }
@@ -244,10 +243,10 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                 }
             }
 
-            const self = if (sig.selfParam) |Self| try tramp.Trampoline(Self).unwrap(pyself) else null;
+            const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
             var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
             const result = @call(.always_inline, func, callArgs);
-            return tramp.Trampoline(sig.returnType).wrap(result);
+            return py.createOwned(result);
         }
     };
 }

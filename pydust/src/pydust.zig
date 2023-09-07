@@ -122,7 +122,16 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     const callArgs = try tramp.Trampoline(NewArgs(Cls)).wrapCallArgs(args);
     defer callArgs.decref();
 
-    return pytype.call(*Cls, callArgs.args, callArgs.kwargs);
+    const result = try pytype.call(callArgs.args, callArgs.kwargs);
+    return conversions.as(*Cls, result);
+}
+
+pub fn decref(value: anytype) void {
+    conversions.object(value).decref();
+}
+
+pub fn incref(value: anytype) void {
+    conversions.object(value).incref();
 }
 
 /// Find the type of the positional args for a class

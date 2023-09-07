@@ -22,6 +22,11 @@ pub const PyBool = extern struct {
         return ffi.Py_IsTrue(self.obj.py) == 1;
     }
 
+    pub fn intobool(self: PyBool) bool {
+        self.decref();
+        return self.asbool();
+    }
+
     pub fn true_() PyBool {
         return .{ .obj = .{ .py = ffi.PyBool_FromLong(1) } };
     }
