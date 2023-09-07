@@ -28,7 +28,7 @@ pub inline fn True() py.PyBool {
 
 /// Get the length of the given object. Equivalent to len(obj) in Python.
 pub fn len(object: anytype) !usize {
-    const obj = try py.object(object);
+    const obj = py.PyObject.of(object);
     const length = ffi.PyObject_Length(obj.py);
     if (length < 0) return PyError.Propagate;
     return @intCast(length);
@@ -43,7 +43,7 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
 pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
     const imported = try import(py.findContainingModule(Super));
     const superPyType = try imported.get(py.getClassName(Super));
-    const pyObj = try py.object(selfInstance);
+    const pyObj = py.PyObject.of(selfInstance);
 
     const superBuiltin = py.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
     return superBuiltin.call(py.PyObject, .{ superPyType, pyObj }, .{});

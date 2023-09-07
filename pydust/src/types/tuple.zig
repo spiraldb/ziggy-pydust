@@ -29,7 +29,7 @@ pub const PyTuple = extern struct {
         if (!@typeInfo(@TypeOf(values)).Struct.is_tuple) {
             @compileError("Must pass a Zig tuple into PyTuple.from");
         }
-        return of(try py.object(values));
+        return of(try py.toObject(values));
     }
 
     pub fn length(self: *const PyTuple) usize {
