@@ -15,13 +15,10 @@ management to assist with development.
 When converting from Python to Zig types:
 
 * `.as(T, anytype)` - return a view of the object *as* the given type. This will leave the `refcnt` of the original object untouched.
-* `.into(T, anytype)` - convert the object *into* the given type. This will decref the Python object when converting into Zig primitive
-types. This is also known as "stealing the reference", or "moving the reference". After calling `into` on an object, you 
-should consider the original object to be invalid.
 
 When creating Python types from Zig types:
 
-* `.of(anytype)` - create a new Python object from a Zig type.
+* `.create(anytype)` - create a new Python object from a Zig type. Zig slices are copied.
 * `PyFoo.checked(py.PyObject)` - checks a `PyObject` is indeed a `PyFoo` before wrapping it up as one.
 * `PyFoo.unchecked(py.PyObject)` - wraps a `PyObject` as a `PyFoo` without checking the type.
 
@@ -44,13 +41,14 @@ or returned from functions and automatically converted into Python objects.
 | `[]const u8`   | `str`        |
 | `*[_]u8`       | `str`        |
 
-!!! Note
+!!! tip ""
 
-    We have found that generally we use a `[]const u8` to mean a string, and therefore
-    our default conversion logic is to a Python unicode str object.
+    Slices (e.g. `[]const u8` strings) cannot be returned from Pydust functions since Pydust has 
+    no way to deallocate them after they're copied into Python.
 
-    If you wish to return a Python bytes object, you must explicitly wrap your slice
-    with `py.PyBytes`.
+    Slices _can_ be taken as arguments to a function, but the bytes underlying that slice are only
+    guaranteed to live for the duration of the function call. They should be copied if you wish to extend
+    the lifetime.
 
 ### Pydust Objects
 
