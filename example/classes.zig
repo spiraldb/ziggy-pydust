@@ -1,6 +1,7 @@
 const std = @import("std");
 const py = @import("pydust");
 
+// --8<-- [start:class]
 pub const Animal = py.class("Animal", struct {
     pub const __doc__ = "Animal docstring";
 
@@ -25,7 +26,9 @@ pub const Animal = py.class("Animal", struct {
         };
     }
 });
+// --8<-- [end:class]
 
+// --8<-- [start:subclass]
 pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub const __doc__ = "Adorable animal docstring";
     const Self = @This();
@@ -72,7 +75,9 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return kindStr;
     }
 });
+// --8<-- [end:subclass]
 
+// --8<-- [start:init]
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
@@ -80,6 +85,7 @@ pub const Owner = py.class("Owner", struct {
         return try py.init(Dog, .{ .name = args.name });
     }
 });
+// --8<-- [end:init]
 
 comptime {
     py.module(@This());
