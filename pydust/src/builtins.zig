@@ -33,7 +33,12 @@ pub fn callable(object: anytype) bool {
 /// Convert an object into a dictionary. Equivalent of Python dict(o).
 pub fn dict(object: anytype) !py.PyDict {
     const Dict: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PyDict_Type)) };
-    return Dict.call(py.PyDict, .{object}, .{});
+    const std = @import("std");
+    std.debug.print("OBJ {}\n", .{object});
+    const pyobj = try py.create(object);
+    std.debug.print("PYOBJ {s}\n", .{try (try str(pyobj)).asSlice()});
+    defer pyobj.decref();
+    return Dict.call(py.PyDict, .{pyobj}, .{});
 }
 
 /// Checks whether a given object is None. Avoids incref'ing None to do the check.
@@ -62,8 +67,8 @@ pub fn refcnt(object: anytype) isize {
 
 /// Compute a string representation of object o.
 pub fn str(object: anytype) !py.PyString {
-    const pyobj = py.PyObject.of(object);
-    return try py.PyString.of(ffi.PyObject_Str(pyobj.py) orelse return PyError.Propagate);
+    const pyobj = py.object(object);
+    return py.PyString.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) orelse return PyError.Propagate });
 }
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.
@@ -79,4 +84,8 @@ pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
 pub fn tuple(object: anytype) !py.PyTuple {
     const pytuple = ffi.PySequence_Tuple(py.object(object).py) orelse return PyError.Propagate;
     return py.PyTuple.unchecked(.{ .py = pytuple });
+}
+
+pub fn type_(object: anytype) !py.PyObject {
+    return .{ .py = ffi.Py_TYPE(py.object(object).py) orelse return PyError.Propagate };
 }

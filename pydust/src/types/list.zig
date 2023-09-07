@@ -90,7 +90,7 @@ pub const PyList = extern struct {
 
     pub fn toTuple(self: PyList) !py.PyTuple {
         const pytuple = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.Propagate;
-        return try py.PyTuple.unchecked(.{ .py = pytuple });
+        return py.PyTuple.unchecked(.{ .py = pytuple });
     }
 };
 
