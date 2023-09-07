@@ -15,8 +15,8 @@ pub const PyString = extern struct {
     }
 
     pub fn fromSlice(str: []const u8) !PyString {
-        const unicode: *ffi.PyObject = ffi.PyUnicode_FromStringAndSize(str.ptr, @intCast(str.len)) orelse return PyError.Propagate;
-        return .{ .obj = py.PyObject{ .py = unicode } };
+        const unicode = ffi.PyUnicode_FromStringAndSize(str.ptr, @intCast(str.len)) orelse return PyError.Propagate;
+        return .{ .obj = .{ .py = unicode } };
     }
 
     /// Append other to self.
