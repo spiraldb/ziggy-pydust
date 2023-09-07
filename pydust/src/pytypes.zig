@@ -207,10 +207,12 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             const self: *const Instance = @ptrCast(pyself);
             const result = iterFunc(&self.state);
             const returnType = @typeInfo(@TypeOf(iterFunc)).Fn.return_type.?;
+            const trampoline = tramp.Trampoline(returnType);
             if (@typeInfo(returnType) == .ErrorUnion) {
-                return (tramp.Trampoline(returnType).wrap(result catch return null) catch return null).py;
+                const non_optional_result = result catch return null;
+                return (trampoline.wrap(non_optional_result) catch return null).py;
             }
-            return (tramp.Trampoline(returnType).wrap(result) catch return null).py;
+            return (trampoline.wrap(result) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
@@ -218,11 +220,14 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             var self: *Instance = @constCast(@ptrCast(pyself));
             const result = iterFunc(@constCast(&self.state));
             const returnType = @typeInfo(@TypeOf(iterFunc)).Fn.return_type.?;
+            const trampoline = tramp.Trampoline(returnType);
             if (@typeInfo(returnType) == .ErrorUnion) {
                 const optional_result = result catch return null;
-                return (tramp.Trampoline(returnType).wrap(optional_result orelse return null) catch return null).py;
+                const non_optional_result = optional_result orelse return null;
+                return (trampoline.wrap(non_optional_result) catch return null).py;
             }
-            return (tramp.Trampoline(returnType).wrap(result orelse return null) catch return null).py;
+            const non_optional_result = result orelse return null;
+            return (trampoline.wrap(non_optional_result) catch return null).py;
         }
     };
 }
