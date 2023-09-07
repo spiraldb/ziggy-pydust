@@ -37,8 +37,8 @@ pub const PyTuple = extern struct {
             const value = try self.getItem(field.type, i);
             if (value) |val| {
                 @field(result, field.name) = val;
-            } else if (field.default_value) {
-                @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(field.default_value))).*;
+            } else if (field.default_value) |default| {
+                @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(default))).*;
             } else {
                 return py.TypeError.raise("tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
             }
