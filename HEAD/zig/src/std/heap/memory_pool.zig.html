@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>heap/memory_pool.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3"><span class="tok-kw">const</span> debug_mode = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>).mode == .Debug;</span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MemoryPoolError = <span class="tok-kw">error</span>{OutOfMemory};</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-comment">/// A memory pool that can allocate objects of a single type very quickly.</span></span>
+<span class="line" id="L8"><span class="tok-comment">/// Use this when you need to allocate a lot of objects of the same type,</span></span>
+<span class="line" id="L9"><span class="tok-comment">/// because It outperforms general purpose allocators.</span></span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">MemoryPool</span>(<span class="tok-kw">comptime</span> Item: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L11">    <span class="tok-kw">return</span> MemoryPoolAligned(Item, <span class="tok-builtin">@alignOf</span>(Item));</span>
+<span class="line" id="L12">}</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-comment">/// A memory pool that can allocate objects of a single type very quickly.</span></span>
+<span class="line" id="L15"><span class="tok-comment">/// Use this when you need to allocate a lot of objects of the same type,</span></span>
+<span class="line" id="L16"><span class="tok-comment">/// because It outperforms general purpose allocators.</span></span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">MemoryPoolAligned</span>(<span class="tok-kw">comptime</span> Item: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> alignment: <span class="tok-type">u29</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L18">    <span class="tok-kw">if</span> (<span class="tok-builtin">@alignOf</span>(Item) == alignment) {</span>
+<span class="line" id="L19">        <span class="tok-kw">return</span> MemoryPoolExtra(Item, .{});</span>
+<span class="line" id="L20">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L21">        <span class="tok-kw">return</span> MemoryPoolExtra(Item, .{ .alignment = alignment });</span>
+<span class="line" id="L22">    }</span>
+<span class="line" id="L23">}</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L26">    <span class="tok-comment">/// The alignment of the memory pool items. Use `null` for natural alignment.</span></span>
+<span class="line" id="L27">    alignment: ?<span class="tok-type">u29</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">    <span class="tok-comment">/// If `true`, the memory pool can allocate additional items after a initial setup.</span></span>
+<span class="line" id="L30">    <span class="tok-comment">/// If `false`, the memory pool will not allocate further after a call to `initPreheated`.</span></span>
+<span class="line" id="L31">    growable: <span class="tok-type">bool</span> = <span class="tok-null">true</span>,</span>
+<span class="line" id="L32">};</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34"><span class="tok-comment">/// A memory pool that can allocate objects of a single type very quickly.</span></span>
+<span class="line" id="L35"><span class="tok-comment">/// Use this when you need to allocate a lot of objects of the same type,</span></span>
+<span class="line" id="L36"><span class="tok-comment">/// because It outperforms general purpose allocators.</span></span>
+<span class="line" id="L37"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">MemoryPoolExtra</span>(<span class="tok-kw">comptime</span> Item: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> pool_options: Options) <span class="tok-type">type</span> {</span>
+<span class="line" id="L38">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L39">        <span class="tok-kw">const</span> Pool = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L40"></span>
+<span class="line" id="L41">        <span class="tok-comment">/// Size of the memory pool items. This is not necessarily the same</span></span>
+<span class="line" id="L42">        <span class="tok-comment">/// as `@sizeOf(Item)` as the pool also uses the items for internal means.</span></span>
+<span class="line" id="L43">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> item_size = <span class="tok-builtin">@max</span>(<span class="tok-builtin">@sizeOf</span>(Node), <span class="tok-builtin">@sizeOf</span>(Item));</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45">        <span class="tok-comment">/// Alignment of the memory pool items. This is not necessarily the same</span></span>
+<span class="line" id="L46">        <span class="tok-comment">/// as `@alignOf(Item)` as the pool also uses the items for internal means.</span></span>
+<span class="line" id="L47">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> item_alignment = <span class="tok-builtin">@max</span>(<span class="tok-builtin">@alignOf</span>(Node), pool_options.alignment <span class="tok-kw">orelse</span> <span class="tok-number">0</span>);</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">        <span class="tok-kw">const</span> Node = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L50">            next: ?*<span class="tok-builtin">@This</span>(),</span>
+<span class="line" id="L51">        };</span>
+<span class="line" id="L52">        <span class="tok-kw">const</span> NodePtr = *<span class="tok-kw">align</span>(item_alignment) Node;</span>
+<span class="line" id="L53">        <span class="tok-kw">const</span> ItemPtr = *<span class="tok-kw">align</span>(item_alignment) Item;</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">        arena: std.heap.ArenaAllocator,</span>
+<span class="line" id="L56">        free_list: ?NodePtr = <span class="tok-null">null</span>,</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58">        <span class="tok-comment">/// Creates a new memory pool.</span></span>
+<span class="line" id="L59">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(allocator: std.mem.Allocator) Pool {</span>
+<span class="line" id="L60">            <span class="tok-kw">return</span> .{ .arena = std.heap.ArenaAllocator.init(allocator) };</span>
+<span class="line" id="L61">        }</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">        <span class="tok-comment">/// Creates a new memory pool and pre-allocates `initial_size` items.</span></span>
+<span class="line" id="L64">        <span class="tok-comment">/// This allows the up to `initial_size` active allocations before a</span></span>
+<span class="line" id="L65">        <span class="tok-comment">/// `OutOfMemory` error happens when calling `create()`.</span></span>
+<span class="line" id="L66">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initPreheated</span>(allocator: std.mem.Allocator, initial_size: <span class="tok-type">usize</span>) MemoryPoolError!Pool {</span>
+<span class="line" id="L67">            <span class="tok-kw">var</span> pool = init(allocator);</span>
+<span class="line" id="L68">            <span class="tok-kw">errdefer</span> pool.deinit();</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L71">            <span class="tok-kw">while</span> (i &lt; initial_size) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L72">                <span class="tok-kw">const</span> raw_mem = <span class="tok-kw">try</span> pool.allocNew();</span>
+<span class="line" id="L73">                <span class="tok-kw">const</span> free_node = <span class="tok-builtin">@as</span>(NodePtr, <span class="tok-builtin">@ptrCast</span>(raw_mem));</span>
+<span class="line" id="L74">                free_node.* = Node{</span>
+<span class="line" id="L75">                    .next = pool.free_list,</span>
+<span class="line" id="L76">                };</span>
+<span class="line" id="L77">                pool.free_list = free_node;</span>
+<span class="line" id="L78">            }</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">            <span class="tok-kw">return</span> pool;</span>
+<span class="line" id="L81">        }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">        <span class="tok-comment">/// Destroys the memory pool and frees all allocated memory.</span></span>
+<span class="line" id="L84">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(pool: *Pool) <span class="tok-type">void</span> {</span>
+<span class="line" id="L85">            pool.arena.deinit();</span>
+<span class="line" id="L86">            pool.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L87">        }</span>
+<span class="line" id="L88"></span>
+<span class="line" id="L89">        <span class="tok-comment">/// Resets the memory pool and destroys all allocated items.</span></span>
+<span class="line" id="L90">        <span class="tok-comment">/// This can be used to batch-destroy all objects without invalidating the memory pool.</span></span>
+<span class="line" id="L91">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reset</span>(pool: *Pool) <span class="tok-type">void</span> {</span>
+<span class="line" id="L92">            <span class="tok-comment">// TODO: Potentially store all allocated objects in a list as well, allowing to</span>
+</span>
+<span class="line" id="L93">            <span class="tok-comment">//       just move them into the free list instead of actually releasing the memory.</span>
+</span>
+<span class="line" id="L94">            <span class="tok-kw">const</span> allocator = pool.arena.child_allocator;</span>
+<span class="line" id="L95"></span>
+<span class="line" id="L96">            <span class="tok-comment">// TODO: Replace with &quot;pool.arena.reset()&quot; when implemented.</span>
+</span>
+<span class="line" id="L97">            pool.arena.deinit();</span>
+<span class="line" id="L98">            pool.arena = std.heap.ArenaAllocator.init(allocator);</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100">            pool.free_list = <span class="tok-null">null</span>;</span>
+<span class="line" id="L101">        }</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103">        <span class="tok-comment">/// Creates a new item and adds it to the memory pool.</span></span>
+<span class="line" id="L104">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(pool: *Pool) !ItemPtr {</span>
+<span class="line" id="L105">            <span class="tok-kw">const</span> node = <span class="tok-kw">if</span> (pool.free_list) |item| blk: {</span>
+<span class="line" id="L106">                pool.free_list = item.next;</span>
+<span class="line" id="L107">                <span class="tok-kw">break</span> :blk item;</span>
+<span class="line" id="L108">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (pool_options.growable)</span>
+<span class="line" id="L109">                <span class="tok-builtin">@as</span>(NodePtr, <span class="tok-builtin">@ptrCast</span>(<span class="tok-kw">try</span> pool.allocNew()))</span>
+<span class="line" id="L110">            <span class="tok-kw">else</span></span>
+<span class="line" id="L111">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.OutOfMemory;</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113">            <span class="tok-kw">const</span> ptr = <span class="tok-builtin">@as</span>(ItemPtr, <span class="tok-builtin">@ptrCast</span>(node));</span>
+<span class="line" id="L114">            ptr.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L115">            <span class="tok-kw">return</span> ptr;</span>
+<span class="line" id="L116">        }</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118">        <span class="tok-comment">/// Destroys a previously created item.</span></span>
+<span class="line" id="L119">        <span class="tok-comment">/// Only pass items to `ptr` that were previously created with `create()` of the same memory pool!</span></span>
+<span class="line" id="L120">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">destroy</span>(pool: *Pool, ptr: ItemPtr) <span class="tok-type">void</span> {</span>
+<span class="line" id="L121">            ptr.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123">            <span class="tok-kw">const</span> node = <span class="tok-builtin">@as</span>(NodePtr, <span class="tok-builtin">@ptrCast</span>(ptr));</span>
+<span class="line" id="L124">            node.* = Node{</span>
+<span class="line" id="L125">                .next = pool.free_list,</span>
+<span class="line" id="L126">            };</span>
+<span class="line" id="L127">            pool.free_list = node;</span>
+<span class="line" id="L128">        }</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">        <span class="tok-kw">fn</span> <span class="tok-fn">allocNew</span>(pool: *Pool) MemoryPoolError!*<span class="tok-kw">align</span>(item_alignment) [item_size]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L131">            <span class="tok-kw">const</span> mem = <span class="tok-kw">try</span> pool.arena.allocator().alignedAlloc(<span class="tok-type">u8</span>, item_alignment, item_size);</span>
+<span class="line" id="L132">            <span class="tok-kw">return</span> mem[<span class="tok-number">0</span>..item_size]; <span class="tok-comment">// coerce slice to array pointer</span>
+</span>
+<span class="line" id="L133">        }</span>
+<span class="line" id="L134">    };</span>
+<span class="line" id="L135">}</span>
+<span class="line" id="L136"></span>
+<span class="line" id="L137"><span class="tok-kw">test</span> <span class="tok-str">&quot;memory pool: basic&quot;</span> {</span>
+<span class="line" id="L138">    <span class="tok-kw">var</span> pool = MemoryPool(<span class="tok-type">u32</span>).init(std.testing.allocator);</span>
+<span class="line" id="L139">    <span class="tok-kw">defer</span> pool.deinit();</span>
+<span class="line" id="L140"></span>
+<span class="line" id="L141">    <span class="tok-kw">const</span> p1 = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L142">    <span class="tok-kw">const</span> p2 = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L143">    <span class="tok-kw">const</span> p3 = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145">    <span class="tok-comment">// Assert uniqueness</span>
+</span>
+<span class="line" id="L146">    <span class="tok-kw">try</span> std.testing.expect(p1 != p2);</span>
+<span class="line" id="L147">    <span class="tok-kw">try</span> std.testing.expect(p1 != p3);</span>
+<span class="line" id="L148">    <span class="tok-kw">try</span> std.testing.expect(p2 != p3);</span>
+<span class="line" id="L149"></span>
+<span class="line" id="L150">    pool.destroy(p2);</span>
+<span class="line" id="L151">    <span class="tok-kw">const</span> p4 = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153">    <span class="tok-comment">// Assert memory reuse</span>
+</span>
+<span class="line" id="L154">    <span class="tok-kw">try</span> std.testing.expect(p2 == p4);</span>
+<span class="line" id="L155">}</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157"><span class="tok-kw">test</span> <span class="tok-str">&quot;memory pool: preheating (success)&quot;</span> {</span>
+<span class="line" id="L158">    <span class="tok-kw">var</span> pool = <span class="tok-kw">try</span> MemoryPool(<span class="tok-type">u32</span>).initPreheated(std.testing.allocator, <span class="tok-number">4</span>);</span>
+<span class="line" id="L159">    <span class="tok-kw">defer</span> pool.deinit();</span>
+<span class="line" id="L160"></span>
+<span class="line" id="L161">    _ = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L162">    _ = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L163">    _ = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L164">}</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166"><span class="tok-kw">test</span> <span class="tok-str">&quot;memory pool: preheating (failure)&quot;</span> {</span>
+<span class="line" id="L167">    <span class="tok-kw">var</span> failer = std.testing.FailingAllocator.init(std.testing.allocator, <span class="tok-number">0</span>);</span>
+<span class="line" id="L168">    <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.OutOfMemory, MemoryPool(<span class="tok-type">u32</span>).initPreheated(failer.allocator(), <span class="tok-number">5</span>));</span>
+<span class="line" id="L169">}</span>
+<span class="line" id="L170"></span>
+<span class="line" id="L171"><span class="tok-kw">test</span> <span class="tok-str">&quot;memory pool: growable&quot;</span> {</span>
+<span class="line" id="L172">    <span class="tok-kw">var</span> pool = <span class="tok-kw">try</span> MemoryPoolExtra(<span class="tok-type">u32</span>, .{ .growable = <span class="tok-null">false</span> }).initPreheated(std.testing.allocator, <span class="tok-number">4</span>);</span>
+<span class="line" id="L173">    <span class="tok-kw">defer</span> pool.deinit();</span>
+<span class="line" id="L174"></span>
+<span class="line" id="L175">    _ = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L176">    _ = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L177">    _ = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L178">    _ = <span class="tok-kw">try</span> pool.create();</span>
+<span class="line" id="L179"></span>
+<span class="line" id="L180">    <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.OutOfMemory, pool.create());</span>
+<span class="line" id="L181">}</span>
+<span class="line" id="L182"></span>
+</code></pre></body>
+</html>

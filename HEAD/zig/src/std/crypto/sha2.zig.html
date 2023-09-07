@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/sha2.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> htest = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;test.zig&quot;</span>);</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-comment">/////////////////////</span>
+</span>
+<span class="line" id="L8"><span class="tok-comment">// Sha224 + Sha256</span>
+</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">const</span> RoundParam256 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L11">    a: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L12">    b: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L13">    c: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L14">    d: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L15">    e: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L16">    f: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L17">    g: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L18">    h: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L19">    i: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L20">};</span>
+<span class="line" id="L21"></span>
+<span class="line" id="L22"><span class="tok-kw">fn</span> <span class="tok-fn">roundParam256</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, c: <span class="tok-type">usize</span>, d: <span class="tok-type">usize</span>, e: <span class="tok-type">usize</span>, f: <span class="tok-type">usize</span>, g: <span class="tok-type">usize</span>, h: <span class="tok-type">usize</span>, i: <span class="tok-type">usize</span>) RoundParam256 {</span>
+<span class="line" id="L23">    <span class="tok-kw">return</span> RoundParam256{</span>
+<span class="line" id="L24">        .a = a,</span>
+<span class="line" id="L25">        .b = b,</span>
+<span class="line" id="L26">        .c = c,</span>
+<span class="line" id="L27">        .d = d,</span>
+<span class="line" id="L28">        .e = e,</span>
+<span class="line" id="L29">        .f = f,</span>
+<span class="line" id="L30">        .g = g,</span>
+<span class="line" id="L31">        .h = h,</span>
+<span class="line" id="L32">        .i = i,</span>
+<span class="line" id="L33">    };</span>
+<span class="line" id="L34">}</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36"><span class="tok-kw">const</span> Sha2Params32 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L37">    iv0: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L38">    iv1: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L39">    iv2: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L40">    iv3: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L41">    iv4: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L42">    iv5: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L43">    iv6: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L44">    iv7: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L45">    digest_bits: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L46">};</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48"><span class="tok-kw">const</span> Sha224Params = Sha2Params32{</span>
+<span class="line" id="L49">    .iv0 = <span class="tok-number">0xC1059ED8</span>,</span>
+<span class="line" id="L50">    .iv1 = <span class="tok-number">0x367CD507</span>,</span>
+<span class="line" id="L51">    .iv2 = <span class="tok-number">0x3070DD17</span>,</span>
+<span class="line" id="L52">    .iv3 = <span class="tok-number">0xF70E5939</span>,</span>
+<span class="line" id="L53">    .iv4 = <span class="tok-number">0xFFC00B31</span>,</span>
+<span class="line" id="L54">    .iv5 = <span class="tok-number">0x68581511</span>,</span>
+<span class="line" id="L55">    .iv6 = <span class="tok-number">0x64F98FA7</span>,</span>
+<span class="line" id="L56">    .iv7 = <span class="tok-number">0xBEFA4FA4</span>,</span>
+<span class="line" id="L57">    .digest_bits = <span class="tok-number">224</span>,</span>
+<span class="line" id="L58">};</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60"><span class="tok-kw">const</span> Sha256Params = Sha2Params32{</span>
+<span class="line" id="L61">    .iv0 = <span class="tok-number">0x6A09E667</span>,</span>
+<span class="line" id="L62">    .iv1 = <span class="tok-number">0xBB67AE85</span>,</span>
+<span class="line" id="L63">    .iv2 = <span class="tok-number">0x3C6EF372</span>,</span>
+<span class="line" id="L64">    .iv3 = <span class="tok-number">0xA54FF53A</span>,</span>
+<span class="line" id="L65">    .iv4 = <span class="tok-number">0x510E527F</span>,</span>
+<span class="line" id="L66">    .iv5 = <span class="tok-number">0x9B05688C</span>,</span>
+<span class="line" id="L67">    .iv6 = <span class="tok-number">0x1F83D9AB</span>,</span>
+<span class="line" id="L68">    .iv7 = <span class="tok-number">0x5BE0CD19</span>,</span>
+<span class="line" id="L69">    .digest_bits = <span class="tok-number">256</span>,</span>
+<span class="line" id="L70">};</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72"><span class="tok-kw">const</span> v4u32 = <span class="tok-builtin">@Vector</span>(<span class="tok-number">4</span>, <span class="tok-type">u32</span>);</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74"><span class="tok-comment">/// SHA-224</span></span>
+<span class="line" id="L75"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Sha224 = Sha2x32(Sha224Params);</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77"><span class="tok-comment">/// SHA-256</span></span>
+<span class="line" id="L78"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Sha256 = Sha2x32(Sha256Params);</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80"><span class="tok-kw">fn</span> <span class="tok-fn">Sha2x32</span>(<span class="tok-kw">comptime</span> params: Sha2Params32) <span class="tok-type">type</span> {</span>
+<span class="line" id="L81">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L82">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L83">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_length = <span class="tok-number">64</span>;</span>
+<span class="line" id="L84">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> digest_length = params.digest_bits / <span class="tok-number">8</span>;</span>
+<span class="line" id="L85">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-kw">struct</span> {};</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">        s: [<span class="tok-number">8</span>]<span class="tok-type">u32</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>),</span>
+<span class="line" id="L88">        <span class="tok-comment">// Streaming Cache</span>
+</span>
+<span class="line" id="L89">        buf: [<span class="tok-number">64</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L90">        buf_len: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L91">        total_len: <span class="tok-type">u64</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(options: Options) Self {</span>
+<span class="line" id="L94">            _ = options;</span>
+<span class="line" id="L95">            <span class="tok-kw">return</span> Self{</span>
+<span class="line" id="L96">                .s = [_]<span class="tok-type">u32</span>{</span>
+<span class="line" id="L97">                    params.iv0,</span>
+<span class="line" id="L98">                    params.iv1,</span>
+<span class="line" id="L99">                    params.iv2,</span>
+<span class="line" id="L100">                    params.iv3,</span>
+<span class="line" id="L101">                    params.iv4,</span>
+<span class="line" id="L102">                    params.iv5,</span>
+<span class="line" id="L103">                    params.iv6,</span>
+<span class="line" id="L104">                    params.iv7,</span>
+<span class="line" id="L105">                },</span>
+<span class="line" id="L106">            };</span>
+<span class="line" id="L107">        }</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">hash</span>(b: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, out: *[digest_length]<span class="tok-type">u8</span>, options: Options) <span class="tok-type">void</span> {</span>
+<span class="line" id="L110">            <span class="tok-kw">var</span> d = Self.init(options);</span>
+<span class="line" id="L111">            d.update(b);</span>
+<span class="line" id="L112">            d.final(out);</span>
+<span class="line" id="L113">        }</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">update</span>(d: *Self, b: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L116">            <span class="tok-kw">var</span> off: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118">            <span class="tok-comment">// Partial buffer exists from previous update. Copy into buffer then hash.</span>
+</span>
+<span class="line" id="L119">            <span class="tok-kw">if</span> (d.buf_len != <span class="tok-number">0</span> <span class="tok-kw">and</span> d.buf_len + b.len &gt;= <span class="tok-number">64</span>) {</span>
+<span class="line" id="L120">                off += <span class="tok-number">64</span> - d.buf_len;</span>
+<span class="line" id="L121">                <span class="tok-builtin">@memcpy</span>(d.buf[d.buf_len..][<span class="tok-number">0</span>..off], b[<span class="tok-number">0</span>..off]);</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123">                d.round(&amp;d.buf);</span>
+<span class="line" id="L124">                d.buf_len = <span class="tok-number">0</span>;</span>
+<span class="line" id="L125">            }</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127">            <span class="tok-comment">// Full middle blocks.</span>
+</span>
+<span class="line" id="L128">            <span class="tok-kw">while</span> (off + <span class="tok-number">64</span> &lt;= b.len) : (off += <span class="tok-number">64</span>) {</span>
+<span class="line" id="L129">                d.round(b[off..][<span class="tok-number">0</span>..<span class="tok-number">64</span>]);</span>
+<span class="line" id="L130">            }</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">            <span class="tok-comment">// Copy any remainder for next pass.</span>
+</span>
+<span class="line" id="L133">            <span class="tok-kw">const</span> b_slice = b[off..];</span>
+<span class="line" id="L134">            <span class="tok-builtin">@memcpy</span>(d.buf[d.buf_len..][<span class="tok-number">0</span>..b_slice.len], b_slice);</span>
+<span class="line" id="L135">            d.buf_len += <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(b[off..].len));</span>
+<span class="line" id="L136"></span>
+<span class="line" id="L137">            d.total_len += b.len;</span>
+<span class="line" id="L138">        }</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">peek</span>(d: Self) [digest_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L141">            <span class="tok-kw">var</span> copy = d;</span>
+<span class="line" id="L142">            <span class="tok-kw">return</span> copy.finalResult();</span>
+<span class="line" id="L143">        }</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">final</span>(d: *Self, out: *[digest_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L146">            <span class="tok-comment">// The buffer here will never be completely full.</span>
+</span>
+<span class="line" id="L147">            <span class="tok-builtin">@memset</span>(d.buf[d.buf_len..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">            <span class="tok-comment">// Append padding bits.</span>
+</span>
+<span class="line" id="L150">            d.buf[d.buf_len] = <span class="tok-number">0x80</span>;</span>
+<span class="line" id="L151">            d.buf_len += <span class="tok-number">1</span>;</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153">            <span class="tok-comment">// &gt; 448 mod 512 so need to add an extra round to wrap around.</span>
+</span>
+<span class="line" id="L154">            <span class="tok-kw">if</span> (<span class="tok-number">64</span> - d.buf_len &lt; <span class="tok-number">8</span>) {</span>
+<span class="line" id="L155">                d.round(&amp;d.buf);</span>
+<span class="line" id="L156">                <span class="tok-builtin">@memset</span>(d.buf[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L157">            }</span>
+<span class="line" id="L158"></span>
+<span class="line" id="L159">            <span class="tok-comment">// Append message length.</span>
+</span>
+<span class="line" id="L160">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L161">            <span class="tok-kw">var</span> len = d.total_len &gt;&gt; <span class="tok-number">5</span>;</span>
+<span class="line" id="L162">            d.buf[<span class="tok-number">63</span>] = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(d.total_len &amp; <span class="tok-number">0x1f</span>)) &lt;&lt; <span class="tok-number">3</span>;</span>
+<span class="line" id="L163">            <span class="tok-kw">while</span> (i &lt; <span class="tok-number">8</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L164">                d.buf[<span class="tok-number">63</span> - i] = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(len &amp; <span class="tok-number">0xff</span>));</span>
+<span class="line" id="L165">                len &gt;&gt;= <span class="tok-number">8</span>;</span>
+<span class="line" id="L166">            }</span>
+<span class="line" id="L167"></span>
+<span class="line" id="L168">            d.round(&amp;d.buf);</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170">            <span class="tok-comment">// May truncate for possible 224 output</span>
+</span>
+<span class="line" id="L171">            <span class="tok-kw">const</span> rr = d.s[<span class="tok-number">0</span> .. params.digest_bits / <span class="tok-number">32</span>];</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173">            <span class="tok-kw">for</span> (rr, <span class="tok-number">0</span>..) |s, j| {</span>
+<span class="line" id="L174">                mem.writeIntBig(<span class="tok-type">u32</span>, out[<span class="tok-number">4</span> * j ..][<span class="tok-number">0</span>..<span class="tok-number">4</span>], s);</span>
+<span class="line" id="L175">            }</span>
+<span class="line" id="L176">        }</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">finalResult</span>(d: *Self) [digest_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L179">            <span class="tok-kw">var</span> result: [digest_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L180">            d.final(&amp;result);</span>
+<span class="line" id="L181">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L182">        }</span>
+<span class="line" id="L183"></span>
+<span class="line" id="L184">        <span class="tok-kw">const</span> W = [<span class="tok-number">64</span>]<span class="tok-type">u32</span>{</span>
+<span class="line" id="L185">            <span class="tok-number">0x428A2F98</span>, <span class="tok-number">0x71374491</span>, <span class="tok-number">0xB5C0FBCF</span>, <span class="tok-number">0xE9B5DBA5</span>, <span class="tok-number">0x3956C25B</span>, <span class="tok-number">0x59F111F1</span>, <span class="tok-number">0x923F82A4</span>, <span class="tok-number">0xAB1C5ED5</span>,</span>
+<span class="line" id="L186">            <span class="tok-number">0xD807AA98</span>, <span class="tok-number">0x12835B01</span>, <span class="tok-number">0x243185BE</span>, <span class="tok-number">0x550C7DC3</span>, <span class="tok-number">0x72BE5D74</span>, <span class="tok-number">0x80DEB1FE</span>, <span class="tok-number">0x9BDC06A7</span>, <span class="tok-number">0xC19BF174</span>,</span>
+<span class="line" id="L187">            <span class="tok-number">0xE49B69C1</span>, <span class="tok-number">0xEFBE4786</span>, <span class="tok-number">0x0FC19DC6</span>, <span class="tok-number">0x240CA1CC</span>, <span class="tok-number">0x2DE92C6F</span>, <span class="tok-number">0x4A7484AA</span>, <span class="tok-number">0x5CB0A9DC</span>, <span class="tok-number">0x76F988DA</span>,</span>
+<span class="line" id="L188">            <span class="tok-number">0x983E5152</span>, <span class="tok-number">0xA831C66D</span>, <span class="tok-number">0xB00327C8</span>, <span class="tok-number">0xBF597FC7</span>, <span class="tok-number">0xC6E00BF3</span>, <span class="tok-number">0xD5A79147</span>, <span class="tok-number">0x06CA6351</span>, <span class="tok-number">0x14292967</span>,</span>
+<span class="line" id="L189">            <span class="tok-number">0x27B70A85</span>, <span class="tok-number">0x2E1B2138</span>, <span class="tok-number">0x4D2C6DFC</span>, <span class="tok-number">0x53380D13</span>, <span class="tok-number">0x650A7354</span>, <span class="tok-number">0x766A0ABB</span>, <span class="tok-number">0x81C2C92E</span>, <span class="tok-number">0x92722C85</span>,</span>
+<span class="line" id="L190">            <span class="tok-number">0xA2BFE8A1</span>, <span class="tok-number">0xA81A664B</span>, <span class="tok-number">0xC24B8B70</span>, <span class="tok-number">0xC76C51A3</span>, <span class="tok-number">0xD192E819</span>, <span class="tok-number">0xD6990624</span>, <span class="tok-number">0xF40E3585</span>, <span class="tok-number">0x106AA070</span>,</span>
+<span class="line" id="L191">            <span class="tok-number">0x19A4C116</span>, <span class="tok-number">0x1E376C08</span>, <span class="tok-number">0x2748774C</span>, <span class="tok-number">0x34B0BCB5</span>, <span class="tok-number">0x391C0CB3</span>, <span class="tok-number">0x4ED8AA4A</span>, <span class="tok-number">0x5B9CCA4F</span>, <span class="tok-number">0x682E6FF3</span>,</span>
+<span class="line" id="L192">            <span class="tok-number">0x748F82EE</span>, <span class="tok-number">0x78A5636F</span>, <span class="tok-number">0x84C87814</span>, <span class="tok-number">0x8CC70208</span>, <span class="tok-number">0x90BEFFFA</span>, <span class="tok-number">0xA4506CEB</span>, <span class="tok-number">0xBEF9A3F7</span>, <span class="tok-number">0xC67178F2</span>,</span>
+<span class="line" id="L193">        };</span>
+<span class="line" id="L194"></span>
+<span class="line" id="L195">        <span class="tok-kw">fn</span> <span class="tok-fn">round</span>(d: *Self, b: *<span class="tok-kw">const</span> [<span class="tok-number">64</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L196">            <span class="tok-kw">var</span> s: [<span class="tok-number">64</span>]<span class="tok-type">u32</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L197">            <span class="tok-kw">for</span> (<span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> [<span class="tok-number">16</span>]<span class="tok-type">u32</span>, <span class="tok-builtin">@ptrCast</span>(b)), <span class="tok-number">0</span>..) |*elem, i| {</span>
+<span class="line" id="L198">                s[i] = mem.readIntBig(<span class="tok-type">u32</span>, mem.asBytes(elem));</span>
+<span class="line" id="L199">            }</span>
+<span class="line" id="L200"></span>
+<span class="line" id="L201">            <span class="tok-kw">if</span> (!<span class="tok-builtin">@inComptime</span>()) {</span>
+<span class="line" id="L202">                <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L203">                    .aarch64 =&gt; <span class="tok-kw">if</span> (builtin.zig_backend != .stage2_c <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> std.Target.aarch64.featureSetHas(builtin.cpu.features, .sha2)) {</span>
+<span class="line" id="L204">                        <span class="tok-kw">var</span> x: v4u32 = d.s[<span class="tok-number">0</span>..<span class="tok-number">4</span>].*;</span>
+<span class="line" id="L205">                        <span class="tok-kw">var</span> y: v4u32 = d.s[<span class="tok-number">4</span>..<span class="tok-number">8</span>].*;</span>
+<span class="line" id="L206">                        <span class="tok-kw">const</span> s_v = <span class="tok-builtin">@as</span>(*[<span class="tok-number">16</span>]v4u32, <span class="tok-builtin">@ptrCast</span>(&amp;s));</span>
+<span class="line" id="L207"></span>
+<span class="line" id="L208">                        <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> k: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L209">                        <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (k &lt; <span class="tok-number">16</span>) : (k += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L210">                            <span class="tok-kw">if</span> (k &gt; <span class="tok-number">3</span>) {</span>
+<span class="line" id="L211">                                s_v[k] = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L212">                                    <span class="tok-str">\\sha256su0.4s %[w0_3], %[w4_7]</span></span>
+
+<span class="line" id="L213">                                    <span class="tok-str">\\sha256su1.4s %[w0_3], %[w8_11], %[w12_15]</span></span>
+
+<span class="line" id="L214">                                    : [w0_3] <span class="tok-str">&quot;=w&quot;</span> (-&gt; v4u32),</span>
+<span class="line" id="L215">                                    : [_] <span class="tok-str">&quot;0&quot;</span> (s_v[k - <span class="tok-number">4</span>]),</span>
+<span class="line" id="L216">                                      [w4_7] <span class="tok-str">&quot;w&quot;</span> (s_v[k - <span class="tok-number">3</span>]),</span>
+<span class="line" id="L217">                                      [w8_11] <span class="tok-str">&quot;w&quot;</span> (s_v[k - <span class="tok-number">2</span>]),</span>
+<span class="line" id="L218">                                      [w12_15] <span class="tok-str">&quot;w&quot;</span> (s_v[k - <span class="tok-number">1</span>]),</span>
+<span class="line" id="L219">                                );</span>
+<span class="line" id="L220">                            }</span>
+<span class="line" id="L221"></span>
+<span class="line" id="L222">                            <span class="tok-kw">const</span> w: v4u32 = s_v[k] +% <span class="tok-builtin">@as</span>(v4u32, W[<span class="tok-number">4</span> * k ..][<span class="tok-number">0</span>..<span class="tok-number">4</span>].*);</span>
+<span class="line" id="L223">                            <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L224">                                <span class="tok-str">\\mov.4s v0, %[x]</span></span>
+
+<span class="line" id="L225">                                <span class="tok-str">\\sha256h.4s %[x], %[y], %[w]</span></span>
+
+<span class="line" id="L226">                                <span class="tok-str">\\sha256h2.4s %[y], v0, %[w]</span></span>
+
+<span class="line" id="L227">                                : [x] <span class="tok-str">&quot;=w&quot;</span> (x),</span>
+<span class="line" id="L228">                                  [y] <span class="tok-str">&quot;=w&quot;</span> (y),</span>
+<span class="line" id="L229">                                : [_] <span class="tok-str">&quot;0&quot;</span> (x),</span>
+<span class="line" id="L230">                                  [_] <span class="tok-str">&quot;1&quot;</span> (y),</span>
+<span class="line" id="L231">                                  [w] <span class="tok-str">&quot;w&quot;</span> (w),</span>
+<span class="line" id="L232">                                : <span class="tok-str">&quot;v0&quot;</span></span>
+<span class="line" id="L233">                            );</span>
+<span class="line" id="L234">                        }</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236">                        d.s[<span class="tok-number">0</span>..<span class="tok-number">4</span>].* = x +% <span class="tok-builtin">@as</span>(v4u32, d.s[<span class="tok-number">0</span>..<span class="tok-number">4</span>].*);</span>
+<span class="line" id="L237">                        d.s[<span class="tok-number">4</span>..<span class="tok-number">8</span>].* = y +% <span class="tok-builtin">@as</span>(v4u32, d.s[<span class="tok-number">4</span>..<span class="tok-number">8</span>].*);</span>
+<span class="line" id="L238">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L239">                    },</span>
+<span class="line" id="L240">                    <span class="tok-comment">// C backend doesn't currently support passing vectors to inline asm.</span>
+</span>
+<span class="line" id="L241">                    .x86_64 =&gt; <span class="tok-kw">if</span> (builtin.zig_backend != .stage2_c <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> std.Target.x86.featureSetHasAll(builtin.cpu.features, .{ .sha, .avx2 })) {</span>
+<span class="line" id="L242">                        <span class="tok-kw">var</span> x: v4u32 = [_]<span class="tok-type">u32</span>{ d.s[<span class="tok-number">5</span>], d.s[<span class="tok-number">4</span>], d.s[<span class="tok-number">1</span>], d.s[<span class="tok-number">0</span>] };</span>
+<span class="line" id="L243">                        <span class="tok-kw">var</span> y: v4u32 = [_]<span class="tok-type">u32</span>{ d.s[<span class="tok-number">7</span>], d.s[<span class="tok-number">6</span>], d.s[<span class="tok-number">3</span>], d.s[<span class="tok-number">2</span>] };</span>
+<span class="line" id="L244">                        <span class="tok-kw">const</span> s_v = <span class="tok-builtin">@as</span>(*[<span class="tok-number">16</span>]v4u32, <span class="tok-builtin">@ptrCast</span>(&amp;s));</span>
+<span class="line" id="L245"></span>
+<span class="line" id="L246">                        <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> k: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L247">                        <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (k &lt; <span class="tok-number">16</span>) : (k += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L248">                            <span class="tok-kw">if</span> (k &lt; <span class="tok-number">12</span>) {</span>
+<span class="line" id="L249">                                <span class="tok-kw">var</span> tmp = s_v[k];</span>
+<span class="line" id="L250">                                s_v[k + <span class="tok-number">4</span>] = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L251">                                    <span class="tok-str">\\ sha256msg1 %[w4_7], %[tmp]</span></span>
+
+<span class="line" id="L252">                                    <span class="tok-str">\\ vpalignr $0x4, %[w8_11], %[w12_15], %[result]</span></span>
+
+<span class="line" id="L253">                                    <span class="tok-str">\\ paddd %[tmp], %[result]</span></span>
+
+<span class="line" id="L254">                                    <span class="tok-str">\\ sha256msg2 %[w12_15], %[result]</span></span>
+
+<span class="line" id="L255">                                    : [tmp] <span class="tok-str">&quot;=&amp;x&quot;</span> (tmp),</span>
+<span class="line" id="L256">                                      [result] <span class="tok-str">&quot;=&amp;x&quot;</span> (-&gt; v4u32),</span>
+<span class="line" id="L257">                                    : [_] <span class="tok-str">&quot;0&quot;</span> (tmp),</span>
+<span class="line" id="L258">                                      [w4_7] <span class="tok-str">&quot;x&quot;</span> (s_v[k + <span class="tok-number">1</span>]),</span>
+<span class="line" id="L259">                                      [w8_11] <span class="tok-str">&quot;x&quot;</span> (s_v[k + <span class="tok-number">2</span>]),</span>
+<span class="line" id="L260">                                      [w12_15] <span class="tok-str">&quot;x&quot;</span> (s_v[k + <span class="tok-number">3</span>]),</span>
+<span class="line" id="L261">                                );</span>
+<span class="line" id="L262">                            }</span>
+<span class="line" id="L263"></span>
+<span class="line" id="L264">                            <span class="tok-kw">const</span> w: v4u32 = s_v[k] +% <span class="tok-builtin">@as</span>(v4u32, W[<span class="tok-number">4</span> * k ..][<span class="tok-number">0</span>..<span class="tok-number">4</span>].*);</span>
+<span class="line" id="L265">                            y = <span class="tok-kw">asm</span> (<span class="tok-str">&quot;sha256rnds2 %[x], %[y]&quot;</span></span>
+<span class="line" id="L266">                                : [y] <span class="tok-str">&quot;=x&quot;</span> (-&gt; v4u32),</span>
+<span class="line" id="L267">                                : [_] <span class="tok-str">&quot;0&quot;</span> (y),</span>
+<span class="line" id="L268">                                  [x] <span class="tok-str">&quot;x&quot;</span> (x),</span>
+<span class="line" id="L269">                                  [_] <span class="tok-str">&quot;{xmm0}&quot;</span> (w),</span>
+<span class="line" id="L270">                            );</span>
+<span class="line" id="L271"></span>
+<span class="line" id="L272">                            x = <span class="tok-kw">asm</span> (<span class="tok-str">&quot;sha256rnds2 %[y], %[x]&quot;</span></span>
+<span class="line" id="L273">                                : [x] <span class="tok-str">&quot;=x&quot;</span> (-&gt; v4u32),</span>
+<span class="line" id="L274">                                : [_] <span class="tok-str">&quot;0&quot;</span> (x),</span>
+<span class="line" id="L275">                                  [y] <span class="tok-str">&quot;x&quot;</span> (y),</span>
+<span class="line" id="L276">                                  [_] <span class="tok-str">&quot;{xmm0}&quot;</span> (<span class="tok-builtin">@as</span>(v4u32, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-builtin">@bitCast</span>(w)) &gt;&gt; <span class="tok-number">64</span>))),</span>
+<span class="line" id="L277">                            );</span>
+<span class="line" id="L278">                        }</span>
+<span class="line" id="L279"></span>
+<span class="line" id="L280">                        d.s[<span class="tok-number">0</span>] +%= x[<span class="tok-number">3</span>];</span>
+<span class="line" id="L281">                        d.s[<span class="tok-number">1</span>] +%= x[<span class="tok-number">2</span>];</span>
+<span class="line" id="L282">                        d.s[<span class="tok-number">4</span>] +%= x[<span class="tok-number">1</span>];</span>
+<span class="line" id="L283">                        d.s[<span class="tok-number">5</span>] +%= x[<span class="tok-number">0</span>];</span>
+<span class="line" id="L284">                        d.s[<span class="tok-number">2</span>] +%= y[<span class="tok-number">3</span>];</span>
+<span class="line" id="L285">                        d.s[<span class="tok-number">3</span>] +%= y[<span class="tok-number">2</span>];</span>
+<span class="line" id="L286">                        d.s[<span class="tok-number">6</span>] +%= y[<span class="tok-number">1</span>];</span>
+<span class="line" id="L287">                        d.s[<span class="tok-number">7</span>] +%= y[<span class="tok-number">0</span>];</span>
+<span class="line" id="L288">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L289">                    },</span>
+<span class="line" id="L290">                    <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L291">                }</span>
+<span class="line" id="L292">            }</span>
+<span class="line" id="L293"></span>
+<span class="line" id="L294">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">16</span>;</span>
+<span class="line" id="L295">            <span class="tok-kw">while</span> (i &lt; <span class="tok-number">64</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L296">                s[i] = s[i - <span class="tok-number">16</span>] +% s[i - <span class="tok-number">7</span>] +% (math.rotr(<span class="tok-type">u32</span>, s[i - <span class="tok-number">15</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">7</span>)) ^ math.rotr(<span class="tok-type">u32</span>, s[i - <span class="tok-number">15</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">18</span>)) ^ (s[i - <span class="tok-number">15</span>] &gt;&gt; <span class="tok-number">3</span>)) +% (math.rotr(<span class="tok-type">u32</span>, s[i - <span class="tok-number">2</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">17</span>)) ^ math.rotr(<span class="tok-type">u32</span>, s[i - <span class="tok-number">2</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">19</span>)) ^ (s[i - <span class="tok-number">2</span>] &gt;&gt; <span class="tok-number">10</span>));</span>
+<span class="line" id="L297">            }</span>
+<span class="line" id="L298"></span>
+<span class="line" id="L299">            <span class="tok-kw">var</span> v: [<span class="tok-number">8</span>]<span class="tok-type">u32</span> = [_]<span class="tok-type">u32</span>{</span>
+<span class="line" id="L300">                d.s[<span class="tok-number">0</span>],</span>
+<span class="line" id="L301">                d.s[<span class="tok-number">1</span>],</span>
+<span class="line" id="L302">                d.s[<span class="tok-number">2</span>],</span>
+<span class="line" id="L303">                d.s[<span class="tok-number">3</span>],</span>
+<span class="line" id="L304">                d.s[<span class="tok-number">4</span>],</span>
+<span class="line" id="L305">                d.s[<span class="tok-number">5</span>],</span>
+<span class="line" id="L306">                d.s[<span class="tok-number">6</span>],</span>
+<span class="line" id="L307">                d.s[<span class="tok-number">7</span>],</span>
+<span class="line" id="L308">            };</span>
+<span class="line" id="L309"></span>
+<span class="line" id="L310">            <span class="tok-kw">const</span> round0 = <span class="tok-kw">comptime</span> [_]RoundParam256{</span>
+<span class="line" id="L311">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>),</span>
+<span class="line" id="L312">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">1</span>),</span>
+<span class="line" id="L313">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">2</span>),</span>
+<span class="line" id="L314">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">3</span>),</span>
+<span class="line" id="L315">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>),</span>
+<span class="line" id="L316">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">5</span>),</span>
+<span class="line" id="L317">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">6</span>),</span>
+<span class="line" id="L318">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">7</span>),</span>
+<span class="line" id="L319">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">8</span>),</span>
+<span class="line" id="L320">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">9</span>),</span>
+<span class="line" id="L321">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">10</span>),</span>
+<span class="line" id="L322">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">11</span>),</span>
+<span class="line" id="L323">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">12</span>),</span>
+<span class="line" id="L324">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">13</span>),</span>
+<span class="line" id="L325">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">14</span>),</span>
+<span class="line" id="L326">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">15</span>),</span>
+<span class="line" id="L327">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">16</span>),</span>
+<span class="line" id="L328">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">17</span>),</span>
+<span class="line" id="L329">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">18</span>),</span>
+<span class="line" id="L330">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">19</span>),</span>
+<span class="line" id="L331">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">20</span>),</span>
+<span class="line" id="L332">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">21</span>),</span>
+<span class="line" id="L333">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">22</span>),</span>
+<span class="line" id="L334">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">23</span>),</span>
+<span class="line" id="L335">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">24</span>),</span>
+<span class="line" id="L336">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">25</span>),</span>
+<span class="line" id="L337">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">26</span>),</span>
+<span class="line" id="L338">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">27</span>),</span>
+<span class="line" id="L339">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">28</span>),</span>
+<span class="line" id="L340">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">29</span>),</span>
+<span class="line" id="L341">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">30</span>),</span>
+<span class="line" id="L342">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">31</span>),</span>
+<span class="line" id="L343">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">32</span>),</span>
+<span class="line" id="L344">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">33</span>),</span>
+<span class="line" id="L345">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">34</span>),</span>
+<span class="line" id="L346">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">35</span>),</span>
+<span class="line" id="L347">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">36</span>),</span>
+<span class="line" id="L348">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">37</span>),</span>
+<span class="line" id="L349">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">38</span>),</span>
+<span class="line" id="L350">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">39</span>),</span>
+<span class="line" id="L351">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">40</span>),</span>
+<span class="line" id="L352">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">41</span>),</span>
+<span class="line" id="L353">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">42</span>),</span>
+<span class="line" id="L354">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">43</span>),</span>
+<span class="line" id="L355">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">44</span>),</span>
+<span class="line" id="L356">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">45</span>),</span>
+<span class="line" id="L357">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">46</span>),</span>
+<span class="line" id="L358">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">47</span>),</span>
+<span class="line" id="L359">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">48</span>),</span>
+<span class="line" id="L360">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">49</span>),</span>
+<span class="line" id="L361">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">50</span>),</span>
+<span class="line" id="L362">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">51</span>),</span>
+<span class="line" id="L363">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">52</span>),</span>
+<span class="line" id="L364">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">53</span>),</span>
+<span class="line" id="L365">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">54</span>),</span>
+<span class="line" id="L366">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">55</span>),</span>
+<span class="line" id="L367">                roundParam256(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">56</span>),</span>
+<span class="line" id="L368">                roundParam256(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">57</span>),</span>
+<span class="line" id="L369">                roundParam256(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">58</span>),</span>
+<span class="line" id="L370">                roundParam256(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">59</span>),</span>
+<span class="line" id="L371">                roundParam256(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">60</span>),</span>
+<span class="line" id="L372">                roundParam256(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">61</span>),</span>
+<span class="line" id="L373">                roundParam256(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">62</span>),</span>
+<span class="line" id="L374">                roundParam256(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">63</span>),</span>
+<span class="line" id="L375">            };</span>
+<span class="line" id="L376">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (round0) |r| {</span>
+<span class="line" id="L377">                v[r.h] = v[r.h] +% (math.rotr(<span class="tok-type">u32</span>, v[r.e], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">6</span>)) ^ math.rotr(<span class="tok-type">u32</span>, v[r.e], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">11</span>)) ^ math.rotr(<span class="tok-type">u32</span>, v[r.e], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">25</span>))) +% (v[r.g] ^ (v[r.e] &amp; (v[r.f] ^ v[r.g]))) +% W[r.i] +% s[r.i];</span>
+<span class="line" id="L378"></span>
+<span class="line" id="L379">                v[r.d] = v[r.d] +% v[r.h];</span>
+<span class="line" id="L380"></span>
+<span class="line" id="L381">                v[r.h] = v[r.h] +% (math.rotr(<span class="tok-type">u32</span>, v[r.a], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">2</span>)) ^ math.rotr(<span class="tok-type">u32</span>, v[r.a], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">13</span>)) ^ math.rotr(<span class="tok-type">u32</span>, v[r.a], <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">22</span>))) +% ((v[r.a] &amp; (v[r.b] | v[r.c])) | (v[r.b] &amp; v[r.c]));</span>
+<span class="line" id="L382">            }</span>
+<span class="line" id="L383"></span>
+<span class="line" id="L384">            d.s[<span class="tok-number">0</span>] +%= v[<span class="tok-number">0</span>];</span>
+<span class="line" id="L385">            d.s[<span class="tok-number">1</span>] +%= v[<span class="tok-number">1</span>];</span>
+<span class="line" id="L386">            d.s[<span class="tok-number">2</span>] +%= v[<span class="tok-number">2</span>];</span>
+<span class="line" id="L387">            d.s[<span class="tok-number">3</span>] +%= v[<span class="tok-number">3</span>];</span>
+<span class="line" id="L388">            d.s[<span class="tok-number">4</span>] +%= v[<span class="tok-number">4</span>];</span>
+<span class="line" id="L389">            d.s[<span class="tok-number">5</span>] +%= v[<span class="tok-number">5</span>];</span>
+<span class="line" id="L390">            d.s[<span class="tok-number">6</span>] +%= v[<span class="tok-number">6</span>];</span>
+<span class="line" id="L391">            d.s[<span class="tok-number">7</span>] +%= v[<span class="tok-number">7</span>];</span>
+<span class="line" id="L392">        }</span>
+<span class="line" id="L393"></span>
+<span class="line" id="L394">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">error</span>{};</span>
+<span class="line" id="L395">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Writer = std.io.Writer(*Self, Error, write);</span>
+<span class="line" id="L396"></span>
+<span class="line" id="L397">        <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(self: *Self, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Error!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L398">            self.update(bytes);</span>
+<span class="line" id="L399">            <span class="tok-kw">return</span> bytes.len;</span>
+<span class="line" id="L400">        }</span>
+<span class="line" id="L401"></span>
+<span class="line" id="L402">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writer</span>(self: *Self) Writer {</span>
+<span class="line" id="L403">            <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L404">        }</span>
+<span class="line" id="L405">    };</span>
+<span class="line" id="L406">}</span>
+<span class="line" id="L407"></span>
+<span class="line" id="L408"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha224 single&quot;</span> {</span>
+<span class="line" id="L409">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha224, <span class="tok-str">&quot;d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L410">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha224, <span class="tok-str">&quot;23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7&quot;</span>, <span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L411">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha224, <span class="tok-str">&quot;c97ca9a559850ce97a04a96def6d99a9e0e0e2ab14e6b8df265fc0b3&quot;</span>, <span class="tok-str">&quot;abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu&quot;</span>);</span>
+<span class="line" id="L412">}</span>
+<span class="line" id="L413"></span>
+<span class="line" id="L414"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha224 streaming&quot;</span> {</span>
+<span class="line" id="L415">    <span class="tok-kw">var</span> h = Sha224.init(.{});</span>
+<span class="line" id="L416">    <span class="tok-kw">var</span> out: [<span class="tok-number">28</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L417"></span>
+<span class="line" id="L418">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L419">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f&quot;</span>, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L420"></span>
+<span class="line" id="L421">    h = Sha224.init(.{});</span>
+<span class="line" id="L422">    h.update(<span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L423">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L424">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7&quot;</span>, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L425"></span>
+<span class="line" id="L426">    h = Sha224.init(.{});</span>
+<span class="line" id="L427">    h.update(<span class="tok-str">&quot;a&quot;</span>);</span>
+<span class="line" id="L428">    h.update(<span class="tok-str">&quot;b&quot;</span>);</span>
+<span class="line" id="L429">    h.update(<span class="tok-str">&quot;c&quot;</span>);</span>
+<span class="line" id="L430">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L431">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7&quot;</span>, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L432">}</span>
+<span class="line" id="L433"></span>
+<span class="line" id="L434"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha256 single&quot;</span> {</span>
+<span class="line" id="L435">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha256, <span class="tok-str">&quot;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L436">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha256, <span class="tok-str">&quot;ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad&quot;</span>, <span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L437">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha256, <span class="tok-str">&quot;cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1&quot;</span>, <span class="tok-str">&quot;abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu&quot;</span>);</span>
+<span class="line" id="L438">}</span>
+<span class="line" id="L439"></span>
+<span class="line" id="L440"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha256 streaming&quot;</span> {</span>
+<span class="line" id="L441">    <span class="tok-kw">var</span> h = Sha256.init(.{});</span>
+<span class="line" id="L442">    <span class="tok-kw">var</span> out: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L443"></span>
+<span class="line" id="L444">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L445">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&quot;</span>, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L446"></span>
+<span class="line" id="L447">    h = Sha256.init(.{});</span>
+<span class="line" id="L448">    h.update(<span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L449">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L450">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad&quot;</span>, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L451"></span>
+<span class="line" id="L452">    h = Sha256.init(.{});</span>
+<span class="line" id="L453">    h.update(<span class="tok-str">&quot;a&quot;</span>);</span>
+<span class="line" id="L454">    h.update(<span class="tok-str">&quot;b&quot;</span>);</span>
+<span class="line" id="L455">    h.update(<span class="tok-str">&quot;c&quot;</span>);</span>
+<span class="line" id="L456">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L457">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad&quot;</span>, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L458">}</span>
+<span class="line" id="L459"></span>
+<span class="line" id="L460"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha256 aligned final&quot;</span> {</span>
+<span class="line" id="L461">    <span class="tok-kw">var</span> block = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** Sha256.block_length;</span>
+<span class="line" id="L462">    <span class="tok-kw">var</span> out: [Sha256.digest_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L463"></span>
+<span class="line" id="L464">    <span class="tok-kw">var</span> h = Sha256.init(.{});</span>
+<span class="line" id="L465">    h.update(&amp;block);</span>
+<span class="line" id="L466">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L467">}</span>
+<span class="line" id="L468"></span>
+<span class="line" id="L469"><span class="tok-comment">/////////////////////</span>
+</span>
+<span class="line" id="L470"><span class="tok-comment">// Sha384 + Sha512</span>
+</span>
+<span class="line" id="L471"></span>
+<span class="line" id="L472"><span class="tok-kw">const</span> RoundParam512 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L473">    a: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L474">    b: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L475">    c: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L476">    d: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L477">    e: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L478">    f: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L479">    g: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L480">    h: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L481">    i: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L482">    k: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L483">};</span>
+<span class="line" id="L484"></span>
+<span class="line" id="L485"><span class="tok-kw">fn</span> <span class="tok-fn">roundParam512</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, c: <span class="tok-type">usize</span>, d: <span class="tok-type">usize</span>, e: <span class="tok-type">usize</span>, f: <span class="tok-type">usize</span>, g: <span class="tok-type">usize</span>, h: <span class="tok-type">usize</span>, i: <span class="tok-type">usize</span>, k: <span class="tok-type">u64</span>) RoundParam512 {</span>
+<span class="line" id="L486">    <span class="tok-kw">return</span> RoundParam512{</span>
+<span class="line" id="L487">        .a = a,</span>
+<span class="line" id="L488">        .b = b,</span>
+<span class="line" id="L489">        .c = c,</span>
+<span class="line" id="L490">        .d = d,</span>
+<span class="line" id="L491">        .e = e,</span>
+<span class="line" id="L492">        .f = f,</span>
+<span class="line" id="L493">        .g = g,</span>
+<span class="line" id="L494">        .h = h,</span>
+<span class="line" id="L495">        .i = i,</span>
+<span class="line" id="L496">        .k = k,</span>
+<span class="line" id="L497">    };</span>
+<span class="line" id="L498">}</span>
+<span class="line" id="L499"></span>
+<span class="line" id="L500"><span class="tok-kw">const</span> Sha2Params64 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L501">    iv0: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L502">    iv1: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L503">    iv2: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L504">    iv3: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L505">    iv4: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L506">    iv5: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L507">    iv6: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L508">    iv7: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L509">    digest_bits: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L510">};</span>
+<span class="line" id="L511"></span>
+<span class="line" id="L512"><span class="tok-kw">const</span> Sha384Params = Sha2Params64{</span>
+<span class="line" id="L513">    .iv0 = <span class="tok-number">0xCBBB9D5DC1059ED8</span>,</span>
+<span class="line" id="L514">    .iv1 = <span class="tok-number">0x629A292A367CD507</span>,</span>
+<span class="line" id="L515">    .iv2 = <span class="tok-number">0x9159015A3070DD17</span>,</span>
+<span class="line" id="L516">    .iv3 = <span class="tok-number">0x152FECD8F70E5939</span>,</span>
+<span class="line" id="L517">    .iv4 = <span class="tok-number">0x67332667FFC00B31</span>,</span>
+<span class="line" id="L518">    .iv5 = <span class="tok-number">0x8EB44A8768581511</span>,</span>
+<span class="line" id="L519">    .iv6 = <span class="tok-number">0xDB0C2E0D64F98FA7</span>,</span>
+<span class="line" id="L520">    .iv7 = <span class="tok-number">0x47B5481DBEFA4FA4</span>,</span>
+<span class="line" id="L521">    .digest_bits = <span class="tok-number">384</span>,</span>
+<span class="line" id="L522">};</span>
+<span class="line" id="L523"></span>
+<span class="line" id="L524"><span class="tok-kw">const</span> Sha512Params = Sha2Params64{</span>
+<span class="line" id="L525">    .iv0 = <span class="tok-number">0x6A09E667F3BCC908</span>,</span>
+<span class="line" id="L526">    .iv1 = <span class="tok-number">0xBB67AE8584CAA73B</span>,</span>
+<span class="line" id="L527">    .iv2 = <span class="tok-number">0x3C6EF372FE94F82B</span>,</span>
+<span class="line" id="L528">    .iv3 = <span class="tok-number">0xA54FF53A5F1D36F1</span>,</span>
+<span class="line" id="L529">    .iv4 = <span class="tok-number">0x510E527FADE682D1</span>,</span>
+<span class="line" id="L530">    .iv5 = <span class="tok-number">0x9B05688C2B3E6C1F</span>,</span>
+<span class="line" id="L531">    .iv6 = <span class="tok-number">0x1F83D9ABFB41BD6B</span>,</span>
+<span class="line" id="L532">    .iv7 = <span class="tok-number">0x5BE0CD19137E2179</span>,</span>
+<span class="line" id="L533">    .digest_bits = <span class="tok-number">512</span>,</span>
+<span class="line" id="L534">};</span>
+<span class="line" id="L535"></span>
+<span class="line" id="L536"><span class="tok-kw">const</span> Sha512256Params = Sha2Params64{</span>
+<span class="line" id="L537">    .iv0 = <span class="tok-number">0x22312194FC2BF72C</span>,</span>
+<span class="line" id="L538">    .iv1 = <span class="tok-number">0x9F555FA3C84C64C2</span>,</span>
+<span class="line" id="L539">    .iv2 = <span class="tok-number">0x2393B86B6F53B151</span>,</span>
+<span class="line" id="L540">    .iv3 = <span class="tok-number">0x963877195940EABD</span>,</span>
+<span class="line" id="L541">    .iv4 = <span class="tok-number">0x96283EE2A88EFFE3</span>,</span>
+<span class="line" id="L542">    .iv5 = <span class="tok-number">0xBE5E1E2553863992</span>,</span>
+<span class="line" id="L543">    .iv6 = <span class="tok-number">0x2B0199FC2C85B8AA</span>,</span>
+<span class="line" id="L544">    .iv7 = <span class="tok-number">0x0EB72DDC81C52CA2</span>,</span>
+<span class="line" id="L545">    .digest_bits = <span class="tok-number">256</span>,</span>
+<span class="line" id="L546">};</span>
+<span class="line" id="L547"></span>
+<span class="line" id="L548"><span class="tok-kw">const</span> Sha512T256Params = Sha2Params64{</span>
+<span class="line" id="L549">    .iv0 = <span class="tok-number">0x6A09E667F3BCC908</span>,</span>
+<span class="line" id="L550">    .iv1 = <span class="tok-number">0xBB67AE8584CAA73B</span>,</span>
+<span class="line" id="L551">    .iv2 = <span class="tok-number">0x3C6EF372FE94F82B</span>,</span>
+<span class="line" id="L552">    .iv3 = <span class="tok-number">0xA54FF53A5F1D36F1</span>,</span>
+<span class="line" id="L553">    .iv4 = <span class="tok-number">0x510E527FADE682D1</span>,</span>
+<span class="line" id="L554">    .iv5 = <span class="tok-number">0x9B05688C2B3E6C1F</span>,</span>
+<span class="line" id="L555">    .iv6 = <span class="tok-number">0x1F83D9ABFB41BD6B</span>,</span>
+<span class="line" id="L556">    .iv7 = <span class="tok-number">0x5BE0CD19137E2179</span>,</span>
+<span class="line" id="L557">    .digest_bits = <span class="tok-number">256</span>,</span>
+<span class="line" id="L558">};</span>
+<span class="line" id="L559"></span>
+<span class="line" id="L560"><span class="tok-comment">/// SHA-384</span></span>
+<span class="line" id="L561"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Sha384 = Sha2x64(Sha384Params);</span>
+<span class="line" id="L562"></span>
+<span class="line" id="L563"><span class="tok-comment">/// SHA-512</span></span>
+<span class="line" id="L564"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Sha512 = Sha2x64(Sha512Params);</span>
+<span class="line" id="L565"></span>
+<span class="line" id="L566"><span class="tok-comment">/// SHA-512/256</span></span>
+<span class="line" id="L567"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Sha512256 = Sha2x64(Sha512256Params);</span>
+<span class="line" id="L568"></span>
+<span class="line" id="L569"><span class="tok-comment">/// Truncated SHA-512</span></span>
+<span class="line" id="L570"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Sha512T256 = Sha2x64(Sha512T256Params);</span>
+<span class="line" id="L571"></span>
+<span class="line" id="L572"><span class="tok-kw">fn</span> <span class="tok-fn">Sha2x64</span>(<span class="tok-kw">comptime</span> params: Sha2Params64) <span class="tok-type">type</span> {</span>
+<span class="line" id="L573">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L574">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L575">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_length = <span class="tok-number">128</span>;</span>
+<span class="line" id="L576">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> digest_length = params.digest_bits / <span class="tok-number">8</span>;</span>
+<span class="line" id="L577">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-kw">struct</span> {};</span>
+<span class="line" id="L578"></span>
+<span class="line" id="L579">        s: [<span class="tok-number">8</span>]<span class="tok-type">u64</span>,</span>
+<span class="line" id="L580">        <span class="tok-comment">// Streaming Cache</span>
+</span>
+<span class="line" id="L581">        buf: [<span class="tok-number">128</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L582">        buf_len: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L583">        total_len: <span class="tok-type">u128</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L584"></span>
+<span class="line" id="L585">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(options: Options) Self {</span>
+<span class="line" id="L586">            _ = options;</span>
+<span class="line" id="L587">            <span class="tok-kw">return</span> Self{</span>
+<span class="line" id="L588">                .s = [_]<span class="tok-type">u64</span>{</span>
+<span class="line" id="L589">                    params.iv0,</span>
+<span class="line" id="L590">                    params.iv1,</span>
+<span class="line" id="L591">                    params.iv2,</span>
+<span class="line" id="L592">                    params.iv3,</span>
+<span class="line" id="L593">                    params.iv4,</span>
+<span class="line" id="L594">                    params.iv5,</span>
+<span class="line" id="L595">                    params.iv6,</span>
+<span class="line" id="L596">                    params.iv7,</span>
+<span class="line" id="L597">                },</span>
+<span class="line" id="L598">            };</span>
+<span class="line" id="L599">        }</span>
+<span class="line" id="L600"></span>
+<span class="line" id="L601">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">hash</span>(b: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, out: *[digest_length]<span class="tok-type">u8</span>, options: Options) <span class="tok-type">void</span> {</span>
+<span class="line" id="L602">            <span class="tok-kw">var</span> d = Self.init(options);</span>
+<span class="line" id="L603">            d.update(b);</span>
+<span class="line" id="L604">            d.final(out);</span>
+<span class="line" id="L605">        }</span>
+<span class="line" id="L606"></span>
+<span class="line" id="L607">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">update</span>(d: *Self, b: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L608">            <span class="tok-kw">var</span> off: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L609"></span>
+<span class="line" id="L610">            <span class="tok-comment">// Partial buffer exists from previous update. Copy into buffer then hash.</span>
+</span>
+<span class="line" id="L611">            <span class="tok-kw">if</span> (d.buf_len != <span class="tok-number">0</span> <span class="tok-kw">and</span> d.buf_len + b.len &gt;= <span class="tok-number">128</span>) {</span>
+<span class="line" id="L612">                off += <span class="tok-number">128</span> - d.buf_len;</span>
+<span class="line" id="L613">                <span class="tok-builtin">@memcpy</span>(d.buf[d.buf_len..][<span class="tok-number">0</span>..off], b[<span class="tok-number">0</span>..off]);</span>
+<span class="line" id="L614"></span>
+<span class="line" id="L615">                d.round(&amp;d.buf);</span>
+<span class="line" id="L616">                d.buf_len = <span class="tok-number">0</span>;</span>
+<span class="line" id="L617">            }</span>
+<span class="line" id="L618"></span>
+<span class="line" id="L619">            <span class="tok-comment">// Full middle blocks.</span>
+</span>
+<span class="line" id="L620">            <span class="tok-kw">while</span> (off + <span class="tok-number">128</span> &lt;= b.len) : (off += <span class="tok-number">128</span>) {</span>
+<span class="line" id="L621">                d.round(b[off..][<span class="tok-number">0</span>..<span class="tok-number">128</span>]);</span>
+<span class="line" id="L622">            }</span>
+<span class="line" id="L623"></span>
+<span class="line" id="L624">            <span class="tok-comment">// Copy any remainder for next pass.</span>
+</span>
+<span class="line" id="L625">            <span class="tok-kw">const</span> b_slice = b[off..];</span>
+<span class="line" id="L626">            <span class="tok-builtin">@memcpy</span>(d.buf[d.buf_len..][<span class="tok-number">0</span>..b_slice.len], b_slice);</span>
+<span class="line" id="L627">            d.buf_len += <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(b[off..].len));</span>
+<span class="line" id="L628"></span>
+<span class="line" id="L629">            d.total_len += b.len;</span>
+<span class="line" id="L630">        }</span>
+<span class="line" id="L631"></span>
+<span class="line" id="L632">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">peek</span>(d: Self) [digest_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L633">            <span class="tok-kw">var</span> copy = d;</span>
+<span class="line" id="L634">            <span class="tok-kw">return</span> copy.finalResult();</span>
+<span class="line" id="L635">        }</span>
+<span class="line" id="L636"></span>
+<span class="line" id="L637">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">final</span>(d: *Self, out: *[digest_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L638">            <span class="tok-comment">// The buffer here will never be completely full.</span>
+</span>
+<span class="line" id="L639">            <span class="tok-builtin">@memset</span>(d.buf[d.buf_len..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L640"></span>
+<span class="line" id="L641">            <span class="tok-comment">// Append padding bits.</span>
+</span>
+<span class="line" id="L642">            d.buf[d.buf_len] = <span class="tok-number">0x80</span>;</span>
+<span class="line" id="L643">            d.buf_len += <span class="tok-number">1</span>;</span>
+<span class="line" id="L644"></span>
+<span class="line" id="L645">            <span class="tok-comment">// &gt; 896 mod 1024 so need to add an extra round to wrap around.</span>
+</span>
+<span class="line" id="L646">            <span class="tok-kw">if</span> (<span class="tok-number">128</span> - d.buf_len &lt; <span class="tok-number">16</span>) {</span>
+<span class="line" id="L647">                d.round(d.buf[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L648">                <span class="tok-builtin">@memset</span>(d.buf[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L649">            }</span>
+<span class="line" id="L650"></span>
+<span class="line" id="L651">            <span class="tok-comment">// Append message length.</span>
+</span>
+<span class="line" id="L652">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L653">            <span class="tok-kw">var</span> len = d.total_len &gt;&gt; <span class="tok-number">5</span>;</span>
+<span class="line" id="L654">            d.buf[<span class="tok-number">127</span>] = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(d.total_len &amp; <span class="tok-number">0x1f</span>)) &lt;&lt; <span class="tok-number">3</span>;</span>
+<span class="line" id="L655">            <span class="tok-kw">while</span> (i &lt; <span class="tok-number">16</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L656">                d.buf[<span class="tok-number">127</span> - i] = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(len &amp; <span class="tok-number">0xff</span>));</span>
+<span class="line" id="L657">                len &gt;&gt;= <span class="tok-number">8</span>;</span>
+<span class="line" id="L658">            }</span>
+<span class="line" id="L659"></span>
+<span class="line" id="L660">            d.round(d.buf[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L661"></span>
+<span class="line" id="L662">            <span class="tok-comment">// May truncate for possible 384 output</span>
+</span>
+<span class="line" id="L663">            <span class="tok-kw">const</span> rr = d.s[<span class="tok-number">0</span> .. params.digest_bits / <span class="tok-number">64</span>];</span>
+<span class="line" id="L664"></span>
+<span class="line" id="L665">            <span class="tok-kw">for</span> (rr, <span class="tok-number">0</span>..) |s, j| {</span>
+<span class="line" id="L666">                mem.writeIntBig(<span class="tok-type">u64</span>, out[<span class="tok-number">8</span> * j ..][<span class="tok-number">0</span>..<span class="tok-number">8</span>], s);</span>
+<span class="line" id="L667">            }</span>
+<span class="line" id="L668">        }</span>
+<span class="line" id="L669"></span>
+<span class="line" id="L670">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">finalResult</span>(d: *Self) [digest_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L671">            <span class="tok-kw">var</span> result: [digest_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L672">            d.final(&amp;result);</span>
+<span class="line" id="L673">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L674">        }</span>
+<span class="line" id="L675"></span>
+<span class="line" id="L676">        <span class="tok-kw">fn</span> <span class="tok-fn">round</span>(d: *Self, b: *<span class="tok-kw">const</span> [<span class="tok-number">128</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L677">            <span class="tok-kw">var</span> s: [<span class="tok-number">80</span>]<span class="tok-type">u64</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L678"></span>
+<span class="line" id="L679">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L680">            <span class="tok-kw">while</span> (i &lt; <span class="tok-number">16</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L681">                s[i] = mem.readIntBig(<span class="tok-type">u64</span>, b[i * <span class="tok-number">8</span> ..][<span class="tok-number">0</span>..<span class="tok-number">8</span>]);</span>
+<span class="line" id="L682">            }</span>
+<span class="line" id="L683">            <span class="tok-kw">while</span> (i &lt; <span class="tok-number">80</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L684">                s[i] = s[i - <span class="tok-number">16</span>] +% s[i - <span class="tok-number">7</span>] +%</span>
+<span class="line" id="L685">                    (math.rotr(<span class="tok-type">u64</span>, s[i - <span class="tok-number">15</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">1</span>)) ^ math.rotr(<span class="tok-type">u64</span>, s[i - <span class="tok-number">15</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">8</span>)) ^ (s[i - <span class="tok-number">15</span>] &gt;&gt; <span class="tok-number">7</span>)) +%</span>
+<span class="line" id="L686">                    (math.rotr(<span class="tok-type">u64</span>, s[i - <span class="tok-number">2</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">19</span>)) ^ math.rotr(<span class="tok-type">u64</span>, s[i - <span class="tok-number">2</span>], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">61</span>)) ^ (s[i - <span class="tok-number">2</span>] &gt;&gt; <span class="tok-number">6</span>));</span>
+<span class="line" id="L687">            }</span>
+<span class="line" id="L688"></span>
+<span class="line" id="L689">            <span class="tok-kw">var</span> v: [<span class="tok-number">8</span>]<span class="tok-type">u64</span> = [_]<span class="tok-type">u64</span>{</span>
+<span class="line" id="L690">                d.s[<span class="tok-number">0</span>],</span>
+<span class="line" id="L691">                d.s[<span class="tok-number">1</span>],</span>
+<span class="line" id="L692">                d.s[<span class="tok-number">2</span>],</span>
+<span class="line" id="L693">                d.s[<span class="tok-number">3</span>],</span>
+<span class="line" id="L694">                d.s[<span class="tok-number">4</span>],</span>
+<span class="line" id="L695">                d.s[<span class="tok-number">5</span>],</span>
+<span class="line" id="L696">                d.s[<span class="tok-number">6</span>],</span>
+<span class="line" id="L697">                d.s[<span class="tok-number">7</span>],</span>
+<span class="line" id="L698">            };</span>
+<span class="line" id="L699"></span>
+<span class="line" id="L700">            <span class="tok-kw">const</span> round0 = <span class="tok-kw">comptime</span> [_]RoundParam512{</span>
+<span class="line" id="L701">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">0x428A2F98D728AE22</span>),</span>
+<span class="line" id="L702">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">1</span>, <span class="tok-number">0x7137449123EF65CD</span>),</span>
+<span class="line" id="L703">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">2</span>, <span class="tok-number">0xB5C0FBCFEC4D3B2F</span>),</span>
+<span class="line" id="L704">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">3</span>, <span class="tok-number">0xE9B5DBA58189DBBC</span>),</span>
+<span class="line" id="L705">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">0x3956C25BF348B538</span>),</span>
+<span class="line" id="L706">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">5</span>, <span class="tok-number">0x59F111F1B605D019</span>),</span>
+<span class="line" id="L707">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">6</span>, <span class="tok-number">0x923F82A4AF194F9B</span>),</span>
+<span class="line" id="L708">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">7</span>, <span class="tok-number">0xAB1C5ED5DA6D8118</span>),</span>
+<span class="line" id="L709">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">8</span>, <span class="tok-number">0xD807AA98A3030242</span>),</span>
+<span class="line" id="L710">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">9</span>, <span class="tok-number">0x12835B0145706FBE</span>),</span>
+<span class="line" id="L711">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">10</span>, <span class="tok-number">0x243185BE4EE4B28C</span>),</span>
+<span class="line" id="L712">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">11</span>, <span class="tok-number">0x550C7DC3D5FFB4E2</span>),</span>
+<span class="line" id="L713">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">12</span>, <span class="tok-number">0x72BE5D74F27B896F</span>),</span>
+<span class="line" id="L714">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">13</span>, <span class="tok-number">0x80DEB1FE3B1696B1</span>),</span>
+<span class="line" id="L715">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">14</span>, <span class="tok-number">0x9BDC06A725C71235</span>),</span>
+<span class="line" id="L716">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">15</span>, <span class="tok-number">0xC19BF174CF692694</span>),</span>
+<span class="line" id="L717">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">16</span>, <span class="tok-number">0xE49B69C19EF14AD2</span>),</span>
+<span class="line" id="L718">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">17</span>, <span class="tok-number">0xEFBE4786384F25E3</span>),</span>
+<span class="line" id="L719">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">18</span>, <span class="tok-number">0x0FC19DC68B8CD5B5</span>),</span>
+<span class="line" id="L720">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">19</span>, <span class="tok-number">0x240CA1CC77AC9C65</span>),</span>
+<span class="line" id="L721">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">20</span>, <span class="tok-number">0x2DE92C6F592B0275</span>),</span>
+<span class="line" id="L722">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">21</span>, <span class="tok-number">0x4A7484AA6EA6E483</span>),</span>
+<span class="line" id="L723">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">22</span>, <span class="tok-number">0x5CB0A9DCBD41FBD4</span>),</span>
+<span class="line" id="L724">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">23</span>, <span class="tok-number">0x76F988DA831153B5</span>),</span>
+<span class="line" id="L725">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">24</span>, <span class="tok-number">0x983E5152EE66DFAB</span>),</span>
+<span class="line" id="L726">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">25</span>, <span class="tok-number">0xA831C66D2DB43210</span>),</span>
+<span class="line" id="L727">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">26</span>, <span class="tok-number">0xB00327C898FB213F</span>),</span>
+<span class="line" id="L728">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">27</span>, <span class="tok-number">0xBF597FC7BEEF0EE4</span>),</span>
+<span class="line" id="L729">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">28</span>, <span class="tok-number">0xC6E00BF33DA88FC2</span>),</span>
+<span class="line" id="L730">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">29</span>, <span class="tok-number">0xD5A79147930AA725</span>),</span>
+<span class="line" id="L731">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">30</span>, <span class="tok-number">0x06CA6351E003826F</span>),</span>
+<span class="line" id="L732">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">31</span>, <span class="tok-number">0x142929670A0E6E70</span>),</span>
+<span class="line" id="L733">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">32</span>, <span class="tok-number">0x27B70A8546D22FFC</span>),</span>
+<span class="line" id="L734">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">33</span>, <span class="tok-number">0x2E1B21385C26C926</span>),</span>
+<span class="line" id="L735">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">34</span>, <span class="tok-number">0x4D2C6DFC5AC42AED</span>),</span>
+<span class="line" id="L736">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">35</span>, <span class="tok-number">0x53380D139D95B3DF</span>),</span>
+<span class="line" id="L737">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">36</span>, <span class="tok-number">0x650A73548BAF63DE</span>),</span>
+<span class="line" id="L738">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">37</span>, <span class="tok-number">0x766A0ABB3C77B2A8</span>),</span>
+<span class="line" id="L739">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">38</span>, <span class="tok-number">0x81C2C92E47EDAEE6</span>),</span>
+<span class="line" id="L740">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">39</span>, <span class="tok-number">0x92722C851482353B</span>),</span>
+<span class="line" id="L741">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">40</span>, <span class="tok-number">0xA2BFE8A14CF10364</span>),</span>
+<span class="line" id="L742">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">41</span>, <span class="tok-number">0xA81A664BBC423001</span>),</span>
+<span class="line" id="L743">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">42</span>, <span class="tok-number">0xC24B8B70D0F89791</span>),</span>
+<span class="line" id="L744">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">43</span>, <span class="tok-number">0xC76C51A30654BE30</span>),</span>
+<span class="line" id="L745">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">44</span>, <span class="tok-number">0xD192E819D6EF5218</span>),</span>
+<span class="line" id="L746">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">45</span>, <span class="tok-number">0xD69906245565A910</span>),</span>
+<span class="line" id="L747">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">46</span>, <span class="tok-number">0xF40E35855771202A</span>),</span>
+<span class="line" id="L748">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">47</span>, <span class="tok-number">0x106AA07032BBD1B8</span>),</span>
+<span class="line" id="L749">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">48</span>, <span class="tok-number">0x19A4C116B8D2D0C8</span>),</span>
+<span class="line" id="L750">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">49</span>, <span class="tok-number">0x1E376C085141AB53</span>),</span>
+<span class="line" id="L751">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">50</span>, <span class="tok-number">0x2748774CDF8EEB99</span>),</span>
+<span class="line" id="L752">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">51</span>, <span class="tok-number">0x34B0BCB5E19B48A8</span>),</span>
+<span class="line" id="L753">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">52</span>, <span class="tok-number">0x391C0CB3C5C95A63</span>),</span>
+<span class="line" id="L754">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">53</span>, <span class="tok-number">0x4ED8AA4AE3418ACB</span>),</span>
+<span class="line" id="L755">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">54</span>, <span class="tok-number">0x5B9CCA4F7763E373</span>),</span>
+<span class="line" id="L756">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">55</span>, <span class="tok-number">0x682E6FF3D6B2B8A3</span>),</span>
+<span class="line" id="L757">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">56</span>, <span class="tok-number">0x748F82EE5DEFB2FC</span>),</span>
+<span class="line" id="L758">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">57</span>, <span class="tok-number">0x78A5636F43172F60</span>),</span>
+<span class="line" id="L759">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">58</span>, <span class="tok-number">0x84C87814A1F0AB72</span>),</span>
+<span class="line" id="L760">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">59</span>, <span class="tok-number">0x8CC702081A6439EC</span>),</span>
+<span class="line" id="L761">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">60</span>, <span class="tok-number">0x90BEFFFA23631E28</span>),</span>
+<span class="line" id="L762">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">61</span>, <span class="tok-number">0xA4506CEBDE82BDE9</span>),</span>
+<span class="line" id="L763">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">62</span>, <span class="tok-number">0xBEF9A3F7B2C67915</span>),</span>
+<span class="line" id="L764">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">63</span>, <span class="tok-number">0xC67178F2E372532B</span>),</span>
+<span class="line" id="L765">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">64</span>, <span class="tok-number">0xCA273ECEEA26619C</span>),</span>
+<span class="line" id="L766">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">65</span>, <span class="tok-number">0xD186B8C721C0C207</span>),</span>
+<span class="line" id="L767">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">66</span>, <span class="tok-number">0xEADA7DD6CDE0EB1E</span>),</span>
+<span class="line" id="L768">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">67</span>, <span class="tok-number">0xF57D4F7FEE6ED178</span>),</span>
+<span class="line" id="L769">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">68</span>, <span class="tok-number">0x06F067AA72176FBA</span>),</span>
+<span class="line" id="L770">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">69</span>, <span class="tok-number">0x0A637DC5A2C898A6</span>),</span>
+<span class="line" id="L771">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">70</span>, <span class="tok-number">0x113F9804BEF90DAE</span>),</span>
+<span class="line" id="L772">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">71</span>, <span class="tok-number">0x1B710B35131C471B</span>),</span>
+<span class="line" id="L773">                roundParam512(<span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">72</span>, <span class="tok-number">0x28DB77F523047D84</span>),</span>
+<span class="line" id="L774">                roundParam512(<span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">73</span>, <span class="tok-number">0x32CAAB7B40C72493</span>),</span>
+<span class="line" id="L775">                roundParam512(<span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">74</span>, <span class="tok-number">0x3C9EBE0A15C9BEBC</span>),</span>
+<span class="line" id="L776">                roundParam512(<span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">75</span>, <span class="tok-number">0x431D67C49C100D4C</span>),</span>
+<span class="line" id="L777">                roundParam512(<span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">76</span>, <span class="tok-number">0x4CC5D4BECB3E42B6</span>),</span>
+<span class="line" id="L778">                roundParam512(<span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">77</span>, <span class="tok-number">0x597F299CFC657E2A</span>),</span>
+<span class="line" id="L779">                roundParam512(<span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">78</span>, <span class="tok-number">0x5FCB6FAB3AD6FAEC</span>),</span>
+<span class="line" id="L780">                roundParam512(<span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">0</span>, <span class="tok-number">79</span>, <span class="tok-number">0x6C44198C4A475817</span>),</span>
+<span class="line" id="L781">            };</span>
+<span class="line" id="L782">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (round0) |r| {</span>
+<span class="line" id="L783">                v[r.h] = v[r.h] +% (math.rotr(<span class="tok-type">u64</span>, v[r.e], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">14</span>)) ^ math.rotr(<span class="tok-type">u64</span>, v[r.e], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">18</span>)) ^ math.rotr(<span class="tok-type">u64</span>, v[r.e], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">41</span>))) +% (v[r.g] ^ (v[r.e] &amp; (v[r.f] ^ v[r.g]))) +% r.k +% s[r.i];</span>
+<span class="line" id="L784"></span>
+<span class="line" id="L785">                v[r.d] = v[r.d] +% v[r.h];</span>
+<span class="line" id="L786"></span>
+<span class="line" id="L787">                v[r.h] = v[r.h] +% (math.rotr(<span class="tok-type">u64</span>, v[r.a], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">28</span>)) ^ math.rotr(<span class="tok-type">u64</span>, v[r.a], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">34</span>)) ^ math.rotr(<span class="tok-type">u64</span>, v[r.a], <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">39</span>))) +% ((v[r.a] &amp; (v[r.b] | v[r.c])) | (v[r.b] &amp; v[r.c]));</span>
+<span class="line" id="L788">            }</span>
+<span class="line" id="L789"></span>
+<span class="line" id="L790">            d.s[<span class="tok-number">0</span>] +%= v[<span class="tok-number">0</span>];</span>
+<span class="line" id="L791">            d.s[<span class="tok-number">1</span>] +%= v[<span class="tok-number">1</span>];</span>
+<span class="line" id="L792">            d.s[<span class="tok-number">2</span>] +%= v[<span class="tok-number">2</span>];</span>
+<span class="line" id="L793">            d.s[<span class="tok-number">3</span>] +%= v[<span class="tok-number">3</span>];</span>
+<span class="line" id="L794">            d.s[<span class="tok-number">4</span>] +%= v[<span class="tok-number">4</span>];</span>
+<span class="line" id="L795">            d.s[<span class="tok-number">5</span>] +%= v[<span class="tok-number">5</span>];</span>
+<span class="line" id="L796">            d.s[<span class="tok-number">6</span>] +%= v[<span class="tok-number">6</span>];</span>
+<span class="line" id="L797">            d.s[<span class="tok-number">7</span>] +%= v[<span class="tok-number">7</span>];</span>
+<span class="line" id="L798">        }</span>
+<span class="line" id="L799">    };</span>
+<span class="line" id="L800">}</span>
+<span class="line" id="L801"></span>
+<span class="line" id="L802"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha384 single&quot;</span> {</span>
+<span class="line" id="L803">    <span class="tok-kw">const</span> h1 = <span class="tok-str">&quot;38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b&quot;</span>;</span>
+<span class="line" id="L804">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha384, h1, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L805"></span>
+<span class="line" id="L806">    <span class="tok-kw">const</span> h2 = <span class="tok-str">&quot;cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7&quot;</span>;</span>
+<span class="line" id="L807">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha384, h2, <span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L808"></span>
+<span class="line" id="L809">    <span class="tok-kw">const</span> h3 = <span class="tok-str">&quot;09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039&quot;</span>;</span>
+<span class="line" id="L810">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha384, h3, <span class="tok-str">&quot;abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu&quot;</span>);</span>
+<span class="line" id="L811">}</span>
+<span class="line" id="L812"></span>
+<span class="line" id="L813"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha384 streaming&quot;</span> {</span>
+<span class="line" id="L814">    <span class="tok-kw">var</span> h = Sha384.init(.{});</span>
+<span class="line" id="L815">    <span class="tok-kw">var</span> out: [<span class="tok-number">48</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L816"></span>
+<span class="line" id="L817">    <span class="tok-kw">const</span> h1 = <span class="tok-str">&quot;38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b&quot;</span>;</span>
+<span class="line" id="L818">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L819">    <span class="tok-kw">try</span> htest.assertEqual(h1, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L820"></span>
+<span class="line" id="L821">    <span class="tok-kw">const</span> h2 = <span class="tok-str">&quot;cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7&quot;</span>;</span>
+<span class="line" id="L822"></span>
+<span class="line" id="L823">    h = Sha384.init(.{});</span>
+<span class="line" id="L824">    h.update(<span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L825">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L826">    <span class="tok-kw">try</span> htest.assertEqual(h2, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L827"></span>
+<span class="line" id="L828">    h = Sha384.init(.{});</span>
+<span class="line" id="L829">    h.update(<span class="tok-str">&quot;a&quot;</span>);</span>
+<span class="line" id="L830">    h.update(<span class="tok-str">&quot;b&quot;</span>);</span>
+<span class="line" id="L831">    h.update(<span class="tok-str">&quot;c&quot;</span>);</span>
+<span class="line" id="L832">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L833">    <span class="tok-kw">try</span> htest.assertEqual(h2, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L834">}</span>
+<span class="line" id="L835"></span>
+<span class="line" id="L836"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha512 single&quot;</span> {</span>
+<span class="line" id="L837">    <span class="tok-kw">const</span> h1 = <span class="tok-str">&quot;cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e&quot;</span>;</span>
+<span class="line" id="L838">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha512, h1, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L839"></span>
+<span class="line" id="L840">    <span class="tok-kw">const</span> h2 = <span class="tok-str">&quot;ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f&quot;</span>;</span>
+<span class="line" id="L841">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha512, h2, <span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L842"></span>
+<span class="line" id="L843">    <span class="tok-kw">const</span> h3 = <span class="tok-str">&quot;8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909&quot;</span>;</span>
+<span class="line" id="L844">    <span class="tok-kw">try</span> htest.assertEqualHash(Sha512, h3, <span class="tok-str">&quot;abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu&quot;</span>);</span>
+<span class="line" id="L845">}</span>
+<span class="line" id="L846"></span>
+<span class="line" id="L847"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha512 streaming&quot;</span> {</span>
+<span class="line" id="L848">    <span class="tok-kw">var</span> h = Sha512.init(.{});</span>
+<span class="line" id="L849">    <span class="tok-kw">var</span> out: [<span class="tok-number">64</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L850"></span>
+<span class="line" id="L851">    <span class="tok-kw">const</span> h1 = <span class="tok-str">&quot;cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e&quot;</span>;</span>
+<span class="line" id="L852">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L853">    <span class="tok-kw">try</span> htest.assertEqual(h1, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L854"></span>
+<span class="line" id="L855">    <span class="tok-kw">const</span> h2 = <span class="tok-str">&quot;ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f&quot;</span>;</span>
+<span class="line" id="L856"></span>
+<span class="line" id="L857">    h = Sha512.init(.{});</span>
+<span class="line" id="L858">    h.update(<span class="tok-str">&quot;abc&quot;</span>);</span>
+<span class="line" id="L859">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L860">    <span class="tok-kw">try</span> htest.assertEqual(h2, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L861"></span>
+<span class="line" id="L862">    h = Sha512.init(.{});</span>
+<span class="line" id="L863">    h.update(<span class="tok-str">&quot;a&quot;</span>);</span>
+<span class="line" id="L864">    h.update(<span class="tok-str">&quot;b&quot;</span>);</span>
+<span class="line" id="L865">    h.update(<span class="tok-str">&quot;c&quot;</span>);</span>
+<span class="line" id="L866">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L867">    <span class="tok-kw">try</span> htest.assertEqual(h2, out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L868">}</span>
+<span class="line" id="L869"></span>
+<span class="line" id="L870"><span class="tok-kw">test</span> <span class="tok-str">&quot;sha512 aligned final&quot;</span> {</span>
+<span class="line" id="L871">    <span class="tok-kw">var</span> block = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** Sha512.block_length;</span>
+<span class="line" id="L872">    <span class="tok-kw">var</span> out: [Sha512.digest_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L873"></span>
+<span class="line" id="L874">    <span class="tok-kw">var</span> h = Sha512.init(.{});</span>
+<span class="line" id="L875">    h.update(&amp;block);</span>
+<span class="line" id="L876">    h.final(out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L877">}</span>
+<span class="line" id="L878"></span>
+</code></pre></body>
+</html>
