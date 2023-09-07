@@ -110,6 +110,20 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 }};
             }
 
+            if (@hasDecl(definition, "__iter__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_iter,
+                    .pfunc = @ptrCast(@constCast(&tp_iter)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__next__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_iternext,
+                    .pfunc = @ptrCast(@constCast(&tp_iternext)),
+                }};
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -186,6 +200,29 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 return result catch return -1;
             }
             return result;
+        }
+
+        fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const iterFunc = @field(definition, "__iter__");
+            const self: *const Instance = @ptrCast(pyself);
+            const result = iterFunc(&self.state);
+            const returnType = @typeInfo(@TypeOf(iterFunc)).Fn.return_type.?;
+            if (@typeInfo(returnType) == .ErrorUnion) {
+                return (tramp.Trampoline(returnType).wrap(result catch return null) catch return null).py;
+            }
+            return (tramp.Trampoline(returnType).wrap(result) catch return null).py;
+        }
+
+        fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const iterFunc = @field(definition, "__next__");
+            var self: *Instance = @constCast(@ptrCast(pyself));
+            const result = iterFunc(@constCast(&self.state));
+            const returnType = @typeInfo(@TypeOf(iterFunc)).Fn.return_type.?;
+            if (@typeInfo(returnType) == .ErrorUnion) {
+                const optional_result = result catch return null;
+                return (tramp.Trampoline(returnType).wrap(optional_result orelse return null) catch return null).py;
+            }
+            return (tramp.Trampoline(returnType).wrap(result orelse return null) catch return null).py;
         }
     };
 }
