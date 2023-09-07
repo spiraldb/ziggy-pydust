@@ -32,7 +32,7 @@ pub const RangeIterator = py.class("Iterable", struct {
         return .{ .next = args.next, .stop = args.stop, .step = args.step };
     }
 
-    pub fn __next__(self: *Self) ?i64 {
+    pub fn __next__(self: *Self) !?i64 {
         if (self.next >= self.stop) {
             return null;
         }

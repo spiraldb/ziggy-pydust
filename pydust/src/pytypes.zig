@@ -193,7 +193,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         }
 
         fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
-            const lenFunc = @field(definition, "__len__");
+            const lenFunc = definition.__len__;
             const self: *const Instance = @ptrCast(pyself);
             const result = @as(isize, @intCast(lenFunc(&self.state)));
             if (@typeInfo(@typeInfo(@TypeOf(lenFunc)).Fn.return_type.?) == .ErrorUnion) {
@@ -204,44 +204,20 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const iterFunc = definition.__iter__;
+            const trampoline = tramp.Trampoline(@typeInfo(@TypeOf(iterFunc)).Fn.return_type.?);
             const self: *const Instance = @ptrCast(pyself);
-            if (tp_iter_internal(
-                iterFunc(&self.state),
-                @typeInfo(@TypeOf(iterFunc)).Fn.return_type.?,
-            ) catch return null) |obj| {
-                return obj.py;
-            } else {
-                return null;
-            }
-        }
-
-        fn tp_iter_internal(result: anytype, comptime returnType: type) !?py.PyObject {
-            const trampoline = tramp.Trampoline(returnType);
-            if (@typeInfo(returnType) == .ErrorUnion) {
-                return try trampoline.wrap(result catch return null);
-            }
-            return try trampoline.wrap(result);
+            const result = iterFunc(&self.state) catch return null;
+            const obj = trampoline.wrap(result) catch return null;
+            return obj.py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const iterFunc = definition.__next__;
+            const trampoline = tramp.Trampoline(@typeInfo(@TypeOf(iterFunc)).Fn.return_type.?);
             const self: *Instance = @constCast(@ptrCast(pyself));
-            if (tp_iternext_internal(
-                iterFunc(&self.state),
-                @typeInfo(@TypeOf(iterFunc)).Fn.return_type.?,
-            ) catch return null) |obj| {
-                return obj.py;
-            } else {
-                return null;
-            }
-        }
-
-        fn tp_iternext_internal(result: anytype, comptime returnType: type) !?py.PyObject {
-            const trampoline = tramp.Trampoline(returnType);
-            if (@typeInfo(returnType) == .ErrorUnion) {
-                return try trampoline.wrap((result catch return null) orelse return null);
-            }
-            return try trampoline.wrap(result orelse return null);
+            const result = iterFunc(&self.state) catch return null;
+            const obj = trampoline.wrap(result orelse return null) catch return null;
+            return obj.py;
         }
     };
 }
