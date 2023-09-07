@@ -2,6 +2,8 @@
 
 Pydust is currently designed to be embedded within a Python [Poetry](https://python-poetry.org/) project. [Reach out](https://github.com/fulcrum-so/ziggy-pydust/issues) if you'd like help integrating Pydust with other build setups.
 
+See also the [generated Zig documentation](https://pydust.fulcrum.so/zig)
+
 ## GitHub Template
 
 By far the easiest way to get started is by creating a project from our GitHub template: [github.com/fulcrum-so/ziggy-pydust-template/](https://github.com/fulcrum-so/ziggy-pydust-template/)

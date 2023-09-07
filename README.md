@@ -40,6 +40,7 @@ Please reach out if you're interested in helping us to expand compatibility.
 ## Getting Started
 
 Pydust docs can be found [here](https://pydust.fulcrum.so).
+Zig documentation (beta) can be found [here](https://pydust.fulcrum.so/zig)
 
 There is also a [template repository](https://github.com/fulcrum-so/ziggy-pydust-template) including Poetry build, Pytest and publishing from Github Actions.
 
