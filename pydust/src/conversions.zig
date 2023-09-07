@@ -1,19 +1,21 @@
 const py = @import("./pydust.zig");
 const tramp = @import("./trampoline.zig");
 
-pub fn toObject(obj: anytype) !py.PyObject {
-    return tramp.Trampoline(@TypeOf(obj)).create(obj);
-}
-
 /// Zig PyObject-like -> ffi.PyObject. Convert a Zig PyObject-like value into a py.PyObject.
 ///  e.g. py.PyObject, py.PyTuple, ffi.PyObject, etc.
 pub fn object(value: anytype) py.PyObject {
     return tramp.Trampoline(@TypeOf(value)).asObject(value);
 }
 
+/// Zig -> Python. Return a Python representation of a Zig object.
+/// If the value is already PyObject-like, this returns the value unchanged.
+pub fn aspy(value: anytype) !py.PyObject {
+    return tramp.Trampoline(@TypeOf(value)).wrap(value);
+}
+
 /// Zig -> Python. Convert a Zig object into a Python object. Returns a new object.
 pub fn create(value: anytype) !py.PyObject {
-    return tramp.Trampoline(@TypeOf(value)).create(value);
+    return tramp.Trampoline(@TypeOf(value)).wrapNew(value);
 }
 
 /// Python -> Zig. Return a Zig object representing the Python object.

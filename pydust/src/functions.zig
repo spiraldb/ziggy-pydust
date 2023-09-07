@@ -161,11 +161,11 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
 
                 var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
                 const result = @call(.always_inline, func, callArgs);
-                return resultTrampoline.create(result);
+                return resultTrampoline.wrap(result);
             } else {
                 var callArgs = if (sig.selfParam) |_| .{self} else .{};
                 const result = @call(.always_inline, func, callArgs);
-                return resultTrampoline.create(result);
+                return resultTrampoline.wrap(result);
             }
         }
 
@@ -247,7 +247,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             const self = if (sig.selfParam) |Self| try tramp.Trampoline(Self).unwrap(pyself) else null;
             var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
             const result = @call(.always_inline, func, callArgs);
-            return tramp.Trampoline(sig.returnType).create(result);
+            return tramp.Trampoline(sig.returnType).wrap(result);
         }
     };
 }

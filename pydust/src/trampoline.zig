@@ -90,28 +90,38 @@ pub fn Trampoline(comptime T: type) type {
             return false;
         }
 
-        /// Wraps a Zig object into a new Python object.
+        /// Wraps a Zig object into a Python object.
         /// Always creates a new strong reference.
-        pub inline fn create(obj: T) !py.PyObject {
+        pub inline fn wrapNew(obj: T) !py.PyObject {
+            // For existing object types, we just incref and return the object.
+            if (isObjectLike()) {
+                const pyobj = asObject(obj);
+                pyobj.incref();
+                return pyobj;
+            }
+
+            return wrap(obj);
+        }
+
+        /// Wraps a Zig object into a new Python object.
+        pub inline fn wrap(obj: T) !py.PyObject {
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
                 const value = obj catch |err| return err;
-                return Trampoline(typeInfo.ErrorUnion.payload).create(value);
+                return Trampoline(typeInfo.ErrorUnion.payload).wrap(value);
             }
 
             // Early return to handle optionals
             if (typeInfo == .Optional) {
                 const value = obj orelse return py.None();
-                return Trampoline(typeInfo.Optional.child).create(value);
+                return Trampoline(typeInfo.Optional.child).wrap(value);
             }
 
             // Shortcut for object types
             if (isObjectLike()) {
-                const pyobj = asObject(obj);
-                pyobj.incref();
-                return pyobj;
+                return asObject(obj);
             }
 
             switch (@typeInfo(T)) {
@@ -286,7 +296,7 @@ pub fn Trampoline(comptime T: type) type {
             const kwargs = try py.PyDict.new();
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
-                const arg = try Trampoline(field.type).create(@field(obj, field.name));
+                const arg = try Trampoline(field.type).wrap(@field(obj, field.name));
                 if (field.default_value == null) {
                     // It's an arg
                     try args.setOwnedItem(i, arg);

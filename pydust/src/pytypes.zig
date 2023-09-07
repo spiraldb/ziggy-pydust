@@ -193,31 +193,24 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         }
 
         fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
-            const lenFunc = definition.__len__;
             const self: *const Instance = @ptrCast(pyself);
-            const result = @as(isize, @intCast(lenFunc(&self.state)));
-            if (@typeInfo(@typeInfo(@TypeOf(lenFunc)).Fn.return_type.?) == .ErrorUnion) {
-                return result catch return -1;
-            }
-            return result;
+            const result = definition.__len__(&self.state) catch return -1;
+            return @as(isize, @intCast(result));
         }
 
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const iterFunc = definition.__iter__;
-            const trampoline = tramp.Trampoline(@typeInfo(@TypeOf(iterFunc)).Fn.return_type.?);
-            const self: *const Instance = @ptrCast(pyself);
-            const result = iterFunc(&self.state) catch return null;
-            const obj = trampoline.wrap(result) catch return null;
-            return obj.py;
+            const self: *Instance = @ptrCast(pyself);
+            const iterator = definition.__iter__(&self.state) catch return null;
+            return (py.aspy(iterator) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const iterFunc = definition.__next__;
-            const trampoline = tramp.Trampoline(@typeInfo(@TypeOf(iterFunc)).Fn.return_type.?);
-            const self: *Instance = @constCast(@ptrCast(pyself));
-            const result = iterFunc(&self.state) catch return null;
-            const obj = trampoline.wrap(result orelse return null) catch return null;
-            return obj.py;
+            const self: *Instance = @ptrCast(pyself);
+            const optionalNext = definition.__next__(&self.state) catch return null;
+            if (optionalNext) |next| {
+                return (py.aspy(next) catch return null).py;
+            }
+            return null;
         }
     };
 }
