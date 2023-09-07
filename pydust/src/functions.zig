@@ -358,11 +358,7 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
                     try sigargs.append("*");
                 }
 
-                if (@typeInfo(field.type) == .Pointer and @typeInfo(field.type).Pointer.child == u8) {
-                    try sigargs.append(std.fmt.comptimePrint("{s}=\"{s}\"", .{ field.name, @as(*const field.type, @alignCast(@ptrCast(def))).* }));
-                } else {
-                    try sigargs.append(std.fmt.comptimePrint("{s}={any}", .{ field.name, @as(*const field.type, @alignCast(@ptrCast(def))).* }));
-                }
+                try sigargs.append(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, def) }));
             } else {
                 // We have an arg
                 try sigargs.append(field.name);
@@ -376,4 +372,19 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
     }
 
     return sigargs.constSlice();
+}
+
+fn valueToStr(comptime T: type, value: *const anyopaque) []const u8 {
+    return switch (@typeInfo(T)) {
+        inline .Pointer => |p| p: {
+            break :p switch (p.child) {
+                inline u8 => std.fmt.comptimePrint("\"{s}\"", .{@as(*const T, @alignCast(@ptrCast(value))).*}),
+                inline else => "...",
+            };
+        },
+        inline .Bool => if (@as(*const bool, @ptrCast(value)).*) "True" else "False",
+        inline .Struct => "...",
+        inline .Optional => if (value == null) "None" else "...",
+        inline else => std.fmt.comptimePrint("{any}", .{@as(*const T, @alignCast(@ptrCast(value))).*}),
+    };
 }
