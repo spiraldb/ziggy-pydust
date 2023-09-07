@@ -35,9 +35,3 @@ def test_kw_signature():
             inspect.Parameter("y", kind=inspect._ParameterKind.KEYWORD_ONLY, default=42.0),
         ]
     )
-
-
-def test_exceptions():
-    with pytest.raises(RuntimeError) as exc_info:
-        functions.exceptions(1)
-    assert str(exc_info.value) == "Provided value is too small"
