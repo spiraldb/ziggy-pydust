@@ -17,15 +17,3 @@ to be a kwarg argument if it has a default value associated with it for a functi
 ```
 
 The generated signature will be `(x, /, *, y=42.0)`
-
-## Exceptions
-
-Pydust wraps all CPython exception types for convenience and lets users
-define functions that return zig error types. Exception method will set appropriate
-python exception to the interpreter and propagate a null return value.
-
-```zig
---8<-- "example/functions.zig:exceptions"
-```
-
-All available apis are explaine in [Exceptions](exceptions.md).
