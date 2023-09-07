@@ -32,23 +32,22 @@ pub const PyObject = extern struct {
 
     /// Call this object with the given args and kwargs.
     pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
-        // FIXME(ngates): avoid creating args and kwargs tuples all the time.
-        var argsPy: ?*ffi.PyObject = null;
-        if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
-            argsPy = (try py.PyTuple.new(0)).obj.py;
-            // FIXME(ngates): decref
+        const argsPy = if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
+            try py.PyTuple.new(0);
         } else {
-            argsPy = (try py.PyTuple.checked(try py.create(args))).obj.py;
-        }
+            try py.PyTuple.checked(try py.create(args));
+        };
+        defer argsPy.decref();
 
-        var kwargsPy: ?*ffi.PyObject = null;
-        if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs != null) {
-            const kwargsObj = try py.dict(try py.create(kwargs));
-            //defer kwargsObj.decref();
-            kwargsPy = kwargsObj.obj.py;
-        }
+        // FIXME(ngates): avoid creating empty dict for kwargs
+        const kwargsPy = if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
+            try py.PyDict.new(0);
+        } else {
+            try py.PyDict.checked(try py.create(kwargs));
+        };
+        defer kwargsPy.decref();
 
-        const result = ffi.PyObject_Call(self.py, argsPy, kwargsPy) orelse return PyError.Propagate;
+        const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.Propagate;
         return tramp.Trampoline(R).unwrap(.{ .py = result });
     }
 
