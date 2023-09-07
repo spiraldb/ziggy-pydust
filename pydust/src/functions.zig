@@ -193,7 +193,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             const Args = sig.argsParam.?; // We must have args if we know we have kwargs
             var args: Args = undefined;
 
-            if (pyargs.len < argCount(Args)) {
+            if (pyargs.len != argCount(Args)) {
                 return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
             }
 
@@ -357,7 +357,12 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
                     // Marker for start of keyword only args
                     try sigargs.append("*");
                 }
-                try sigargs.append(std.fmt.comptimePrint("{s}={any}", .{ field.name, @as(*const field.type, @alignCast(@ptrCast(def))).* }));
+
+                if (@typeInfo(field.type) == .Pointer and @typeInfo(field.type).Pointer.child == u8) {
+                    try sigargs.append(std.fmt.comptimePrint("{s}=\"{s}\"", .{ field.name, @as(*const field.type, @alignCast(@ptrCast(def))).* }));
+                } else {
+                    try sigargs.append(std.fmt.comptimePrint("{s}={any}", .{ field.name, @as(*const field.type, @alignCast(@ptrCast(def))).* }));
+                }
             } else {
                 // We have an arg
                 try sigargs.append(field.name);
