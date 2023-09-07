@@ -17,12 +17,6 @@ pub const PyType = extern struct {
 pub const PyObject = extern struct {
     py: *ffi.PyObject,
 
-    /// Converts any PyObject-like value into its PyObject representation.
-    /// No new references are created.
-    pub fn of(obj: anytype) PyObject {
-        return tramp.Trampoline(@TypeOf(obj)).wrapObject(obj);
-    }
-
     pub fn incref(self: PyObject) void {
         ffi.Py_INCREF(self.py);
     }
@@ -38,13 +32,15 @@ pub const PyObject = extern struct {
 
     /// Call this object with the given args and kwargs.
     pub fn call(self: PyObject, comptime R: type, args: anytype, kwargs: anytype) !R {
-        const argsObj = try tramp.Trampoline(@TypeOf(args)).wrap(args);
+        const argsObj = try py.PyTuple.create(args);
         defer argsObj.decref();
-        const argsPy = if (try py.len(argsObj) == 0) null else (try py.PyTuple.of(argsObj)).obj.py;
 
-        const kwargsObj = try tramp.Trampoline(@TypeOf(kwargs)).wrap(kwargs);
+        const argsPy = if (try py.len(argsObj) == 0) null else argsObj.obj.py;
+
+        const kwargsObj = try py.PyDict.create(kwargs);
         defer kwargsObj.decref();
-        const kwargsPy = if (try py.len(kwargsObj) == 0) null else (try py.PyDict.of(kwargsObj)).obj.py;
+
+        const kwargsPy = if (try py.len(kwargsObj) == 0) null else kwargsObj.obj.py;
 
         const result = ffi.PyObject_Call(self.py, argsPy, kwargsPy) orelse return PyError.Propagate;
         return tramp.Trampoline(R).unwrap(.{ .py = result });
@@ -83,6 +79,35 @@ pub const PyObject = extern struct {
         return .{ .py = ffi.PyObject_Repr(@ptrCast(self)) orelse return PyError.Propagate };
     }
 };
+
+pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, comptime Self: type) type {
+    const PyCheck = @field(ffi, prefix ++ "_Check");
+
+    return struct {
+        /// Checked conversion from a PyObject.
+        pub fn checked(obj: py.PyObject) !Self {
+            if (PyCheck(obj.py) == 0) {
+                return py.TypeError.raise("expected " ++ name);
+            }
+            return .{ .obj = obj };
+        }
+
+        /// Unchecked conversion from a PyObject.
+        pub fn unchecked(obj: py.PyObject) !Self {
+            return .{ .obj = obj };
+        }
+
+        /// Increment the object's refcnt.
+        pub fn incref(self: Self) void {
+            self.obj.incref();
+        }
+
+        /// Decrement the object's refcnt.
+        pub fn decref(self: Self) void {
+            self.obj.decref();
+        }
+    };
+}
 
 test "call" {
     py.initialize();

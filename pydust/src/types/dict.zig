@@ -1,5 +1,6 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 
@@ -7,40 +8,30 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyDict = extern struct {
     obj: py.PyObject,
 
-    pub fn of(obj: py.PyObject) !PyDict {
-        // NOTE(ngates): should we be using CheckExact? Which of our functions break when passed a subclass of dict?
-        if (ffi.PyDict_Check(obj.py) == 0) {
-            return py.TypeError.raise("expected dict");
+    pub usingnamespace PyObjectMixin("dict", "PyDict", @This());
+
+    /// Create a dictionary from a Zig object
+    pub fn create(value: anytype) !PyDict {
+        const s = @typeInfo(@TypeOf(value)).Struct;
+
+        const dict = try py.PyDict.new();
+        inline for (s.fields) |field| {
+            // Recursively create the field values
+            try dict.setItem(field.name, try py.create(@field(value, field.name)));
         }
-        return .{ .obj = obj };
-    }
-
-    pub fn incref(self: PyDict) void {
-        self.obj.incref();
-    }
-
-    pub fn decref(self: PyDict) void {
-        self.obj.decref();
-    }
-
-    /// Create a PyDict from the given struct.
-    pub fn from(value: anytype) !PyDict {
-        return switch (@typeInfo(@TypeOf(value))) {
-            .Struct => of(try py.toObject(value)),
-            else => @compileError("PyDict can only be created from struct types"),
-        };
+        return dict;
     }
 
     /// Return a new empty dictionary.
     pub fn new() !PyDict {
         const dict = ffi.PyDict_New() orelse return PyError.Propagate;
-        return of(.{ .py = dict });
+        return PyDict.unchecked(.{ .py = dict });
     }
 
     /// Return a new dictionary that contains the same key-value pairs as p.
     pub fn copy(self: PyDict) !PyDict {
         const dict = ffi.PyDict_Copy(self.obj.py) orelse return PyError.Propagate;
-        return of(.{ .py = dict });
+        return PyDict.unchecked(.{ .py = dict });
     }
 
     /// Empty an existing dictionary of all key-value pairs.
@@ -56,7 +47,7 @@ pub const PyDict = extern struct {
     /// Determine if dictionary p contains key.
     /// This is equivalent to the Python expression `key in p`.
     pub fn contains(self: PyDict, key: anytype) !bool {
-        const keyObj = try py.toObject(key);
+        const keyObj = try py.create(key);
         defer keyObj.decref();
 
         const result = ffi.PyDict_Contains(self.obj.py, keyObj.py);
@@ -67,19 +58,19 @@ pub const PyDict = extern struct {
     /// Insert val into the dictionary p with a key of key.
     pub fn setItem(self: PyDict, key: anytype, value: anytype) !void {
         // toObject creates a new reference to the value object, so we delegate to setOwnedItem.
-        const valueObj = try py.toObject(value);
+        const valueObj = try py.create(value);
         return self.setOwnedItem(key, valueObj);
     }
 
     /// Insert object-like value into the dictionary p with a key of key.
     /// The dictionary takes ownership of the value.
     pub fn setOwnedItem(self: PyDict, key: anytype, value: anytype) !void {
-        const keyObj = try py.toObject(key);
+        const keyObj = try py.create(key);
         defer keyObj.decref();
 
-        const valueObj = py.PyObject.of(value);
         // Since PyDict_setItem creates a new strong reference, we decref this reference
         // such that we give the effect of setOwnedItem stealing the reference.
+        const valueObj = py.object(value);
         defer valueObj.decref();
 
         const result = ffi.PyDict_SetItem(self.obj.py, keyObj.py, valueObj.py);
@@ -88,7 +79,7 @@ pub const PyDict = extern struct {
 
     /// Remove the entry in dictionary p with key key.
     pub fn delItem(self: PyDict, key: anytype) !void {
-        const keyObj = try py.toObject(key);
+        const keyObj = try py.create(key);
         defer keyObj.decref();
 
         if (ffi.PyDict_DelItem(self.obj.py, keyObj.py) < 0) {
@@ -99,7 +90,7 @@ pub const PyDict = extern struct {
     /// Return the object from dictionary p which has a key key.
     /// Returned value is a borrowed reference.
     pub fn getItem(self: PyDict, comptime T: type, key: anytype) !?T {
-        const keyObj = try py.toObject(key);
+        const keyObj = try py.create(key);
         defer keyObj.decref();
 
         if (ffi.PyDict_GetItemWithError(self.obj.py, keyObj.py)) |item| {
@@ -167,7 +158,7 @@ test "PyDict set and get" {
     const pd = try PyDict.new();
     defer pd.decref();
 
-    const bar = try py.PyString.fromSlice("bar");
+    const bar = try py.PyString.create("bar");
     try pd.setOwnedItem("foo", bar);
 
     try testing.expect(try pd.contains("foo"));
@@ -189,7 +180,7 @@ test "PyDict from" {
     py.initialize();
     defer py.finalize();
 
-    const pd = try PyDict.from(.{ .foo = 123, .bar = false });
+    const pd = try PyDict.create(.{ .foo = 123, .bar = false });
     defer pd.decref();
 
     try testing.expectEqual(@as(u32, 123), (try pd.getItem(u32, "foo")).?);
@@ -202,7 +193,7 @@ test "PyDict iterator" {
     const pd = try PyDict.new();
     defer pd.decref();
 
-    const foo = try py.PyString.fromSlice("foo");
+    const foo = try py.PyString.create("foo");
     defer foo.decref();
 
     try pd.setItem("bar", foo);

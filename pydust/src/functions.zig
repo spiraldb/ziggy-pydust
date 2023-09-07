@@ -159,11 +159,11 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
 
                 var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
                 const result = @call(.always_inline, func, callArgs);
-                return resultTrampoline.wrap(result);
+                return resultTrampoline.create(result);
             } else {
                 var callArgs = if (sig.selfParam) |_| .{self} else .{};
                 const result = @call(.always_inline, func, callArgs);
-                return resultTrampoline.wrap(result);
+                return resultTrampoline.create(result);
             }
         }
 
@@ -199,7 +199,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
                 if (field.default_value) |def_value| {
                     // We have a kwarg.
-                    const fieldName = try py.PyString.fromSlice(field.name);
+                    const fieldName = try py.PyString.create(field.name);
                     defer fieldName.decref();
 
                     const defaultValue: *field.type = @alignCast(@ptrCast(@constCast(def_value)));
@@ -245,7 +245,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             const self = if (sig.selfParam) |Self| try tramp.Trampoline(Self).unwrap(pyself) else null;
             var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
             const result = @call(.always_inline, func, callArgs);
-            return tramp.Trampoline(sig.returnType).wrap(result);
+            return tramp.Trampoline(sig.returnType).create(result);
         }
     };
 }

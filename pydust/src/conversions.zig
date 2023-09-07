@@ -2,17 +2,28 @@ const py = @import("./pydust.zig");
 const tramp = @import("./trampoline.zig");
 
 pub fn toObject(obj: anytype) !py.PyObject {
-    return tramp.Trampoline(@TypeOf(obj)).wrap(obj);
+    return tramp.Trampoline(@TypeOf(obj)).create(obj);
 }
 
-/// Return a Zig object representing the Python object. Does not steal a reference.
+/// Zig PyObject-like -> ffi.PyObject. Convert a Zig PyObject-like value into a py.PyObject.
+///  e.g. py.PyObject, py.PyTuple, ffi.PyObject, etc.
+pub fn object(value: anytype) py.PyObject {
+    return tramp.Trampoline(@TypeOf(value)).asObject(value);
+}
+
+/// Zig -> Python. Convert a Zig object into a Python object. Returns a new object.
+pub fn create(value: anytype) !py.PyObject {
+    return tramp.Trampoline(@TypeOf(value)).create(value);
+}
+
+/// Python -> Zig. Return a Zig object representing the Python object.
 pub fn as(comptime T: type, obj: anytype) !T {
-    return tramp.Trampoline(T).unwrap(py.PyObject.of(obj));
+    return tramp.Trampoline(T).unwrap(object(obj));
 }
 
-/// Convert a Python object into a Zig object. Stealing the reference.
+/// Python -> Zig. Convert a Python object into a Zig object. Stealing the reference.
 pub fn into(comptime T: type, obj: anytype) !T {
-    return tramp.Trampoline(T).unwrapInto(py.PyObject.of(obj));
+    return tramp.Trampoline(T).unwrapInto(object(obj));
 }
 
 const testing = @import("std").testing;
@@ -23,7 +34,7 @@ test "as py -> zig" {
     defer py.finalize();
 
     // Start with a Python object
-    const str = try py.PyString.fromSlice("hello");
+    const str = try py.PyString.create("hello");
     try expect(py.refcnt(str) == 1);
 
     // Return a slice representation of it, and ensure the refcnt is untouched
@@ -40,7 +51,7 @@ test "into py -> zig" {
     defer py.finalize();
 
     // Start with a Python object
-    const str = try py.PyString.fromSlice("hello");
+    const str = try py.PyString.create("hello");
 
     str.incref();
     try expect(py.refcnt(str) == 2);

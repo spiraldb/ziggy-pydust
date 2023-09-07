@@ -3,6 +3,8 @@ const Allocator = @import("std").mem.Allocator;
 const mem = @import("../mem.zig");
 const ffi = @import("../ffi.zig");
 const py = @import("../types.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+
 const PyError = @import("../errors.zig").PyError;
 
 pub const PyModule = extern struct {

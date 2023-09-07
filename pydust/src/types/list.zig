@@ -1,5 +1,7 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+
 const ffi = py.ffi;
 const PyObject = py.PyObject;
 const PyLong = py.PyLong;
@@ -10,12 +12,7 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyList = extern struct {
     obj: py.PyObject,
 
-    pub fn of(obj: py.PyObject) PyList {
-        if (ffi.PyList_Check(obj.py) == 0) {
-            return py.TypeError.raise("expected list");
-        }
-        return .{ .obj = obj };
-    }
+    pub usingnamespace PyObjectMixin("list", "PyList", @This());
 
     pub fn new(size: usize) !PyList {
         const list = ffi.PyList_New(@intCast(size)) orelse return PyError.Propagate;
@@ -47,22 +44,20 @@ pub const PyList = extern struct {
     /// This function “steals” a reference to item and discards a reference to an item already in the list at the affected position.
     pub fn setOwnedItem(self: PyList, pos: isize, value: anytype) !void {
         // Since this function steals the reference, it can only accept object-like values.
-        const valueObj = py.PyObject.of(value);
-        if (ffi.PyList_SetItem(self.obj.py, pos, valueObj.py) < 0) {
+        if (ffi.PyList_SetItem(self.obj.py, pos, py.object(value).py) < 0) {
             return PyError.Propagate;
         }
     }
 
     /// Set the item at the given position.
-    /// This function acquires its own reference to value.
     pub fn setItem(self: PyList, pos: isize, value: anytype) !void {
-        const valueObj = try py.toObject(value);
+        const valueObj = try py.create(value);
         return self.setOwnedItem(pos, valueObj);
     }
 
     // Insert the item item into list list in front of index idx.
     pub fn insert(self: PyList, idx: isize, value: anytype) !void {
-        const valueObj = try py.toObject(value);
+        const valueObj = try py.create(value);
         defer valueObj.decref();
         if (ffi.PyList_Insert(self.obj.py, idx, valueObj.py) < 0) {
             return PyError.Propagate;
@@ -71,8 +66,9 @@ pub const PyList = extern struct {
 
     // Append the object item at the end of list list.
     pub fn append(self: PyList, value: anytype) !void {
-        const valueObj = try py.toObject(value);
+        const valueObj = try py.create(value);
         defer valueObj.decref();
+
         if (ffi.PyList_Append(self.obj.py, valueObj.py) < 0) {
             return PyError.Propagate;
         }
@@ -93,15 +89,8 @@ pub const PyList = extern struct {
     }
 
     pub fn toTuple(self: PyList) !py.PyTuple {
-        return try py.PyTuple.of(.{ .py = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.Propagate });
-    }
-
-    pub fn incref(self: PyList) void {
-        self.obj.incref();
-    }
-
-    pub fn decref(self: PyList) void {
-        self.obj.decref();
+        const pytuple = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.Propagate;
+        return try py.PyTuple.unchecked(.{ .py = pytuple });
     }
 };
 

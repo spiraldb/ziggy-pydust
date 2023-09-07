@@ -1,5 +1,6 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyLong = @import("long.zig").PyLong;
 const PyFloat = @import("float.zig").PyFloat;
@@ -10,13 +11,22 @@ const seq = @import("./sequence.zig");
 pub const PyTuple = extern struct {
     obj: PyObject,
 
+    pub usingnamespace PyObjectMixin("tuple", "PyTuple", @This());
     pub usingnamespace seq.SequenceMixin(@This());
 
-    pub fn of(obj: py.PyObject) !PyTuple {
-        if (ffi.PyTuple_Check(obj.py) == 0) {
-            return py.TypeError.raise("expected tuple");
+    /// Construct a PyTuple from the given Zig tuple.
+    pub fn create(values: anytype) !PyTuple {
+        const s = @typeInfo(@TypeOf(values)).Struct;
+        if (!s.is_tuple) {
+            @compileError("Expected a struct tuple");
         }
-        return .{ .obj = obj };
+
+        const tuple = try new(s.fields.len);
+        inline for (s.fields, 0..) |field, i| {
+            // Recursively unwrap the field value
+            try tuple.setItem(@intCast(i), try py.create(@field(values, field.name)));
+        }
+        return tuple;
     }
 
     pub fn new(size: usize) !PyTuple {
@@ -24,21 +34,13 @@ pub const PyTuple = extern struct {
         return .{ .obj = .{ .py = tuple } };
     }
 
-    /// Construct a PyTuple from the given Zig tuple.
-    pub fn from(values: anytype) !PyTuple {
-        if (!@typeInfo(@TypeOf(values)).Struct.is_tuple) {
-            @compileError("Must pass a Zig tuple into PyTuple.from");
-        }
-        return of(try py.toObject(values));
-    }
-
     pub fn length(self: *const PyTuple) usize {
         return @intCast(ffi.PyTuple_Size(self.obj.py));
     }
 
-    pub fn getItem(self: *const PyTuple, idx: usize) !PyObject {
+    pub fn getItem(self: *const PyTuple, comptime T: type, idx: isize) !T {
         if (ffi.PyTuple_GetItem(self.obj.py, @intCast(idx))) |item| {
-            return .{ .py = item };
+            return py.as(T, py.PyObject{ .py = item });
         } else {
             return PyError.Propagate;
         }
@@ -62,33 +64,25 @@ pub const PyTuple = extern struct {
         // See setOwnedItem for an implementation that does steal.
         value.incref();
     }
-
-    pub fn incref(self: PyTuple) void {
-        self.obj.incref();
-    }
-
-    pub fn decref(self: PyTuple) void {
-        self.obj.decref();
-    }
 };
 
 test "PyTuple" {
     py.initialize();
     defer py.finalize();
 
-    const first = try PyLong.from(c_long, 1);
+    const first = try PyLong.create(1);
     defer first.decref();
-    const second = try PyFloat.from(f64, 1.0);
+    const second = try PyFloat.create(1.0);
     defer second.decref();
 
-    var tuple = try PyTuple.from(.{ first.obj, second.obj });
+    var tuple = try PyTuple.create(.{ first.obj, second.obj });
     defer tuple.decref();
 
     try std.testing.expectEqual(@as(usize, 2), tuple.length());
 
     try std.testing.expectEqual(@as(usize, 0), try tuple.index(second));
 
-    try std.testing.expectEqual(@as(c_long, 1), try (try PyLong.of(try tuple.getItem(0))).as(c_long));
+    try std.testing.expectEqual(@as(c_long, 1), try tuple.getItem(c_long, 0));
     try tuple.setItem(0, second.obj);
-    try std.testing.expectEqual(@as(f64, 1.0), try (try PyFloat.of(try tuple.getItem(0))).as(f64));
+    try std.testing.expectEqual(@as(f64, 1.0), try tuple.getItem(f64, 0));
 }

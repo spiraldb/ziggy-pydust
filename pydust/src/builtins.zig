@@ -38,8 +38,7 @@ pub fn is_none(object: anytype) bool {
 
 /// Get the length of the given object. Equivalent to len(obj) in Python.
 pub fn len(object: anytype) !usize {
-    const obj = py.PyObject.of(object);
-    const length = ffi.PyObject_Length(obj.py);
+    const length = ffi.PyObject_Length(py.object(object).py);
     if (length < 0) return PyError.Propagate;
     return @intCast(length);
 }
@@ -51,7 +50,7 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
 
 /// Return the reference count of the object.
 pub fn refcnt(object: anytype) isize {
-    const pyobj = py.PyObject.of(object);
+    const pyobj = py.object(object);
     return pyobj.py.ob_refcnt;
 }
 

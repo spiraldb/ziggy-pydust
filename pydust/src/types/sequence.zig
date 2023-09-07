@@ -6,15 +6,13 @@ const PyError = @import("../errors.zig").PyError;
 pub fn SequenceMixin(comptime Self: type) type {
     return struct {
         pub fn contains(self: Self, value: anytype) !bool {
-            const valueObj = py.PyObject.of(value);
-            const result = ffi.PySequence_Contains(self.obj.py, valueObj.py);
+            const result = ffi.PySequence_Contains(self.obj.py, py.object(value).py);
             if (result < 0) return PyError.Propagate;
             return result == 1;
         }
 
         pub fn index(self: Self, value: anytype) !usize {
-            const valueObj = py.PyObject.of(value);
-            const idx = ffi.PySequence_Index(self.obj.py, valueObj.py);
+            const idx = ffi.PySequence_Index(self.obj.py, py.object(value).py);
             if (idx < 0) return PyError.Propagate;
             return @intCast(idx);
         }

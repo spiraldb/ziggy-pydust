@@ -14,10 +14,16 @@ management to assist with development.
 
 When converting from Python to Zig types:
 
-* `.as(T)` - return a view of the object *as* the given type. This will leave the `refcnt` of the original object untouched.
-* `.into(T)` - convert the object *into* the given type. This will decref the Python object when converting into Zig primitive
+* `.as(T, anytype)` - return a view of the object *as* the given type. This will leave the `refcnt` of the original object untouched.
+* `.into(T, anytype)` - convert the object *into* the given type. This will decref the Python object when converting into Zig primitive
 types. This is also known as "stealing the reference", or "moving the reference". After calling `into` on an object, you 
 should consider the original object to be invalid.
+
+When creating Python types from Zig types:
+
+* `.of(anytype)` - create a new Python object from a Zig type.
+* `PyFoo.checked(py.PyObject)` - checks a `PyObject` is indeed a `PyFoo` before wrapping it up as one.
+* `PyFoo.unchecked(py.PyObject)` - wraps a `PyObject` as a `PyFoo` without checking the type.
 
 ## Type Conversions
 
