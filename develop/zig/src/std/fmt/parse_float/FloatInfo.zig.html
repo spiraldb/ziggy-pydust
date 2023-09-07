@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>fmt/parse_float/FloatInfo.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-comment">// Minimum exponent that for a fast path case, or `-⌊(MANTISSA_EXPLICIT_BITS+1)/log2(5)⌋`</span>
+</span>
+<span class="line" id="L5">min_exponent_fast_path: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-comment">// Maximum exponent that for a fast path case, or `⌊(MANTISSA_EXPLICIT_BITS+1)/log2(5)⌋`</span>
+</span>
+<span class="line" id="L8">max_exponent_fast_path: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-comment">// Maximum exponent that can be represented for a disguised-fast path case.</span>
+</span>
+<span class="line" id="L11"><span class="tok-comment">// This is `MAX_EXPONENT_FAST_PATH + ⌊(MANTISSA_EXPLICIT_BITS+1)/log2(10)⌋`</span>
+</span>
+<span class="line" id="L12">max_exponent_fast_path_disguised: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-comment">// Maximum mantissa for the fast-path (`1 &lt;&lt; 53` for f64).</span>
+</span>
+<span class="line" id="L15">max_mantissa_fast_path: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17"><span class="tok-comment">// Smallest decimal exponent for a non-zero value. Including subnormals.</span>
+</span>
+<span class="line" id="L18">smallest_power_of_ten: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20"><span class="tok-comment">// Largest decimal exponent for a non-infinite value.</span>
+</span>
+<span class="line" id="L21">largest_power_of_ten: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23"><span class="tok-comment">// The number of bits in the significand, *excluding* the hidden bit.</span>
+</span>
+<span class="line" id="L24">mantissa_explicit_bits: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26"><span class="tok-comment">// Minimum exponent value `-(1 &lt;&lt; (EXP_BITS - 1)) + 1`.</span>
+</span>
+<span class="line" id="L27">minimum_exponent: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29"><span class="tok-comment">// Round-to-even only happens for negative values of q</span>
+</span>
+<span class="line" id="L30"><span class="tok-comment">// when q ≥ −4 in the 64-bit case and when q ≥ −17 in</span>
+</span>
+<span class="line" id="L31"><span class="tok-comment">// the 32-bitcase.</span>
+</span>
+<span class="line" id="L32"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L33"><span class="tok-comment">// When q ≥ 0,we have that 5^q ≤ 2m+1. In the 64-bit case,we</span>
+</span>
+<span class="line" id="L34"><span class="tok-comment">// have 5^q ≤ 2m+1 ≤ 2^54 or q ≤ 23. In the 32-bit case,we have</span>
+</span>
+<span class="line" id="L35"><span class="tok-comment">// 5^q ≤ 2m+1 ≤ 2^25 or q ≤ 10.</span>
+</span>
+<span class="line" id="L36"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L37"><span class="tok-comment">// When q &lt; 0, we have w ≥ (2m+1)×5^−q. We must have that w &lt; 2^64</span>
+</span>
+<span class="line" id="L38"><span class="tok-comment">// so (2m+1)×5^−q &lt; 2^64. We have that 2m+1 &gt; 2^53 (64-bit case)</span>
+</span>
+<span class="line" id="L39"><span class="tok-comment">// or 2m+1 &gt; 2^24 (32-bit case). Hence,we must have 2^53×5^−q &lt; 2^64</span>
+</span>
+<span class="line" id="L40"><span class="tok-comment">// (64-bit) and 2^24×5^−q &lt; 2^64 (32-bit). Hence we have 5^−q &lt; 2^11</span>
+</span>
+<span class="line" id="L41"><span class="tok-comment">// or q ≥ −4 (64-bit case) and 5^−q &lt; 2^40 or q ≥ −17 (32-bitcase).</span>
+</span>
+<span class="line" id="L42"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L43"><span class="tok-comment">// Thus we have that we only need to round ties to even when</span>
+</span>
+<span class="line" id="L44"><span class="tok-comment">// we have that q ∈ [−4,23](in the 64-bit case) or q∈[−17,10]</span>
+</span>
+<span class="line" id="L45"><span class="tok-comment">// (in the 32-bit case). In both cases,the power of five(5^|q|)</span>
+</span>
+<span class="line" id="L46"><span class="tok-comment">// fits in a 64-bit word.</span>
+</span>
+<span class="line" id="L47">min_exponent_round_to_even: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L48">max_exponent_round_to_even: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50"><span class="tok-comment">// Largest exponent value `(1 &lt;&lt; EXP_BITS) - 1`.</span>
+</span>
+<span class="line" id="L51">infinite_power: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L52"></span>
+<span class="line" id="L53"><span class="tok-comment">// Following should compute based on derived calculations where possible.</span>
+</span>
+<span class="line" id="L54"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">from</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) Self {</span>
+<span class="line" id="L55">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (T) {</span>
+<span class="line" id="L56">        <span class="tok-type">f16</span> =&gt; .{</span>
+<span class="line" id="L57">            <span class="tok-comment">// Fast-Path</span>
+</span>
+<span class="line" id="L58">            .min_exponent_fast_path = -<span class="tok-number">4</span>,</span>
+<span class="line" id="L59">            .max_exponent_fast_path = <span class="tok-number">4</span>,</span>
+<span class="line" id="L60">            .max_exponent_fast_path_disguised = <span class="tok-number">7</span>,</span>
+<span class="line" id="L61">            .max_mantissa_fast_path = <span class="tok-number">2</span> &lt;&lt; std.math.floatMantissaBits(T),</span>
+<span class="line" id="L62">            <span class="tok-comment">// Slow + Eisel-Lemire</span>
+</span>
+<span class="line" id="L63">            .mantissa_explicit_bits = std.math.floatMantissaBits(T),</span>
+<span class="line" id="L64">            .infinite_power = <span class="tok-number">0x1f</span>,</span>
+<span class="line" id="L65">            <span class="tok-comment">// Eisel-Lemire</span>
+</span>
+<span class="line" id="L66">            .smallest_power_of_ten = -<span class="tok-number">26</span>, <span class="tok-comment">// TODO: refine, fails one test</span>
+</span>
+<span class="line" id="L67">            .largest_power_of_ten = <span class="tok-number">4</span>,</span>
+<span class="line" id="L68">            .minimum_exponent = -<span class="tok-number">15</span>,</span>
+<span class="line" id="L69">            <span class="tok-comment">// w &gt;= (2m+1) * 5^-q and w &lt; 2^64</span>
+</span>
+<span class="line" id="L70">            <span class="tok-comment">// =&gt; 2m+1 &gt; 2^11</span>
+</span>
+<span class="line" id="L71">            <span class="tok-comment">// =&gt; 2^11*5^-q &lt; 2^64</span>
+</span>
+<span class="line" id="L72">            <span class="tok-comment">// =&gt; 5^-q &lt; 2^53</span>
+</span>
+<span class="line" id="L73">            <span class="tok-comment">// =&gt; q &gt;= -23</span>
+</span>
+<span class="line" id="L74">            .min_exponent_round_to_even = -<span class="tok-number">22</span>,</span>
+<span class="line" id="L75">            .max_exponent_round_to_even = <span class="tok-number">5</span>,</span>
+<span class="line" id="L76">        },</span>
+<span class="line" id="L77">        <span class="tok-type">f32</span> =&gt; .{</span>
+<span class="line" id="L78">            <span class="tok-comment">// Fast-Path</span>
+</span>
+<span class="line" id="L79">            .min_exponent_fast_path = -<span class="tok-number">10</span>,</span>
+<span class="line" id="L80">            .max_exponent_fast_path = <span class="tok-number">10</span>,</span>
+<span class="line" id="L81">            .max_exponent_fast_path_disguised = <span class="tok-number">17</span>,</span>
+<span class="line" id="L82">            .max_mantissa_fast_path = <span class="tok-number">2</span> &lt;&lt; std.math.floatMantissaBits(T),</span>
+<span class="line" id="L83">            <span class="tok-comment">// Slow + Eisel-Lemire</span>
+</span>
+<span class="line" id="L84">            .mantissa_explicit_bits = std.math.floatMantissaBits(T),</span>
+<span class="line" id="L85">            .infinite_power = <span class="tok-number">0xff</span>,</span>
+<span class="line" id="L86">            <span class="tok-comment">// Eisel-Lemire</span>
+</span>
+<span class="line" id="L87">            .smallest_power_of_ten = -<span class="tok-number">65</span>,</span>
+<span class="line" id="L88">            .largest_power_of_ten = <span class="tok-number">38</span>,</span>
+<span class="line" id="L89">            .minimum_exponent = -<span class="tok-number">127</span>,</span>
+<span class="line" id="L90">            .min_exponent_round_to_even = -<span class="tok-number">17</span>,</span>
+<span class="line" id="L91">            .max_exponent_round_to_even = <span class="tok-number">10</span>,</span>
+<span class="line" id="L92">        },</span>
+<span class="line" id="L93">        <span class="tok-type">f64</span> =&gt; .{</span>
+<span class="line" id="L94">            <span class="tok-comment">// Fast-Path</span>
+</span>
+<span class="line" id="L95">            .min_exponent_fast_path = -<span class="tok-number">22</span>,</span>
+<span class="line" id="L96">            .max_exponent_fast_path = <span class="tok-number">22</span>,</span>
+<span class="line" id="L97">            .max_exponent_fast_path_disguised = <span class="tok-number">37</span>,</span>
+<span class="line" id="L98">            .max_mantissa_fast_path = <span class="tok-number">2</span> &lt;&lt; std.math.floatMantissaBits(T),</span>
+<span class="line" id="L99">            <span class="tok-comment">// Slow + Eisel-Lemire</span>
+</span>
+<span class="line" id="L100">            .mantissa_explicit_bits = std.math.floatMantissaBits(T),</span>
+<span class="line" id="L101">            .infinite_power = <span class="tok-number">0x7ff</span>,</span>
+<span class="line" id="L102">            <span class="tok-comment">// Eisel-Lemire</span>
+</span>
+<span class="line" id="L103">            .smallest_power_of_ten = -<span class="tok-number">342</span>,</span>
+<span class="line" id="L104">            .largest_power_of_ten = <span class="tok-number">308</span>,</span>
+<span class="line" id="L105">            .minimum_exponent = -<span class="tok-number">1023</span>,</span>
+<span class="line" id="L106">            .min_exponent_round_to_even = -<span class="tok-number">4</span>,</span>
+<span class="line" id="L107">            .max_exponent_round_to_even = <span class="tok-number">23</span>,</span>
+<span class="line" id="L108">        },</span>
+<span class="line" id="L109">        <span class="tok-type">f128</span> =&gt; .{</span>
+<span class="line" id="L110">            <span class="tok-comment">// Fast-Path</span>
+</span>
+<span class="line" id="L111">            .min_exponent_fast_path = -<span class="tok-number">48</span>,</span>
+<span class="line" id="L112">            .max_exponent_fast_path = <span class="tok-number">48</span>,</span>
+<span class="line" id="L113">            .max_exponent_fast_path_disguised = <span class="tok-number">82</span>,</span>
+<span class="line" id="L114">            .max_mantissa_fast_path = <span class="tok-number">2</span> &lt;&lt; std.math.floatMantissaBits(T),</span>
+<span class="line" id="L115">            <span class="tok-comment">// Slow + Eisel-Lemire</span>
+</span>
+<span class="line" id="L116">            .mantissa_explicit_bits = std.math.floatMantissaBits(T),</span>
+<span class="line" id="L117">            .infinite_power = <span class="tok-number">0x7fff</span>,</span>
+<span class="line" id="L118">            <span class="tok-comment">// Eisel-Lemire.</span>
+</span>
+<span class="line" id="L119">            <span class="tok-comment">// NOTE: Not yet tested (no f128 eisel-lemire implementation)</span>
+</span>
+<span class="line" id="L120">            .smallest_power_of_ten = -<span class="tok-number">4966</span>,</span>
+<span class="line" id="L121">            .largest_power_of_ten = <span class="tok-number">4932</span>,</span>
+<span class="line" id="L122">            .minimum_exponent = -<span class="tok-number">16382</span>,</span>
+<span class="line" id="L123">            <span class="tok-comment">// 2^113 * 5^-q &lt; 2^128</span>
+</span>
+<span class="line" id="L124">            <span class="tok-comment">// 5^-q &lt; 2^15</span>
+</span>
+<span class="line" id="L125">            <span class="tok-comment">// =&gt; q &gt;= -6</span>
+</span>
+<span class="line" id="L126">            .min_exponent_round_to_even = -<span class="tok-number">6</span>,</span>
+<span class="line" id="L127">            .max_exponent_round_to_even = <span class="tok-number">49</span>,</span>
+<span class="line" id="L128">        },</span>
+<span class="line" id="L129">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L130">    };</span>
+<span class="line" id="L131">}</span>
+<span class="line" id="L132"></span>
+</code></pre></body>
+</html>
