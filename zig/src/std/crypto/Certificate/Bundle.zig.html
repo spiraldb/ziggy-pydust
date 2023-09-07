@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/Certificate/Bundle.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! A set of certificates. Typically pre-installed on every operating system,</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! these are &quot;Certificate Authorities&quot; used to validate SSL certificates.</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! This data structure stores certificates in DER-encoded form, all of them</span></span>
+<span class="line" id="L4"><span class="tok-comment">//! concatenated together in the `bytes` array. The `map` field contains an</span></span>
+<span class="line" id="L5"><span class="tok-comment">//! index from the DER-encoded subject name to the index of the containing</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! certificate within `bytes`.</span></span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-comment">/// The key is the contents slice of the subject.</span></span>
+<span class="line" id="L9">map: std.HashMapUnmanaged(der.Element.Slice, <span class="tok-type">u32</span>, MapContext, std.hash_map.default_max_load_percentage) = .{},</span>
+<span class="line" id="L10">bytes: std.ArrayListUnmanaged(<span class="tok-type">u8</span>) = .{},</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> VerifyError = Certificate.Parsed.VerifyError || <span class="tok-kw">error</span>{</span>
+<span class="line" id="L13">    CertificateIssuerNotFound,</span>
+<span class="line" id="L14">};</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">verify</span>(cb: Bundle, subject: Certificate.Parsed, now_sec: <span class="tok-type">i64</span>) VerifyError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L17">    <span class="tok-kw">const</span> bytes_index = cb.find(subject.issuer()) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CertificateIssuerNotFound;</span>
+<span class="line" id="L18">    <span class="tok-kw">const</span> issuer_cert: Certificate = .{</span>
+<span class="line" id="L19">        .buffer = cb.bytes.items,</span>
+<span class="line" id="L20">        .index = bytes_index,</span>
+<span class="line" id="L21">    };</span>
+<span class="line" id="L22">    <span class="tok-comment">// Every certificate in the bundle is pre-parsed before adding it, ensuring</span>
+</span>
+<span class="line" id="L23">    <span class="tok-comment">// that parsing will succeed here.</span>
+</span>
+<span class="line" id="L24">    <span class="tok-kw">const</span> issuer = issuer_cert.parse() <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L25">    <span class="tok-kw">try</span> subject.verify(issuer, now_sec);</span>
+<span class="line" id="L26">}</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28"><span class="tok-comment">/// The returned bytes become invalid after calling any of the rescan functions</span></span>
+<span class="line" id="L29"><span class="tok-comment">/// or add functions.</span></span>
+<span class="line" id="L30"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">find</span>(cb: Bundle, subject_name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ?<span class="tok-type">u32</span> {</span>
+<span class="line" id="L31">    <span class="tok-kw">const</span> Adapter = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L32">        cb: Bundle,</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">hash</span>(ctx: <span class="tok-builtin">@This</span>(), k: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L35">            _ = ctx;</span>
+<span class="line" id="L36">            <span class="tok-kw">return</span> std.hash_map.hashString(k);</span>
+<span class="line" id="L37">        }</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(ctx: <span class="tok-builtin">@This</span>(), a: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, b_key: der.Element.Slice) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L40">            <span class="tok-kw">const</span> b = ctx.cb.bytes.items[b_key.start..b_key.end];</span>
+<span class="line" id="L41">            <span class="tok-kw">return</span> mem.eql(<span class="tok-type">u8</span>, a, b);</span>
+<span class="line" id="L42">        }</span>
+<span class="line" id="L43">    };</span>
+<span class="line" id="L44">    <span class="tok-kw">return</span> cb.map.getAdapted(subject_name, Adapter{ .cb = cb });</span>
+<span class="line" id="L45">}</span>
+<span class="line" id="L46"></span>
+<span class="line" id="L47"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(cb: *Bundle, gpa: Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L48">    cb.map.deinit(gpa);</span>
+<span class="line" id="L49">    cb.bytes.deinit(gpa);</span>
+<span class="line" id="L50">    cb.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L51">}</span>
+<span class="line" id="L52"></span>
+<span class="line" id="L53"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RescanError = RescanLinuxError || RescanMacError || RescanBSDError || RescanWindowsError;</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55"><span class="tok-comment">/// Clears the set of certificates and then scans the host operating system</span></span>
+<span class="line" id="L56"><span class="tok-comment">/// file system standard locations for certificates.</span></span>
+<span class="line" id="L57"><span class="tok-comment">/// For operating systems that do not have standard CA installations to be</span></span>
+<span class="line" id="L58"><span class="tok-comment">/// found, this function clears the set of certificates.</span></span>
+<span class="line" id="L59"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rescan</span>(cb: *Bundle, gpa: Allocator) RescanError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L60">    <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L61">        .linux =&gt; <span class="tok-kw">return</span> rescanLinux(cb, gpa),</span>
+<span class="line" id="L62">        .macos =&gt; <span class="tok-kw">return</span> rescanMac(cb, gpa),</span>
+<span class="line" id="L63">        .freebsd, .openbsd =&gt; <span class="tok-kw">return</span> rescanBSD(cb, gpa, <span class="tok-str">&quot;/etc/ssl/cert.pem&quot;</span>),</span>
+<span class="line" id="L64">        .netbsd =&gt; <span class="tok-kw">return</span> rescanBSD(cb, gpa, <span class="tok-str">&quot;/etc/openssl/certs/ca-certificates.crt&quot;</span>),</span>
+<span class="line" id="L65">        .dragonfly =&gt; <span class="tok-kw">return</span> rescanBSD(cb, gpa, <span class="tok-str">&quot;/usr/local/etc/ssl/cert.pem&quot;</span>),</span>
+<span class="line" id="L66">        .windows =&gt; <span class="tok-kw">return</span> rescanWindows(cb, gpa),</span>
+<span class="line" id="L67">        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L68">    }</span>
+<span class="line" id="L69">}</span>
+<span class="line" id="L70"></span>
+<span class="line" id="L71"><span class="tok-kw">const</span> rescanMac = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Bundle/macos.zig&quot;</span>).rescanMac;</span>
+<span class="line" id="L72"><span class="tok-kw">const</span> RescanMacError = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Bundle/macos.zig&quot;</span>).RescanMacError;</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74"><span class="tok-kw">const</span> RescanLinuxError = AddCertsFromFilePathError || AddCertsFromDirPathError;</span>
+<span class="line" id="L75"></span>
+<span class="line" id="L76"><span class="tok-kw">fn</span> <span class="tok-fn">rescanLinux</span>(cb: *Bundle, gpa: Allocator) RescanLinuxError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L77">    <span class="tok-comment">// Possible certificate files; stop after finding one.</span>
+</span>
+<span class="line" id="L78">    <span class="tok-kw">const</span> cert_file_paths = [_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L79">        <span class="tok-str">&quot;/etc/ssl/certs/ca-certificates.crt&quot;</span>, <span class="tok-comment">// Debian/Ubuntu/Gentoo etc.</span>
+</span>
+<span class="line" id="L80">        <span class="tok-str">&quot;/etc/pki/tls/certs/ca-bundle.crt&quot;</span>, <span class="tok-comment">// Fedora/RHEL 6</span>
+</span>
+<span class="line" id="L81">        <span class="tok-str">&quot;/etc/ssl/ca-bundle.pem&quot;</span>, <span class="tok-comment">// OpenSUSE</span>
+</span>
+<span class="line" id="L82">        <span class="tok-str">&quot;/etc/pki/tls/cacert.pem&quot;</span>, <span class="tok-comment">// OpenELEC</span>
+</span>
+<span class="line" id="L83">        <span class="tok-str">&quot;/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem&quot;</span>, <span class="tok-comment">// CentOS/RHEL 7</span>
+</span>
+<span class="line" id="L84">        <span class="tok-str">&quot;/etc/ssl/cert.pem&quot;</span>, <span class="tok-comment">// Alpine Linux</span>
+</span>
+<span class="line" id="L85">    };</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    <span class="tok-comment">// Possible directories with certificate files; all will be read.</span>
+</span>
+<span class="line" id="L88">    <span class="tok-kw">const</span> cert_dir_paths = [_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L89">        <span class="tok-str">&quot;/etc/ssl/certs&quot;</span>, <span class="tok-comment">// SLES10/SLES11</span>
+</span>
+<span class="line" id="L90">        <span class="tok-str">&quot;/etc/pki/tls/certs&quot;</span>, <span class="tok-comment">// Fedora/RHEL</span>
+</span>
+<span class="line" id="L91">        <span class="tok-str">&quot;/system/etc/security/cacerts&quot;</span>, <span class="tok-comment">// Android</span>
+</span>
+<span class="line" id="L92">    };</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94">    cb.bytes.clearRetainingCapacity();</span>
+<span class="line" id="L95">    cb.map.clearRetainingCapacity();</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">    scan: {</span>
+<span class="line" id="L98">        <span class="tok-kw">for</span> (cert_file_paths) |cert_file_path| {</span>
+<span class="line" id="L99">            <span class="tok-kw">if</span> (addCertsFromFilePathAbsolute(cb, gpa, cert_file_path)) |_| {</span>
+<span class="line" id="L100">                <span class="tok-kw">break</span> :scan;</span>
+<span class="line" id="L101">            } <span class="tok-kw">else</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L102">                <span class="tok-kw">error</span>.FileNotFound =&gt; <span class="tok-kw">continue</span>,</span>
+<span class="line" id="L103">                <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L104">            }</span>
+<span class="line" id="L105">        }</span>
+<span class="line" id="L106"></span>
+<span class="line" id="L107">        <span class="tok-kw">for</span> (cert_dir_paths) |cert_dir_path| {</span>
+<span class="line" id="L108">            addCertsFromDirPathAbsolute(cb, gpa, cert_dir_path) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L109">                <span class="tok-kw">error</span>.FileNotFound =&gt; <span class="tok-kw">continue</span>,</span>
+<span class="line" id="L110">                <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L111">            };</span>
+<span class="line" id="L112">        }</span>
+<span class="line" id="L113">    }</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115">    cb.bytes.shrinkAndFree(gpa, cb.bytes.items.len);</span>
+<span class="line" id="L116">}</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118"><span class="tok-kw">const</span> RescanBSDError = AddCertsFromFilePathError;</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120"><span class="tok-kw">fn</span> <span class="tok-fn">rescanBSD</span>(cb: *Bundle, gpa: Allocator, cert_file_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) RescanBSDError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L121">    cb.bytes.clearRetainingCapacity();</span>
+<span class="line" id="L122">    cb.map.clearRetainingCapacity();</span>
+<span class="line" id="L123">    <span class="tok-kw">try</span> addCertsFromFilePathAbsolute(cb, gpa, cert_file_path);</span>
+<span class="line" id="L124">    cb.bytes.shrinkAndFree(gpa, cb.bytes.items.len);</span>
+<span class="line" id="L125">}</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127"><span class="tok-kw">const</span> RescanWindowsError = Allocator.Error || ParseCertError || std.os.UnexpectedError || <span class="tok-kw">error</span>{FileNotFound};</span>
+<span class="line" id="L128"></span>
+<span class="line" id="L129"><span class="tok-kw">fn</span> <span class="tok-fn">rescanWindows</span>(cb: *Bundle, gpa: Allocator) RescanWindowsError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L130">    cb.bytes.clearRetainingCapacity();</span>
+<span class="line" id="L131">    cb.map.clearRetainingCapacity();</span>
+<span class="line" id="L132"></span>
+<span class="line" id="L133">    <span class="tok-kw">const</span> w = std.os.windows;</span>
+<span class="line" id="L134">    <span class="tok-kw">const</span> GetLastError = w.kernel32.GetLastError;</span>
+<span class="line" id="L135">    <span class="tok-kw">const</span> root = [<span class="tok-number">4</span>:<span class="tok-number">0</span>]<span class="tok-type">u16</span>{ <span class="tok-str">'R'</span>, <span class="tok-str">'O'</span>, <span class="tok-str">'O'</span>, <span class="tok-str">'T'</span> };</span>
+<span class="line" id="L136">    <span class="tok-kw">const</span> store = w.crypt32.CertOpenSystemStoreW(<span class="tok-null">null</span>, &amp;root) <span class="tok-kw">orelse</span> <span class="tok-kw">switch</span> (GetLastError()) {</span>
+<span class="line" id="L137">        .FILE_NOT_FOUND =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.FileNotFound,</span>
+<span class="line" id="L138">        <span class="tok-kw">else</span> =&gt; |err| <span class="tok-kw">return</span> w.unexpectedError(err),</span>
+<span class="line" id="L139">    };</span>
+<span class="line" id="L140">    <span class="tok-kw">defer</span> _ = w.crypt32.CertCloseStore(store, <span class="tok-number">0</span>);</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">    <span class="tok-kw">const</span> now_sec = std.time.timestamp();</span>
+<span class="line" id="L143"></span>
+<span class="line" id="L144">    <span class="tok-kw">var</span> ctx = w.crypt32.CertEnumCertificatesInStore(store, <span class="tok-null">null</span>);</span>
+<span class="line" id="L145">    <span class="tok-kw">while</span> (ctx) |context| : (ctx = w.crypt32.CertEnumCertificatesInStore(store, ctx)) {</span>
+<span class="line" id="L146">        <span class="tok-kw">const</span> decoded_start = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(cb.bytes.items.len));</span>
+<span class="line" id="L147">        <span class="tok-kw">const</span> encoded_cert = context.pbCertEncoded[<span class="tok-number">0</span>..context.cbCertEncoded];</span>
+<span class="line" id="L148">        <span class="tok-kw">try</span> cb.bytes.appendSlice(gpa, encoded_cert);</span>
+<span class="line" id="L149">        <span class="tok-kw">try</span> cb.parseCert(gpa, decoded_start, now_sec);</span>
+<span class="line" id="L150">    }</span>
+<span class="line" id="L151">    cb.bytes.shrinkAndFree(gpa, cb.bytes.items.len);</span>
+<span class="line" id="L152">}</span>
+<span class="line" id="L153"></span>
+<span class="line" id="L154"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AddCertsFromDirPathError = fs.File.OpenError || AddCertsFromDirError;</span>
+<span class="line" id="L155"></span>
+<span class="line" id="L156"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addCertsFromDirPath</span>(</span>
+<span class="line" id="L157">    cb: *Bundle,</span>
+<span class="line" id="L158">    gpa: Allocator,</span>
+<span class="line" id="L159">    dir: fs.Dir,</span>
+<span class="line" id="L160">    sub_dir_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L161">) AddCertsFromDirPathError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L162">    <span class="tok-kw">var</span> iterable_dir = <span class="tok-kw">try</span> dir.openIterableDir(sub_dir_path, .{});</span>
+<span class="line" id="L163">    <span class="tok-kw">defer</span> iterable_dir.close();</span>
+<span class="line" id="L164">    <span class="tok-kw">return</span> addCertsFromDir(cb, gpa, iterable_dir);</span>
+<span class="line" id="L165">}</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addCertsFromDirPathAbsolute</span>(</span>
+<span class="line" id="L168">    cb: *Bundle,</span>
+<span class="line" id="L169">    gpa: Allocator,</span>
+<span class="line" id="L170">    abs_dir_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L171">) AddCertsFromDirPathError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L172">    assert(fs.path.isAbsolute(abs_dir_path));</span>
+<span class="line" id="L173">    <span class="tok-kw">var</span> iterable_dir = <span class="tok-kw">try</span> fs.openIterableDirAbsolute(abs_dir_path, .{});</span>
+<span class="line" id="L174">    <span class="tok-kw">defer</span> iterable_dir.close();</span>
+<span class="line" id="L175">    <span class="tok-kw">return</span> addCertsFromDir(cb, gpa, iterable_dir);</span>
+<span class="line" id="L176">}</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AddCertsFromDirError = AddCertsFromFilePathError;</span>
+<span class="line" id="L179"></span>
+<span class="line" id="L180"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addCertsFromDir</span>(cb: *Bundle, gpa: Allocator, iterable_dir: fs.IterableDir) AddCertsFromDirError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L181">    <span class="tok-kw">var</span> it = iterable_dir.iterate();</span>
+<span class="line" id="L182">    <span class="tok-kw">while</span> (<span class="tok-kw">try</span> it.next()) |entry| {</span>
+<span class="line" id="L183">        <span class="tok-kw">switch</span> (entry.kind) {</span>
+<span class="line" id="L184">            .file, .sym_link =&gt; {},</span>
+<span class="line" id="L185">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">continue</span>,</span>
+<span class="line" id="L186">        }</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188">        <span class="tok-kw">try</span> addCertsFromFilePath(cb, gpa, iterable_dir.dir, entry.name);</span>
+<span class="line" id="L189">    }</span>
+<span class="line" id="L190">}</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AddCertsFromFilePathError = fs.File.OpenError || AddCertsFromFileError;</span>
+<span class="line" id="L193"></span>
+<span class="line" id="L194"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addCertsFromFilePathAbsolute</span>(</span>
+<span class="line" id="L195">    cb: *Bundle,</span>
+<span class="line" id="L196">    gpa: Allocator,</span>
+<span class="line" id="L197">    abs_file_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L198">) AddCertsFromFilePathError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L199">    assert(fs.path.isAbsolute(abs_file_path));</span>
+<span class="line" id="L200">    <span class="tok-kw">var</span> file = <span class="tok-kw">try</span> fs.openFileAbsolute(abs_file_path, .{});</span>
+<span class="line" id="L201">    <span class="tok-kw">defer</span> file.close();</span>
+<span class="line" id="L202">    <span class="tok-kw">return</span> addCertsFromFile(cb, gpa, file);</span>
+<span class="line" id="L203">}</span>
+<span class="line" id="L204"></span>
+<span class="line" id="L205"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addCertsFromFilePath</span>(</span>
+<span class="line" id="L206">    cb: *Bundle,</span>
+<span class="line" id="L207">    gpa: Allocator,</span>
+<span class="line" id="L208">    dir: fs.Dir,</span>
+<span class="line" id="L209">    sub_file_path: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L210">) AddCertsFromFilePathError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L211">    <span class="tok-kw">var</span> file = <span class="tok-kw">try</span> dir.openFile(sub_file_path, .{});</span>
+<span class="line" id="L212">    <span class="tok-kw">defer</span> file.close();</span>
+<span class="line" id="L213">    <span class="tok-kw">return</span> addCertsFromFile(cb, gpa, file);</span>
+<span class="line" id="L214">}</span>
+<span class="line" id="L215"></span>
+<span class="line" id="L216"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AddCertsFromFileError = Allocator.Error || fs.File.GetSeekPosError || fs.File.ReadError || ParseCertError || std.base64.Error || <span class="tok-kw">error</span>{ CertificateAuthorityBundleTooBig, MissingEndCertificateMarker };</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addCertsFromFile</span>(cb: *Bundle, gpa: Allocator, file: fs.File) AddCertsFromFileError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L219">    <span class="tok-kw">const</span> size = <span class="tok-kw">try</span> file.getEndPos();</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221">    <span class="tok-comment">// We borrow `bytes` as a temporary buffer for the base64-encoded data.</span>
+</span>
+<span class="line" id="L222">    <span class="tok-comment">// This is possible by computing the decoded length and reserving the space</span>
+</span>
+<span class="line" id="L223">    <span class="tok-comment">// for the decoded bytes first.</span>
+</span>
+<span class="line" id="L224">    <span class="tok-kw">const</span> decoded_size_upper_bound = size / <span class="tok-number">4</span> * <span class="tok-number">3</span>;</span>
+<span class="line" id="L225">    <span class="tok-kw">const</span> needed_capacity = std.math.cast(<span class="tok-type">u32</span>, decoded_size_upper_bound + size) <span class="tok-kw">orelse</span></span>
+<span class="line" id="L226">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CertificateAuthorityBundleTooBig;</span>
+<span class="line" id="L227">    <span class="tok-kw">try</span> cb.bytes.ensureUnusedCapacity(gpa, needed_capacity);</span>
+<span class="line" id="L228">    <span class="tok-kw">const</span> end_reserved = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(cb.bytes.items.len + decoded_size_upper_bound));</span>
+<span class="line" id="L229">    <span class="tok-kw">const</span> buffer = cb.bytes.allocatedSlice()[end_reserved..];</span>
+<span class="line" id="L230">    <span class="tok-kw">const</span> end_index = <span class="tok-kw">try</span> file.readAll(buffer);</span>
+<span class="line" id="L231">    <span class="tok-kw">const</span> encoded_bytes = buffer[<span class="tok-number">0</span>..end_index];</span>
+<span class="line" id="L232"></span>
+<span class="line" id="L233">    <span class="tok-kw">const</span> begin_marker = <span class="tok-str">&quot;-----BEGIN CERTIFICATE-----&quot;</span>;</span>
+<span class="line" id="L234">    <span class="tok-kw">const</span> end_marker = <span class="tok-str">&quot;-----END CERTIFICATE-----&quot;</span>;</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236">    <span class="tok-kw">const</span> now_sec = std.time.timestamp();</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">    <span class="tok-kw">var</span> start_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L239">    <span class="tok-kw">while</span> (mem.indexOfPos(<span class="tok-type">u8</span>, encoded_bytes, start_index, begin_marker)) |begin_marker_start| {</span>
+<span class="line" id="L240">        <span class="tok-kw">const</span> cert_start = begin_marker_start + begin_marker.len;</span>
+<span class="line" id="L241">        <span class="tok-kw">const</span> cert_end = mem.indexOfPos(<span class="tok-type">u8</span>, encoded_bytes, cert_start, end_marker) <span class="tok-kw">orelse</span></span>
+<span class="line" id="L242">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MissingEndCertificateMarker;</span>
+<span class="line" id="L243">        start_index = cert_end + end_marker.len;</span>
+<span class="line" id="L244">        <span class="tok-kw">const</span> encoded_cert = mem.trim(<span class="tok-type">u8</span>, encoded_bytes[cert_start..cert_end], <span class="tok-str">&quot; \t\r\n&quot;</span>);</span>
+<span class="line" id="L245">        <span class="tok-kw">const</span> decoded_start = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(cb.bytes.items.len));</span>
+<span class="line" id="L246">        <span class="tok-kw">const</span> dest_buf = cb.bytes.allocatedSlice()[decoded_start..];</span>
+<span class="line" id="L247">        cb.bytes.items.len += <span class="tok-kw">try</span> base64.decode(dest_buf, encoded_cert);</span>
+<span class="line" id="L248">        <span class="tok-kw">try</span> cb.parseCert(gpa, decoded_start, now_sec);</span>
+<span class="line" id="L249">    }</span>
+<span class="line" id="L250">}</span>
+<span class="line" id="L251"></span>
+<span class="line" id="L252"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ParseCertError = Allocator.Error || Certificate.ParseError;</span>
+<span class="line" id="L253"></span>
+<span class="line" id="L254"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">parseCert</span>(cb: *Bundle, gpa: Allocator, decoded_start: <span class="tok-type">u32</span>, now_sec: <span class="tok-type">i64</span>) ParseCertError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L255">    <span class="tok-comment">// Even though we could only partially parse the certificate to find</span>
+</span>
+<span class="line" id="L256">    <span class="tok-comment">// the subject name, we pre-parse all of them to make sure and only</span>
+</span>
+<span class="line" id="L257">    <span class="tok-comment">// include in the bundle ones that we know will parse. This way we can</span>
+</span>
+<span class="line" id="L258">    <span class="tok-comment">// use `catch unreachable` later.</span>
+</span>
+<span class="line" id="L259">    <span class="tok-kw">const</span> parsed_cert = Certificate.parse(.{</span>
+<span class="line" id="L260">        .buffer = cb.bytes.items,</span>
+<span class="line" id="L261">        .index = decoded_start,</span>
+<span class="line" id="L262">    }) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L263">        <span class="tok-kw">error</span>.CertificateHasUnrecognizedObjectId =&gt; {</span>
+<span class="line" id="L264">            cb.bytes.items.len = decoded_start;</span>
+<span class="line" id="L265">            <span class="tok-kw">return</span>;</span>
+<span class="line" id="L266">        },</span>
+<span class="line" id="L267">        <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L268">    };</span>
+<span class="line" id="L269">    <span class="tok-kw">if</span> (now_sec &gt; parsed_cert.validity.not_after) {</span>
+<span class="line" id="L270">        <span class="tok-comment">// Ignore expired cert.</span>
+</span>
+<span class="line" id="L271">        cb.bytes.items.len = decoded_start;</span>
+<span class="line" id="L272">        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L273">    }</span>
+<span class="line" id="L274">    <span class="tok-kw">const</span> gop = <span class="tok-kw">try</span> cb.map.getOrPutContext(gpa, parsed_cert.subject_slice, .{ .cb = cb });</span>
+<span class="line" id="L275">    <span class="tok-kw">if</span> (gop.found_existing) {</span>
+<span class="line" id="L276">        cb.bytes.items.len = decoded_start;</span>
+<span class="line" id="L277">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L278">        gop.value_ptr.* = decoded_start;</span>
+<span class="line" id="L279">    }</span>
+<span class="line" id="L280">}</span>
+<span class="line" id="L281"></span>
+<span class="line" id="L282"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L283"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../../std.zig&quot;</span>);</span>
+<span class="line" id="L284"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L285"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L286"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L287"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L288"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L289"><span class="tok-kw">const</span> Certificate = std.crypto.Certificate;</span>
+<span class="line" id="L290"><span class="tok-kw">const</span> der = Certificate.der;</span>
+<span class="line" id="L291"><span class="tok-kw">const</span> Bundle = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L292"></span>
+<span class="line" id="L293"><span class="tok-kw">const</span> base64 = std.base64.standard.decoderWithIgnore(<span class="tok-str">&quot; \t\r\n&quot;</span>);</span>
+<span class="line" id="L294"></span>
+<span class="line" id="L295"><span class="tok-kw">const</span> MapContext = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L296">    cb: *<span class="tok-kw">const</span> Bundle,</span>
+<span class="line" id="L297"></span>
+<span class="line" id="L298">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">hash</span>(ctx: MapContext, k: der.Element.Slice) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L299">        <span class="tok-kw">return</span> std.hash_map.hashString(ctx.cb.bytes.items[k.start..k.end]);</span>
+<span class="line" id="L300">    }</span>
+<span class="line" id="L301"></span>
+<span class="line" id="L302">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(ctx: MapContext, a: der.Element.Slice, b: der.Element.Slice) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L303">        <span class="tok-kw">const</span> bytes = ctx.cb.bytes.items;</span>
+<span class="line" id="L304">        <span class="tok-kw">return</span> mem.eql(</span>
+<span class="line" id="L305">            <span class="tok-type">u8</span>,</span>
+<span class="line" id="L306">            bytes[a.start..a.end],</span>
+<span class="line" id="L307">            bytes[b.start..b.end],</span>
+<span class="line" id="L308">        );</span>
+<span class="line" id="L309">    }</span>
+<span class="line" id="L310">};</span>
+<span class="line" id="L311"></span>
+<span class="line" id="L312"><span class="tok-kw">test</span> <span class="tok-str">&quot;scan for OS-provided certificates&quot;</span> {</span>
+<span class="line" id="L313">    <span class="tok-kw">if</span> (builtin.os.tag == .wasi) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L314"></span>
+<span class="line" id="L315">    <span class="tok-kw">var</span> bundle: Bundle = .{};</span>
+<span class="line" id="L316">    <span class="tok-kw">defer</span> bundle.deinit(std.testing.allocator);</span>
+<span class="line" id="L317"></span>
+<span class="line" id="L318">    <span class="tok-kw">try</span> bundle.rescan(std.testing.allocator);</span>
+<span class="line" id="L319">}</span>
+<span class="line" id="L320"></span>
+</code></pre></body>
+</html>

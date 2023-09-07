@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>trampoline.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">/// Utilities for bouncing CPython calls into Zig functions and back again.</span></span>
+<span class="line" id="L2"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> Type = std.builtin.Type;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> ffi = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;ffi.zig&quot;</span>);</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> py = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;pydust.zig&quot;</span>);</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> funcs = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;functions.zig&quot;</span>);</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> pytypes = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;pytypes.zig&quot;</span>);</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> PyError = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;errors.zig&quot;</span>).PyError;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-comment">/// Generate functions to convert comptime-known Zig types to/from py.PyObject.</span></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Trampoline</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L12">    <span class="tok-comment">// Catch and handle comptime literals</span>
+</span>
+<span class="line" id="L13">    <span class="tok-kw">if</span> (T == <span class="tok-type">comptime_int</span>) {</span>
+<span class="line" id="L14">        <span class="tok-kw">return</span> Trampoline(<span class="tok-type">i64</span>);</span>
+<span class="line" id="L15">    }</span>
+<span class="line" id="L16">    <span class="tok-kw">if</span> (T == <span class="tok-type">comptime_float</span>) {</span>
+<span class="line" id="L17">        <span class="tok-kw">return</span> Trampoline(<span class="tok-type">f64</span>);</span>
+<span class="line" id="L18">    }</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L21">        <span class="tok-comment">/// Wraps an object that already represents an existing Python object.</span></span>
+<span class="line" id="L22">        <span class="tok-comment">/// In other words, Zig primitive types are not supported.</span></span>
+<span class="line" id="L23">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">asObject</span>(obj: T) py.PyObject {</span>
+<span class="line" id="L24">            <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L25">                .Pointer =&gt; |p| {</span>
+<span class="line" id="L26">                    <span class="tok-comment">// The object is an ffi.PyObject</span>
+</span>
+<span class="line" id="L27">                    <span class="tok-kw">if</span> (p.child == ffi.PyObject) {</span>
+<span class="line" id="L28">                        <span class="tok-kw">return</span> .{ .py = obj };</span>
+<span class="line" id="L29">                    }</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31">                    <span class="tok-comment">// If the pointer is for a Pydust class</span>
+</span>
+<span class="line" id="L32">                    <span class="tok-kw">if</span> (py.findClassName(p.child)) |_| {</span>
+<span class="line" id="L33">                        <span class="tok-kw">const</span> PyType = pytypes.State(p.child);</span>
+<span class="line" id="L34">                        <span class="tok-kw">const</span> ffiObject: *ffi.PyObject = <span class="tok-builtin">@constCast</span>(<span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@fieldParentPtr</span>(PyType, <span class="tok-str">&quot;state&quot;</span>, obj)));</span>
+<span class="line" id="L35">                        <span class="tok-kw">return</span> .{ .py = ffiObject };</span>
+<span class="line" id="L36">                    }</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38">                    <span class="tok-comment">// If the pointer is for a Pydust module</span>
+</span>
+<span class="line" id="L39">                    <span class="tok-kw">if</span> (py.findModuleName(p.child)) |_| {</span>
+<span class="line" id="L40">                        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Cannot currently return modules&quot;</span>);</span>
+<span class="line" id="L41">                    }</span>
+<span class="line" id="L42">                },</span>
+<span class="line" id="L43">                .Struct =&gt; {</span>
+<span class="line" id="L44">                    <span class="tok-comment">// Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat</span>
+</span>
+<span class="line" id="L45">                    <span class="tok-kw">if</span> (<span class="tok-builtin">@hasField</span>(T, <span class="tok-str">&quot;obj&quot;</span>) <span class="tok-kw">and</span> <span class="tok-builtin">@hasField</span>(std.meta.fieldInfo(T, .obj).<span class="tok-type">type</span>, <span class="tok-str">&quot;py&quot;</span>)) {</span>
+<span class="line" id="L46">                        <span class="tok-kw">return</span> obj.obj;</span>
+<span class="line" id="L47">                    }</span>
+<span class="line" id="L48">                    <span class="tok-kw">if</span> (T == py.PyObject) {</span>
+<span class="line" id="L49">                        <span class="tok-kw">return</span> obj;</span>
+<span class="line" id="L50">                    }</span>
+<span class="line" id="L51">                },</span>
+<span class="line" id="L52">                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L53">            }</span>
+<span class="line" id="L54">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Cannot convert into PyObject: &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T));</span>
+<span class="line" id="L55">        }</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">isObjectLike</span>() <span class="tok-type">bool</span> {</span>
+<span class="line" id="L58">            <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L59">                .Pointer =&gt; |p| {</span>
+<span class="line" id="L60">                    <span class="tok-comment">// The object is an ffi.PyObject</span>
+</span>
+<span class="line" id="L61">                    <span class="tok-kw">if</span> (p.child == ffi.PyObject) {</span>
+<span class="line" id="L62">                        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L63">                    }</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">                    <span class="tok-comment">// If the pointer is for a Pydust class</span>
+</span>
+<span class="line" id="L66">                    <span class="tok-kw">if</span> (py.findClassName(p.child)) |_| {</span>
+<span class="line" id="L67">                        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L68">                    }</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">                    <span class="tok-comment">// If the pointer is for a Pydust module</span>
+</span>
+<span class="line" id="L71">                    <span class="tok-kw">if</span> (py.findModuleName(p.child)) |_| {</span>
+<span class="line" id="L72">                        <span class="tok-comment">// FIXME(ngates): support modules</span>
+</span>
+<span class="line" id="L73">                        <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L74">                    }</span>
+<span class="line" id="L75">                },</span>
+<span class="line" id="L76">                .Struct =&gt; {</span>
+<span class="line" id="L77">                    <span class="tok-comment">// Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat</span>
+</span>
+<span class="line" id="L78">                    <span class="tok-kw">if</span> (<span class="tok-builtin">@hasField</span>(T, <span class="tok-str">&quot;obj&quot;</span>) <span class="tok-kw">and</span> <span class="tok-builtin">@hasField</span>(std.meta.fieldInfo(T, .obj).<span class="tok-type">type</span>, <span class="tok-str">&quot;py&quot;</span>)) {</span>
+<span class="line" id="L79">                        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L80">                    }</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">                    <span class="tok-comment">// Support py.PyObject</span>
+</span>
+<span class="line" id="L83">                    <span class="tok-kw">if</span> (T == py.PyObject) {</span>
+<span class="line" id="L84">                        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L85">                    }</span>
+<span class="line" id="L86">                },</span>
+<span class="line" id="L87">                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L88">            }</span>
+<span class="line" id="L89">            <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L90">        }</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">        <span class="tok-comment">/// Wraps a Zig object into a Python object.</span></span>
+<span class="line" id="L93">        <span class="tok-comment">/// Always creates a new strong reference.</span></span>
+<span class="line" id="L94">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrapNew</span>(obj: T) !py.PyObject {</span>
+<span class="line" id="L95">            <span class="tok-comment">// For existing object types, we just incref and return the object.</span>
+</span>
+<span class="line" id="L96">            <span class="tok-kw">if</span> (isObjectLike()) {</span>
+<span class="line" id="L97">                <span class="tok-kw">const</span> pyobj = asObject(obj);</span>
+<span class="line" id="L98">                pyobj.incref();</span>
+<span class="line" id="L99">                <span class="tok-kw">return</span> pyobj;</span>
+<span class="line" id="L100">            }</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">            <span class="tok-comment">// Since we're allowed to create a new reference, we can support string conversions</span>
+</span>
+<span class="line" id="L103">            <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L104">                .Pointer =&gt; |p| {</span>
+<span class="line" id="L105">                    <span class="tok-comment">// We make the assumption that []const u8 is converted to a PyUnicode.</span>
+</span>
+<span class="line" id="L106">                    <span class="tok-kw">if</span> (p.child == <span class="tok-type">u8</span> <span class="tok-kw">and</span> p.size == .Slice <span class="tok-kw">and</span> p.is_const) {</span>
+<span class="line" id="L107">                        <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyString.create(obj)).obj;</span>
+<span class="line" id="L108">                    }</span>
+<span class="line" id="L109"></span>
+<span class="line" id="L110">                    <span class="tok-comment">// Also pointers to u8 arrays *[_]u8</span>
+</span>
+<span class="line" id="L111">                    <span class="tok-kw">const</span> childInfo = <span class="tok-builtin">@typeInfo</span>(p.child);</span>
+<span class="line" id="L112">                    <span class="tok-kw">if</span> (childInfo == .Array <span class="tok-kw">and</span> childInfo.Array.child == <span class="tok-type">u8</span>) {</span>
+<span class="line" id="L113">                        <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyString.create(obj)).obj;</span>
+<span class="line" id="L114">                    }</span>
+<span class="line" id="L115">                },</span>
+<span class="line" id="L116">                <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L117">            }</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">            <span class="tok-kw">return</span> wrap(obj);</span>
+<span class="line" id="L120">        }</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">        <span class="tok-comment">/// Wraps a Zig object into a Python object.</span></span>
+<span class="line" id="L123">        <span class="tok-comment">/// Does not create a new reference.</span></span>
+<span class="line" id="L124">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrap</span>(obj: T) !py.PyObject {</span>
+<span class="line" id="L125">            <span class="tok-comment">// Check the user is not accidentally returning a Pydust class or Module without a pointer</span>
+</span>
+<span class="line" id="L126">            <span class="tok-kw">if</span> (py.findClassName(T) != <span class="tok-null">null</span> <span class="tok-kw">or</span> py.findModuleName(T) != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L127">                <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Pydust objects can only be returned as pointers&quot;</span>);</span>
+<span class="line" id="L128">            }</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">            <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(T);</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">            <span class="tok-comment">// Early return to handle errors</span>
+</span>
+<span class="line" id="L133">            <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
+<span class="line" id="L134">                <span class="tok-kw">const</span> value = obj <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L135">                <span class="tok-kw">return</span> Trampoline(typeInfo.ErrorUnion.payload).wrap(value);</span>
+<span class="line" id="L136">            }</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138">            <span class="tok-comment">// Early return to handle optionals</span>
+</span>
+<span class="line" id="L139">            <span class="tok-kw">if</span> (typeInfo == .Optional) {</span>
+<span class="line" id="L140">                <span class="tok-kw">const</span> value = obj <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> py.None();</span>
+<span class="line" id="L141">                <span class="tok-kw">return</span> Trampoline(typeInfo.Optional.child).wrap(value);</span>
+<span class="line" id="L142">            }</span>
+<span class="line" id="L143"></span>
+<span class="line" id="L144">            <span class="tok-comment">// Shortcut for object types</span>
+</span>
+<span class="line" id="L145">            <span class="tok-kw">if</span> (isObjectLike()) {</span>
+<span class="line" id="L146">                <span class="tok-kw">return</span> asObject(obj);</span>
+<span class="line" id="L147">            }</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">            <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L150">                .Bool =&gt; <span class="tok-kw">return</span> <span class="tok-kw">if</span> (obj) py.True().obj <span class="tok-kw">else</span> py.False().obj,</span>
+<span class="line" id="L151">                .ErrorUnion =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;ErrorUnion already handled&quot;</span>),</span>
+<span class="line" id="L152">                .Float =&gt; <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyFloat.create(obj)).obj,</span>
+<span class="line" id="L153">                .Int =&gt; <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyLong.create(obj)).obj,</span>
+<span class="line" id="L154">                .Pointer =&gt; {</span>
+<span class="line" id="L155">                    <span class="tok-comment">// We cannot wrap a []const u8 since PyString.create will make a copy of the string</span>
+</span>
+<span class="line" id="L156">                    <span class="tok-comment">// and we have no way of de-allocating the original slice.</span>
+</span>
+<span class="line" id="L157">                },</span>
+<span class="line" id="L158">                .Struct =&gt; |s| {</span>
+<span class="line" id="L159">                    <span class="tok-comment">// If the struct is a tuple, return a Python tuple</span>
+</span>
+<span class="line" id="L160">                    <span class="tok-kw">if</span> (s.is_tuple) {</span>
+<span class="line" id="L161">                        <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyTuple.create(obj)).obj;</span>
+<span class="line" id="L162">                    }</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164">                    <span class="tok-comment">// Otherwise, return a Python dictionary</span>
+</span>
+<span class="line" id="L165">                    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyDict.create(obj)).obj;</span>
+<span class="line" id="L166">                },</span>
+<span class="line" id="L167">                .Void =&gt; <span class="tok-kw">return</span> py.None(),</span>
+<span class="line" id="L168">                <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L169">            }</span>
+<span class="line" id="L170"></span>
+<span class="line" id="L171">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported return type &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T));</span>
+<span class="line" id="L172">        }</span>
+<span class="line" id="L173"></span>
+<span class="line" id="L174">        <span class="tok-comment">/// Unwrap a Python object into a Zig object. Does not steal a reference.</span></span>
+<span class="line" id="L175">        <span class="tok-comment">/// The Python object must be the correct corresponding type (vs a cast which coerces values).</span></span>
+<span class="line" id="L176">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrap</span>(object: ?py.PyObject) !T {</span>
+<span class="line" id="L177">            <span class="tok-comment">// Handle the error case explicitly, then we can unwrap the error case entirely.</span>
+</span>
+<span class="line" id="L178">            <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(T);</span>
+<span class="line" id="L179"></span>
+<span class="line" id="L180">            <span class="tok-comment">// Early return to handle errors</span>
+</span>
+<span class="line" id="L181">            <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
+<span class="line" id="L182">                <span class="tok-kw">const</span> value = object <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L183">                <span class="tok-kw">return</span> Trampoline(typeInfo.ErrorUnion.payload).unwrap(value);</span>
+<span class="line" id="L184">            }</span>
+<span class="line" id="L185"></span>
+<span class="line" id="L186">            <span class="tok-comment">// Early return to handle optionals</span>
+</span>
+<span class="line" id="L187">            <span class="tok-kw">if</span> (typeInfo == .Optional) {</span>
+<span class="line" id="L188">                <span class="tok-kw">const</span> value = object <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L189">                <span class="tok-kw">return</span> Trampoline(typeInfo.Optional.child).unwrap(value);</span>
+<span class="line" id="L190">            }</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192">            <span class="tok-comment">// Otherwise we can unwrap the object.</span>
+</span>
+<span class="line" id="L193">            <span class="tok-kw">var</span> obj = object <span class="tok-kw">orelse</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Unexpected null&quot;</span>);</span>
+<span class="line" id="L194"></span>
+<span class="line" id="L195">            <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L196">                .Bool =&gt; <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyBool.checked(obj)).asbool(),</span>
+<span class="line" id="L197">                .ErrorUnion =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;ErrorUnion already handled&quot;</span>),</span>
+<span class="line" id="L198">                .Float =&gt; <span class="tok-kw">return</span> <span class="tok-kw">try</span> (<span class="tok-kw">try</span> py.PyFloat.checked(obj)).as(T),</span>
+<span class="line" id="L199">                .Int =&gt; <span class="tok-kw">return</span> <span class="tok-kw">try</span> (<span class="tok-kw">try</span> py.PyLong.checked(obj)).as(T),</span>
+<span class="line" id="L200">                .Optional =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Optional already handled&quot;</span>),</span>
+<span class="line" id="L201">                .Pointer =&gt; |p| {</span>
+<span class="line" id="L202">                    <span class="tok-comment">// If the pointer is for a Pydust class</span>
+</span>
+<span class="line" id="L203">                    <span class="tok-kw">if</span> (py.findClassName(p.child)) |_| {</span>
+<span class="line" id="L204">                        <span class="tok-comment">// TODO(ngates): check the PyType?</span>
+</span>
+<span class="line" id="L205">                        <span class="tok-kw">const</span> PyType = pytypes.State(p.child);</span>
+<span class="line" id="L206">                        <span class="tok-kw">const</span> pyobject = <span class="tok-builtin">@as</span>(*PyType, <span class="tok-builtin">@ptrCast</span>(obj.py));</span>
+<span class="line" id="L207">                        <span class="tok-kw">return</span> <span class="tok-builtin">@constCast</span>(&amp;pyobject.state);</span>
+<span class="line" id="L208">                    }</span>
+<span class="line" id="L209"></span>
+<span class="line" id="L210">                    <span class="tok-comment">// If the pointer is for a Pydust module</span>
+</span>
+<span class="line" id="L211">                    <span class="tok-kw">if</span> (py.findModuleName(p.child)) |_| {</span>
+<span class="line" id="L212">                        <span class="tok-kw">const</span> mod = <span class="tok-kw">try</span> py.PyModule.checked(obj);</span>
+<span class="line" id="L213">                        <span class="tok-kw">return</span> <span class="tok-kw">try</span> mod.getState(p.child);</span>
+<span class="line" id="L214">                    }</span>
+<span class="line" id="L215"></span>
+<span class="line" id="L216">                    <span class="tok-comment">// We make the assumption that []const u8 is converted from a PyString</span>
+</span>
+<span class="line" id="L217">                    <span class="tok-kw">if</span> (p.child == <span class="tok-type">u8</span> <span class="tok-kw">and</span> p.size == .Slice <span class="tok-kw">and</span> p.is_const) {</span>
+<span class="line" id="L218">                        <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyString.checked(obj)).asSlice();</span>
+<span class="line" id="L219">                    }</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221">                    <span class="tok-builtin">@compileLog</span>(<span class="tok-str">&quot;Unsupported pointer type &quot;</span> ++ <span class="tok-builtin">@typeName</span>(p.child));</span>
+<span class="line" id="L222">                },</span>
+<span class="line" id="L223">                .Struct =&gt; |s| {</span>
+<span class="line" id="L224">                    <span class="tok-comment">// Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat</span>
+</span>
+<span class="line" id="L225">                    <span class="tok-kw">if</span> (<span class="tok-builtin">@hasField</span>(T, <span class="tok-str">&quot;obj&quot;</span>) <span class="tok-kw">and</span> <span class="tok-builtin">@hasField</span>(std.meta.fieldInfo(T, .obj).<span class="tok-type">type</span>, <span class="tok-str">&quot;py&quot;</span>)) {</span>
+<span class="line" id="L226">                        <span class="tok-kw">return</span> <span class="tok-kw">try</span> <span class="tok-builtin">@field</span>(T, <span class="tok-str">&quot;checked&quot;</span>)(obj);</span>
+<span class="line" id="L227">                    }</span>
+<span class="line" id="L228">                    <span class="tok-comment">// Support py.PyObject</span>
+</span>
+<span class="line" id="L229">                    <span class="tok-kw">if</span> (T == py.PyObject <span class="tok-kw">and</span> <span class="tok-builtin">@TypeOf</span>(obj) == py.PyObject) {</span>
+<span class="line" id="L230">                        <span class="tok-kw">return</span> obj;</span>
+<span class="line" id="L231">                    }</span>
+<span class="line" id="L232">                    <span class="tok-comment">// If the struct is a tuple, extract from the PyTuple</span>
+</span>
+<span class="line" id="L233">                    <span class="tok-kw">if</span> (s.is_tuple) {</span>
+<span class="line" id="L234">                        <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyTuple.checked(obj)).as(T);</span>
+<span class="line" id="L235">                    }</span>
+<span class="line" id="L236">                    <span class="tok-comment">// Otherwise, extract from a Python dictionary</span>
+</span>
+<span class="line" id="L237">                    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> py.PyDict.checked(obj)).as(T);</span>
+<span class="line" id="L238">                },</span>
+<span class="line" id="L239">                .Void =&gt; <span class="tok-kw">if</span> (py.is_none(obj)) <span class="tok-kw">return</span> <span class="tok-kw">else</span> <span class="tok-kw">return</span> py.TypeError.raise(<span class="tok-str">&quot;expected None&quot;</span>),</span>
+<span class="line" id="L240">                <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L241">            }</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported argument type &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T));</span>
+<span class="line" id="L244">        }</span>
+<span class="line" id="L245"></span>
+<span class="line" id="L246">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> CallArgs = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L247">            args: ?py.PyTuple,</span>
+<span class="line" id="L248">            kwargs: ?py.PyDict,</span>
+<span class="line" id="L249"></span>
+<span class="line" id="L250">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">nargs</span>(self: CallArgs) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L251">                <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.args) |args| args.length() <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L252">            }</span>
+<span class="line" id="L253"></span>
+<span class="line" id="L254">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">nkwargs</span>(self: CallArgs) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L255">                <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.kwargs) |kwargs| kwargs.length() <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L256">            }</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getArg</span>(self: CallArgs, <span class="tok-kw">comptime</span> R: <span class="tok-type">type</span>, idx: <span class="tok-type">usize</span>) !R {</span>
+<span class="line" id="L259">                <span class="tok-kw">const</span> args = self.args <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> py.TypeError.raise(<span class="tok-str">&quot;missing args&quot;</span>);</span>
+<span class="line" id="L260">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> args.getItem(R, idx);</span>
+<span class="line" id="L261">            }</span>
+<span class="line" id="L262"></span>
+<span class="line" id="L263">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getKwarg</span>(self: CallArgs, <span class="tok-kw">comptime</span> R: <span class="tok-type">type</span>, name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !?R {</span>
+<span class="line" id="L264">                <span class="tok-kw">const</span> kwargs = self.kwargs <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L265">                <span class="tok-kw">return</span> kwargs.getItem(R, name);</span>
+<span class="line" id="L266">            }</span>
+<span class="line" id="L267"></span>
+<span class="line" id="L268">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decref</span>(self: CallArgs) <span class="tok-type">void</span> {</span>
+<span class="line" id="L269">                <span class="tok-kw">if</span> (self.args) |args| args.decref();</span>
+<span class="line" id="L270">                <span class="tok-kw">if</span> (self.kwargs) |kwargs| kwargs.decref();</span>
+<span class="line" id="L271">            }</span>
+<span class="line" id="L272">        };</span>
+<span class="line" id="L273"></span>
+<span class="line" id="L274">        <span class="tok-comment">/// Wrap a Zig Pydust argument struct into Python CallArgs.</span></span>
+<span class="line" id="L275">        <span class="tok-comment">/// The caller is responsible for decref'ing the returned args and kwargs.</span></span>
+<span class="line" id="L276">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrapCallArgs</span>(obj: T) !CallArgs {</span>
+<span class="line" id="L277">            <span class="tok-kw">const</span> args = <span class="tok-kw">try</span> py.PyTuple.new(funcs.argCount(T));</span>
+<span class="line" id="L278">            <span class="tok-kw">const</span> kwargs = <span class="tok-kw">try</span> py.PyDict.new();</span>
+<span class="line" id="L279"></span>
+<span class="line" id="L280">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(T).Struct.fields, <span class="tok-number">0</span>..) |field, i| {</span>
+<span class="line" id="L281">                <span class="tok-kw">const</span> arg = <span class="tok-kw">try</span> Trampoline(field.<span class="tok-type">type</span>).wrap(<span class="tok-builtin">@field</span>(obj, field.name));</span>
+<span class="line" id="L282">                <span class="tok-kw">if</span> (field.default_value == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L283">                    <span class="tok-comment">// It's an arg</span>
+</span>
+<span class="line" id="L284">                    <span class="tok-kw">try</span> args.setOwnedItem(i, arg);</span>
+<span class="line" id="L285">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L286">                    <span class="tok-comment">// It's a kwarg</span>
+</span>
+<span class="line" id="L287">                    <span class="tok-kw">try</span> kwargs.setOwnedItemStr(field.name, arg);</span>
+<span class="line" id="L288">                }</span>
+<span class="line" id="L289">            }</span>
+<span class="line" id="L290"></span>
+<span class="line" id="L291">            <span class="tok-kw">return</span> .{ .args = args, .kwargs = kwargs };</span>
+<span class="line" id="L292">        }</span>
+<span class="line" id="L293"></span>
+<span class="line" id="L294">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrapCallArgs</span>(callArgs: CallArgs) !T {</span>
+<span class="line" id="L295">            <span class="tok-kw">if</span> (funcs.argCount(T) != callArgs.nargs()) {</span>
+<span class="line" id="L296">                <span class="tok-kw">return</span> py.TypeError.raiseComptimeFmt(</span>
+<span class="line" id="L297">                    <span class="tok-str">&quot;expected {d} argument{s}&quot;</span>,</span>
+<span class="line" id="L298">                    .{ funcs.argCount(T), <span class="tok-kw">if</span> (funcs.argCount(T) &gt; <span class="tok-number">1</span>) <span class="tok-str">&quot;s&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;&quot;</span> },</span>
+<span class="line" id="L299">                );</span>
+<span class="line" id="L300">            }</span>
+<span class="line" id="L301"></span>
+<span class="line" id="L302">            <span class="tok-kw">var</span> args: T = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L303">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(T).Struct.fields, <span class="tok-number">0</span>..) |field, i| {</span>
+<span class="line" id="L304">                <span class="tok-kw">if</span> (field.default_value) |def| {</span>
+<span class="line" id="L305">                    <span class="tok-comment">// We're a kwarg</span>
+</span>
+<span class="line" id="L306">                    <span class="tok-kw">if</span> (<span class="tok-kw">try</span> callArgs.getKwarg(field.<span class="tok-type">type</span>, field.name)) |kwarg| {</span>
+<span class="line" id="L307">                        <span class="tok-builtin">@field</span>(args, field.name) = kwarg;</span>
+<span class="line" id="L308">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L309">                        <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-builtin">@as</span>(*field.<span class="tok-type">type</span>, <span class="tok-builtin">@ptrCast</span>(def)).*;</span>
+<span class="line" id="L310">                    }</span>
+<span class="line" id="L311">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L312">                    <span class="tok-comment">// We're an arg</span>
+</span>
+<span class="line" id="L313">                    <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-kw">try</span> callArgs.getArg(field.<span class="tok-type">type</span>, i);</span>
+<span class="line" id="L314">                }</span>
+<span class="line" id="L315">            }</span>
+<span class="line" id="L316"></span>
+<span class="line" id="L317">            <span class="tok-comment">// Sanity check that we didn't recieve any kwargs that we weren't expecting</span>
+</span>
+<span class="line" id="L318">            <span class="tok-kw">const</span> fieldNames = std.meta.fieldNames(T);</span>
+<span class="line" id="L319">            <span class="tok-kw">if</span> (callArgs.kwargs) |kwargs| {</span>
+<span class="line" id="L320">                <span class="tok-kw">var</span> iter = kwargs.itemsIterator();</span>
+<span class="line" id="L321">                <span class="tok-kw">while</span> (iter.next()) |item| {</span>
+<span class="line" id="L322">                    <span class="tok-kw">const</span> itemName = <span class="tok-kw">try</span> (<span class="tok-kw">try</span> item.key(py.PyString)).asSlice();</span>
+<span class="line" id="L323"></span>
+<span class="line" id="L324">                    <span class="tok-kw">var</span> exists = <span class="tok-null">false</span>;</span>
+<span class="line" id="L325">                    <span class="tok-kw">for</span> (fieldNames) |name| {</span>
+<span class="line" id="L326">                        <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, name, itemName)) {</span>
+<span class="line" id="L327">                            exists = <span class="tok-null">true</span>;</span>
+<span class="line" id="L328">                            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L329">                        }</span>
+<span class="line" id="L330">                    }</span>
+<span class="line" id="L331"></span>
+<span class="line" id="L332">                    <span class="tok-kw">if</span> (!exists) {</span>
+<span class="line" id="L333">                        <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;unexpected kwarg '{s}'&quot;</span>, .{itemName});</span>
+<span class="line" id="L334">                    }</span>
+<span class="line" id="L335">                }</span>
+<span class="line" id="L336">            }</span>
+<span class="line" id="L337"></span>
+<span class="line" id="L338">            <span class="tok-kw">return</span> args;</span>
+<span class="line" id="L339">        }</span>
+<span class="line" id="L340">    };</span>
+<span class="line" id="L341">}</span>
+<span class="line" id="L342"></span>
+</code></pre></body>
+</html>

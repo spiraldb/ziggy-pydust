@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>zig/system/windows.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> Target = std.Target;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> WindowsVersion = std.Target.Os.WindowsVersion;</span>
+<span class="line" id="L8"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> PF = std.os.windows.PF;</span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> REG = std.os.windows.REG;</span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IsProcessorFeaturePresent = std.os.windows.IsProcessorFeaturePresent;</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-comment">/// Returns the highest known WindowsVersion deduced from reported runtime information.</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// Discards information about in-between versions we don't differentiate.</span></span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">detectRuntimeVersion</span>() WindowsVersion {</span>
+<span class="line" id="L15">    <span class="tok-kw">var</span> version_info: std.os.windows.RTL_OSVERSIONINFOW = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L16">    version_info.dwOSVersionInfoSize = <span class="tok-builtin">@sizeOf</span>(<span class="tok-builtin">@TypeOf</span>(version_info));</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18">    <span class="tok-kw">switch</span> (std.os.windows.ntdll.RtlGetVersion(&amp;version_info)) {</span>
+<span class="line" id="L19">        .SUCCESS =&gt; {},</span>
+<span class="line" id="L20">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L21">    }</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23">    <span class="tok-comment">// Starting from the system infos build a NTDDI-like version</span>
+</span>
+<span class="line" id="L24">    <span class="tok-comment">// constant whose format is:</span>
+</span>
+<span class="line" id="L25">    <span class="tok-comment">//   B0 B1 B2 B3</span>
+</span>
+<span class="line" id="L26">    <span class="tok-comment">//   `---` `` ``--&gt; Sub-version (Starting from Windows 10 onwards)</span>
+</span>
+<span class="line" id="L27">    <span class="tok-comment">//     \    `--&gt; Service pack (Always zero in the constants defined)</span>
+</span>
+<span class="line" id="L28">    <span class="tok-comment">//      `--&gt; OS version (Major &amp; minor)</span>
+</span>
+<span class="line" id="L29">    <span class="tok-kw">const</span> os_ver: <span class="tok-type">u16</span> = <span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-builtin">@intCast</span>(version_info.dwMajorVersion &amp; <span class="tok-number">0xff</span>)) &lt;&lt; <span class="tok-number">8</span> |</span>
+<span class="line" id="L30">        <span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-builtin">@intCast</span>(version_info.dwMinorVersion &amp; <span class="tok-number">0xff</span>));</span>
+<span class="line" id="L31">    <span class="tok-kw">const</span> sp_ver: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L32">    <span class="tok-kw">const</span> sub_ver: <span class="tok-type">u8</span> = <span class="tok-kw">if</span> (os_ver &gt;= <span class="tok-number">0x0A00</span>) subver: {</span>
+<span class="line" id="L33">        <span class="tok-comment">// There's no other way to obtain this info beside</span>
+</span>
+<span class="line" id="L34">        <span class="tok-comment">// checking the build number against a known set of</span>
+</span>
+<span class="line" id="L35">        <span class="tok-comment">// values</span>
+</span>
+<span class="line" id="L36">        <span class="tok-kw">var</span> last_idx: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L37">        <span class="tok-kw">for</span> (WindowsVersion.known_win10_build_numbers, <span class="tok-number">0</span>..) |build, i| {</span>
+<span class="line" id="L38">            <span class="tok-kw">if</span> (version_info.dwBuildNumber &gt;= build)</span>
+<span class="line" id="L39">                last_idx = i;</span>
+<span class="line" id="L40">        }</span>
+<span class="line" id="L41">        <span class="tok-kw">break</span> :subver <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(last_idx));</span>
+<span class="line" id="L42">    } <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44">    <span class="tok-kw">const</span> version: <span class="tok-type">u32</span> = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, os_ver) &lt;&lt; <span class="tok-number">16</span> | <span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, sp_ver) &lt;&lt; <span class="tok-number">8</span> | sub_ver;</span>
+<span class="line" id="L45"></span>
+<span class="line" id="L46">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(WindowsVersion, <span class="tok-builtin">@enumFromInt</span>(version));</span>
+<span class="line" id="L47">}</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49"><span class="tok-comment">// Technically, a registry value can be as long as 1MB. However, MS recommends storing</span>
+</span>
+<span class="line" id="L50"><span class="tok-comment">// values larger than 2048 bytes in a file rather than directly in the registry, and since we</span>
+</span>
+<span class="line" id="L51"><span class="tok-comment">// are only accessing a system hive \Registry\Machine, we stick to MS guidelines.</span>
+</span>
+<span class="line" id="L52"><span class="tok-comment">// https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-element-size-limits</span>
+</span>
+<span class="line" id="L53"><span class="tok-kw">const</span> max_value_len = <span class="tok-number">2048</span>;</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55"><span class="tok-kw">fn</span> <span class="tok-fn">getCpuInfoFromRegistry</span>(core: <span class="tok-type">usize</span>, args: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L56">    <span class="tok-kw">const</span> ArgsType = <span class="tok-builtin">@TypeOf</span>(args);</span>
+<span class="line" id="L57">    <span class="tok-kw">const</span> args_type_info = <span class="tok-builtin">@typeInfo</span>(ArgsType);</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">    <span class="tok-kw">if</span> (args_type_info != .Struct) {</span>
+<span class="line" id="L60">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;expected tuple or struct argument, found &quot;</span> ++ <span class="tok-builtin">@typeName</span>(ArgsType));</span>
+<span class="line" id="L61">    }</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">    <span class="tok-kw">const</span> fields_info = args_type_info.Struct.fields;</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">    <span class="tok-comment">// Originally, I wanted to issue a single call with a more complex table structure such that we</span>
+</span>
+<span class="line" id="L66">    <span class="tok-comment">// would sequentially visit each CPU#d subkey in the registry and pull the value of interest into</span>
+</span>
+<span class="line" id="L67">    <span class="tok-comment">// a buffer, however, NT seems to be expecting a single buffer per each table meaning we would</span>
+</span>
+<span class="line" id="L68">    <span class="tok-comment">// end up pulling only the last CPU core info, overwriting everything else.</span>
+</span>
+<span class="line" id="L69">    <span class="tok-comment">// If anyone can come up with a solution to this, please do!</span>
+</span>
+<span class="line" id="L70">    <span class="tok-kw">const</span> table_size = <span class="tok-number">1</span> + fields_info.len;</span>
+<span class="line" id="L71">    <span class="tok-kw">var</span> table: [table_size + <span class="tok-number">1</span>]std.os.windows.RTL_QUERY_REGISTRY_TABLE = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-kw">const</span> topkey = std.unicode.utf8ToUtf16LeStringLiteral(<span class="tok-str">&quot;\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor&quot;</span>);</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75">    <span class="tok-kw">const</span> max_cpu_buf = <span class="tok-number">4</span>;</span>
+<span class="line" id="L76">    <span class="tok-kw">var</span> next_cpu_buf: [max_cpu_buf]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L77">    <span class="tok-kw">const</span> next_cpu = <span class="tok-kw">try</span> std.fmt.bufPrint(&amp;next_cpu_buf, <span class="tok-str">&quot;{d}&quot;</span>, .{core});</span>
+<span class="line" id="L78"></span>
+<span class="line" id="L79">    <span class="tok-kw">var</span> subkey: [max_cpu_buf + <span class="tok-number">1</span>]<span class="tok-type">u16</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L80">    <span class="tok-kw">const</span> subkey_len = <span class="tok-kw">try</span> std.unicode.utf8ToUtf16Le(&amp;subkey, next_cpu);</span>
+<span class="line" id="L81">    subkey[subkey_len] = <span class="tok-number">0</span>;</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    table[<span class="tok-number">0</span>] = .{</span>
+<span class="line" id="L84">        .QueryRoutine = <span class="tok-null">null</span>,</span>
+<span class="line" id="L85">        .Flags = std.os.windows.RTL_QUERY_REGISTRY_SUBKEY | std.os.windows.RTL_QUERY_REGISTRY_REQUIRED,</span>
+<span class="line" id="L86">        .Name = subkey[<span class="tok-number">0</span>..subkey_len :<span class="tok-number">0</span>],</span>
+<span class="line" id="L87">        .EntryContext = <span class="tok-null">null</span>,</span>
+<span class="line" id="L88">        .DefaultType = REG.NONE,</span>
+<span class="line" id="L89">        .DefaultData = <span class="tok-null">null</span>,</span>
+<span class="line" id="L90">        .DefaultLength = <span class="tok-number">0</span>,</span>
+<span class="line" id="L91">    };</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">    <span class="tok-kw">var</span> tmp_bufs: [fields_info.len][max_value_len]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-builtin">@alignOf</span>(std.os.windows.UNICODE_STRING)) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (fields_info, <span class="tok-number">0</span>..) |field, i| {</span>
+<span class="line" id="L96">        <span class="tok-kw">const</span> ctx: *<span class="tok-type">anyopaque</span> = blk: {</span>
+<span class="line" id="L97">            <span class="tok-kw">switch</span> (<span class="tok-builtin">@field</span>(args, field.name).value_type) {</span>
+<span class="line" id="L98">                REG.SZ,</span>
+<span class="line" id="L99">                REG.EXPAND_SZ,</span>
+<span class="line" id="L100">                REG.MULTI_SZ,</span>
+<span class="line" id="L101">                =&gt; {</span>
+<span class="line" id="L102">                    <span class="tok-kw">comptime</span> assert(<span class="tok-builtin">@sizeOf</span>(std.os.windows.UNICODE_STRING) % <span class="tok-number">2</span> == <span class="tok-number">0</span>);</span>
+<span class="line" id="L103">                    <span class="tok-kw">const</span> unicode = <span class="tok-builtin">@as</span>(*std.os.windows.UNICODE_STRING, <span class="tok-builtin">@ptrCast</span>(&amp;tmp_bufs[i]));</span>
+<span class="line" id="L104">                    unicode.* = .{</span>
+<span class="line" id="L105">                        .Length = <span class="tok-number">0</span>,</span>
+<span class="line" id="L106">                        .MaximumLength = max_value_len - <span class="tok-builtin">@sizeOf</span>(std.os.windows.UNICODE_STRING),</span>
+<span class="line" id="L107">                        .Buffer = <span class="tok-builtin">@as</span>([*]<span class="tok-type">u16</span>, <span class="tok-builtin">@ptrCast</span>(tmp_bufs[i][<span class="tok-builtin">@sizeOf</span>(std.os.windows.UNICODE_STRING)..])),</span>
+<span class="line" id="L108">                    };</span>
+<span class="line" id="L109">                    <span class="tok-kw">break</span> :blk unicode;</span>
+<span class="line" id="L110">                },</span>
+<span class="line" id="L111"></span>
+<span class="line" id="L112">                REG.DWORD,</span>
+<span class="line" id="L113">                REG.DWORD_BIG_ENDIAN,</span>
+<span class="line" id="L114">                REG.QWORD,</span>
+<span class="line" id="L115">                =&gt; <span class="tok-kw">break</span> :blk &amp;tmp_bufs[i],</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L118">            }</span>
+<span class="line" id="L119">        };</span>
+<span class="line" id="L120"></span>
+<span class="line" id="L121">        <span class="tok-kw">var</span> key_buf: [max_value_len / <span class="tok-number">2</span> + <span class="tok-number">1</span>]<span class="tok-type">u16</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L122">        <span class="tok-kw">const</span> key_len = <span class="tok-kw">try</span> std.unicode.utf8ToUtf16Le(&amp;key_buf, <span class="tok-builtin">@field</span>(args, field.name).key);</span>
+<span class="line" id="L123">        key_buf[key_len] = <span class="tok-number">0</span>;</span>
+<span class="line" id="L124"></span>
+<span class="line" id="L125">        table[i + <span class="tok-number">1</span>] = .{</span>
+<span class="line" id="L126">            .QueryRoutine = <span class="tok-null">null</span>,</span>
+<span class="line" id="L127">            .Flags = std.os.windows.RTL_QUERY_REGISTRY_DIRECT | std.os.windows.RTL_QUERY_REGISTRY_REQUIRED,</span>
+<span class="line" id="L128">            .Name = key_buf[<span class="tok-number">0</span>..key_len :<span class="tok-number">0</span>],</span>
+<span class="line" id="L129">            .EntryContext = ctx,</span>
+<span class="line" id="L130">            .DefaultType = REG.NONE,</span>
+<span class="line" id="L131">            .DefaultData = <span class="tok-null">null</span>,</span>
+<span class="line" id="L132">            .DefaultLength = <span class="tok-number">0</span>,</span>
+<span class="line" id="L133">        };</span>
+<span class="line" id="L134">    }</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">    <span class="tok-comment">// Table sentinel</span>
+</span>
+<span class="line" id="L137">    table[table_size] = .{</span>
+<span class="line" id="L138">        .QueryRoutine = <span class="tok-null">null</span>,</span>
+<span class="line" id="L139">        .Flags = <span class="tok-number">0</span>,</span>
+<span class="line" id="L140">        .Name = <span class="tok-null">null</span>,</span>
+<span class="line" id="L141">        .EntryContext = <span class="tok-null">null</span>,</span>
+<span class="line" id="L142">        .DefaultType = <span class="tok-number">0</span>,</span>
+<span class="line" id="L143">        .DefaultData = <span class="tok-null">null</span>,</span>
+<span class="line" id="L144">        .DefaultLength = <span class="tok-number">0</span>,</span>
+<span class="line" id="L145">    };</span>
+<span class="line" id="L146"></span>
+<span class="line" id="L147">    <span class="tok-kw">const</span> res = std.os.windows.ntdll.RtlQueryRegistryValues(</span>
+<span class="line" id="L148">        std.os.windows.RTL_REGISTRY_ABSOLUTE,</span>
+<span class="line" id="L149">        topkey,</span>
+<span class="line" id="L150">        &amp;table,</span>
+<span class="line" id="L151">        <span class="tok-null">null</span>,</span>
+<span class="line" id="L152">        <span class="tok-null">null</span>,</span>
+<span class="line" id="L153">    );</span>
+<span class="line" id="L154">    <span class="tok-kw">switch</span> (res) {</span>
+<span class="line" id="L155">        .SUCCESS =&gt; {</span>
+<span class="line" id="L156">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (fields_info, <span class="tok-number">0</span>..) |field, i| <span class="tok-kw">switch</span> (<span class="tok-builtin">@field</span>(args, field.name).value_type) {</span>
+<span class="line" id="L157">                REG.SZ,</span>
+<span class="line" id="L158">                REG.EXPAND_SZ,</span>
+<span class="line" id="L159">                REG.MULTI_SZ,</span>
+<span class="line" id="L160">                =&gt; {</span>
+<span class="line" id="L161">                    <span class="tok-kw">var</span> buf = <span class="tok-builtin">@field</span>(args, field.name).value_buf;</span>
+<span class="line" id="L162">                    <span class="tok-kw">const</span> entry = <span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> std.os.windows.UNICODE_STRING, <span class="tok-builtin">@ptrCast</span>(table[i + <span class="tok-number">1</span>].EntryContext));</span>
+<span class="line" id="L163">                    <span class="tok-kw">const</span> len = <span class="tok-kw">try</span> std.unicode.utf16leToUtf8(buf, entry.Buffer[<span class="tok-number">0</span> .. entry.Length / <span class="tok-number">2</span>]);</span>
+<span class="line" id="L164">                    buf[len] = <span class="tok-number">0</span>;</span>
+<span class="line" id="L165">                },</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167">                REG.DWORD,</span>
+<span class="line" id="L168">                REG.DWORD_BIG_ENDIAN,</span>
+<span class="line" id="L169">                REG.QWORD,</span>
+<span class="line" id="L170">                =&gt; {</span>
+<span class="line" id="L171">                    <span class="tok-kw">const</span> entry = <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(table[i + <span class="tok-number">1</span>].EntryContext));</span>
+<span class="line" id="L172">                    <span class="tok-kw">switch</span> (<span class="tok-builtin">@field</span>(args, field.name).value_type) {</span>
+<span class="line" id="L173">                        REG.DWORD, REG.DWORD_BIG_ENDIAN =&gt; {</span>
+<span class="line" id="L174">                            <span class="tok-builtin">@memcpy</span>(<span class="tok-builtin">@field</span>(args, field.name).value_buf[<span class="tok-number">0</span>..<span class="tok-number">4</span>], entry[<span class="tok-number">0</span>..<span class="tok-number">4</span>]);</span>
+<span class="line" id="L175">                        },</span>
+<span class="line" id="L176">                        REG.QWORD =&gt; {</span>
+<span class="line" id="L177">                            <span class="tok-builtin">@memcpy</span>(<span class="tok-builtin">@field</span>(args, field.name).value_buf[<span class="tok-number">0</span>..<span class="tok-number">8</span>], entry[<span class="tok-number">0</span>..<span class="tok-number">8</span>]);</span>
+<span class="line" id="L178">                        },</span>
+<span class="line" id="L179">                        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L180">                    }</span>
+<span class="line" id="L181">                },</span>
+<span class="line" id="L182"></span>
+<span class="line" id="L183">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L184">            };</span>
+<span class="line" id="L185">        },</span>
+<span class="line" id="L186">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Unexpected,</span>
+<span class="line" id="L187">    }</span>
+<span class="line" id="L188">}</span>
+<span class="line" id="L189"></span>
+<span class="line" id="L190"><span class="tok-kw">fn</span> <span class="tok-fn">setFeature</span>(<span class="tok-kw">comptime</span> Feature: <span class="tok-type">type</span>, cpu: *Target.Cpu, feature: Feature, enabled: <span class="tok-type">bool</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L191">    <span class="tok-kw">const</span> idx = <span class="tok-builtin">@as</span>(Target.Cpu.Feature.Set.Index, <span class="tok-builtin">@intFromEnum</span>(feature));</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">    <span class="tok-kw">if</span> (enabled) cpu.features.addFeature(idx) <span class="tok-kw">else</span> cpu.features.removeFeature(idx);</span>
+<span class="line" id="L194">}</span>
+<span class="line" id="L195"></span>
+<span class="line" id="L196"><span class="tok-kw">fn</span> <span class="tok-fn">getCpuCount</span>() <span class="tok-type">usize</span> {</span>
+<span class="line" id="L197">    <span class="tok-kw">return</span> std.os.windows.peb().NumberOfProcessors;</span>
+<span class="line" id="L198">}</span>
+<span class="line" id="L199"></span>
+<span class="line" id="L200"><span class="tok-comment">/// If the fine-grained detection of CPU features via Win registry fails,</span></span>
+<span class="line" id="L201"><span class="tok-comment">/// we fallback to a generic CPU model but we override the feature set</span></span>
+<span class="line" id="L202"><span class="tok-comment">/// using `SharedUserData` contents.</span></span>
+<span class="line" id="L203"><span class="tok-comment">/// This is effectively what LLVM does for all ARM chips on Windows.</span></span>
+<span class="line" id="L204"><span class="tok-kw">fn</span> <span class="tok-fn">genericCpuAndNativeFeatures</span>(arch: Target.Cpu.Arch) Target.Cpu {</span>
+<span class="line" id="L205">    <span class="tok-kw">var</span> cpu = Target.Cpu{</span>
+<span class="line" id="L206">        .arch = arch,</span>
+<span class="line" id="L207">        .model = Target.Cpu.Model.generic(arch),</span>
+<span class="line" id="L208">        .features = Target.Cpu.Feature.Set.empty,</span>
+<span class="line" id="L209">    };</span>
+<span class="line" id="L210"></span>
+<span class="line" id="L211">    <span class="tok-kw">switch</span> (arch) {</span>
+<span class="line" id="L212">        .aarch64, .aarch64_be, .aarch64_32 =&gt; {</span>
+<span class="line" id="L213">            <span class="tok-kw">const</span> Feature = Target.aarch64.Feature;</span>
+<span class="line" id="L214"></span>
+<span class="line" id="L215">            <span class="tok-comment">// Override any features that are either present or absent</span>
+</span>
+<span class="line" id="L216">            setFeature(Feature, &amp;cpu, .neon, IsProcessorFeaturePresent(PF.ARM_NEON_INSTRUCTIONS_AVAILABLE));</span>
+<span class="line" id="L217">            setFeature(Feature, &amp;cpu, .crc, IsProcessorFeaturePresent(PF.ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE));</span>
+<span class="line" id="L218">            setFeature(Feature, &amp;cpu, .crypto, IsProcessorFeaturePresent(PF.ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE));</span>
+<span class="line" id="L219">            setFeature(Feature, &amp;cpu, .lse, IsProcessorFeaturePresent(PF.ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE));</span>
+<span class="line" id="L220">            setFeature(Feature, &amp;cpu, .dotprod, IsProcessorFeaturePresent(PF.ARM_V82_DP_INSTRUCTIONS_AVAILABLE));</span>
+<span class="line" id="L221">            setFeature(Feature, &amp;cpu, .jsconv, IsProcessorFeaturePresent(PF.ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE));</span>
+<span class="line" id="L222">        },</span>
+<span class="line" id="L223">        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L224">    }</span>
+<span class="line" id="L225"></span>
+<span class="line" id="L226">    <span class="tok-kw">return</span> cpu;</span>
+<span class="line" id="L227">}</span>
+<span class="line" id="L228"></span>
+<span class="line" id="L229"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">detectNativeCpuAndFeatures</span>() ?Target.Cpu {</span>
+<span class="line" id="L230">    <span class="tok-kw">const</span> current_arch = builtin.cpu.arch;</span>
+<span class="line" id="L231">    <span class="tok-kw">const</span> cpu: ?Target.Cpu = <span class="tok-kw">switch</span> (current_arch) {</span>
+<span class="line" id="L232">        .aarch64, .aarch64_be, .aarch64_32 =&gt; blk: {</span>
+<span class="line" id="L233">            <span class="tok-kw">var</span> cores: [<span class="tok-number">128</span>]Target.Cpu = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L234">            <span class="tok-kw">const</span> core_count = getCpuCount();</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236">            <span class="tok-kw">if</span> (core_count &gt; cores.len) <span class="tok-kw">break</span> :blk <span class="tok-null">null</span>;</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L239">            <span class="tok-kw">while</span> (i &lt; core_count) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L240">                <span class="tok-comment">// Backing datastore</span>
+</span>
+<span class="line" id="L241">                <span class="tok-kw">var</span> registers: [<span class="tok-number">12</span>]<span class="tok-type">u64</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">                <span class="tok-comment">// Registry key to system ID register mapping</span>
+</span>
+<span class="line" id="L244">                <span class="tok-comment">// CP 4000 -&gt; MIDR_EL1</span>
+</span>
+<span class="line" id="L245">                <span class="tok-comment">// CP 4020 -&gt; ID_AA64PFR0_EL1</span>
+</span>
+<span class="line" id="L246">                <span class="tok-comment">// CP 4021 -&gt; ID_AA64PFR1_EL1</span>
+</span>
+<span class="line" id="L247">                <span class="tok-comment">// CP 4028 -&gt; ID_AA64DFR0_EL1</span>
+</span>
+<span class="line" id="L248">                <span class="tok-comment">// CP 4029 -&gt; ID_AA64DFR1_EL1</span>
+</span>
+<span class="line" id="L249">                <span class="tok-comment">// CP 402C -&gt; ID_AA64AFR0_EL1</span>
+</span>
+<span class="line" id="L250">                <span class="tok-comment">// CP 402D -&gt; ID_AA64AFR1_EL1</span>
+</span>
+<span class="line" id="L251">                <span class="tok-comment">// CP 4030 -&gt; ID_AA64ISAR0_EL1</span>
+</span>
+<span class="line" id="L252">                <span class="tok-comment">// CP 4031 -&gt; ID_AA64ISAR1_EL1</span>
+</span>
+<span class="line" id="L253">                <span class="tok-comment">// CP 4038 -&gt; ID_AA64MMFR0_EL1</span>
+</span>
+<span class="line" id="L254">                <span class="tok-comment">// CP 4039 -&gt; ID_AA64MMFR1_EL1</span>
+</span>
+<span class="line" id="L255">                <span class="tok-comment">// CP 403A -&gt; ID_AA64MMFR2_EL1</span>
+</span>
+<span class="line" id="L256">                getCpuInfoFromRegistry(i, .{</span>
+<span class="line" id="L257">                    .{ .key = <span class="tok-str">&quot;CP 4000&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">0</span>])) },</span>
+<span class="line" id="L258">                    .{ .key = <span class="tok-str">&quot;CP 4020&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">1</span>])) },</span>
+<span class="line" id="L259">                    .{ .key = <span class="tok-str">&quot;CP 4021&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">2</span>])) },</span>
+<span class="line" id="L260">                    .{ .key = <span class="tok-str">&quot;CP 4028&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">3</span>])) },</span>
+<span class="line" id="L261">                    .{ .key = <span class="tok-str">&quot;CP 4029&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">4</span>])) },</span>
+<span class="line" id="L262">                    .{ .key = <span class="tok-str">&quot;CP 402C&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">5</span>])) },</span>
+<span class="line" id="L263">                    .{ .key = <span class="tok-str">&quot;CP 402D&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">6</span>])) },</span>
+<span class="line" id="L264">                    .{ .key = <span class="tok-str">&quot;CP 4030&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">7</span>])) },</span>
+<span class="line" id="L265">                    .{ .key = <span class="tok-str">&quot;CP 4031&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">8</span>])) },</span>
+<span class="line" id="L266">                    .{ .key = <span class="tok-str">&quot;CP 4038&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">9</span>])) },</span>
+<span class="line" id="L267">                    .{ .key = <span class="tok-str">&quot;CP 4039&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">10</span>])) },</span>
+<span class="line" id="L268">                    .{ .key = <span class="tok-str">&quot;CP 403A&quot;</span>, .value_type = REG.QWORD, .value_buf = <span class="tok-builtin">@as</span>(*[<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;registers[<span class="tok-number">11</span>])) },</span>
+<span class="line" id="L269">                }) <span class="tok-kw">catch</span> <span class="tok-kw">break</span> :blk <span class="tok-null">null</span>;</span>
+<span class="line" id="L270"></span>
+<span class="line" id="L271">                cores[i] = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;arm.zig&quot;</span>).aarch64.detectNativeCpuAndFeatures(current_arch, registers) <span class="tok-kw">orelse</span></span>
+<span class="line" id="L272">                    <span class="tok-kw">break</span> :blk <span class="tok-null">null</span>;</span>
+<span class="line" id="L273">            }</span>
+<span class="line" id="L274"></span>
+<span class="line" id="L275">            <span class="tok-comment">// Pick the first core, usually LITTLE in big.LITTLE architecture.</span>
+</span>
+<span class="line" id="L276">            <span class="tok-kw">break</span> :blk cores[<span class="tok-number">0</span>];</span>
+<span class="line" id="L277">        },</span>
+<span class="line" id="L278">        <span class="tok-kw">else</span> =&gt; <span class="tok-null">null</span>,</span>
+<span class="line" id="L279">    };</span>
+<span class="line" id="L280">    <span class="tok-kw">return</span> cpu <span class="tok-kw">orelse</span> genericCpuAndNativeFeatures(current_arch);</span>
+<span class="line" id="L281">}</span>
+<span class="line" id="L282"></span>
+</code></pre></body>
+</html>
