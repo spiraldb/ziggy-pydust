@@ -103,7 +103,7 @@ pub const PyDict = extern struct {
         defer keyObj.decref();
 
         if (ffi.PyDict_GetItemWithError(self.obj.py, keyObj.py)) |item| {
-            return try py.as(T, .{ .py = item });
+            return try py.as(T, py.PyObject{ .py = item });
         }
 
         // If no exception, then the item is missing.

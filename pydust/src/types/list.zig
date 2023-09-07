@@ -29,7 +29,7 @@ pub const PyList = extern struct {
     // Returns borrowed reference.
     pub fn getItem(self: PyList, comptime T: type, idx: isize) !T {
         if (ffi.PyList_GetItem(self.obj.py, idx)) |item| {
-            return py.as(T, .{ .py = item });
+            return py.as(T, py.PyObject{ .py = item });
         } else {
             return PyError.Propagate;
         }

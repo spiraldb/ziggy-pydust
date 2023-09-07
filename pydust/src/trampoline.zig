@@ -18,13 +18,9 @@ pub fn Trampoline(comptime T: type) type {
     }
 
     return struct {
-        /// Wraps object that already represent existing Python objects.
+        /// Wraps an object that already represents an existing Python object.
         /// In other words, Zig primitive types are not supported.
-        pub fn wrapObject(obj: T) py.PyObject {
-            if (!isObjectLike()) {
-                @compileError("Cannot convert " ++ @typeName(T) ++ " into a Python object");
-            }
-
+        pub inline fn wrapObject(obj: T) py.PyObject {
             switch (@typeInfo(T)) {
                 .Pointer => |p| {
                     // The object is an ffi.PyObject
@@ -50,14 +46,13 @@ pub fn Trampoline(comptime T: type) type {
                         return obj.obj;
                     }
 
-                    // Support py.PyObject
                     if (T == py.PyObject) {
                         return obj;
                     }
                 },
                 inline else => {},
             }
-            @compileError("Cannot convert into PyObject" ++ @typeName(T));
+            @compileError("Cannot convert into PyObject: " ++ @typeName(T));
         }
 
         inline fn isObjectLike() bool {
@@ -172,7 +167,9 @@ pub fn Trampoline(comptime T: type) type {
             if (!isObjectLike()) {
                 // If we're unwrapping into another Python object, then we don't want to decref.
                 // If we're unwrapping into a Zig, then we do want to decref.
-                defer object.decref();
+                if (object) |o| {
+                    defer o.decref();
+                }
             }
             return unwrap(object);
         }
@@ -221,7 +218,7 @@ pub fn Trampoline(comptime T: type) type {
 
                     // We make the assumption that []const u8 is converted from a PyString
                     if (p.child == u8 and p.size == .Slice and p.is_const) {
-                        return (try py.PyString.of(obj)).obj;
+                        return try (try py.PyString.of(obj)).asSlice();
                     }
 
                     @compileLog("Unsupported pointer type " ++ @typeName(p.child), py.State.classes(), py.State.modules());

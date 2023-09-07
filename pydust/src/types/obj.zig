@@ -15,11 +15,6 @@ pub const PyType = extern struct {
 };
 
 pub const PyObject = extern struct {
-    pub const HEAD = ffi.PyObject{
-        .ob_refcnt = 1,
-        .ob_type = null,
-    };
-
     py: *ffi.PyObject,
 
     /// Converts any PyObject-like value into its PyObject representation.
