@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// --8<-- [start:ex]
 const py = @import("pydust");
 
 pub fn hello() !py.PyString {
@@ -24,3 +25,4 @@ pub fn hello() !py.PyString {
 comptime {
     py.module(@This());
 }
+// --8<-- [end:ex]

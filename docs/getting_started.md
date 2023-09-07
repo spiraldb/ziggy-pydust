@@ -58,12 +58,12 @@ root = "src/hello.zig"
 ```
 
 ```zig title="src/hello.zig"
---8<-- "example/hello.zig"
+--8<-- "example/hello.zig:ex"
 ```
 
 Running `poetry install` will build your modules. After this, you will be
 able to import your module from within `poetry shell` or `poetry run pytest`.
 
 ```python title="test/test_hello.py"
---8<-- "test/test_hello.py"
+--8<-- "test/test_hello.py:ex"
 ```

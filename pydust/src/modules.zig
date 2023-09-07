@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// -8<-- [start:ex]
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
@@ -114,3 +115,4 @@ fn Slots(comptime mod: py.ModuleDef) type {
         }
     };
 }
+// -8<-- [end:ex]

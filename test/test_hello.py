@@ -16,9 +16,12 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
 """
-
+# --8<-- [start:ex]
 from example import hello
 
 
 def test_hello():
     assert hello.hello() == "Hello!"
+
+
+# --8<-- [end:ex]
