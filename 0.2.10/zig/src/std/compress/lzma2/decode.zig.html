@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>compress/lzma2/decode.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-kw">const</span> lzma = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../lzma.zig&quot;</span>);</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> DecoderState = lzma.decode.DecoderState;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> LzAccumBuffer = lzma.decode.lzbuffer.LzAccumBuffer;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> Properties = lzma.decode.Properties;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> RangeDecoder = lzma.decode.rangecoder.RangeDecoder;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Decoder = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L11">    lzma_state: DecoderState,</span>
+<span class="line" id="L12"></span>
+<span class="line" id="L13">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(allocator: Allocator) !Decoder {</span>
+<span class="line" id="L14">        <span class="tok-kw">return</span> Decoder{</span>
+<span class="line" id="L15">            .lzma_state = <span class="tok-kw">try</span> DecoderState.init(</span>
+<span class="line" id="L16">                allocator,</span>
+<span class="line" id="L17">                Properties{</span>
+<span class="line" id="L18">                    .lc = <span class="tok-number">0</span>,</span>
+<span class="line" id="L19">                    .lp = <span class="tok-number">0</span>,</span>
+<span class="line" id="L20">                    .pb = <span class="tok-number">0</span>,</span>
+<span class="line" id="L21">                },</span>
+<span class="line" id="L22">                <span class="tok-null">null</span>,</span>
+<span class="line" id="L23">            ),</span>
+<span class="line" id="L24">        };</span>
+<span class="line" id="L25">    }</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *Decoder, allocator: Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L28">        self.lzma_state.deinit(allocator);</span>
+<span class="line" id="L29">        self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L30">    }</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decompress</span>(</span>
+<span class="line" id="L33">        self: *Decoder,</span>
+<span class="line" id="L34">        allocator: Allocator,</span>
+<span class="line" id="L35">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L36">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L37">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L38">        <span class="tok-kw">var</span> accum = LzAccumBuffer.init(std.math.maxInt(<span class="tok-type">usize</span>));</span>
+<span class="line" id="L39">        <span class="tok-kw">defer</span> accum.deinit(allocator);</span>
+<span class="line" id="L40"></span>
+<span class="line" id="L41">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L42">            <span class="tok-kw">const</span> status = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44">            <span class="tok-kw">switch</span> (status) {</span>
+<span class="line" id="L45">                <span class="tok-number">0</span> =&gt; <span class="tok-kw">break</span>,</span>
+<span class="line" id="L46">                <span class="tok-number">1</span> =&gt; <span class="tok-kw">try</span> parseUncompressed(allocator, reader, writer, &amp;accum, <span class="tok-null">true</span>),</span>
+<span class="line" id="L47">                <span class="tok-number">2</span> =&gt; <span class="tok-kw">try</span> parseUncompressed(allocator, reader, writer, &amp;accum, <span class="tok-null">false</span>),</span>
+<span class="line" id="L48">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">try</span> self.parseLzma(allocator, reader, writer, &amp;accum, status),</span>
+<span class="line" id="L49">            }</span>
+<span class="line" id="L50">        }</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52">        <span class="tok-kw">try</span> accum.finish(writer);</span>
+<span class="line" id="L53">    }</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">    <span class="tok-kw">fn</span> <span class="tok-fn">parseLzma</span>(</span>
+<span class="line" id="L56">        self: *Decoder,</span>
+<span class="line" id="L57">        allocator: Allocator,</span>
+<span class="line" id="L58">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L59">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L60">        accum: *LzAccumBuffer,</span>
+<span class="line" id="L61">        status: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L62">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L63">        <span class="tok-kw">if</span> (status &amp; <span class="tok-number">0x80</span> == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L64">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CorruptInput;</span>
+<span class="line" id="L65">        }</span>
+<span class="line" id="L66"></span>
+<span class="line" id="L67">        <span class="tok-kw">const</span> Reset = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L68">            dict: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L69">            state: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L70">            props: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L71">        };</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">        <span class="tok-kw">const</span> reset = <span class="tok-kw">switch</span> ((status &gt;&gt; <span class="tok-number">5</span>) &amp; <span class="tok-number">0x3</span>) {</span>
+<span class="line" id="L74">            <span class="tok-number">0</span> =&gt; Reset{</span>
+<span class="line" id="L75">                .dict = <span class="tok-null">false</span>,</span>
+<span class="line" id="L76">                .state = <span class="tok-null">false</span>,</span>
+<span class="line" id="L77">                .props = <span class="tok-null">false</span>,</span>
+<span class="line" id="L78">            },</span>
+<span class="line" id="L79">            <span class="tok-number">1</span> =&gt; Reset{</span>
+<span class="line" id="L80">                .dict = <span class="tok-null">false</span>,</span>
+<span class="line" id="L81">                .state = <span class="tok-null">true</span>,</span>
+<span class="line" id="L82">                .props = <span class="tok-null">false</span>,</span>
+<span class="line" id="L83">            },</span>
+<span class="line" id="L84">            <span class="tok-number">2</span> =&gt; Reset{</span>
+<span class="line" id="L85">                .dict = <span class="tok-null">false</span>,</span>
+<span class="line" id="L86">                .state = <span class="tok-null">true</span>,</span>
+<span class="line" id="L87">                .props = <span class="tok-null">true</span>,</span>
+<span class="line" id="L88">            },</span>
+<span class="line" id="L89">            <span class="tok-number">3</span> =&gt; Reset{</span>
+<span class="line" id="L90">                .dict = <span class="tok-null">true</span>,</span>
+<span class="line" id="L91">                .state = <span class="tok-null">true</span>,</span>
+<span class="line" id="L92">                .props = <span class="tok-null">true</span>,</span>
+<span class="line" id="L93">            },</span>
+<span class="line" id="L94">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L95">        };</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">        <span class="tok-kw">const</span> unpacked_size = blk: {</span>
+<span class="line" id="L98">            <span class="tok-kw">var</span> tmp: <span class="tok-type">u64</span> = status &amp; <span class="tok-number">0x1F</span>;</span>
+<span class="line" id="L99">            tmp &lt;&lt;= <span class="tok-number">16</span>;</span>
+<span class="line" id="L100">            tmp |= <span class="tok-kw">try</span> reader.readIntBig(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L101">            <span class="tok-kw">break</span> :blk tmp + <span class="tok-number">1</span>;</span>
+<span class="line" id="L102">        };</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104">        <span class="tok-kw">const</span> packed_size = blk: {</span>
+<span class="line" id="L105">            <span class="tok-kw">const</span> tmp: <span class="tok-type">u17</span> = <span class="tok-kw">try</span> reader.readIntBig(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L106">            <span class="tok-kw">break</span> :blk tmp + <span class="tok-number">1</span>;</span>
+<span class="line" id="L107">        };</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">        <span class="tok-kw">if</span> (reset.dict) {</span>
+<span class="line" id="L110">            <span class="tok-kw">try</span> accum.reset(writer);</span>
+<span class="line" id="L111">        }</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113">        <span class="tok-kw">if</span> (reset.state) {</span>
+<span class="line" id="L114">            <span class="tok-kw">var</span> new_props = self.lzma_state.lzma_props;</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116">            <span class="tok-kw">if</span> (reset.props) {</span>
+<span class="line" id="L117">                <span class="tok-kw">var</span> props = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L118">                <span class="tok-kw">if</span> (props &gt;= <span class="tok-number">225</span>) {</span>
+<span class="line" id="L119">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CorruptInput;</span>
+<span class="line" id="L120">                }</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">                <span class="tok-kw">const</span> lc = <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@intCast</span>(props % <span class="tok-number">9</span>));</span>
+<span class="line" id="L123">                props /= <span class="tok-number">9</span>;</span>
+<span class="line" id="L124">                <span class="tok-kw">const</span> lp = <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(props % <span class="tok-number">5</span>));</span>
+<span class="line" id="L125">                props /= <span class="tok-number">5</span>;</span>
+<span class="line" id="L126">                <span class="tok-kw">const</span> pb = <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(props));</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128">                <span class="tok-kw">if</span> (lc + lp &gt; <span class="tok-number">4</span>) {</span>
+<span class="line" id="L129">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CorruptInput;</span>
+<span class="line" id="L130">                }</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">                new_props = Properties{ .lc = lc, .lp = lp, .pb = pb };</span>
+<span class="line" id="L133">            }</span>
+<span class="line" id="L134"></span>
+<span class="line" id="L135">            <span class="tok-kw">try</span> self.lzma_state.resetState(allocator, new_props);</span>
+<span class="line" id="L136">        }</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138">        self.lzma_state.unpacked_size = unpacked_size + accum.len;</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140">        <span class="tok-kw">var</span> counter = std.io.countingReader(reader);</span>
+<span class="line" id="L141">        <span class="tok-kw">const</span> counter_reader = counter.reader();</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">        <span class="tok-kw">var</span> rangecoder = <span class="tok-kw">try</span> RangeDecoder.init(counter_reader);</span>
+<span class="line" id="L144">        <span class="tok-kw">while</span> (<span class="tok-kw">try</span> self.lzma_state.process(allocator, counter_reader, writer, accum, &amp;rangecoder) == .continue_) {}</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146">        <span class="tok-kw">if</span> (counter.bytes_read != packed_size) {</span>
+<span class="line" id="L147">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CorruptInput;</span>
+<span class="line" id="L148">        }</span>
+<span class="line" id="L149">    }</span>
+<span class="line" id="L150"></span>
+<span class="line" id="L151">    <span class="tok-kw">fn</span> <span class="tok-fn">parseUncompressed</span>(</span>
+<span class="line" id="L152">        allocator: Allocator,</span>
+<span class="line" id="L153">        reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L154">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L155">        accum: *LzAccumBuffer,</span>
+<span class="line" id="L156">        reset_dict: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L157">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L158">        <span class="tok-kw">const</span> unpacked_size = <span class="tok-builtin">@as</span>(<span class="tok-type">u17</span>, <span class="tok-kw">try</span> reader.readIntBig(<span class="tok-type">u16</span>)) + <span class="tok-number">1</span>;</span>
+<span class="line" id="L159"></span>
+<span class="line" id="L160">        <span class="tok-kw">if</span> (reset_dict) {</span>
+<span class="line" id="L161">            <span class="tok-kw">try</span> accum.reset(writer);</span>
+<span class="line" id="L162">        }</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164">        <span class="tok-kw">var</span> i: <span class="tok-builtin">@TypeOf</span>(unpacked_size) = <span class="tok-number">0</span>;</span>
+<span class="line" id="L165">        <span class="tok-kw">while</span> (i &lt; unpacked_size) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L166">            <span class="tok-kw">try</span> accum.appendByte(allocator, <span class="tok-kw">try</span> reader.readByte());</span>
+<span class="line" id="L167">        }</span>
+<span class="line" id="L168">    }</span>
+<span class="line" id="L169">};</span>
+<span class="line" id="L170"></span>
+</code></pre></body>
+</html>
