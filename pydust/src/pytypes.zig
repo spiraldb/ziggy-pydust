@@ -21,6 +21,12 @@ const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 const tramp = @import("trampoline.zig");
 const Type = std.builtin.Type;
 
+pub const ClassDef = struct {
+    name: [:0]const u8,
+    definition: type,
+    bases: []const type,
+};
+
 pub fn State(comptime definition: type) type {
     return struct {
         obj: ffi.PyObject,
@@ -29,7 +35,7 @@ pub fn State(comptime definition: type) type {
 }
 
 /// Wrap a user-defined class struct into a unique struct that itself wraps the trampolined functions.
-pub fn define(comptime class: py.ClassDef) type {
+pub fn define(comptime class: ClassDef) type {
     return struct {
         const Self = @This();
         pub const name: [:0]const u8 = class.name;

@@ -17,7 +17,13 @@ const pytypes = @import("pytypes.zig");
 const funcs = @import("functions.zig");
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 
-pub fn define(comptime mod: py.ModuleDef) type {
+pub const ModuleDef = struct {
+    name: [:0]const u8,
+    fullname: [:0]const u8,
+    definition: type,
+};
+
+pub fn define(comptime mod: ModuleDef) type {
     return struct {
         const definition = mod.definition;
 
@@ -53,7 +59,7 @@ pub fn define(comptime mod: py.ModuleDef) type {
     };
 }
 
-fn Slots(comptime mod: py.ModuleDef) type {
+fn Slots(comptime mod: ModuleDef) type {
     const empty = ffi.PyModuleDef_Slot{ .slot = 0, .value = null };
     const definition = mod.definition;
     const classDefs = py.findClasses(mod);
