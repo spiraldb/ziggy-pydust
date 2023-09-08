@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>sort/pdq.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> sort = std.sort;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-comment">/// Unstable in-place sort. n best case, n*log(n) worst case and average case.</span></span>
+<span class="line" id="L8"><span class="tok-comment">/// log(n) memory (no allocator required).</span></span>
+<span class="line" id="L9"><span class="tok-comment">///</span></span>
+<span class="line" id="L10"><span class="tok-comment">/// Sorts in ascending order with respect to the given `lessThan` function.</span></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pdq</span>(</span>
+<span class="line" id="L12">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L13">    items: []T,</span>
+<span class="line" id="L14">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L15">    <span class="tok-kw">comptime</span> lessThanFn: <span class="tok-kw">fn</span> (context: <span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L16">) <span class="tok-type">void</span> {</span>
+<span class="line" id="L17">    <span class="tok-kw">const</span> Context = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L18">        items: []T,</span>
+<span class="line" id="L19">        sub_ctx: <span class="tok-builtin">@TypeOf</span>(context),</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">lessThan</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L22">            <span class="tok-kw">return</span> lessThanFn(ctx.sub_ctx, ctx.items[a], ctx.items[b]);</span>
+<span class="line" id="L23">        }</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">swap</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L26">            <span class="tok-kw">return</span> mem.swap(T, &amp;ctx.items[a], &amp;ctx.items[b]);</span>
+<span class="line" id="L27">        }</span>
+<span class="line" id="L28">    };</span>
+<span class="line" id="L29">    pdqContext(<span class="tok-number">0</span>, items.len, Context{ .items = items, .sub_ctx = context });</span>
+<span class="line" id="L30">}</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32"><span class="tok-kw">const</span> Hint = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L33">    increasing,</span>
+<span class="line" id="L34">    decreasing,</span>
+<span class="line" id="L35">    unknown,</span>
+<span class="line" id="L36">};</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-comment">/// Unstable in-place sort. O(n) best case, O(n*log(n)) worst case and average case.</span></span>
+<span class="line" id="L39"><span class="tok-comment">/// O(log(n)) memory (no allocator required).</span></span>
+<span class="line" id="L40"><span class="tok-comment">/// `context` must have methods `swap` and `lessThan`,</span></span>
+<span class="line" id="L41"><span class="tok-comment">/// which each take 2 `usize` parameters indicating the index of an item.</span></span>
+<span class="line" id="L42"><span class="tok-comment">/// Sorts in ascending order with respect to `lessThan`.</span></span>
+<span class="line" id="L43"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pdqContext</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L44">    <span class="tok-comment">// slices of up to this length get sorted using insertion sort.</span>
+</span>
+<span class="line" id="L45">    <span class="tok-kw">const</span> max_insertion = <span class="tok-number">24</span>;</span>
+<span class="line" id="L46">    <span class="tok-comment">// number of allowed imbalanced partitions before switching to heap sort.</span>
+</span>
+<span class="line" id="L47">    <span class="tok-kw">const</span> max_limit = std.math.floorPowerOfTwo(<span class="tok-type">usize</span>, b - a) + <span class="tok-number">1</span>;</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-comment">// set upper bound on stack memory usage.</span>
+</span>
+<span class="line" id="L50">    <span class="tok-kw">const</span> Range = <span class="tok-kw">struct</span> { a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, limit: <span class="tok-type">usize</span> };</span>
+<span class="line" id="L51">    <span class="tok-kw">const</span> stack_size = math.log2(math.maxInt(<span class="tok-type">usize</span>) + <span class="tok-number">1</span>);</span>
+<span class="line" id="L52">    <span class="tok-kw">var</span> stack: [stack_size]Range = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L53">    <span class="tok-kw">var</span> range = Range{ .a = a, .b = b, .limit = max_limit };</span>
+<span class="line" id="L54">    <span class="tok-kw">var</span> top: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L55"></span>
+<span class="line" id="L56">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L57">        <span class="tok-kw">var</span> was_balanced = <span class="tok-null">true</span>;</span>
+<span class="line" id="L58">        <span class="tok-kw">var</span> was_partitioned = <span class="tok-null">true</span>;</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L61">            <span class="tok-kw">const</span> len = range.b - range.a;</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">            <span class="tok-comment">// very short slices get sorted using insertion sort.</span>
+</span>
+<span class="line" id="L64">            <span class="tok-kw">if</span> (len &lt;= max_insertion) {</span>
+<span class="line" id="L65">                <span class="tok-kw">break</span> sort.insertionContext(range.a, range.b, context);</span>
+<span class="line" id="L66">            }</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">            <span class="tok-comment">// if too many bad pivot choices were made, simply fall back to heapsort in order to</span>
+</span>
+<span class="line" id="L69">            <span class="tok-comment">// guarantee O(n*log(n)) worst-case.</span>
+</span>
+<span class="line" id="L70">            <span class="tok-kw">if</span> (range.limit == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L71">                <span class="tok-kw">break</span> sort.heapContext(range.a, range.b, context);</span>
+<span class="line" id="L72">            }</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74">            <span class="tok-comment">// if the last partitioning was imbalanced, try breaking patterns in the slice by shuffling</span>
+</span>
+<span class="line" id="L75">            <span class="tok-comment">// some elements around. Hopefully we'll choose a better pivot this time.</span>
+</span>
+<span class="line" id="L76">            <span class="tok-kw">if</span> (!was_balanced) {</span>
+<span class="line" id="L77">                breakPatterns(range.a, range.b, context);</span>
+<span class="line" id="L78">                range.limit -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L79">            }</span>
+<span class="line" id="L80"></span>
+<span class="line" id="L81">            <span class="tok-comment">// choose a pivot and try guessing whether the slice is already sorted.</span>
+</span>
+<span class="line" id="L82">            <span class="tok-kw">var</span> pivot: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L83">            <span class="tok-kw">var</span> hint = chosePivot(range.a, range.b, &amp;pivot, context);</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85">            <span class="tok-kw">if</span> (hint == .decreasing) {</span>
+<span class="line" id="L86">                <span class="tok-comment">// The maximum number of swaps was performed, so items are likely</span>
+</span>
+<span class="line" id="L87">                <span class="tok-comment">// in reverse order. Reverse it to make sorting faster.</span>
+</span>
+<span class="line" id="L88">                reverseRange(range.a, range.b, context);</span>
+<span class="line" id="L89">                pivot = (range.b - <span class="tok-number">1</span>) - (pivot - range.a);</span>
+<span class="line" id="L90">                hint = .increasing;</span>
+<span class="line" id="L91">            }</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">            <span class="tok-comment">// if the last partitioning was decently balanced and didn't shuffle elements, and if pivot</span>
+</span>
+<span class="line" id="L94">            <span class="tok-comment">// selection predicts the slice is likely already sorted...</span>
+</span>
+<span class="line" id="L95">            <span class="tok-kw">if</span> (was_balanced <span class="tok-kw">and</span> was_partitioned <span class="tok-kw">and</span> hint == .increasing) {</span>
+<span class="line" id="L96">                <span class="tok-comment">// try identifying several out-of-order elements and shifting them to correct</span>
+</span>
+<span class="line" id="L97">                <span class="tok-comment">// positions. If the slice ends up being completely sorted, we're done.</span>
+</span>
+<span class="line" id="L98">                <span class="tok-kw">if</span> (partialInsertionSort(range.a, range.b, context)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L99">            }</span>
+<span class="line" id="L100"></span>
+<span class="line" id="L101">            <span class="tok-comment">// if the chosen pivot is equal to the predecessor, then it's the smallest element in the</span>
+</span>
+<span class="line" id="L102">            <span class="tok-comment">// slice. Partition the slice into elements equal to and elements greater than the pivot.</span>
+</span>
+<span class="line" id="L103">            <span class="tok-comment">// This case is usually hit when the slice contains many duplicate elements.</span>
+</span>
+<span class="line" id="L104">            <span class="tok-kw">if</span> (range.a &gt; a <span class="tok-kw">and</span> !context.lessThan(range.a - <span class="tok-number">1</span>, pivot)) {</span>
+<span class="line" id="L105">                range.a = partitionEqual(range.a, range.b, pivot, context);</span>
+<span class="line" id="L106">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L107">            }</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">            <span class="tok-comment">// partition the slice.</span>
+</span>
+<span class="line" id="L110">            <span class="tok-kw">var</span> mid = pivot;</span>
+<span class="line" id="L111">            was_partitioned = partition(range.a, range.b, &amp;mid, context);</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113">            <span class="tok-kw">const</span> left_len = mid - range.a;</span>
+<span class="line" id="L114">            <span class="tok-kw">const</span> right_len = range.b - mid;</span>
+<span class="line" id="L115">            <span class="tok-kw">const</span> balanced_threshold = len / <span class="tok-number">8</span>;</span>
+<span class="line" id="L116">            <span class="tok-kw">if</span> (left_len &lt; right_len) {</span>
+<span class="line" id="L117">                was_balanced = left_len &gt;= balanced_threshold;</span>
+<span class="line" id="L118">                stack[top] = .{ .a = range.a, .b = mid, .limit = range.limit };</span>
+<span class="line" id="L119">                top += <span class="tok-number">1</span>;</span>
+<span class="line" id="L120">                range.a = mid + <span class="tok-number">1</span>;</span>
+<span class="line" id="L121">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L122">                was_balanced = right_len &gt;= balanced_threshold;</span>
+<span class="line" id="L123">                stack[top] = .{ .a = mid + <span class="tok-number">1</span>, .b = range.b, .limit = range.limit };</span>
+<span class="line" id="L124">                top += <span class="tok-number">1</span>;</span>
+<span class="line" id="L125">                range.b = mid;</span>
+<span class="line" id="L126">            }</span>
+<span class="line" id="L127">        }</span>
+<span class="line" id="L128"></span>
+<span class="line" id="L129">        top = math.sub(<span class="tok-type">usize</span>, top, <span class="tok-number">1</span>) <span class="tok-kw">catch</span> <span class="tok-kw">break</span>;</span>
+<span class="line" id="L130">        range = stack[top];</span>
+<span class="line" id="L131">    }</span>
+<span class="line" id="L132">}</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134"><span class="tok-comment">/// partitions `items[a..b]` into elements smaller than `items[pivot]`,</span></span>
+<span class="line" id="L135"><span class="tok-comment">/// followed by elements greater than or equal to `items[pivot]`.</span></span>
+<span class="line" id="L136"><span class="tok-comment">///</span></span>
+<span class="line" id="L137"><span class="tok-comment">/// sets the new pivot.</span></span>
+<span class="line" id="L138"><span class="tok-comment">/// returns `true` if already partitioned.</span></span>
+<span class="line" id="L139"><span class="tok-kw">fn</span> <span class="tok-fn">partition</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, pivot: *<span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L140">    <span class="tok-comment">// move pivot to the first place</span>
+</span>
+<span class="line" id="L141">    context.swap(a, pivot.*);</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-kw">var</span> i = a + <span class="tok-number">1</span>;</span>
+<span class="line" id="L144">    <span class="tok-kw">var</span> j = b - <span class="tok-number">1</span>;</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146">    <span class="tok-kw">while</span> (i &lt;= j <span class="tok-kw">and</span> context.lessThan(i, a)) i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L147">    <span class="tok-kw">while</span> (i &lt;= j <span class="tok-kw">and</span> !context.lessThan(j, a)) j -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">    <span class="tok-comment">// check if items are already partitioned (no item to swap)</span>
+</span>
+<span class="line" id="L150">    <span class="tok-kw">if</span> (i &gt; j) {</span>
+<span class="line" id="L151">        <span class="tok-comment">// put pivot back to the middle</span>
+</span>
+<span class="line" id="L152">        context.swap(j, a);</span>
+<span class="line" id="L153">        pivot.* = j;</span>
+<span class="line" id="L154">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L155">    }</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157">    context.swap(i, j);</span>
+<span class="line" id="L158">    i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L159">    j -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L160"></span>
+<span class="line" id="L161">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L162">        <span class="tok-kw">while</span> (i &lt;= j <span class="tok-kw">and</span> context.lessThan(i, a)) i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L163">        <span class="tok-kw">while</span> (i &lt;= j <span class="tok-kw">and</span> !context.lessThan(j, a)) j -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L164">        <span class="tok-kw">if</span> (i &gt; j) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">        context.swap(i, j);</span>
+<span class="line" id="L167">        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L168">        j -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L169">    }</span>
+<span class="line" id="L170"></span>
+<span class="line" id="L171">    <span class="tok-comment">// TODO: Enable the BlockQuicksort optimization</span>
+</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173">    context.swap(j, a);</span>
+<span class="line" id="L174">    pivot.* = j;</span>
+<span class="line" id="L175">    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L176">}</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178"><span class="tok-comment">/// partitions items into elements equal to `items[pivot]`</span></span>
+<span class="line" id="L179"><span class="tok-comment">/// followed by elements greater than `items[pivot]`.</span></span>
+<span class="line" id="L180"><span class="tok-comment">///</span></span>
+<span class="line" id="L181"><span class="tok-comment">/// it assumed that `items[a..b]` does not contain elements smaller than the `items[pivot]`.</span></span>
+<span class="line" id="L182"><span class="tok-kw">fn</span> <span class="tok-fn">partitionEqual</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, pivot: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L183">    <span class="tok-comment">// move pivot to the first place</span>
+</span>
+<span class="line" id="L184">    context.swap(a, pivot);</span>
+<span class="line" id="L185"></span>
+<span class="line" id="L186">    <span class="tok-kw">var</span> i = a + <span class="tok-number">1</span>;</span>
+<span class="line" id="L187">    <span class="tok-kw">var</span> j = b - <span class="tok-number">1</span>;</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L190">        <span class="tok-kw">while</span> (i &lt;= j <span class="tok-kw">and</span> !context.lessThan(a, i)) i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L191">        <span class="tok-kw">while</span> (i &lt;= j <span class="tok-kw">and</span> context.lessThan(a, j)) j -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L192">        <span class="tok-kw">if</span> (i &gt; j) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L193"></span>
+<span class="line" id="L194">        context.swap(i, j);</span>
+<span class="line" id="L195">        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L196">        j -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L197">    }</span>
+<span class="line" id="L198"></span>
+<span class="line" id="L199">    <span class="tok-kw">return</span> i;</span>
+<span class="line" id="L200">}</span>
+<span class="line" id="L201"></span>
+<span class="line" id="L202"><span class="tok-comment">/// partially sorts a slice by shifting several out-of-order elements around.</span></span>
+<span class="line" id="L203"><span class="tok-comment">///</span></span>
+<span class="line" id="L204"><span class="tok-comment">/// returns `true` if the slice is sorted at the end. This function is `O(n)` worst-case.</span></span>
+<span class="line" id="L205"><span class="tok-kw">fn</span> <span class="tok-fn">partialInsertionSort</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L206">    <span class="tok-builtin">@setCold</span>(<span class="tok-null">true</span>);</span>
+<span class="line" id="L207"></span>
+<span class="line" id="L208">    <span class="tok-comment">// maximum number of adjacent out-of-order pairs that will get shifted</span>
+</span>
+<span class="line" id="L209">    <span class="tok-kw">const</span> max_steps = <span class="tok-number">5</span>;</span>
+<span class="line" id="L210">    <span class="tok-comment">// if the slice is shorter than this, don't shift any elements</span>
+</span>
+<span class="line" id="L211">    <span class="tok-kw">const</span> shortest_shifting = <span class="tok-number">50</span>;</span>
+<span class="line" id="L212"></span>
+<span class="line" id="L213">    <span class="tok-kw">var</span> i = a + <span class="tok-number">1</span>;</span>
+<span class="line" id="L214">    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..max_steps) |_| {</span>
+<span class="line" id="L215">        <span class="tok-comment">// find the next pair of adjacent out-of-order elements.</span>
+</span>
+<span class="line" id="L216">        <span class="tok-kw">while</span> (i &lt; b <span class="tok-kw">and</span> !context.lessThan(i, i - <span class="tok-number">1</span>)) i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218">        <span class="tok-comment">// are we done?</span>
+</span>
+<span class="line" id="L219">        <span class="tok-kw">if</span> (i == b) <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221">        <span class="tok-comment">// don't shift elements on short arrays, that has a performance cost.</span>
+</span>
+<span class="line" id="L222">        <span class="tok-kw">if</span> (b - a &lt; shortest_shifting) <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">        <span class="tok-comment">// swap the found pair of elements. This puts them in correct order.</span>
+</span>
+<span class="line" id="L225">        context.swap(i, i - <span class="tok-number">1</span>);</span>
+<span class="line" id="L226"></span>
+<span class="line" id="L227">        <span class="tok-comment">// shift the smaller element to the left.</span>
+</span>
+<span class="line" id="L228">        <span class="tok-kw">if</span> (i - a &gt;= <span class="tok-number">2</span>) {</span>
+<span class="line" id="L229">            <span class="tok-kw">var</span> j = i - <span class="tok-number">1</span>;</span>
+<span class="line" id="L230">            <span class="tok-kw">while</span> (j &gt;= <span class="tok-number">1</span>) : (j -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L231">                <span class="tok-kw">if</span> (!context.lessThan(j, j - <span class="tok-number">1</span>)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L232">                context.swap(j, j - <span class="tok-number">1</span>);</span>
+<span class="line" id="L233">            }</span>
+<span class="line" id="L234">        }</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236">        <span class="tok-comment">// shift the greater element to the right.</span>
+</span>
+<span class="line" id="L237">        <span class="tok-kw">if</span> (b - i &gt;= <span class="tok-number">2</span>) {</span>
+<span class="line" id="L238">            <span class="tok-kw">var</span> j = i + <span class="tok-number">1</span>;</span>
+<span class="line" id="L239">            <span class="tok-kw">while</span> (j &lt; b) : (j += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L240">                <span class="tok-kw">if</span> (!context.lessThan(j, j - <span class="tok-number">1</span>)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L241">                context.swap(j, j - <span class="tok-number">1</span>);</span>
+<span class="line" id="L242">            }</span>
+<span class="line" id="L243">        }</span>
+<span class="line" id="L244">    }</span>
+<span class="line" id="L245"></span>
+<span class="line" id="L246">    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L247">}</span>
+<span class="line" id="L248"></span>
+<span class="line" id="L249"><span class="tok-kw">fn</span> <span class="tok-fn">breakPatterns</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L250">    <span class="tok-builtin">@setCold</span>(<span class="tok-null">true</span>);</span>
+<span class="line" id="L251"></span>
+<span class="line" id="L252">    <span class="tok-kw">const</span> len = b - a;</span>
+<span class="line" id="L253">    <span class="tok-kw">if</span> (len &lt; <span class="tok-number">8</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L254"></span>
+<span class="line" id="L255">    <span class="tok-kw">var</span> rand = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@intCast</span>(len));</span>
+<span class="line" id="L256">    <span class="tok-kw">const</span> modulus = math.ceilPowerOfTwoAssert(<span class="tok-type">u64</span>, len);</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258">    <span class="tok-kw">var</span> i = a + (len / <span class="tok-number">4</span>) * <span class="tok-number">2</span> - <span class="tok-number">1</span>;</span>
+<span class="line" id="L259">    <span class="tok-kw">while</span> (i &lt;= a + (len / <span class="tok-number">4</span>) * <span class="tok-number">2</span> + <span class="tok-number">1</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L260">        <span class="tok-comment">// xorshift64</span>
+</span>
+<span class="line" id="L261">        rand ^= rand &lt;&lt; <span class="tok-number">13</span>;</span>
+<span class="line" id="L262">        rand ^= rand &gt;&gt; <span class="tok-number">7</span>;</span>
+<span class="line" id="L263">        rand ^= rand &lt;&lt; <span class="tok-number">17</span>;</span>
+<span class="line" id="L264"></span>
+<span class="line" id="L265">        <span class="tok-kw">var</span> other = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(rand &amp; (modulus - <span class="tok-number">1</span>)));</span>
+<span class="line" id="L266">        <span class="tok-kw">if</span> (other &gt;= len) other -= len;</span>
+<span class="line" id="L267">        context.swap(i, a + other);</span>
+<span class="line" id="L268">    }</span>
+<span class="line" id="L269">}</span>
+<span class="line" id="L270"></span>
+<span class="line" id="L271"><span class="tok-comment">/// choses a pivot in `items[a..b]`.</span></span>
+<span class="line" id="L272"><span class="tok-comment">/// swaps likely_sorted when `items[a..b]` seems to be already sorted.</span></span>
+<span class="line" id="L273"><span class="tok-kw">fn</span> <span class="tok-fn">chosePivot</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, pivot: *<span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) Hint {</span>
+<span class="line" id="L274">    <span class="tok-comment">// minimum length for using the Tukey's ninther method</span>
+</span>
+<span class="line" id="L275">    <span class="tok-kw">const</span> shortest_ninther = <span class="tok-number">50</span>;</span>
+<span class="line" id="L276">    <span class="tok-comment">// max_swaps is the maximum number of swaps allowed in this function</span>
+</span>
+<span class="line" id="L277">    <span class="tok-kw">const</span> max_swaps = <span class="tok-number">4</span> * <span class="tok-number">3</span>;</span>
+<span class="line" id="L278"></span>
+<span class="line" id="L279">    <span class="tok-kw">var</span> len = b - a;</span>
+<span class="line" id="L280">    <span class="tok-kw">var</span> i = a + len / <span class="tok-number">4</span> * <span class="tok-number">1</span>;</span>
+<span class="line" id="L281">    <span class="tok-kw">var</span> j = a + len / <span class="tok-number">4</span> * <span class="tok-number">2</span>;</span>
+<span class="line" id="L282">    <span class="tok-kw">var</span> k = a + len / <span class="tok-number">4</span> * <span class="tok-number">3</span>;</span>
+<span class="line" id="L283">    <span class="tok-kw">var</span> swaps: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L284"></span>
+<span class="line" id="L285">    <span class="tok-kw">if</span> (len &gt;= <span class="tok-number">8</span>) {</span>
+<span class="line" id="L286">        <span class="tok-kw">if</span> (len &gt;= shortest_ninther) {</span>
+<span class="line" id="L287">            <span class="tok-comment">// find medians in the neighborhoods of `i`, `j` and `k`</span>
+</span>
+<span class="line" id="L288">            sort3(i - <span class="tok-number">1</span>, i, i + <span class="tok-number">1</span>, &amp;swaps, context);</span>
+<span class="line" id="L289">            sort3(j - <span class="tok-number">1</span>, j, j + <span class="tok-number">1</span>, &amp;swaps, context);</span>
+<span class="line" id="L290">            sort3(k - <span class="tok-number">1</span>, k, k + <span class="tok-number">1</span>, &amp;swaps, context);</span>
+<span class="line" id="L291">        }</span>
+<span class="line" id="L292"></span>
+<span class="line" id="L293">        <span class="tok-comment">// find the median among `i`, `j` and `k` and stores it in `j`</span>
+</span>
+<span class="line" id="L294">        sort3(i, j, k, &amp;swaps, context);</span>
+<span class="line" id="L295">    }</span>
+<span class="line" id="L296"></span>
+<span class="line" id="L297">    pivot.* = j;</span>
+<span class="line" id="L298">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (swaps) {</span>
+<span class="line" id="L299">        <span class="tok-number">0</span> =&gt; .increasing,</span>
+<span class="line" id="L300">        max_swaps =&gt; .decreasing,</span>
+<span class="line" id="L301">        <span class="tok-kw">else</span> =&gt; .unknown,</span>
+<span class="line" id="L302">    };</span>
+<span class="line" id="L303">}</span>
+<span class="line" id="L304"></span>
+<span class="line" id="L305"><span class="tok-kw">fn</span> <span class="tok-fn">sort3</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, c: <span class="tok-type">usize</span>, swaps: *<span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L306">    <span class="tok-kw">if</span> (context.lessThan(b, a)) {</span>
+<span class="line" id="L307">        swaps.* += <span class="tok-number">1</span>;</span>
+<span class="line" id="L308">        context.swap(b, a);</span>
+<span class="line" id="L309">    }</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311">    <span class="tok-kw">if</span> (context.lessThan(c, b)) {</span>
+<span class="line" id="L312">        swaps.* += <span class="tok-number">1</span>;</span>
+<span class="line" id="L313">        context.swap(c, b);</span>
+<span class="line" id="L314">    }</span>
+<span class="line" id="L315"></span>
+<span class="line" id="L316">    <span class="tok-kw">if</span> (context.lessThan(b, a)) {</span>
+<span class="line" id="L317">        swaps.* += <span class="tok-number">1</span>;</span>
+<span class="line" id="L318">        context.swap(b, a);</span>
+<span class="line" id="L319">    }</span>
+<span class="line" id="L320">}</span>
+<span class="line" id="L321"></span>
+<span class="line" id="L322"><span class="tok-kw">fn</span> <span class="tok-fn">reverseRange</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L323">    <span class="tok-kw">var</span> i = a;</span>
+<span class="line" id="L324">    <span class="tok-kw">var</span> j = b - <span class="tok-number">1</span>;</span>
+<span class="line" id="L325">    <span class="tok-kw">while</span> (i &lt; j) {</span>
+<span class="line" id="L326">        context.swap(i, j);</span>
+<span class="line" id="L327">        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L328">        j -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L329">    }</span>
+<span class="line" id="L330">}</span>
+<span class="line" id="L331"></span>
+</code></pre></body>
+</html>

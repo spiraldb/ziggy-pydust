@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>math/cbrt.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">// Ported from musl, which is licensed under the MIT license:</span>
+</span>
+<span class="line" id="L2"><span class="tok-comment">// https://git.musl-libc.org/cgit/musl/tree/COPYRIGHT</span>
+</span>
+<span class="line" id="L3"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L4"><span class="tok-comment">// https://git.musl-libc.org/cgit/musl/tree/src/math/cbrtf.c</span>
+</span>
+<span class="line" id="L5"><span class="tok-comment">// https://git.musl-libc.org/cgit/musl/tree/src/math/cbrt.c</span>
+</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> expect = std.testing.expect;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-comment">/// Returns the cube root of x.</span></span>
+<span class="line" id="L12"><span class="tok-comment">///</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// Special Cases:</span></span>
+<span class="line" id="L14"><span class="tok-comment">///  - cbrt(+-0)   = +-0</span></span>
+<span class="line" id="L15"><span class="tok-comment">///  - cbrt(+-inf) = +-inf</span></span>
+<span class="line" id="L16"><span class="tok-comment">///  - cbrt(nan)   = nan</span></span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">cbrt</span>(x: <span class="tok-kw">anytype</span>) <span class="tok-builtin">@TypeOf</span>(x) {</span>
+<span class="line" id="L18">    <span class="tok-kw">const</span> T = <span class="tok-builtin">@TypeOf</span>(x);</span>
+<span class="line" id="L19">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (T) {</span>
+<span class="line" id="L20">        <span class="tok-type">f32</span> =&gt; cbrt32(x),</span>
+<span class="line" id="L21">        <span class="tok-type">f64</span> =&gt; cbrt64(x),</span>
+<span class="line" id="L22">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;cbrt not implemented for &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T)),</span>
+<span class="line" id="L23">    };</span>
+<span class="line" id="L24">}</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26"><span class="tok-kw">fn</span> <span class="tok-fn">cbrt32</span>(x: <span class="tok-type">f32</span>) <span class="tok-type">f32</span> {</span>
+<span class="line" id="L27">    <span class="tok-kw">const</span> B1: <span class="tok-type">u32</span> = <span class="tok-number">709958130</span>; <span class="tok-comment">// (127 - 127.0 / 3 - 0.03306235651) * 2^23</span>
+</span>
+<span class="line" id="L28">    <span class="tok-kw">const</span> B2: <span class="tok-type">u32</span> = <span class="tok-number">642849266</span>; <span class="tok-comment">// (127 - 127.0 / 3 - 24 / 3 - 0.03306235651) * 2^23</span>
+</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30">    <span class="tok-kw">var</span> u = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@bitCast</span>(x));</span>
+<span class="line" id="L31">    <span class="tok-kw">var</span> hx = u &amp; <span class="tok-number">0x7FFFFFFF</span>;</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">    <span class="tok-comment">// cbrt(nan, inf) = itself</span>
+</span>
+<span class="line" id="L34">    <span class="tok-kw">if</span> (hx &gt;= <span class="tok-number">0x7F800000</span>) {</span>
+<span class="line" id="L35">        <span class="tok-kw">return</span> x + x;</span>
+<span class="line" id="L36">    }</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38">    <span class="tok-comment">// cbrt to ~5bits</span>
+</span>
+<span class="line" id="L39">    <span class="tok-kw">if</span> (hx &lt; <span class="tok-number">0x00800000</span>) {</span>
+<span class="line" id="L40">        <span class="tok-comment">// cbrt(+-0) = itself</span>
+</span>
+<span class="line" id="L41">        <span class="tok-kw">if</span> (hx == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L42">            <span class="tok-kw">return</span> x;</span>
+<span class="line" id="L43">        }</span>
+<span class="line" id="L44">        u = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@bitCast</span>(x * <span class="tok-number">0x1.0p24</span>));</span>
+<span class="line" id="L45">        hx = u &amp; <span class="tok-number">0x7FFFFFFF</span>;</span>
+<span class="line" id="L46">        hx = hx / <span class="tok-number">3</span> + B2;</span>
+<span class="line" id="L47">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L48">        hx = hx / <span class="tok-number">3</span> + B1;</span>
+<span class="line" id="L49">    }</span>
+<span class="line" id="L50"></span>
+<span class="line" id="L51">    u &amp;= <span class="tok-number">0x80000000</span>;</span>
+<span class="line" id="L52">    u |= hx;</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54">    <span class="tok-comment">// first step newton to 16 bits</span>
+</span>
+<span class="line" id="L55">    <span class="tok-kw">var</span> t: <span class="tok-type">f64</span> = <span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-builtin">@bitCast</span>(u));</span>
+<span class="line" id="L56">    <span class="tok-kw">var</span> r: <span class="tok-type">f64</span> = t * t * t;</span>
+<span class="line" id="L57">    t = t * (<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, x) + x + r) / (x + r + r);</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">    <span class="tok-comment">// second step newton to 47 bits</span>
+</span>
+<span class="line" id="L60">    r = t * t * t;</span>
+<span class="line" id="L61">    t = t * (<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, x) + x + r) / (x + r + r);</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-builtin">@floatCast</span>(t));</span>
+<span class="line" id="L64">}</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66"><span class="tok-kw">fn</span> <span class="tok-fn">cbrt64</span>(x: <span class="tok-type">f64</span>) <span class="tok-type">f64</span> {</span>
+<span class="line" id="L67">    <span class="tok-kw">const</span> B1: <span class="tok-type">u32</span> = <span class="tok-number">715094163</span>; <span class="tok-comment">// (1023 - 1023 / 3 - 0.03306235651 * 2^20</span>
+</span>
+<span class="line" id="L68">    <span class="tok-kw">const</span> B2: <span class="tok-type">u32</span> = <span class="tok-number">696219795</span>; <span class="tok-comment">// (1023 - 1023 / 3 - 54 / 3 - 0.03306235651 * 2^20</span>
+</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">    <span class="tok-comment">// |1 / cbrt(x) - p(x)| &lt; 2^(23.5)</span>
+</span>
+<span class="line" id="L71">    <span class="tok-kw">const</span> P0: <span class="tok-type">f64</span> = <span class="tok-number">1.87595182427177009643</span>;</span>
+<span class="line" id="L72">    <span class="tok-kw">const</span> P1: <span class="tok-type">f64</span> = -<span class="tok-number">1.88497979543377169875</span>;</span>
+<span class="line" id="L73">    <span class="tok-kw">const</span> P2: <span class="tok-type">f64</span> = <span class="tok-number">1.621429720105354466140</span>;</span>
+<span class="line" id="L74">    <span class="tok-kw">const</span> P3: <span class="tok-type">f64</span> = -<span class="tok-number">0.758397934778766047437</span>;</span>
+<span class="line" id="L75">    <span class="tok-kw">const</span> P4: <span class="tok-type">f64</span> = <span class="tok-number">0.145996192886612446982</span>;</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77">    <span class="tok-kw">var</span> u = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@bitCast</span>(x));</span>
+<span class="line" id="L78">    <span class="tok-kw">var</span> hx = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(u &gt;&gt; <span class="tok-number">32</span>)) &amp; <span class="tok-number">0x7FFFFFFF</span>;</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">    <span class="tok-comment">// cbrt(nan, inf) = itself</span>
+</span>
+<span class="line" id="L81">    <span class="tok-kw">if</span> (hx &gt;= <span class="tok-number">0x7FF00000</span>) {</span>
+<span class="line" id="L82">        <span class="tok-kw">return</span> x + x;</span>
+<span class="line" id="L83">    }</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85">    <span class="tok-comment">// cbrt to ~5bits</span>
+</span>
+<span class="line" id="L86">    <span class="tok-kw">if</span> (hx &lt; <span class="tok-number">0x00100000</span>) {</span>
+<span class="line" id="L87">        u = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@bitCast</span>(x * <span class="tok-number">0x1.0p54</span>));</span>
+<span class="line" id="L88">        hx = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(u &gt;&gt; <span class="tok-number">32</span>)) &amp; <span class="tok-number">0x7FFFFFFF</span>;</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">        <span class="tok-comment">// cbrt(0) is itself</span>
+</span>
+<span class="line" id="L91">        <span class="tok-kw">if</span> (hx == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L92">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L93">        }</span>
+<span class="line" id="L94">        hx = hx / <span class="tok-number">3</span> + B2;</span>
+<span class="line" id="L95">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L96">        hx = hx / <span class="tok-number">3</span> + B1;</span>
+<span class="line" id="L97">    }</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">    u &amp;= <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">63</span>;</span>
+<span class="line" id="L100">    u |= <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, hx) &lt;&lt; <span class="tok-number">32</span>;</span>
+<span class="line" id="L101">    <span class="tok-kw">var</span> t = <span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@bitCast</span>(u));</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103">    <span class="tok-comment">// cbrt to 23 bits</span>
+</span>
+<span class="line" id="L104">    <span class="tok-comment">// cbrt(x) = t * cbrt(x / t^3) ~= t * P(t^3 / x)</span>
+</span>
+<span class="line" id="L105">    <span class="tok-kw">var</span> r = (t * t) * (t / x);</span>
+<span class="line" id="L106">    t = t * ((P0 + r * (P1 + r * P2)) + ((r * r) * r) * (P3 + r * P4));</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108">    <span class="tok-comment">// Round t away from 0 to 23 bits</span>
+</span>
+<span class="line" id="L109">    u = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@bitCast</span>(t));</span>
+<span class="line" id="L110">    u = (u + <span class="tok-number">0x80000000</span>) &amp; <span class="tok-number">0xFFFFFFFFC0000000</span>;</span>
+<span class="line" id="L111">    t = <span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@bitCast</span>(u));</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113">    <span class="tok-comment">// one step newton to 53 bits</span>
+</span>
+<span class="line" id="L114">    <span class="tok-kw">const</span> s = t * t;</span>
+<span class="line" id="L115">    <span class="tok-kw">var</span> q = x / s;</span>
+<span class="line" id="L116">    <span class="tok-kw">var</span> w = t + t;</span>
+<span class="line" id="L117">    q = (q - t) / (w + q);</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">    <span class="tok-kw">return</span> t + t * q;</span>
+<span class="line" id="L120">}</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.cbrt&quot;</span> {</span>
+<span class="line" id="L123">    <span class="tok-kw">try</span> expect(cbrt(<span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-number">0.0</span>)) == cbrt32(<span class="tok-number">0.0</span>));</span>
+<span class="line" id="L124">    <span class="tok-kw">try</span> expect(cbrt(<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-number">0.0</span>)) == cbrt64(<span class="tok-number">0.0</span>));</span>
+<span class="line" id="L125">}</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.cbrt32&quot;</span> {</span>
+<span class="line" id="L128">    <span class="tok-kw">const</span> epsilon = <span class="tok-number">0.000001</span>;</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">    <span class="tok-kw">try</span> expect(cbrt32(<span class="tok-number">0.0</span>) == <span class="tok-number">0.0</span>);</span>
+<span class="line" id="L131">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, cbrt32(<span class="tok-number">0.2</span>), <span class="tok-number">0.584804</span>, epsilon));</span>
+<span class="line" id="L132">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, cbrt32(<span class="tok-number">0.8923</span>), <span class="tok-number">0.962728</span>, epsilon));</span>
+<span class="line" id="L133">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, cbrt32(<span class="tok-number">1.5</span>), <span class="tok-number">1.144714</span>, epsilon));</span>
+<span class="line" id="L134">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, cbrt32(<span class="tok-number">37.45</span>), <span class="tok-number">3.345676</span>, epsilon));</span>
+<span class="line" id="L135">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, cbrt32(<span class="tok-number">123123.234375</span>), <span class="tok-number">49.748501</span>, epsilon));</span>
+<span class="line" id="L136">}</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.cbrt64&quot;</span> {</span>
+<span class="line" id="L139">    <span class="tok-kw">const</span> epsilon = <span class="tok-number">0.000001</span>;</span>
+<span class="line" id="L140"></span>
+<span class="line" id="L141">    <span class="tok-kw">try</span> expect(cbrt64(<span class="tok-number">0.0</span>) == <span class="tok-number">0.0</span>);</span>
+<span class="line" id="L142">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, cbrt64(<span class="tok-number">0.2</span>), <span class="tok-number">0.584804</span>, epsilon));</span>
+<span class="line" id="L143">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, cbrt64(<span class="tok-number">0.8923</span>), <span class="tok-number">0.962728</span>, epsilon));</span>
+<span class="line" id="L144">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, cbrt64(<span class="tok-number">1.5</span>), <span class="tok-number">1.144714</span>, epsilon));</span>
+<span class="line" id="L145">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, cbrt64(<span class="tok-number">37.45</span>), <span class="tok-number">3.345676</span>, epsilon));</span>
+<span class="line" id="L146">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, cbrt64(<span class="tok-number">123123.234375</span>), <span class="tok-number">49.748501</span>, epsilon));</span>
+<span class="line" id="L147">}</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.cbrt.special&quot;</span> {</span>
+<span class="line" id="L150">    <span class="tok-kw">try</span> expect(cbrt32(<span class="tok-number">0.0</span>) == <span class="tok-number">0.0</span>);</span>
+<span class="line" id="L151">    <span class="tok-kw">try</span> expect(cbrt32(-<span class="tok-number">0.0</span>) == -<span class="tok-number">0.0</span>);</span>
+<span class="line" id="L152">    <span class="tok-kw">try</span> expect(math.isPositiveInf(cbrt32(math.inf(<span class="tok-type">f32</span>))));</span>
+<span class="line" id="L153">    <span class="tok-kw">try</span> expect(math.isNegativeInf(cbrt32(-math.inf(<span class="tok-type">f32</span>))));</span>
+<span class="line" id="L154">    <span class="tok-kw">try</span> expect(math.isNan(cbrt32(math.nan(<span class="tok-type">f32</span>))));</span>
+<span class="line" id="L155">}</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.cbrt64.special&quot;</span> {</span>
+<span class="line" id="L158">    <span class="tok-kw">try</span> expect(cbrt64(<span class="tok-number">0.0</span>) == <span class="tok-number">0.0</span>);</span>
+<span class="line" id="L159">    <span class="tok-kw">try</span> expect(cbrt64(-<span class="tok-number">0.0</span>) == -<span class="tok-number">0.0</span>);</span>
+<span class="line" id="L160">    <span class="tok-kw">try</span> expect(math.isPositiveInf(cbrt64(math.inf(<span class="tok-type">f64</span>))));</span>
+<span class="line" id="L161">    <span class="tok-kw">try</span> expect(math.isNegativeInf(cbrt64(-math.inf(<span class="tok-type">f64</span>))));</span>
+<span class="line" id="L162">    <span class="tok-kw">try</span> expect(math.isNan(cbrt64(math.nan(<span class="tok-type">f64</span>))));</span>
+<span class="line" id="L163">}</span>
+<span class="line" id="L164"></span>
+</code></pre></body>
+</html>
