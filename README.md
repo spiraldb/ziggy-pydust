@@ -2,8 +2,7 @@
 
 <p align="center">
   <a href="https://pydust.fulcrum.so">
-    <!--<img src="https://raw.githubusercontent.com/fulcrum-so/ziggy-pydust/develop/assets/ziggy-pydust.png" alt="Ziggy Pydust" />-->
-    <img src="https://i.ibb.co/VN0PBSD/ziggy-pydust.webp" style="border-radius: 20px; width: 500px; height: auto" />
+    <img src="https://pydust.fulcrum.so/assets/ziggy-pydust.webp" style="border-radius: 20px; width: 500px; height: auto" />
   </a>
 </p>
 <p align="center">
