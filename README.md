@@ -31,6 +31,8 @@
 
 **Source Code**: <a href="https://github.com/fulcrum-so/ziggy-pydust" target="_blank">https://github.com/fulcrum-so/ziggy-pydust</a>
 
+**Template**: <a href="https://github.com/fulcrum-so/ziggy-pydust-template" target="_blank">https://github.com/fulcrum-so/ziggy-pydust-template</a>
+
 ---
 
 Ziggy Pydust is a framework for writing and packaging native Python extension modules written in Zig.
