@@ -3,8 +3,10 @@ const builtins = @import("builtins.zig");
 const conversions = @import("conversions.zig");
 const mem = @import("mem.zig");
 const modules = @import("modules.zig");
+const ModuleDef = @import("modules.zig").ModuleDef;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
+const ClassDef = pytypes.ClassDef;
 const funcs = @import("functions.zig");
 const tramp = @import("trampoline.zig");
 const PyError = @import("errors.zig").PyError;
@@ -17,18 +19,6 @@ pub const ffi = @import("ffi.zig");
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
 const Self = @This();
-
-pub const ModuleDef = struct {
-    name: [:0]const u8,
-    fullname: [:0]const u8,
-    definition: type,
-};
-
-pub const ClassDef = struct {
-    name: [:0]const u8,
-    definition: type,
-    bases: []const type,
-};
 
 const State = blk: {
     comptime var modList: [20]ModuleDef = undefined;
