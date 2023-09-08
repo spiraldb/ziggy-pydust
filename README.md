@@ -72,20 +72,21 @@ Pydust supports:
 
 Please reach out if you're interested in helping us to expand compatibility.
 
-## Getting Started
+## Resources
 
 Pydust docs can be found [here](https://pydust.fulcrum.so).
+
 Zig documentation (beta) can be found [here](https://pydust.fulcrum.so/latest/zig).
 
-There is also a [template repository](https://github.com/fulcrum-so/ziggy-pydust-template) including Poetry build, Pytest and publishing from Github Actions.
+There is also a [template repository](https://github.com/fulcrum-so/ziggy-pydust-template) including Poetry build, Pytest, and publishing from Github Actions.
 
 ## Contributing
 
 We welcome contributions! Pydust is in its early stages so there is lots of low hanging
-fruit when it comes to contributions.
+fruit when it comes to contributions. If you are interested in contributing, please feel free to:
 
 - Assist other Pydust users with GitHub issues or discussions.
-- Suggest or implement features, fix bugs, fix performance issues.
+- Suggest or implement features, fix bugs, or fix performance issues.
 - Improve our documentation.
 - Write articles or other content demonstrating how you have used Pydust.
 
