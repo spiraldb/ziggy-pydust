@@ -1,6 +1,40 @@
 # Ziggy Pydust
 
-A framework for writing and packaging native Python extension modules written in Zig.
+<p align="center">
+  <a href="https://pydust.fulcrum.so">
+    <!--<img src="https://raw.githubusercontent.com/fulcrum-so/ziggy-pydust/develop/assets/ziggy-pydust.png" alt="Ziggy Pydust" />-->
+    <img src="https://i.ibb.co/VN0PBSD/ziggy-pydust.webp" style="border-radius: 20px; width: 500px; height: auto" />
+  </a>
+</p>
+<p align="center">
+    <em>A framework for writing and packaging native Python extension modules written in Zig.</em>
+</p>
+<p align="center">
+<a href="https://github.com/fulcrum-so/ziggy-pydust/actions" target="_blank">
+    <img src="https://img.shields.io/github/actions/workflow/status/fulcrum-so/ziggy-pydust/ci.yml?branch=develop&logo=github&style=" alt="Actions">
+</a>
+<a href="https://pypi.org/project/ziggy-pydust" target="_blank">
+    <img src="https://img.shields.io/pypi/v/ziggy-pydust" alt="Package version">
+</a>
+<a href="https://docs.python.org/3/whatsnew/3.11.html" target="_blank">
+    <img src="https://img.shields.io/pypi/pyversions/ziggy-pydust" alt="Python version">
+</a>
+<a href="https://github.com/fulcrum-so/ziggy-pydust/blob/develop/LICENSE" target="_blank">
+    <img src="https://img.shields.io/github/license/fulcrum-so/ziggy-pydust" alt="License">
+</a>
+</p>
+
+---
+
+**Documentation**: <a href="https://pydust.fulcrum.so/latest" target="_blank">https://pydust.fulcrum.so/latest</a>
+
+**API**: <a href="https://pydust.fulcrum.so/latest/zig" target="_blank">https://pydust.fulcrum.so/latest/zig</a>
+
+**Source Code**: <a href="https://github.com/fulcrum-so/ziggy-pydust" target="_blank">https://github.com/fulcrum-so/ziggy-pydust</a>
+
+---
+
+Ziggy Pydust is a framework for writing and packaging native Python extension modules written in Zig.
 
 * Package Python extension modules written in Zig.
 * Pytest plugin to discover and run Zig tests.
