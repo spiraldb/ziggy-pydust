@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// --8<-- [start:ex]
 pub const __doc__ =
     \\Zig multi-line strings make it easy to define a docstring...
     \\
@@ -56,3 +57,4 @@ pub fn hello(
 comptime {
     py.module(@This()); // (6)!
 }
+// --8<-- [end:ex]
