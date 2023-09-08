@@ -2,7 +2,7 @@
 
 Pydust is currently designed to be embedded within a Python [Poetry](https://python-poetry.org/) project. [Reach out](https://github.com/fulcrum-so/ziggy-pydust/issues) if you'd like help integrating Pydust with other build setups.
 
-See also the [generated Zig documentation](https://pydust.fulcrum.so/zig)
+See also the [generated Zig documentation](https://pydust.fulcrum.so/zig).
 
 ## GitHub Template
 
@@ -53,7 +53,7 @@ Once Poetry is configured, add a Pydust module to your `pyproject.toml` and star
 
 ```toml title="pyproject.toml"
 [[tool.pydust.ext_module]]
-name = "hello._lib"
+name = "example.hello"
 root = "src/hello.zig"
 ```
 
