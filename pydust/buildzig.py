@@ -13,6 +13,7 @@ limitations under the License.
 """
 
 import contextlib
+import os
 import subprocess
 import sys
 import sysconfig
@@ -24,7 +25,12 @@ from pydust import config
 PYVER_MINOR = ".".join(str(v) for v in sys.version_info[:2])
 PYVER_HEX = f"{sys.hexversion:#010x}"
 PYINC = sysconfig.get_path("include")
-PYLIB = sysconfig.get_config_var("LIBDIR")
+PYLIBDIR = sysconfig.get_config_var("LIBDIR")
+PYLDLIB = sysconfig.get_config_var("LDLIBRARY")
+
+# Strip libpython3.11.a.so => python3.11.a
+PYLDLIB = PYLDLIB[3:] if PYLDLIB.startswith("lib") else PYLDLIB
+PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
 def zig_build(argv: list[str]):
@@ -210,8 +216,8 @@ def generate_build_zig(build_zig_file):
                 pydust: []const u8, compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options
             ) void {{
                 configurePythonInclude(pydust, compile, pyconf);
-                compile.linkSystemLibrary("python{PYVER_MINOR}");
-                compile.addLibraryPath(.{{ .path =  "{PYLIB}" }});
+                compile.linkSystemLibrary("{PYLDLIB}");
+                compile.addLibraryPath(.{{ .path =  "{PYLIBDIR}" }});
             }}
             """
         )
