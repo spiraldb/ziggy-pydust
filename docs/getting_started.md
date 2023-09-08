@@ -53,7 +53,7 @@ Once Poetry is configured, add a Pydust module to your `pyproject.toml` and star
 
 ```toml title="pyproject.toml"
 [[tool.pydust.ext_module]]
-name = "hello._lib"
+name = "example.hello"
 root = "src/hello.zig"
 ```
 
