@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/hkdf.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> hmac = std.crypto.auth.hmac;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-comment">/// HKDF-SHA256</span></span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> HkdfSha256 = Hkdf(hmac.sha2.HmacSha256);</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-comment">/// HKDF-SHA512</span></span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> HkdfSha512 = Hkdf(hmac.sha2.HmacSha512);</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-comment">/// The Hkdf construction takes some source of initial keying material and</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// derives one or more uniform keys from it.</span></span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Hkdf</span>(<span class="tok-kw">comptime</span> Hmac: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L15">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L16">        <span class="tok-comment">/// Length of a master key, in bytes.</span></span>
+<span class="line" id="L17">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> prk_length = Hmac.mac_length;</span>
+<span class="line" id="L18"></span>
+<span class="line" id="L19">        <span class="tok-comment">/// Return a master key from a salt and initial keying material.</span></span>
+<span class="line" id="L20">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">extract</span>(salt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, ikm: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) [prk_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L21">            <span class="tok-kw">var</span> prk: [prk_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L22">            Hmac.create(&amp;prk, ikm, salt);</span>
+<span class="line" id="L23">            <span class="tok-kw">return</span> prk;</span>
+<span class="line" id="L24">        }</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26">        <span class="tok-comment">/// Initialize the creation of a master key from a salt</span></span>
+<span class="line" id="L27">        <span class="tok-comment">/// and keying material that can be added later, possibly in chunks.</span></span>
+<span class="line" id="L28">        <span class="tok-comment">/// Example:</span></span>
+<span class="line" id="L29">        <span class="tok-comment">/// ```</span></span>
+<span class="line" id="L30">        <span class="tok-comment">/// var prk: [hkdf.prk_length]u8 = undefined;</span></span>
+<span class="line" id="L31">        <span class="tok-comment">/// var hkdf = HkdfSha256.extractInit(salt);</span></span>
+<span class="line" id="L32">        <span class="tok-comment">/// hkdf.update(ikm1);</span></span>
+<span class="line" id="L33">        <span class="tok-comment">/// hkdf.update(ikm2);</span></span>
+<span class="line" id="L34">        <span class="tok-comment">/// hkdf.final(&amp;prk);</span></span>
+<span class="line" id="L35">        <span class="tok-comment">/// ```</span></span>
+<span class="line" id="L36">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">extractInit</span>(salt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Hmac {</span>
+<span class="line" id="L37">            <span class="tok-kw">return</span> Hmac.init(salt);</span>
+<span class="line" id="L38">        }</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40">        <span class="tok-comment">/// Derive a subkey from a master key `prk` and a subkey description `ctx`.</span></span>
+<span class="line" id="L41">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">expand</span>(out: []<span class="tok-type">u8</span>, ctx: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, prk: [prk_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L42">            assert(out.len &lt;= prk_length * <span class="tok-number">255</span>); <span class="tok-comment">// output size is too large for the Hkdf construction</span>
+</span>
+<span class="line" id="L43">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L44">            <span class="tok-kw">var</span> counter = [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">1</span>};</span>
+<span class="line" id="L45">            <span class="tok-kw">while</span> (i + prk_length &lt;= out.len) : (i += prk_length) {</span>
+<span class="line" id="L46">                <span class="tok-kw">var</span> st = Hmac.init(&amp;prk);</span>
+<span class="line" id="L47">                <span class="tok-kw">if</span> (i != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L48">                    st.update(out[i - prk_length ..][<span class="tok-number">0</span>..prk_length]);</span>
+<span class="line" id="L49">                }</span>
+<span class="line" id="L50">                st.update(ctx);</span>
+<span class="line" id="L51">                st.update(&amp;counter);</span>
+<span class="line" id="L52">                st.final(out[i..][<span class="tok-number">0</span>..prk_length]);</span>
+<span class="line" id="L53">                counter[<span class="tok-number">0</span>] +%= <span class="tok-number">1</span>;</span>
+<span class="line" id="L54">                assert(counter[<span class="tok-number">0</span>] != <span class="tok-number">1</span>);</span>
+<span class="line" id="L55">            }</span>
+<span class="line" id="L56">            <span class="tok-kw">const</span> left = out.len % prk_length;</span>
+<span class="line" id="L57">            <span class="tok-kw">if</span> (left &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L58">                <span class="tok-kw">var</span> st = Hmac.init(&amp;prk);</span>
+<span class="line" id="L59">                <span class="tok-kw">if</span> (i != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L60">                    st.update(out[i - prk_length ..][<span class="tok-number">0</span>..prk_length]);</span>
+<span class="line" id="L61">                }</span>
+<span class="line" id="L62">                st.update(ctx);</span>
+<span class="line" id="L63">                st.update(&amp;counter);</span>
+<span class="line" id="L64">                <span class="tok-kw">var</span> tmp: [prk_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L65">                st.final(tmp[<span class="tok-number">0</span>..prk_length]);</span>
+<span class="line" id="L66">                <span class="tok-builtin">@memcpy</span>(out[i..][<span class="tok-number">0</span>..left], tmp[<span class="tok-number">0</span>..left]);</span>
+<span class="line" id="L67">            }</span>
+<span class="line" id="L68">        }</span>
+<span class="line" id="L69">    };</span>
+<span class="line" id="L70">}</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72"><span class="tok-kw">const</span> htest = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;test.zig&quot;</span>);</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74"><span class="tok-kw">test</span> <span class="tok-str">&quot;Hkdf&quot;</span> {</span>
+<span class="line" id="L75">    <span class="tok-kw">const</span> ikm = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x0b</span>} ** <span class="tok-number">22</span>;</span>
+<span class="line" id="L76">    <span class="tok-kw">const</span> salt = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x0a</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x0c</span> };</span>
+<span class="line" id="L77">    <span class="tok-kw">const</span> context = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0xf0</span>, <span class="tok-number">0xf1</span>, <span class="tok-number">0xf2</span>, <span class="tok-number">0xf3</span>, <span class="tok-number">0xf4</span>, <span class="tok-number">0xf5</span>, <span class="tok-number">0xf6</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0xf8</span>, <span class="tok-number">0xf9</span> };</span>
+<span class="line" id="L78">    <span class="tok-kw">const</span> kdf = HkdfSha256;</span>
+<span class="line" id="L79">    <span class="tok-kw">const</span> prk = kdf.extract(&amp;salt, &amp;ikm);</span>
+<span class="line" id="L80">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5&quot;</span>, &amp;prk);</span>
+<span class="line" id="L81">    <span class="tok-kw">var</span> out: [<span class="tok-number">42</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L82">    kdf.expand(&amp;out, &amp;context, prk);</span>
+<span class="line" id="L83">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865&quot;</span>, &amp;out);</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85">    <span class="tok-kw">var</span> hkdf = kdf.extractInit(&amp;salt);</span>
+<span class="line" id="L86">    hkdf.update(&amp;ikm);</span>
+<span class="line" id="L87">    <span class="tok-kw">var</span> prk2: [kdf.prk_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L88">    hkdf.final(&amp;prk2);</span>
+<span class="line" id="L89">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5&quot;</span>, &amp;prk2);</span>
+<span class="line" id="L90">}</span>
+<span class="line" id="L91"></span>
+</code></pre></body>
+</html>

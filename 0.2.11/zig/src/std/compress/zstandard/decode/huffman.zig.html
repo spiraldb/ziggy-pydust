@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>compress/zstandard/decode/huffman.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3"><span class="tok-kw">const</span> types = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../types.zig&quot;</span>);</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> LiteralsSection = types.compressed_block.LiteralsSection;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> Table = types.compressed_block.Table;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">const</span> readers = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../readers.zig&quot;</span>);</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-kw">const</span> decodeFseTable = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;fse.zig&quot;</span>).decodeFseTable;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L12">    MalformedHuffmanTree,</span>
+<span class="line" id="L13">    MalformedFseTable,</span>
+<span class="line" id="L14">    MalformedAccuracyLog,</span>
+<span class="line" id="L15">    EndOfStream,</span>
+<span class="line" id="L16">};</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-kw">fn</span> <span class="tok-fn">decodeFseHuffmanTree</span>(</span>
+<span class="line" id="L19">    source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L20">    compressed_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L21">    buffer: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L22">    weights: *[<span class="tok-number">256</span>]<span class="tok-type">u4</span>,</span>
+<span class="line" id="L23">) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L24">    <span class="tok-kw">var</span> stream = std.io.limitedReader(source, compressed_size);</span>
+<span class="line" id="L25">    <span class="tok-kw">var</span> bit_reader = readers.bitReader(stream.reader());</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27">    <span class="tok-kw">var</span> entries: [<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">6</span>]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L28">    <span class="tok-kw">const</span> table_size = decodeFseTable(&amp;bit_reader, <span class="tok-number">256</span>, <span class="tok-number">6</span>, &amp;entries) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L29">        <span class="tok-kw">error</span>.MalformedAccuracyLog, <span class="tok-kw">error</span>.MalformedFseTable =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L30">        <span class="tok-kw">error</span>.EndOfStream =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedFseTable,</span>
+<span class="line" id="L31">        <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L32">    };</span>
+<span class="line" id="L33">    <span class="tok-kw">const</span> accuracy_log = std.math.log2_int_ceil(<span class="tok-type">usize</span>, table_size);</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">    <span class="tok-kw">const</span> amount = <span class="tok-kw">try</span> stream.reader().readAll(buffer);</span>
+<span class="line" id="L36">    <span class="tok-kw">var</span> huff_bits: readers.ReverseBitReader = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L37">    huff_bits.init(buffer[<span class="tok-number">0</span>..amount]) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39">    <span class="tok-kw">return</span> assignWeights(&amp;huff_bits, accuracy_log, &amp;entries, weights);</span>
+<span class="line" id="L40">}</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42"><span class="tok-kw">fn</span> <span class="tok-fn">decodeFseHuffmanTreeSlice</span>(src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, compressed_size: <span class="tok-type">usize</span>, weights: *[<span class="tok-number">256</span>]<span class="tok-type">u4</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L43">    <span class="tok-kw">if</span> (src.len &lt; compressed_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L44">    <span class="tok-kw">var</span> stream = std.io.fixedBufferStream(src[<span class="tok-number">0</span>..compressed_size]);</span>
+<span class="line" id="L45">    <span class="tok-kw">var</span> counting_reader = std.io.countingReader(stream.reader());</span>
+<span class="line" id="L46">    <span class="tok-kw">var</span> bit_reader = readers.bitReader(counting_reader.reader());</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">    <span class="tok-kw">var</span> entries: [<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">6</span>]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L49">    <span class="tok-kw">const</span> table_size = decodeFseTable(&amp;bit_reader, <span class="tok-number">256</span>, <span class="tok-number">6</span>, &amp;entries) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L50">        <span class="tok-kw">error</span>.MalformedAccuracyLog, <span class="tok-kw">error</span>.MalformedFseTable =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L51">        <span class="tok-kw">error</span>.EndOfStream =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedFseTable,</span>
+<span class="line" id="L52">    };</span>
+<span class="line" id="L53">    <span class="tok-kw">const</span> accuracy_log = std.math.log2_int_ceil(<span class="tok-type">usize</span>, table_size);</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">    <span class="tok-kw">const</span> start_index = std.math.cast(<span class="tok-type">usize</span>, counting_reader.bytes_read) <span class="tok-kw">orelse</span></span>
+<span class="line" id="L56">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L57">    <span class="tok-kw">var</span> huff_data = src[start_index..compressed_size];</span>
+<span class="line" id="L58">    <span class="tok-kw">var</span> huff_bits: readers.ReverseBitReader = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L59">    huff_bits.init(huff_data) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61">    <span class="tok-kw">return</span> assignWeights(&amp;huff_bits, accuracy_log, &amp;entries, weights);</span>
+<span class="line" id="L62">}</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64"><span class="tok-kw">fn</span> <span class="tok-fn">assignWeights</span>(</span>
+<span class="line" id="L65">    huff_bits: *readers.ReverseBitReader,</span>
+<span class="line" id="L66">    accuracy_log: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L67">    entries: *[<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">6</span>]Table.Fse,</span>
+<span class="line" id="L68">    weights: *[<span class="tok-number">256</span>]<span class="tok-type">u4</span>,</span>
+<span class="line" id="L69">) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L70">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L71">    <span class="tok-kw">var</span> even_state: <span class="tok-type">u32</span> = huff_bits.readBitsNoEof(<span class="tok-type">u32</span>, accuracy_log) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L72">    <span class="tok-kw">var</span> odd_state: <span class="tok-type">u32</span> = huff_bits.readBitsNoEof(<span class="tok-type">u32</span>, accuracy_log) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74">    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">254</span>) {</span>
+<span class="line" id="L75">        <span class="tok-kw">const</span> even_data = entries[even_state];</span>
+<span class="line" id="L76">        <span class="tok-kw">var</span> read_bits: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L77">        <span class="tok-kw">const</span> even_bits = huff_bits.readBits(<span class="tok-type">u32</span>, even_data.bits, &amp;read_bits) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L78">        weights[i] = std.math.cast(<span class="tok-type">u4</span>, even_data.symbol) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L79">        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L80">        <span class="tok-kw">if</span> (read_bits &lt; even_data.bits) {</span>
+<span class="line" id="L81">            weights[i] = std.math.cast(<span class="tok-type">u4</span>, entries[odd_state].symbol) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L82">            i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L83">            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L84">        }</span>
+<span class="line" id="L85">        even_state = even_data.baseline + even_bits;</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">        read_bits = <span class="tok-number">0</span>;</span>
+<span class="line" id="L88">        <span class="tok-kw">const</span> odd_data = entries[odd_state];</span>
+<span class="line" id="L89">        <span class="tok-kw">const</span> odd_bits = huff_bits.readBits(<span class="tok-type">u32</span>, odd_data.bits, &amp;read_bits) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L90">        weights[i] = std.math.cast(<span class="tok-type">u4</span>, odd_data.symbol) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L91">        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L92">        <span class="tok-kw">if</span> (read_bits &lt; odd_data.bits) {</span>
+<span class="line" id="L93">            <span class="tok-kw">if</span> (i == <span class="tok-number">255</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L94">            weights[i] = std.math.cast(<span class="tok-type">u4</span>, entries[even_state].symbol) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L95">            i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L96">            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L97">        }</span>
+<span class="line" id="L98">        odd_state = odd_data.baseline + odd_bits;</span>
+<span class="line" id="L99">    } <span class="tok-kw">else</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L100"></span>
+<span class="line" id="L101">    <span class="tok-kw">if</span> (!huff_bits.isEmpty()) {</span>
+<span class="line" id="L102">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L103">    }</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">    <span class="tok-kw">return</span> i + <span class="tok-number">1</span>; <span class="tok-comment">// stream contains all but the last symbol</span>
+</span>
+<span class="line" id="L106">}</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108"><span class="tok-kw">fn</span> <span class="tok-fn">decodeDirectHuffmanTree</span>(source: <span class="tok-kw">anytype</span>, encoded_symbol_count: <span class="tok-type">usize</span>, weights: *[<span class="tok-number">256</span>]<span class="tok-type">u4</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L109">    <span class="tok-kw">const</span> weights_byte_count = (encoded_symbol_count + <span class="tok-number">1</span>) / <span class="tok-number">2</span>;</span>
+<span class="line" id="L110">    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..weights_byte_count) |i| {</span>
+<span class="line" id="L111">        <span class="tok-kw">const</span> byte = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L112">        weights[<span class="tok-number">2</span> * i] = <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@intCast</span>(byte &gt;&gt; <span class="tok-number">4</span>));</span>
+<span class="line" id="L113">        weights[<span class="tok-number">2</span> * i + <span class="tok-number">1</span>] = <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@intCast</span>(byte &amp; <span class="tok-number">0xF</span>));</span>
+<span class="line" id="L114">    }</span>
+<span class="line" id="L115">    <span class="tok-kw">return</span> encoded_symbol_count + <span class="tok-number">1</span>;</span>
+<span class="line" id="L116">}</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118"><span class="tok-kw">fn</span> <span class="tok-fn">assignSymbols</span>(weight_sorted_prefixed_symbols: []LiteralsSection.HuffmanTree.PrefixedSymbol, weights: [<span class="tok-number">256</span>]<span class="tok-type">u4</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L119">    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..weight_sorted_prefixed_symbols.len) |i| {</span>
+<span class="line" id="L120">        weight_sorted_prefixed_symbols[i] = .{</span>
+<span class="line" id="L121">            .symbol = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(i)),</span>
+<span class="line" id="L122">            .weight = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L123">            .prefix = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L124">        };</span>
+<span class="line" id="L125">    }</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127">    std.mem.sort(</span>
+<span class="line" id="L128">        LiteralsSection.HuffmanTree.PrefixedSymbol,</span>
+<span class="line" id="L129">        weight_sorted_prefixed_symbols,</span>
+<span class="line" id="L130">        weights,</span>
+<span class="line" id="L131">        lessThanByWeight,</span>
+<span class="line" id="L132">    );</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134">    <span class="tok-kw">var</span> prefix: <span class="tok-type">u16</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L135">    <span class="tok-kw">var</span> prefixed_symbol_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L136">    <span class="tok-kw">var</span> sorted_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L137">    <span class="tok-kw">const</span> symbol_count = weight_sorted_prefixed_symbols.len;</span>
+<span class="line" id="L138">    <span class="tok-kw">while</span> (sorted_index &lt; symbol_count) {</span>
+<span class="line" id="L139">        <span class="tok-kw">var</span> symbol = weight_sorted_prefixed_symbols[sorted_index].symbol;</span>
+<span class="line" id="L140">        <span class="tok-kw">const</span> weight = weights[symbol];</span>
+<span class="line" id="L141">        <span class="tok-kw">if</span> (weight == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L142">            sorted_index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L143">            <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L144">        }</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146">        <span class="tok-kw">while</span> (sorted_index &lt; symbol_count) : ({</span>
+<span class="line" id="L147">            sorted_index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L148">            prefixed_symbol_count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L149">            prefix += <span class="tok-number">1</span>;</span>
+<span class="line" id="L150">        }) {</span>
+<span class="line" id="L151">            symbol = weight_sorted_prefixed_symbols[sorted_index].symbol;</span>
+<span class="line" id="L152">            <span class="tok-kw">if</span> (weights[symbol] != weight) {</span>
+<span class="line" id="L153">                prefix = ((prefix - <span class="tok-number">1</span>) &gt;&gt; (weights[symbol] - weight)) + <span class="tok-number">1</span>;</span>
+<span class="line" id="L154">                <span class="tok-kw">break</span>;</span>
+<span class="line" id="L155">            }</span>
+<span class="line" id="L156">            weight_sorted_prefixed_symbols[prefixed_symbol_count].symbol = symbol;</span>
+<span class="line" id="L157">            weight_sorted_prefixed_symbols[prefixed_symbol_count].prefix = prefix;</span>
+<span class="line" id="L158">            weight_sorted_prefixed_symbols[prefixed_symbol_count].weight = weight;</span>
+<span class="line" id="L159">        }</span>
+<span class="line" id="L160">    }</span>
+<span class="line" id="L161">    <span class="tok-kw">return</span> prefixed_symbol_count;</span>
+<span class="line" id="L162">}</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164"><span class="tok-kw">fn</span> <span class="tok-fn">buildHuffmanTree</span>(weights: *[<span class="tok-number">256</span>]<span class="tok-type">u4</span>, symbol_count: <span class="tok-type">usize</span>) <span class="tok-kw">error</span>{MalformedHuffmanTree}!LiteralsSection.HuffmanTree {</span>
+<span class="line" id="L165">    <span class="tok-kw">var</span> weight_power_sum_big: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L166">    <span class="tok-kw">for</span> (weights[<span class="tok-number">0</span> .. symbol_count - <span class="tok-number">1</span>]) |value| {</span>
+<span class="line" id="L167">        weight_power_sum_big += (<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">1</span>) &lt;&lt; value) &gt;&gt; <span class="tok-number">1</span>;</span>
+<span class="line" id="L168">    }</span>
+<span class="line" id="L169">    <span class="tok-kw">if</span> (weight_power_sum_big &gt;= <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">11</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L170">    <span class="tok-kw">const</span> weight_power_sum = <span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-builtin">@intCast</span>(weight_power_sum_big));</span>
+<span class="line" id="L171"></span>
+<span class="line" id="L172">    <span class="tok-comment">// advance to next power of two (even if weight_power_sum is a power of 2)</span>
+</span>
+<span class="line" id="L173">    <span class="tok-comment">// TODO: is it valid to have weight_power_sum == 0?</span>
+</span>
+<span class="line" id="L174">    <span class="tok-kw">const</span> max_number_of_bits = <span class="tok-kw">if</span> (weight_power_sum == <span class="tok-number">0</span>) <span class="tok-number">1</span> <span class="tok-kw">else</span> std.math.log2_int(<span class="tok-type">u16</span>, weight_power_sum) + <span class="tok-number">1</span>;</span>
+<span class="line" id="L175">    <span class="tok-kw">const</span> next_power_of_two = <span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">1</span>) &lt;&lt; max_number_of_bits;</span>
+<span class="line" id="L176">    weights[symbol_count - <span class="tok-number">1</span>] = std.math.log2_int(<span class="tok-type">u16</span>, next_power_of_two - weight_power_sum) + <span class="tok-number">1</span>;</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178">    <span class="tok-kw">var</span> weight_sorted_prefixed_symbols: [<span class="tok-number">256</span>]LiteralsSection.HuffmanTree.PrefixedSymbol = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L179">    <span class="tok-kw">const</span> prefixed_symbol_count = assignSymbols(weight_sorted_prefixed_symbols[<span class="tok-number">0</span>..symbol_count], weights.*);</span>
+<span class="line" id="L180">    <span class="tok-kw">const</span> tree = LiteralsSection.HuffmanTree{</span>
+<span class="line" id="L181">        .max_bit_count = max_number_of_bits,</span>
+<span class="line" id="L182">        .symbol_count_minus_one = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(prefixed_symbol_count - <span class="tok-number">1</span>)),</span>
+<span class="line" id="L183">        .nodes = weight_sorted_prefixed_symbols,</span>
+<span class="line" id="L184">    };</span>
+<span class="line" id="L185">    <span class="tok-kw">return</span> tree;</span>
+<span class="line" id="L186">}</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeHuffmanTree</span>(</span>
+<span class="line" id="L189">    source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L190">    buffer: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L191">) (<span class="tok-builtin">@TypeOf</span>(source).Error || Error)!LiteralsSection.HuffmanTree {</span>
+<span class="line" id="L192">    <span class="tok-kw">const</span> header = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L193">    <span class="tok-kw">var</span> weights: [<span class="tok-number">256</span>]<span class="tok-type">u4</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L194">    <span class="tok-kw">const</span> symbol_count = <span class="tok-kw">if</span> (header &lt; <span class="tok-number">128</span>)</span>
+<span class="line" id="L195">        <span class="tok-comment">// FSE compressed weights</span>
+</span>
+<span class="line" id="L196">        <span class="tok-kw">try</span> decodeFseHuffmanTree(source, header, buffer, &amp;weights)</span>
+<span class="line" id="L197">    <span class="tok-kw">else</span></span>
+<span class="line" id="L198">        <span class="tok-kw">try</span> decodeDirectHuffmanTree(source, header - <span class="tok-number">127</span>, &amp;weights);</span>
+<span class="line" id="L199"></span>
+<span class="line" id="L200">    <span class="tok-kw">return</span> buildHuffmanTree(&amp;weights, symbol_count);</span>
+<span class="line" id="L201">}</span>
+<span class="line" id="L202"></span>
+<span class="line" id="L203"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeHuffmanTreeSlice</span>(</span>
+<span class="line" id="L204">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L205">    consumed_count: *<span class="tok-type">usize</span>,</span>
+<span class="line" id="L206">) Error!LiteralsSection.HuffmanTree {</span>
+<span class="line" id="L207">    <span class="tok-kw">if</span> (src.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedHuffmanTree;</span>
+<span class="line" id="L208">    <span class="tok-kw">const</span> header = src[<span class="tok-number">0</span>];</span>
+<span class="line" id="L209">    <span class="tok-kw">var</span> bytes_read: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L210">    <span class="tok-kw">var</span> weights: [<span class="tok-number">256</span>]<span class="tok-type">u4</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L211">    <span class="tok-kw">const</span> symbol_count = <span class="tok-kw">if</span> (header &lt; <span class="tok-number">128</span>) count: {</span>
+<span class="line" id="L212">        <span class="tok-comment">// FSE compressed weights</span>
+</span>
+<span class="line" id="L213">        bytes_read += header;</span>
+<span class="line" id="L214">        <span class="tok-kw">break</span> :count <span class="tok-kw">try</span> decodeFseHuffmanTreeSlice(src[<span class="tok-number">1</span>..], header, &amp;weights);</span>
+<span class="line" id="L215">    } <span class="tok-kw">else</span> count: {</span>
+<span class="line" id="L216">        <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src[<span class="tok-number">1</span>..]);</span>
+<span class="line" id="L217">        <span class="tok-kw">defer</span> bytes_read += fbs.pos;</span>
+<span class="line" id="L218">        <span class="tok-kw">break</span> :count <span class="tok-kw">try</span> decodeDirectHuffmanTree(fbs.reader(), header - <span class="tok-number">127</span>, &amp;weights);</span>
+<span class="line" id="L219">    };</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221">    consumed_count.* += bytes_read;</span>
+<span class="line" id="L222">    <span class="tok-kw">return</span> buildHuffmanTree(&amp;weights, symbol_count);</span>
+<span class="line" id="L223">}</span>
+<span class="line" id="L224"></span>
+<span class="line" id="L225"><span class="tok-kw">fn</span> <span class="tok-fn">lessThanByWeight</span>(</span>
+<span class="line" id="L226">    weights: [<span class="tok-number">256</span>]<span class="tok-type">u4</span>,</span>
+<span class="line" id="L227">    lhs: LiteralsSection.HuffmanTree.PrefixedSymbol,</span>
+<span class="line" id="L228">    rhs: LiteralsSection.HuffmanTree.PrefixedSymbol,</span>
+<span class="line" id="L229">) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L230">    <span class="tok-comment">// NOTE: this function relies on the use of a stable sorting algorithm,</span>
+</span>
+<span class="line" id="L231">    <span class="tok-comment">//       otherwise a special case of if (weights[lhs] == weights[rhs]) return lhs &lt; rhs;</span>
+</span>
+<span class="line" id="L232">    <span class="tok-comment">//       should be added</span>
+</span>
+<span class="line" id="L233">    <span class="tok-kw">return</span> weights[lhs.symbol] &lt; weights[rhs.symbol];</span>
+<span class="line" id="L234">}</span>
+<span class="line" id="L235"></span>
+</code></pre></body>
+</html>
