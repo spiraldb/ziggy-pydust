@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>zig/string_literal.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> utf8Decode = std.unicode.utf8Decode;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> utf8Encode = std.unicode.utf8Encode;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ParseError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L7">    OutOfMemory,</span>
+<span class="line" id="L8">    InvalidLiteral,</span>
+<span class="line" id="L9">};</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ParsedCharLiteral = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L12">    success: <span class="tok-type">u21</span>,</span>
+<span class="line" id="L13">    failure: Error,</span>
+<span class="line" id="L14">};</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Result = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L17">    success,</span>
+<span class="line" id="L18">    failure: Error,</span>
+<span class="line" id="L19">};</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L22">    <span class="tok-comment">/// The character after backslash is missing or not recognized.</span></span>
+<span class="line" id="L23">    invalid_escape_character: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L24">    <span class="tok-comment">/// Expected hex digit at this index.</span></span>
+<span class="line" id="L25">    expected_hex_digit: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L26">    <span class="tok-comment">/// Unicode escape sequence had no digits with rbrace at this index.</span></span>
+<span class="line" id="L27">    empty_unicode_escape_sequence: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L28">    <span class="tok-comment">/// Expected hex digit or '}' at this index.</span></span>
+<span class="line" id="L29">    expected_hex_digit_or_rbrace: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L30">    <span class="tok-comment">/// Invalid unicode codepoint at this index.</span></span>
+<span class="line" id="L31">    invalid_unicode_codepoint: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L32">    <span class="tok-comment">/// Expected '{' at this index.</span></span>
+<span class="line" id="L33">    expected_lbrace: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L34">    <span class="tok-comment">/// Expected '}' at this index.</span></span>
+<span class="line" id="L35">    expected_rbrace: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L36">    <span class="tok-comment">/// Expected '\'' at this index.</span></span>
+<span class="line" id="L37">    expected_single_quote: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L38">    <span class="tok-comment">/// The character at this index cannot be represented without an escape sequence.</span></span>
+<span class="line" id="L39">    invalid_character: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L40">};</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42"><span class="tok-comment">/// Only validates escape sequence characters.</span></span>
+<span class="line" id="L43"><span class="tok-comment">/// Slice must be valid utf8 starting and ending with &quot;'&quot; and exactly one codepoint in between.</span></span>
+<span class="line" id="L44"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">parseCharLiteral</span>(slice: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ParsedCharLiteral {</span>
+<span class="line" id="L45">    assert(slice.len &gt;= <span class="tok-number">3</span> <span class="tok-kw">and</span> slice[<span class="tok-number">0</span>] == <span class="tok-str">'\''</span> <span class="tok-kw">and</span> slice[slice.len - <span class="tok-number">1</span>] == <span class="tok-str">'\''</span>);</span>
+<span class="line" id="L46"></span>
+<span class="line" id="L47">    <span class="tok-kw">switch</span> (slice[<span class="tok-number">1</span>]) {</span>
+<span class="line" id="L48">        <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L49">            <span class="tok-kw">var</span> offset: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L50">            <span class="tok-kw">const</span> result = parseEscapeSequence(slice, &amp;offset);</span>
+<span class="line" id="L51">            <span class="tok-kw">if</span> (result == .success <span class="tok-kw">and</span> (offset + <span class="tok-number">1</span> != slice.len <span class="tok-kw">or</span> slice[offset] != <span class="tok-str">'\''</span>))</span>
+<span class="line" id="L52">                <span class="tok-kw">return</span> .{ .failure = .{ .expected_single_quote = offset } };</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L55">        },</span>
+<span class="line" id="L56">        <span class="tok-number">0</span> =&gt; <span class="tok-kw">return</span> .{ .failure = .{ .invalid_character = <span class="tok-number">1</span> } },</span>
+<span class="line" id="L57">        <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L58">            <span class="tok-kw">const</span> codepoint = utf8Decode(slice[<span class="tok-number">1</span> .. slice.len - <span class="tok-number">1</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L59">            <span class="tok-kw">return</span> .{ .success = codepoint };</span>
+<span class="line" id="L60">        },</span>
+<span class="line" id="L61">    }</span>
+<span class="line" id="L62">}</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64"><span class="tok-comment">/// Parse an escape sequence from `slice[offset..]`. If parsing is successful,</span></span>
+<span class="line" id="L65"><span class="tok-comment">/// offset is updated to reflect the characters consumed.</span></span>
+<span class="line" id="L66"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">parseEscapeSequence</span>(slice: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, offset: *<span class="tok-type">usize</span>) ParsedCharLiteral {</span>
+<span class="line" id="L67">    assert(slice.len &gt; offset.*);</span>
+<span class="line" id="L68">    assert(slice[offset.*] == <span class="tok-str">'\\'</span>);</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">    <span class="tok-kw">if</span> (slice.len == offset.* + <span class="tok-number">1</span>)</span>
+<span class="line" id="L71">        <span class="tok-kw">return</span> .{ .failure = .{ .invalid_escape_character = offset.* + <span class="tok-number">1</span> } };</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    offset.* += <span class="tok-number">2</span>;</span>
+<span class="line" id="L74">    <span class="tok-kw">switch</span> (slice[offset.* - <span class="tok-number">1</span>]) {</span>
+<span class="line" id="L75">        <span class="tok-str">'n'</span> =&gt; <span class="tok-kw">return</span> .{ .success = <span class="tok-str">'\n'</span> },</span>
+<span class="line" id="L76">        <span class="tok-str">'r'</span> =&gt; <span class="tok-kw">return</span> .{ .success = <span class="tok-str">'\r'</span> },</span>
+<span class="line" id="L77">        <span class="tok-str">'\\'</span> =&gt; <span class="tok-kw">return</span> .{ .success = <span class="tok-str">'\\'</span> },</span>
+<span class="line" id="L78">        <span class="tok-str">'t'</span> =&gt; <span class="tok-kw">return</span> .{ .success = <span class="tok-str">'\t'</span> },</span>
+<span class="line" id="L79">        <span class="tok-str">'\''</span> =&gt; <span class="tok-kw">return</span> .{ .success = <span class="tok-str">'\''</span> },</span>
+<span class="line" id="L80">        <span class="tok-str">'&quot;'</span> =&gt; <span class="tok-kw">return</span> .{ .success = <span class="tok-str">'&quot;'</span> },</span>
+<span class="line" id="L81">        <span class="tok-str">'x'</span> =&gt; {</span>
+<span class="line" id="L82">            <span class="tok-kw">var</span> value: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L83">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = offset.*;</span>
+<span class="line" id="L84">            <span class="tok-kw">while</span> (i &lt; offset.* + <span class="tok-number">2</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L85">                <span class="tok-kw">if</span> (i == slice.len) <span class="tok-kw">return</span> .{ .failure = .{ .expected_hex_digit = i } };</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">                <span class="tok-kw">const</span> c = slice[i];</span>
+<span class="line" id="L88">                <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L89">                    <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {</span>
+<span class="line" id="L90">                        value *= <span class="tok-number">16</span>;</span>
+<span class="line" id="L91">                        value += c - <span class="tok-str">'0'</span>;</span>
+<span class="line" id="L92">                    },</span>
+<span class="line" id="L93">                    <span class="tok-str">'a'</span>...<span class="tok-str">'f'</span> =&gt; {</span>
+<span class="line" id="L94">                        value *= <span class="tok-number">16</span>;</span>
+<span class="line" id="L95">                        value += c - <span class="tok-str">'a'</span> + <span class="tok-number">10</span>;</span>
+<span class="line" id="L96">                    },</span>
+<span class="line" id="L97">                    <span class="tok-str">'A'</span>...<span class="tok-str">'F'</span> =&gt; {</span>
+<span class="line" id="L98">                        value *= <span class="tok-number">16</span>;</span>
+<span class="line" id="L99">                        value += c - <span class="tok-str">'A'</span> + <span class="tok-number">10</span>;</span>
+<span class="line" id="L100">                    },</span>
+<span class="line" id="L101">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L102">                        <span class="tok-kw">return</span> .{ .failure = .{ .expected_hex_digit = i } };</span>
+<span class="line" id="L103">                    },</span>
+<span class="line" id="L104">                }</span>
+<span class="line" id="L105">            }</span>
+<span class="line" id="L106">            offset.* = i;</span>
+<span class="line" id="L107">            <span class="tok-kw">return</span> .{ .success = value };</span>
+<span class="line" id="L108">        },</span>
+<span class="line" id="L109">        <span class="tok-str">'u'</span> =&gt; {</span>
+<span class="line" id="L110">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = offset.*;</span>
+<span class="line" id="L111">            <span class="tok-kw">if</span> (i &gt;= slice.len <span class="tok-kw">or</span> slice[i] != <span class="tok-str">'{'</span>) <span class="tok-kw">return</span> .{ .failure = .{ .expected_lbrace = i } };</span>
+<span class="line" id="L112">            i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L113">            <span class="tok-kw">if</span> (i &gt;= slice.len) <span class="tok-kw">return</span> .{ .failure = .{ .expected_hex_digit_or_rbrace = i } };</span>
+<span class="line" id="L114">            <span class="tok-kw">if</span> (slice[i] == <span class="tok-str">'}'</span>) <span class="tok-kw">return</span> .{ .failure = .{ .empty_unicode_escape_sequence = i } };</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116">            <span class="tok-kw">var</span> value: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L117">            <span class="tok-kw">while</span> (i &lt; slice.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L118">                <span class="tok-kw">const</span> c = slice[i];</span>
+<span class="line" id="L119">                <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L120">                    <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {</span>
+<span class="line" id="L121">                        value *= <span class="tok-number">16</span>;</span>
+<span class="line" id="L122">                        value += c - <span class="tok-str">'0'</span>;</span>
+<span class="line" id="L123">                    },</span>
+<span class="line" id="L124">                    <span class="tok-str">'a'</span>...<span class="tok-str">'f'</span> =&gt; {</span>
+<span class="line" id="L125">                        value *= <span class="tok-number">16</span>;</span>
+<span class="line" id="L126">                        value += c - <span class="tok-str">'a'</span> + <span class="tok-number">10</span>;</span>
+<span class="line" id="L127">                    },</span>
+<span class="line" id="L128">                    <span class="tok-str">'A'</span>...<span class="tok-str">'F'</span> =&gt; {</span>
+<span class="line" id="L129">                        value *= <span class="tok-number">16</span>;</span>
+<span class="line" id="L130">                        value += c - <span class="tok-str">'A'</span> + <span class="tok-number">10</span>;</span>
+<span class="line" id="L131">                    },</span>
+<span class="line" id="L132">                    <span class="tok-str">'}'</span> =&gt; {</span>
+<span class="line" id="L133">                        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L134">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L135">                    },</span>
+<span class="line" id="L136">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> .{ .failure = .{ .expected_hex_digit_or_rbrace = i } },</span>
+<span class="line" id="L137">                }</span>
+<span class="line" id="L138">                <span class="tok-kw">if</span> (value &gt; <span class="tok-number">0x10ffff</span>) {</span>
+<span class="line" id="L139">                    <span class="tok-kw">return</span> .{ .failure = .{ .invalid_unicode_codepoint = i } };</span>
+<span class="line" id="L140">                }</span>
+<span class="line" id="L141">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L142">                <span class="tok-kw">return</span> .{ .failure = .{ .expected_rbrace = i } };</span>
+<span class="line" id="L143">            }</span>
+<span class="line" id="L144">            offset.* = i;</span>
+<span class="line" id="L145">            <span class="tok-kw">return</span> .{ .success = <span class="tok-builtin">@as</span>(<span class="tok-type">u21</span>, <span class="tok-builtin">@intCast</span>(value)) };</span>
+<span class="line" id="L146">        },</span>
+<span class="line" id="L147">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> .{ .failure = .{ .invalid_escape_character = offset.* - <span class="tok-number">1</span> } },</span>
+<span class="line" id="L148">    }</span>
+<span class="line" id="L149">}</span>
+<span class="line" id="L150"></span>
+<span class="line" id="L151"><span class="tok-kw">test</span> <span class="tok-str">&quot;parseCharLiteral&quot;</span> {</span>
+<span class="line" id="L152">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L153">        ParsedCharLiteral{ .success = <span class="tok-str">'a'</span> },</span>
+<span class="line" id="L154">        parseCharLiteral(<span class="tok-str">&quot;'a'&quot;</span>),</span>
+<span class="line" id="L155">    );</span>
+<span class="line" id="L156">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L157">        ParsedCharLiteral{ .success = <span class="tok-str">'ä'</span> },</span>
+<span class="line" id="L158">        parseCharLiteral(<span class="tok-str">&quot;'ä'&quot;</span>),</span>
+<span class="line" id="L159">    );</span>
+<span class="line" id="L160">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L161">        ParsedCharLiteral{ .success = <span class="tok-number">0</span> },</span>
+<span class="line" id="L162">        parseCharLiteral(<span class="tok-str">&quot;'\\x00'&quot;</span>),</span>
+<span class="line" id="L163">    );</span>
+<span class="line" id="L164">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L165">        ParsedCharLiteral{ .success = <span class="tok-number">0x4f</span> },</span>
+<span class="line" id="L166">        parseCharLiteral(<span class="tok-str">&quot;'\\x4f'&quot;</span>),</span>
+<span class="line" id="L167">    );</span>
+<span class="line" id="L168">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L169">        ParsedCharLiteral{ .success = <span class="tok-number">0x4f</span> },</span>
+<span class="line" id="L170">        parseCharLiteral(<span class="tok-str">&quot;'\\x4F'&quot;</span>),</span>
+<span class="line" id="L171">    );</span>
+<span class="line" id="L172">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L173">        ParsedCharLiteral{ .success = <span class="tok-number">0x3041</span> },</span>
+<span class="line" id="L174">        parseCharLiteral(<span class="tok-str">&quot;'ぁ'&quot;</span>),</span>
+<span class="line" id="L175">    );</span>
+<span class="line" id="L176">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L177">        ParsedCharLiteral{ .success = <span class="tok-number">0</span> },</span>
+<span class="line" id="L178">        parseCharLiteral(<span class="tok-str">&quot;'\\u{0}'&quot;</span>),</span>
+<span class="line" id="L179">    );</span>
+<span class="line" id="L180">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L181">        ParsedCharLiteral{ .success = <span class="tok-number">0x3041</span> },</span>
+<span class="line" id="L182">        parseCharLiteral(<span class="tok-str">&quot;'\\u{3041}'&quot;</span>),</span>
+<span class="line" id="L183">    );</span>
+<span class="line" id="L184">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L185">        ParsedCharLiteral{ .success = <span class="tok-number">0x7f</span> },</span>
+<span class="line" id="L186">        parseCharLiteral(<span class="tok-str">&quot;'\\u{7f}'&quot;</span>),</span>
+<span class="line" id="L187">    );</span>
+<span class="line" id="L188">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L189">        ParsedCharLiteral{ .success = <span class="tok-number">0x7fff</span> },</span>
+<span class="line" id="L190">        parseCharLiteral(<span class="tok-str">&quot;'\\u{7FFF}'&quot;</span>),</span>
+<span class="line" id="L191">    );</span>
+<span class="line" id="L192">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L193">        ParsedCharLiteral{ .failure = .{ .expected_hex_digit = <span class="tok-number">4</span> } },</span>
+<span class="line" id="L194">        parseCharLiteral(<span class="tok-str">&quot;'\\x0'&quot;</span>),</span>
+<span class="line" id="L195">    );</span>
+<span class="line" id="L196">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L197">        ParsedCharLiteral{ .failure = .{ .expected_single_quote = <span class="tok-number">5</span> } },</span>
+<span class="line" id="L198">        parseCharLiteral(<span class="tok-str">&quot;'\\x000'&quot;</span>),</span>
+<span class="line" id="L199">    );</span>
+<span class="line" id="L200">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L201">        ParsedCharLiteral{ .failure = .{ .invalid_escape_character = <span class="tok-number">2</span> } },</span>
+<span class="line" id="L202">        parseCharLiteral(<span class="tok-str">&quot;'\\y'&quot;</span>),</span>
+<span class="line" id="L203">    );</span>
+<span class="line" id="L204">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L205">        ParsedCharLiteral{ .failure = .{ .expected_lbrace = <span class="tok-number">3</span> } },</span>
+<span class="line" id="L206">        parseCharLiteral(<span class="tok-str">&quot;'\\u'&quot;</span>),</span>
+<span class="line" id="L207">    );</span>
+<span class="line" id="L208">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L209">        ParsedCharLiteral{ .failure = .{ .expected_lbrace = <span class="tok-number">3</span> } },</span>
+<span class="line" id="L210">        parseCharLiteral(<span class="tok-str">&quot;'\\uFFFF'&quot;</span>),</span>
+<span class="line" id="L211">    );</span>
+<span class="line" id="L212">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L213">        ParsedCharLiteral{ .failure = .{ .empty_unicode_escape_sequence = <span class="tok-number">4</span> } },</span>
+<span class="line" id="L214">        parseCharLiteral(<span class="tok-str">&quot;'\\u{}'&quot;</span>),</span>
+<span class="line" id="L215">    );</span>
+<span class="line" id="L216">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L217">        ParsedCharLiteral{ .failure = .{ .invalid_unicode_codepoint = <span class="tok-number">9</span> } },</span>
+<span class="line" id="L218">        parseCharLiteral(<span class="tok-str">&quot;'\\u{FFFFFF}'&quot;</span>),</span>
+<span class="line" id="L219">    );</span>
+<span class="line" id="L220">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L221">        ParsedCharLiteral{ .failure = .{ .expected_hex_digit_or_rbrace = <span class="tok-number">8</span> } },</span>
+<span class="line" id="L222">        parseCharLiteral(<span class="tok-str">&quot;'\\u{FFFF'&quot;</span>),</span>
+<span class="line" id="L223">    );</span>
+<span class="line" id="L224">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L225">        ParsedCharLiteral{ .failure = .{ .expected_single_quote = <span class="tok-number">9</span> } },</span>
+<span class="line" id="L226">        parseCharLiteral(<span class="tok-str">&quot;'\\u{FFFF}x'&quot;</span>),</span>
+<span class="line" id="L227">    );</span>
+<span class="line" id="L228">    <span class="tok-kw">try</span> std.testing.expectEqual(</span>
+<span class="line" id="L229">        ParsedCharLiteral{ .failure = .{ .invalid_character = <span class="tok-number">1</span> } },</span>
+<span class="line" id="L230">        parseCharLiteral(<span class="tok-str">&quot;'\x00'&quot;</span>),</span>
+<span class="line" id="L231">    );</span>
+<span class="line" id="L232">}</span>
+<span class="line" id="L233"></span>
+<span class="line" id="L234"><span class="tok-comment">/// Parses `bytes` as a Zig string literal and writes the result to the std.io.Writer type.</span></span>
+<span class="line" id="L235"><span class="tok-comment">/// Asserts `bytes` has '&quot;' at beginning and end.</span></span>
+<span class="line" id="L236"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">parseWrite</span>(writer: <span class="tok-kw">anytype</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-kw">error</span>{OutOfMemory}!Result {</span>
+<span class="line" id="L237">    assert(bytes.len &gt;= <span class="tok-number">2</span> <span class="tok-kw">and</span> bytes[<span class="tok-number">0</span>] == <span class="tok-str">'&quot;'</span> <span class="tok-kw">and</span> bytes[bytes.len - <span class="tok-number">1</span>] == <span class="tok-str">'&quot;'</span>);</span>
+<span class="line" id="L238"></span>
+<span class="line" id="L239">    <span class="tok-kw">var</span> index: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L240">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L241">        <span class="tok-kw">const</span> b = bytes[index];</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">        <span class="tok-kw">switch</span> (b) {</span>
+<span class="line" id="L244">            <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L245">                <span class="tok-kw">const</span> escape_char_index = index + <span class="tok-number">1</span>;</span>
+<span class="line" id="L246">                <span class="tok-kw">const</span> result = parseEscapeSequence(bytes, &amp;index);</span>
+<span class="line" id="L247">                <span class="tok-kw">switch</span> (result) {</span>
+<span class="line" id="L248">                    .success =&gt; |codepoint| {</span>
+<span class="line" id="L249">                        <span class="tok-kw">if</span> (bytes[escape_char_index] == <span class="tok-str">'u'</span>) {</span>
+<span class="line" id="L250">                            <span class="tok-kw">var</span> buf: [<span class="tok-number">4</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L251">                            <span class="tok-kw">const</span> len = utf8Encode(codepoint, &amp;buf) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L252">                                <span class="tok-kw">return</span> Result{ .failure = .{ .invalid_unicode_codepoint = escape_char_index + <span class="tok-number">1</span> } };</span>
+<span class="line" id="L253">                            };</span>
+<span class="line" id="L254">                            <span class="tok-kw">try</span> writer.writeAll(buf[<span class="tok-number">0</span>..len]);</span>
+<span class="line" id="L255">                        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L256">                            <span class="tok-kw">try</span> writer.writeByte(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(codepoint)));</span>
+<span class="line" id="L257">                        }</span>
+<span class="line" id="L258">                    },</span>
+<span class="line" id="L259">                    .failure =&gt; |err| <span class="tok-kw">return</span> Result{ .failure = err },</span>
+<span class="line" id="L260">                }</span>
+<span class="line" id="L261">            },</span>
+<span class="line" id="L262">            <span class="tok-str">'\n'</span> =&gt; <span class="tok-kw">return</span> Result{ .failure = .{ .invalid_character = index } },</span>
+<span class="line" id="L263">            <span class="tok-str">'&quot;'</span> =&gt; <span class="tok-kw">return</span> Result.success,</span>
+<span class="line" id="L264">            <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L265">                <span class="tok-kw">try</span> writer.writeByte(b);</span>
+<span class="line" id="L266">                index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L267">            },</span>
+<span class="line" id="L268">        }</span>
+<span class="line" id="L269">    }</span>
+<span class="line" id="L270">}</span>
+<span class="line" id="L271"></span>
+<span class="line" id="L272"><span class="tok-comment">/// Higher level API. Does not return extra info about parse errors.</span></span>
+<span class="line" id="L273"><span class="tok-comment">/// Caller owns returned memory.</span></span>
+<span class="line" id="L274"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">parseAlloc</span>(allocator: std.mem.Allocator, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ParseError![]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L275">    <span class="tok-kw">var</span> buf = std.ArrayList(<span class="tok-type">u8</span>).init(allocator);</span>
+<span class="line" id="L276">    <span class="tok-kw">defer</span> buf.deinit();</span>
+<span class="line" id="L277"></span>
+<span class="line" id="L278">    <span class="tok-kw">switch</span> (<span class="tok-kw">try</span> parseWrite(buf.writer(), bytes)) {</span>
+<span class="line" id="L279">        .success =&gt; <span class="tok-kw">return</span> buf.toOwnedSlice(),</span>
+<span class="line" id="L280">        .failure =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidLiteral,</span>
+<span class="line" id="L281">    }</span>
+<span class="line" id="L282">}</span>
+<span class="line" id="L283"></span>
+<span class="line" id="L284"><span class="tok-kw">test</span> <span class="tok-str">&quot;parse&quot;</span> {</span>
+<span class="line" id="L285">    <span class="tok-kw">const</span> expect = std.testing.expect;</span>
+<span class="line" id="L286">    <span class="tok-kw">const</span> expectError = std.testing.expectError;</span>
+<span class="line" id="L287">    <span class="tok-kw">const</span> eql = std.mem.eql;</span>
+<span class="line" id="L288"></span>
+<span class="line" id="L289">    <span class="tok-kw">var</span> fixed_buf_mem: [<span class="tok-number">64</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L290">    <span class="tok-kw">var</span> fixed_buf_alloc = std.heap.FixedBufferAllocator.init(&amp;fixed_buf_mem);</span>
+<span class="line" id="L291">    <span class="tok-kw">var</span> alloc = fixed_buf_alloc.allocator();</span>
+<span class="line" id="L292"></span>
+<span class="line" id="L293">    <span class="tok-kw">try</span> expectError(<span class="tok-kw">error</span>.InvalidLiteral, parseAlloc(alloc, <span class="tok-str">&quot;\&quot;\\x6\&quot;&quot;</span>));</span>
+<span class="line" id="L294">    <span class="tok-kw">try</span> expect(eql(<span class="tok-type">u8</span>, <span class="tok-str">&quot;foo\nbar&quot;</span>, <span class="tok-kw">try</span> parseAlloc(alloc, <span class="tok-str">&quot;\&quot;foo\\nbar\&quot;&quot;</span>)));</span>
+<span class="line" id="L295">    <span class="tok-kw">try</span> expect(eql(<span class="tok-type">u8</span>, <span class="tok-str">&quot;\x12foo&quot;</span>, <span class="tok-kw">try</span> parseAlloc(alloc, <span class="tok-str">&quot;\&quot;\\x12foo\&quot;&quot;</span>)));</span>
+<span class="line" id="L296">    <span class="tok-kw">try</span> expect(eql(<span class="tok-type">u8</span>, <span class="tok-str">&quot;bytes\u{1234}foo&quot;</span>, <span class="tok-kw">try</span> parseAlloc(alloc, <span class="tok-str">&quot;\&quot;bytes\\u{1234}foo\&quot;&quot;</span>)));</span>
+<span class="line" id="L297">    <span class="tok-kw">try</span> expect(eql(<span class="tok-type">u8</span>, <span class="tok-str">&quot;foo&quot;</span>, <span class="tok-kw">try</span> parseAlloc(alloc, <span class="tok-str">&quot;\&quot;foo\&quot;&quot;</span>)));</span>
+<span class="line" id="L298">    <span class="tok-kw">try</span> expect(eql(<span class="tok-type">u8</span>, <span class="tok-str">&quot;foo&quot;</span>, <span class="tok-kw">try</span> parseAlloc(alloc, <span class="tok-str">&quot;\&quot;f\x6f\x6f\&quot;&quot;</span>)));</span>
+<span class="line" id="L299">    <span class="tok-kw">try</span> expect(eql(<span class="tok-type">u8</span>, <span class="tok-str">&quot;f💯&quot;</span>, <span class="tok-kw">try</span> parseAlloc(alloc, <span class="tok-str">&quot;\&quot;f\u{1f4af}\&quot;&quot;</span>)));</span>
+<span class="line" id="L300">}</span>
+<span class="line" id="L301"></span>
+</code></pre></body>
+</html>

@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>zig/ErrorBundle.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! To support incremental compilation, errors are stored in various places</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! so that they can be created and destroyed appropriately. This structure</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! is used to collect all the errors from the various places into one</span></span>
+<span class="line" id="L4"><span class="tok-comment">//! convenient place for API users to consume.</span></span>
+<span class="line" id="L5"><span class="tok-comment">//!</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! There is one special encoding for this data structure. If both arrays are</span></span>
+<span class="line" id="L7"><span class="tok-comment">//! empty, it means there are no errors. This special encoding exists so that</span></span>
+<span class="line" id="L8"><span class="tok-comment">//! heap allocation is not needed in the common case of no errors.</span></span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10">string_bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L11"><span class="tok-comment">/// The first thing in this array is an `ErrorMessageList`.</span></span>
+<span class="line" id="L12">extra: []<span class="tok-kw">const</span> <span class="tok-type">u32</span>,</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-comment">/// Special encoding when there are no errors.</span></span>
+<span class="line" id="L15"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> empty: ErrorBundle = .{</span>
+<span class="line" id="L16">    .string_bytes = &amp;.{},</span>
+<span class="line" id="L17">    .extra = &amp;.{},</span>
+<span class="line" id="L18">};</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20"><span class="tok-comment">// An index into `extra` pointing at an `ErrorMessage`.</span>
+</span>
+<span class="line" id="L21"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MessageIndex = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L22">    _,</span>
+<span class="line" id="L23">};</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25"><span class="tok-comment">// An index into `extra` pointing at an `SourceLocation`.</span>
+</span>
+<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SourceLocationIndex = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L27">    none = <span class="tok-number">0</span>,</span>
+<span class="line" id="L28">    _,</span>
+<span class="line" id="L29">};</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31"><span class="tok-comment">/// There will be a MessageIndex for each len at start.</span></span>
+<span class="line" id="L32"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ErrorMessageList = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L33">    len: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L34">    start: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L35">    <span class="tok-comment">/// null-terminated string index. 0 means no compile log text.</span></span>
+<span class="line" id="L36">    compile_log_text: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L37">};</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39"><span class="tok-comment">/// Trailing:</span></span>
+<span class="line" id="L40"><span class="tok-comment">/// * ReferenceTrace for each reference_trace_len</span></span>
+<span class="line" id="L41"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SourceLocation = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L42">    <span class="tok-comment">/// null terminated string index</span></span>
+<span class="line" id="L43">    src_path: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L44">    line: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L45">    column: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L46">    <span class="tok-comment">/// byte offset of starting token</span></span>
+<span class="line" id="L47">    span_start: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L48">    <span class="tok-comment">/// byte offset of main error location</span></span>
+<span class="line" id="L49">    span_main: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L50">    <span class="tok-comment">/// byte offset of end of last token</span></span>
+<span class="line" id="L51">    span_end: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L52">    <span class="tok-comment">/// null terminated string index, possibly null.</span></span>
+<span class="line" id="L53">    <span class="tok-comment">/// Does not include the trailing newline.</span></span>
+<span class="line" id="L54">    source_line: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L55">    reference_trace_len: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L56">};</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58"><span class="tok-comment">/// Trailing:</span></span>
+<span class="line" id="L59"><span class="tok-comment">/// * MessageIndex for each notes_len.</span></span>
+<span class="line" id="L60"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ErrorMessage = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L61">    <span class="tok-comment">/// null terminated string index</span></span>
+<span class="line" id="L62">    msg: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L63">    <span class="tok-comment">/// Usually one, but incremented for redundant messages.</span></span>
+<span class="line" id="L64">    count: <span class="tok-type">u32</span> = <span class="tok-number">1</span>,</span>
+<span class="line" id="L65">    src_loc: SourceLocationIndex = .none,</span>
+<span class="line" id="L66">    notes_len: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L67">};</span>
+<span class="line" id="L68"></span>
+<span class="line" id="L69"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ReferenceTrace = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L70">    <span class="tok-comment">/// null terminated string index</span></span>
+<span class="line" id="L71">    <span class="tok-comment">/// Except for the sentinel ReferenceTrace element, in which case:</span></span>
+<span class="line" id="L72">    <span class="tok-comment">/// * 0 means remaining references hidden</span></span>
+<span class="line" id="L73">    <span class="tok-comment">/// * &gt;0 means N references hidden</span></span>
+<span class="line" id="L74">    decl_name: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L75">    <span class="tok-comment">/// Index into extra of a SourceLocation</span></span>
+<span class="line" id="L76">    <span class="tok-comment">/// If this is 0, this is the sentinel ReferenceTrace element.</span></span>
+<span class="line" id="L77">    src_loc: SourceLocationIndex,</span>
+<span class="line" id="L78">};</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(eb: *ErrorBundle, gpa: Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L81">    gpa.free(eb.string_bytes);</span>
+<span class="line" id="L82">    gpa.free(eb.extra);</span>
+<span class="line" id="L83">    eb.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L84">}</span>
+<span class="line" id="L85"></span>
+<span class="line" id="L86"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">errorMessageCount</span>(eb: ErrorBundle) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L87">    <span class="tok-kw">if</span> (eb.extra.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L88">    <span class="tok-kw">return</span> eb.getErrorMessageList().len;</span>
+<span class="line" id="L89">}</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getErrorMessageList</span>(eb: ErrorBundle) ErrorMessageList {</span>
+<span class="line" id="L92">    <span class="tok-kw">return</span> eb.extraData(ErrorMessageList, <span class="tok-number">0</span>).data;</span>
+<span class="line" id="L93">}</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getMessages</span>(eb: ErrorBundle) []<span class="tok-kw">const</span> MessageIndex {</span>
+<span class="line" id="L96">    <span class="tok-kw">const</span> list = eb.getErrorMessageList();</span>
+<span class="line" id="L97">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>([]<span class="tok-kw">const</span> MessageIndex, <span class="tok-builtin">@ptrCast</span>(eb.extra[list.start..][<span class="tok-number">0</span>..list.len]));</span>
+<span class="line" id="L98">}</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getErrorMessage</span>(eb: ErrorBundle, index: MessageIndex) ErrorMessage {</span>
+<span class="line" id="L101">    <span class="tok-kw">return</span> eb.extraData(ErrorMessage, <span class="tok-builtin">@intFromEnum</span>(index)).data;</span>
+<span class="line" id="L102">}</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSourceLocation</span>(eb: ErrorBundle, index: SourceLocationIndex) SourceLocation {</span>
+<span class="line" id="L105">    assert(index != .none);</span>
+<span class="line" id="L106">    <span class="tok-kw">return</span> eb.extraData(SourceLocation, <span class="tok-builtin">@intFromEnum</span>(index)).data;</span>
+<span class="line" id="L107">}</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getNotes</span>(eb: ErrorBundle, index: MessageIndex) []<span class="tok-kw">const</span> MessageIndex {</span>
+<span class="line" id="L110">    <span class="tok-kw">const</span> notes_len = eb.getErrorMessage(index).notes_len;</span>
+<span class="line" id="L111">    <span class="tok-kw">const</span> start = <span class="tok-builtin">@intFromEnum</span>(index) + <span class="tok-builtin">@typeInfo</span>(ErrorMessage).Struct.fields.len;</span>
+<span class="line" id="L112">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>([]<span class="tok-kw">const</span> MessageIndex, <span class="tok-builtin">@ptrCast</span>(eb.extra[start..][<span class="tok-number">0</span>..notes_len]));</span>
+<span class="line" id="L113">}</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getCompileLogOutput</span>(eb: ErrorBundle) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L116">    <span class="tok-kw">return</span> nullTerminatedString(eb, getErrorMessageList(eb).compile_log_text);</span>
+<span class="line" id="L117">}</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119"><span class="tok-comment">/// Returns the requested data, as well as the new index which is at the start of the</span></span>
+<span class="line" id="L120"><span class="tok-comment">/// trailers for the object.</span></span>
+<span class="line" id="L121"><span class="tok-kw">fn</span> <span class="tok-fn">extraData</span>(eb: ErrorBundle, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, index: <span class="tok-type">usize</span>) <span class="tok-kw">struct</span> { data: T, end: <span class="tok-type">usize</span> } {</span>
+<span class="line" id="L122">    <span class="tok-kw">const</span> fields = <span class="tok-builtin">@typeInfo</span>(T).Struct.fields;</span>
+<span class="line" id="L123">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = index;</span>
+<span class="line" id="L124">    <span class="tok-kw">var</span> result: T = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L125">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (fields) |field| {</span>
+<span class="line" id="L126">        <span class="tok-builtin">@field</span>(result, field.name) = <span class="tok-kw">switch</span> (field.<span class="tok-type">type</span>) {</span>
+<span class="line" id="L127">            <span class="tok-type">u32</span> =&gt; eb.extra[i],</span>
+<span class="line" id="L128">            MessageIndex =&gt; <span class="tok-builtin">@as</span>(MessageIndex, <span class="tok-builtin">@enumFromInt</span>(eb.extra[i])),</span>
+<span class="line" id="L129">            SourceLocationIndex =&gt; <span class="tok-builtin">@as</span>(SourceLocationIndex, <span class="tok-builtin">@enumFromInt</span>(eb.extra[i])),</span>
+<span class="line" id="L130">            <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;bad field type&quot;</span>),</span>
+<span class="line" id="L131">        };</span>
+<span class="line" id="L132">        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L133">    }</span>
+<span class="line" id="L134">    <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L135">        .data = result,</span>
+<span class="line" id="L136">        .end = i,</span>
+<span class="line" id="L137">    };</span>
+<span class="line" id="L138">}</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140"><span class="tok-comment">/// Given an index into `string_bytes` returns the null-terminated string found there.</span></span>
+<span class="line" id="L141"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">nullTerminatedString</span>(eb: ErrorBundle, index: <span class="tok-type">usize</span>) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L142">    <span class="tok-kw">const</span> string_bytes = eb.string_bytes;</span>
+<span class="line" id="L143">    <span class="tok-kw">var</span> end: <span class="tok-type">usize</span> = index;</span>
+<span class="line" id="L144">    <span class="tok-kw">while</span> (string_bytes[end] != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L145">        end += <span class="tok-number">1</span>;</span>
+<span class="line" id="L146">    }</span>
+<span class="line" id="L147">    <span class="tok-kw">return</span> string_bytes[index..end :<span class="tok-number">0</span>];</span>
+<span class="line" id="L148">}</span>
+<span class="line" id="L149"></span>
+<span class="line" id="L150"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RenderOptions = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L151">    ttyconf: std.io.tty.Config,</span>
+<span class="line" id="L152">    include_reference_trace: <span class="tok-type">bool</span> = <span class="tok-null">true</span>,</span>
+<span class="line" id="L153">    include_source_line: <span class="tok-type">bool</span> = <span class="tok-null">true</span>,</span>
+<span class="line" id="L154">    include_log_text: <span class="tok-type">bool</span> = <span class="tok-null">true</span>,</span>
+<span class="line" id="L155">};</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">renderToStdErr</span>(eb: ErrorBundle, options: RenderOptions) <span class="tok-type">void</span> {</span>
+<span class="line" id="L158">    std.debug.getStderrMutex().lock();</span>
+<span class="line" id="L159">    <span class="tok-kw">defer</span> std.debug.getStderrMutex().unlock();</span>
+<span class="line" id="L160">    <span class="tok-kw">const</span> stderr = std.io.getStdErr();</span>
+<span class="line" id="L161">    <span class="tok-kw">return</span> renderToWriter(eb, options, stderr.writer()) <span class="tok-kw">catch</span> <span class="tok-kw">return</span>;</span>
+<span class="line" id="L162">}</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">renderToWriter</span>(eb: ErrorBundle, options: RenderOptions, writer: <span class="tok-kw">anytype</span>) <span class="tok-type">anyerror</span>!<span class="tok-type">void</span> {</span>
+<span class="line" id="L165">    <span class="tok-kw">for</span> (eb.getMessages()) |err_msg| {</span>
+<span class="line" id="L166">        <span class="tok-kw">try</span> renderErrorMessageToWriter(eb, options, err_msg, writer, <span class="tok-str">&quot;error&quot;</span>, .red, <span class="tok-number">0</span>);</span>
+<span class="line" id="L167">    }</span>
+<span class="line" id="L168"></span>
+<span class="line" id="L169">    <span class="tok-kw">if</span> (options.include_log_text) {</span>
+<span class="line" id="L170">        <span class="tok-kw">const</span> log_text = eb.getCompileLogOutput();</span>
+<span class="line" id="L171">        <span class="tok-kw">if</span> (log_text.len != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L172">            <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\nCompile Log Output:\n&quot;</span>);</span>
+<span class="line" id="L173">            <span class="tok-kw">try</span> writer.writeAll(log_text);</span>
+<span class="line" id="L174">        }</span>
+<span class="line" id="L175">    }</span>
+<span class="line" id="L176">}</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178"><span class="tok-kw">fn</span> <span class="tok-fn">renderErrorMessageToWriter</span>(</span>
+<span class="line" id="L179">    eb: ErrorBundle,</span>
+<span class="line" id="L180">    options: RenderOptions,</span>
+<span class="line" id="L181">    err_msg_index: MessageIndex,</span>
+<span class="line" id="L182">    stderr: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L183">    kind: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L184">    color: std.io.tty.Color,</span>
+<span class="line" id="L185">    indent: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L186">) <span class="tok-type">anyerror</span>!<span class="tok-type">void</span> {</span>
+<span class="line" id="L187">    <span class="tok-kw">const</span> ttyconf = options.ttyconf;</span>
+<span class="line" id="L188">    <span class="tok-kw">var</span> counting_writer = std.io.countingWriter(stderr);</span>
+<span class="line" id="L189">    <span class="tok-kw">const</span> counting_stderr = counting_writer.writer();</span>
+<span class="line" id="L190">    <span class="tok-kw">const</span> err_msg = eb.getErrorMessage(err_msg_index);</span>
+<span class="line" id="L191">    <span class="tok-kw">if</span> (err_msg.src_loc != .none) {</span>
+<span class="line" id="L192">        <span class="tok-kw">const</span> src = eb.extraData(SourceLocation, <span class="tok-builtin">@intFromEnum</span>(err_msg.src_loc));</span>
+<span class="line" id="L193">        <span class="tok-kw">try</span> counting_stderr.writeByteNTimes(<span class="tok-str">' '</span>, indent);</span>
+<span class="line" id="L194">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, .bold);</span>
+<span class="line" id="L195">        <span class="tok-kw">try</span> counting_stderr.print(<span class="tok-str">&quot;{s}:{d}:{d}: &quot;</span>, .{</span>
+<span class="line" id="L196">            eb.nullTerminatedString(src.data.src_path),</span>
+<span class="line" id="L197">            src.data.line + <span class="tok-number">1</span>,</span>
+<span class="line" id="L198">            src.data.column + <span class="tok-number">1</span>,</span>
+<span class="line" id="L199">        });</span>
+<span class="line" id="L200">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, color);</span>
+<span class="line" id="L201">        <span class="tok-kw">try</span> counting_stderr.writeAll(kind);</span>
+<span class="line" id="L202">        <span class="tok-kw">try</span> counting_stderr.writeAll(<span class="tok-str">&quot;: &quot;</span>);</span>
+<span class="line" id="L203">        <span class="tok-comment">// This is the length of the part before the error message:</span>
+</span>
+<span class="line" id="L204">        <span class="tok-comment">// e.g. &quot;file.zig:4:5: error: &quot;</span>
+</span>
+<span class="line" id="L205">        <span class="tok-kw">const</span> prefix_len = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(counting_stderr.context.bytes_written));</span>
+<span class="line" id="L206">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, .reset);</span>
+<span class="line" id="L207">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, .bold);</span>
+<span class="line" id="L208">        <span class="tok-kw">if</span> (err_msg.count == <span class="tok-number">1</span>) {</span>
+<span class="line" id="L209">            <span class="tok-kw">try</span> writeMsg(eb, err_msg, stderr, prefix_len);</span>
+<span class="line" id="L210">            <span class="tok-kw">try</span> stderr.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L211">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L212">            <span class="tok-kw">try</span> writeMsg(eb, err_msg, stderr, prefix_len);</span>
+<span class="line" id="L213">            <span class="tok-kw">try</span> ttyconf.setColor(stderr, .dim);</span>
+<span class="line" id="L214">            <span class="tok-kw">try</span> stderr.print(<span class="tok-str">&quot; ({d} times)\n&quot;</span>, .{err_msg.count});</span>
+<span class="line" id="L215">        }</span>
+<span class="line" id="L216">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, .reset);</span>
+<span class="line" id="L217">        <span class="tok-kw">if</span> (src.data.source_line != <span class="tok-number">0</span> <span class="tok-kw">and</span> options.include_source_line) {</span>
+<span class="line" id="L218">            <span class="tok-kw">const</span> line = eb.nullTerminatedString(src.data.source_line);</span>
+<span class="line" id="L219">            <span class="tok-kw">for</span> (line) |b| <span class="tok-kw">switch</span> (b) {</span>
+<span class="line" id="L220">                <span class="tok-str">'\t'</span> =&gt; <span class="tok-kw">try</span> stderr.writeByte(<span class="tok-str">' '</span>),</span>
+<span class="line" id="L221">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">try</span> stderr.writeByte(b),</span>
+<span class="line" id="L222">            };</span>
+<span class="line" id="L223">            <span class="tok-kw">try</span> stderr.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L224">            <span class="tok-comment">// TODO basic unicode code point monospace width</span>
+</span>
+<span class="line" id="L225">            <span class="tok-kw">const</span> before_caret = src.data.span_main - src.data.span_start;</span>
+<span class="line" id="L226">            <span class="tok-comment">// -1 since span.main includes the caret</span>
+</span>
+<span class="line" id="L227">            <span class="tok-kw">const</span> after_caret = src.data.span_end -| src.data.span_main -| <span class="tok-number">1</span>;</span>
+<span class="line" id="L228">            <span class="tok-kw">try</span> stderr.writeByteNTimes(<span class="tok-str">' '</span>, src.data.column - before_caret);</span>
+<span class="line" id="L229">            <span class="tok-kw">try</span> ttyconf.setColor(stderr, .green);</span>
+<span class="line" id="L230">            <span class="tok-kw">try</span> stderr.writeByteNTimes(<span class="tok-str">'~'</span>, before_caret);</span>
+<span class="line" id="L231">            <span class="tok-kw">try</span> stderr.writeByte(<span class="tok-str">'^'</span>);</span>
+<span class="line" id="L232">            <span class="tok-kw">try</span> stderr.writeByteNTimes(<span class="tok-str">'~'</span>, after_caret);</span>
+<span class="line" id="L233">            <span class="tok-kw">try</span> stderr.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L234">            <span class="tok-kw">try</span> ttyconf.setColor(stderr, .reset);</span>
+<span class="line" id="L235">        }</span>
+<span class="line" id="L236">        <span class="tok-kw">for</span> (eb.getNotes(err_msg_index)) |note| {</span>
+<span class="line" id="L237">            <span class="tok-kw">try</span> renderErrorMessageToWriter(eb, options, note, stderr, <span class="tok-str">&quot;note&quot;</span>, .cyan, indent);</span>
+<span class="line" id="L238">        }</span>
+<span class="line" id="L239">        <span class="tok-kw">if</span> (src.data.reference_trace_len &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> options.include_reference_trace) {</span>
+<span class="line" id="L240">            <span class="tok-kw">try</span> ttyconf.setColor(stderr, .reset);</span>
+<span class="line" id="L241">            <span class="tok-kw">try</span> ttyconf.setColor(stderr, .dim);</span>
+<span class="line" id="L242">            <span class="tok-kw">try</span> stderr.print(<span class="tok-str">&quot;referenced by:\n&quot;</span>, .{});</span>
+<span class="line" id="L243">            <span class="tok-kw">var</span> ref_index = src.end;</span>
+<span class="line" id="L244">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..src.data.reference_trace_len) |_| {</span>
+<span class="line" id="L245">                <span class="tok-kw">const</span> ref_trace = eb.extraData(ReferenceTrace, ref_index);</span>
+<span class="line" id="L246">                ref_index = ref_trace.end;</span>
+<span class="line" id="L247">                <span class="tok-kw">if</span> (ref_trace.data.src_loc != .none) {</span>
+<span class="line" id="L248">                    <span class="tok-kw">const</span> ref_src = eb.getSourceLocation(ref_trace.data.src_loc);</span>
+<span class="line" id="L249">                    <span class="tok-kw">try</span> stderr.print(<span class="tok-str">&quot;    {s}: {s}:{d}:{d}\n&quot;</span>, .{</span>
+<span class="line" id="L250">                        eb.nullTerminatedString(ref_trace.data.decl_name),</span>
+<span class="line" id="L251">                        eb.nullTerminatedString(ref_src.src_path),</span>
+<span class="line" id="L252">                        ref_src.line + <span class="tok-number">1</span>,</span>
+<span class="line" id="L253">                        ref_src.column + <span class="tok-number">1</span>,</span>
+<span class="line" id="L254">                    });</span>
+<span class="line" id="L255">                } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (ref_trace.data.decl_name != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L256">                    <span class="tok-kw">const</span> count = ref_trace.data.decl_name;</span>
+<span class="line" id="L257">                    <span class="tok-kw">try</span> stderr.print(</span>
+<span class="line" id="L258">                        <span class="tok-str">&quot;    {d} reference(s) hidden; use '-freference-trace={d}' to see all references\n&quot;</span>,</span>
+<span class="line" id="L259">                        .{ count, count + src.data.reference_trace_len - <span class="tok-number">1</span> },</span>
+<span class="line" id="L260">                    );</span>
+<span class="line" id="L261">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L262">                    <span class="tok-kw">try</span> stderr.print(</span>
+<span class="line" id="L263">                        <span class="tok-str">&quot;    remaining reference traces hidden; use '-freference-trace' to see all reference traces\n&quot;</span>,</span>
+<span class="line" id="L264">                        .{},</span>
+<span class="line" id="L265">                    );</span>
+<span class="line" id="L266">                }</span>
+<span class="line" id="L267">            }</span>
+<span class="line" id="L268">            <span class="tok-kw">try</span> ttyconf.setColor(stderr, .reset);</span>
+<span class="line" id="L269">        }</span>
+<span class="line" id="L270">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L271">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, color);</span>
+<span class="line" id="L272">        <span class="tok-kw">try</span> stderr.writeByteNTimes(<span class="tok-str">' '</span>, indent);</span>
+<span class="line" id="L273">        <span class="tok-kw">try</span> stderr.writeAll(kind);</span>
+<span class="line" id="L274">        <span class="tok-kw">try</span> stderr.writeAll(<span class="tok-str">&quot;: &quot;</span>);</span>
+<span class="line" id="L275">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, .reset);</span>
+<span class="line" id="L276">        <span class="tok-kw">const</span> msg = eb.nullTerminatedString(err_msg.msg);</span>
+<span class="line" id="L277">        <span class="tok-kw">if</span> (err_msg.count == <span class="tok-number">1</span>) {</span>
+<span class="line" id="L278">            <span class="tok-kw">try</span> stderr.print(<span class="tok-str">&quot;{s}\n&quot;</span>, .{msg});</span>
+<span class="line" id="L279">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L280">            <span class="tok-kw">try</span> stderr.print(<span class="tok-str">&quot;{s}&quot;</span>, .{msg});</span>
+<span class="line" id="L281">            <span class="tok-kw">try</span> ttyconf.setColor(stderr, .dim);</span>
+<span class="line" id="L282">            <span class="tok-kw">try</span> stderr.print(<span class="tok-str">&quot; ({d} times)\n&quot;</span>, .{err_msg.count});</span>
+<span class="line" id="L283">        }</span>
+<span class="line" id="L284">        <span class="tok-kw">try</span> ttyconf.setColor(stderr, .reset);</span>
+<span class="line" id="L285">        <span class="tok-kw">for</span> (eb.getNotes(err_msg_index)) |note| {</span>
+<span class="line" id="L286">            <span class="tok-kw">try</span> renderErrorMessageToWriter(eb, options, note, stderr, <span class="tok-str">&quot;note&quot;</span>, .cyan, indent + <span class="tok-number">4</span>);</span>
+<span class="line" id="L287">        }</span>
+<span class="line" id="L288">    }</span>
+<span class="line" id="L289">}</span>
+<span class="line" id="L290"></span>
+<span class="line" id="L291"><span class="tok-comment">/// Splits the error message up into lines to properly indent them</span></span>
+<span class="line" id="L292"><span class="tok-comment">/// to allow for long, good-looking error messages.</span></span>
+<span class="line" id="L293"><span class="tok-comment">///</span></span>
+<span class="line" id="L294"><span class="tok-comment">/// This is used to split the message in `@compileError(&quot;hello\nworld&quot;)` for example.</span></span>
+<span class="line" id="L295"><span class="tok-kw">fn</span> <span class="tok-fn">writeMsg</span>(eb: ErrorBundle, err_msg: ErrorMessage, stderr: <span class="tok-kw">anytype</span>, indent: <span class="tok-type">usize</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L296">    <span class="tok-kw">var</span> lines = std.mem.splitScalar(<span class="tok-type">u8</span>, eb.nullTerminatedString(err_msg.msg), <span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L297">    <span class="tok-kw">while</span> (lines.next()) |line| {</span>
+<span class="line" id="L298">        <span class="tok-kw">try</span> stderr.writeAll(line);</span>
+<span class="line" id="L299">        <span class="tok-kw">if</span> (lines.index == <span class="tok-null">null</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L300">        <span class="tok-kw">try</span> stderr.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L301">        <span class="tok-kw">try</span> stderr.writeByteNTimes(<span class="tok-str">' '</span>, indent);</span>
+<span class="line" id="L302">    }</span>
+<span class="line" id="L303">}</span>
+<span class="line" id="L304"></span>
+<span class="line" id="L305"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L306"><span class="tok-kw">const</span> ErrorBundle = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L307"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L308"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L309"></span>
+<span class="line" id="L310"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Wip = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L311">    gpa: Allocator,</span>
+<span class="line" id="L312">    string_bytes: std.ArrayListUnmanaged(<span class="tok-type">u8</span>),</span>
+<span class="line" id="L313">    <span class="tok-comment">/// The first thing in this array is a ErrorMessageList.</span></span>
+<span class="line" id="L314">    extra: std.ArrayListUnmanaged(<span class="tok-type">u32</span>),</span>
+<span class="line" id="L315">    root_list: std.ArrayListUnmanaged(MessageIndex),</span>
+<span class="line" id="L316"></span>
+<span class="line" id="L317">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(wip: *Wip, gpa: Allocator) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L318">        wip.* = .{</span>
+<span class="line" id="L319">            .gpa = gpa,</span>
+<span class="line" id="L320">            .string_bytes = .{},</span>
+<span class="line" id="L321">            .extra = .{},</span>
+<span class="line" id="L322">            .root_list = .{},</span>
+<span class="line" id="L323">        };</span>
+<span class="line" id="L324"></span>
+<span class="line" id="L325">        <span class="tok-comment">// So that 0 can be used to indicate a null string.</span>
+</span>
+<span class="line" id="L326">        <span class="tok-kw">try</span> wip.string_bytes.append(gpa, <span class="tok-number">0</span>);</span>
+<span class="line" id="L327"></span>
+<span class="line" id="L328">        assert(<span class="tok-number">0</span> == <span class="tok-kw">try</span> addExtra(wip, ErrorMessageList{</span>
+<span class="line" id="L329">            .len = <span class="tok-number">0</span>,</span>
+<span class="line" id="L330">            .start = <span class="tok-number">0</span>,</span>
+<span class="line" id="L331">            .compile_log_text = <span class="tok-number">0</span>,</span>
+<span class="line" id="L332">        }));</span>
+<span class="line" id="L333">    }</span>
+<span class="line" id="L334"></span>
+<span class="line" id="L335">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(wip: *Wip) <span class="tok-type">void</span> {</span>
+<span class="line" id="L336">        <span class="tok-kw">const</span> gpa = wip.gpa;</span>
+<span class="line" id="L337">        wip.root_list.deinit(gpa);</span>
+<span class="line" id="L338">        wip.string_bytes.deinit(gpa);</span>
+<span class="line" id="L339">        wip.extra.deinit(gpa);</span>
+<span class="line" id="L340">        wip.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L341">    }</span>
+<span class="line" id="L342"></span>
+<span class="line" id="L343">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toOwnedBundle</span>(wip: *Wip, compile_log_text: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !ErrorBundle {</span>
+<span class="line" id="L344">        <span class="tok-kw">const</span> gpa = wip.gpa;</span>
+<span class="line" id="L345">        <span class="tok-kw">if</span> (wip.root_list.items.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L346">            assert(compile_log_text.len == <span class="tok-number">0</span>);</span>
+<span class="line" id="L347">            <span class="tok-comment">// Special encoding when there are no errors.</span>
+</span>
+<span class="line" id="L348">            wip.deinit();</span>
+<span class="line" id="L349">            wip.* = .{</span>
+<span class="line" id="L350">                .gpa = gpa,</span>
+<span class="line" id="L351">                .string_bytes = .{},</span>
+<span class="line" id="L352">                .extra = .{},</span>
+<span class="line" id="L353">                .root_list = .{},</span>
+<span class="line" id="L354">            };</span>
+<span class="line" id="L355">            <span class="tok-kw">return</span> empty;</span>
+<span class="line" id="L356">        }</span>
+<span class="line" id="L357"></span>
+<span class="line" id="L358">        <span class="tok-kw">const</span> compile_log_str_index = <span class="tok-kw">if</span> (compile_log_text.len == <span class="tok-number">0</span>) <span class="tok-number">0</span> <span class="tok-kw">else</span> str: {</span>
+<span class="line" id="L359">            <span class="tok-kw">const</span> str = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(wip.string_bytes.items.len));</span>
+<span class="line" id="L360">            <span class="tok-kw">try</span> wip.string_bytes.ensureUnusedCapacity(gpa, compile_log_text.len + <span class="tok-number">1</span>);</span>
+<span class="line" id="L361">            wip.string_bytes.appendSliceAssumeCapacity(compile_log_text);</span>
+<span class="line" id="L362">            wip.string_bytes.appendAssumeCapacity(<span class="tok-number">0</span>);</span>
+<span class="line" id="L363">            <span class="tok-kw">break</span> :str str;</span>
+<span class="line" id="L364">        };</span>
+<span class="line" id="L365"></span>
+<span class="line" id="L366">        wip.setExtra(<span class="tok-number">0</span>, ErrorMessageList{</span>
+<span class="line" id="L367">            .len = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(wip.root_list.items.len)),</span>
+<span class="line" id="L368">            .start = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(wip.extra.items.len)),</span>
+<span class="line" id="L369">            .compile_log_text = compile_log_str_index,</span>
+<span class="line" id="L370">        });</span>
+<span class="line" id="L371">        <span class="tok-kw">try</span> wip.extra.appendSlice(gpa, <span class="tok-builtin">@as</span>([]<span class="tok-kw">const</span> <span class="tok-type">u32</span>, <span class="tok-builtin">@ptrCast</span>(wip.root_list.items)));</span>
+<span class="line" id="L372">        wip.root_list.clearAndFree(gpa);</span>
+<span class="line" id="L373">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L374">            .string_bytes = <span class="tok-kw">try</span> wip.string_bytes.toOwnedSlice(gpa),</span>
+<span class="line" id="L375">            .extra = <span class="tok-kw">try</span> wip.extra.toOwnedSlice(gpa),</span>
+<span class="line" id="L376">        };</span>
+<span class="line" id="L377">    }</span>
+<span class="line" id="L378"></span>
+<span class="line" id="L379">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">tmpBundle</span>(wip: Wip) ErrorBundle {</span>
+<span class="line" id="L380">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L381">            .string_bytes = wip.string_bytes.items,</span>
+<span class="line" id="L382">            .extra = wip.extra.items,</span>
+<span class="line" id="L383">        };</span>
+<span class="line" id="L384">    }</span>
+<span class="line" id="L385"></span>
+<span class="line" id="L386">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addString</span>(wip: *Wip, s: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">u32</span> {</span>
+<span class="line" id="L387">        <span class="tok-kw">const</span> gpa = wip.gpa;</span>
+<span class="line" id="L388">        <span class="tok-kw">const</span> index = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(wip.string_bytes.items.len));</span>
+<span class="line" id="L389">        <span class="tok-kw">try</span> wip.string_bytes.ensureUnusedCapacity(gpa, s.len + <span class="tok-number">1</span>);</span>
+<span class="line" id="L390">        wip.string_bytes.appendSliceAssumeCapacity(s);</span>
+<span class="line" id="L391">        wip.string_bytes.appendAssumeCapacity(<span class="tok-number">0</span>);</span>
+<span class="line" id="L392">        <span class="tok-kw">return</span> index;</span>
+<span class="line" id="L393">    }</span>
+<span class="line" id="L394"></span>
+<span class="line" id="L395">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">printString</span>(wip: *Wip, <span class="tok-kw">comptime</span> fmt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, args: <span class="tok-kw">anytype</span>) !<span class="tok-type">u32</span> {</span>
+<span class="line" id="L396">        <span class="tok-kw">const</span> gpa = wip.gpa;</span>
+<span class="line" id="L397">        <span class="tok-kw">const</span> index = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(wip.string_bytes.items.len));</span>
+<span class="line" id="L398">        <span class="tok-kw">try</span> wip.string_bytes.writer(gpa).print(fmt, args);</span>
+<span class="line" id="L399">        <span class="tok-kw">try</span> wip.string_bytes.append(gpa, <span class="tok-number">0</span>);</span>
+<span class="line" id="L400">        <span class="tok-kw">return</span> index;</span>
+<span class="line" id="L401">    }</span>
+<span class="line" id="L402"></span>
+<span class="line" id="L403">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addRootErrorMessage</span>(wip: *Wip, em: ErrorMessage) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L404">        <span class="tok-kw">try</span> wip.root_list.ensureUnusedCapacity(wip.gpa, <span class="tok-number">1</span>);</span>
+<span class="line" id="L405">        wip.root_list.appendAssumeCapacity(<span class="tok-kw">try</span> addErrorMessage(wip, em));</span>
+<span class="line" id="L406">    }</span>
+<span class="line" id="L407"></span>
+<span class="line" id="L408">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addErrorMessage</span>(wip: *Wip, em: ErrorMessage) !MessageIndex {</span>
+<span class="line" id="L409">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(MessageIndex, <span class="tok-builtin">@enumFromInt</span>(<span class="tok-kw">try</span> addExtra(wip, em)));</span>
+<span class="line" id="L410">    }</span>
+<span class="line" id="L411"></span>
+<span class="line" id="L412">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addErrorMessageAssumeCapacity</span>(wip: *Wip, em: ErrorMessage) MessageIndex {</span>
+<span class="line" id="L413">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(MessageIndex, <span class="tok-builtin">@enumFromInt</span>(addExtraAssumeCapacity(wip, em)));</span>
+<span class="line" id="L414">    }</span>
+<span class="line" id="L415"></span>
+<span class="line" id="L416">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addSourceLocation</span>(wip: *Wip, sl: SourceLocation) !SourceLocationIndex {</span>
+<span class="line" id="L417">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(SourceLocationIndex, <span class="tok-builtin">@enumFromInt</span>(<span class="tok-kw">try</span> addExtra(wip, sl)));</span>
+<span class="line" id="L418">    }</span>
+<span class="line" id="L419"></span>
+<span class="line" id="L420">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addReferenceTrace</span>(wip: *Wip, rt: ReferenceTrace) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L421">        _ = <span class="tok-kw">try</span> addExtra(wip, rt);</span>
+<span class="line" id="L422">    }</span>
+<span class="line" id="L423"></span>
+<span class="line" id="L424">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addBundle</span>(wip: *Wip, other: ErrorBundle) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L425">        <span class="tok-kw">const</span> gpa = wip.gpa;</span>
+<span class="line" id="L426"></span>
+<span class="line" id="L427">        <span class="tok-kw">try</span> wip.string_bytes.ensureUnusedCapacity(gpa, other.string_bytes.len);</span>
+<span class="line" id="L428">        <span class="tok-kw">try</span> wip.extra.ensureUnusedCapacity(gpa, other.extra.len);</span>
+<span class="line" id="L429"></span>
+<span class="line" id="L430">        <span class="tok-kw">const</span> other_list = other.getMessages();</span>
+<span class="line" id="L431"></span>
+<span class="line" id="L432">        <span class="tok-comment">// The ensureUnusedCapacity call above guarantees this.</span>
+</span>
+<span class="line" id="L433">        <span class="tok-kw">const</span> notes_start = wip.reserveNotes(<span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(other_list.len))) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L434">        <span class="tok-kw">for</span> (notes_start.., other_list) |note, message| {</span>
+<span class="line" id="L435">            wip.extra.items[note] = <span class="tok-builtin">@intFromEnum</span>(wip.addOtherMessage(other, message) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>);</span>
+<span class="line" id="L436">        }</span>
+<span class="line" id="L437">    }</span>
+<span class="line" id="L438"></span>
+<span class="line" id="L439">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reserveNotes</span>(wip: *Wip, notes_len: <span class="tok-type">u32</span>) !<span class="tok-type">u32</span> {</span>
+<span class="line" id="L440">        <span class="tok-kw">try</span> wip.extra.ensureUnusedCapacity(wip.gpa, notes_len +</span>
+<span class="line" id="L441">            notes_len * <span class="tok-builtin">@typeInfo</span>(ErrorBundle.ErrorMessage).Struct.fields.len);</span>
+<span class="line" id="L442">        wip.extra.items.len += notes_len;</span>
+<span class="line" id="L443">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(wip.extra.items.len - notes_len));</span>
+<span class="line" id="L444">    }</span>
+<span class="line" id="L445"></span>
+<span class="line" id="L446">    <span class="tok-kw">fn</span> <span class="tok-fn">addOtherMessage</span>(wip: *Wip, other: ErrorBundle, msg_index: MessageIndex) !MessageIndex {</span>
+<span class="line" id="L447">        <span class="tok-kw">const</span> other_msg = other.getErrorMessage(msg_index);</span>
+<span class="line" id="L448">        <span class="tok-kw">const</span> src_loc = <span class="tok-kw">try</span> wip.addOtherSourceLocation(other, other_msg.src_loc);</span>
+<span class="line" id="L449">        <span class="tok-kw">const</span> msg = <span class="tok-kw">try</span> wip.addErrorMessage(.{</span>
+<span class="line" id="L450">            .msg = <span class="tok-kw">try</span> wip.addString(other.nullTerminatedString(other_msg.msg)),</span>
+<span class="line" id="L451">            .count = other_msg.count,</span>
+<span class="line" id="L452">            .src_loc = src_loc,</span>
+<span class="line" id="L453">            .notes_len = other_msg.notes_len,</span>
+<span class="line" id="L454">        });</span>
+<span class="line" id="L455">        <span class="tok-kw">const</span> notes_start = <span class="tok-kw">try</span> wip.reserveNotes(other_msg.notes_len);</span>
+<span class="line" id="L456">        <span class="tok-kw">for</span> (notes_start.., other.getNotes(msg_index)) |note, other_note| {</span>
+<span class="line" id="L457">            wip.extra.items[note] = <span class="tok-builtin">@intFromEnum</span>(<span class="tok-kw">try</span> wip.addOtherMessage(other, other_note));</span>
+<span class="line" id="L458">        }</span>
+<span class="line" id="L459">        <span class="tok-kw">return</span> msg;</span>
+<span class="line" id="L460">    }</span>
+<span class="line" id="L461"></span>
+<span class="line" id="L462">    <span class="tok-kw">fn</span> <span class="tok-fn">addOtherSourceLocation</span>(</span>
+<span class="line" id="L463">        wip: *Wip,</span>
+<span class="line" id="L464">        other: ErrorBundle,</span>
+<span class="line" id="L465">        index: SourceLocationIndex,</span>
+<span class="line" id="L466">    ) !SourceLocationIndex {</span>
+<span class="line" id="L467">        <span class="tok-kw">if</span> (index == .none) <span class="tok-kw">return</span> .none;</span>
+<span class="line" id="L468">        <span class="tok-kw">const</span> other_sl = other.getSourceLocation(index);</span>
+<span class="line" id="L469"></span>
+<span class="line" id="L470">        <span class="tok-kw">const</span> src_loc = <span class="tok-kw">try</span> wip.addSourceLocation(.{</span>
+<span class="line" id="L471">            .src_path = <span class="tok-kw">try</span> wip.addString(other.nullTerminatedString(other_sl.src_path)),</span>
+<span class="line" id="L472">            .line = other_sl.line,</span>
+<span class="line" id="L473">            .column = other_sl.column,</span>
+<span class="line" id="L474">            .span_start = other_sl.span_start,</span>
+<span class="line" id="L475">            .span_main = other_sl.span_main,</span>
+<span class="line" id="L476">            .span_end = other_sl.span_end,</span>
+<span class="line" id="L477">            .source_line = <span class="tok-kw">try</span> wip.addString(other.nullTerminatedString(other_sl.source_line)),</span>
+<span class="line" id="L478">            .reference_trace_len = other_sl.reference_trace_len,</span>
+<span class="line" id="L479">        });</span>
+<span class="line" id="L480"></span>
+<span class="line" id="L481">        <span class="tok-comment">// TODO: also add the reference trace</span>
+</span>
+<span class="line" id="L482"></span>
+<span class="line" id="L483">        <span class="tok-kw">return</span> src_loc;</span>
+<span class="line" id="L484">    }</span>
+<span class="line" id="L485"></span>
+<span class="line" id="L486">    <span class="tok-kw">fn</span> <span class="tok-fn">addExtra</span>(wip: *Wip, extra: <span class="tok-kw">anytype</span>) Allocator.Error!<span class="tok-type">u32</span> {</span>
+<span class="line" id="L487">        <span class="tok-kw">const</span> gpa = wip.gpa;</span>
+<span class="line" id="L488">        <span class="tok-kw">const</span> fields = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(extra)).Struct.fields;</span>
+<span class="line" id="L489">        <span class="tok-kw">try</span> wip.extra.ensureUnusedCapacity(gpa, fields.len);</span>
+<span class="line" id="L490">        <span class="tok-kw">return</span> addExtraAssumeCapacity(wip, extra);</span>
+<span class="line" id="L491">    }</span>
+<span class="line" id="L492"></span>
+<span class="line" id="L493">    <span class="tok-kw">fn</span> <span class="tok-fn">addExtraAssumeCapacity</span>(wip: *Wip, extra: <span class="tok-kw">anytype</span>) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L494">        <span class="tok-kw">const</span> fields = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(extra)).Struct.fields;</span>
+<span class="line" id="L495">        <span class="tok-kw">const</span> result = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(wip.extra.items.len));</span>
+<span class="line" id="L496">        wip.extra.items.len += fields.len;</span>
+<span class="line" id="L497">        setExtra(wip, result, extra);</span>
+<span class="line" id="L498">        <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L499">    }</span>
+<span class="line" id="L500"></span>
+<span class="line" id="L501">    <span class="tok-kw">fn</span> <span class="tok-fn">setExtra</span>(wip: *Wip, index: <span class="tok-type">usize</span>, extra: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L502">        <span class="tok-kw">const</span> fields = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(extra)).Struct.fields;</span>
+<span class="line" id="L503">        <span class="tok-kw">var</span> i = index;</span>
+<span class="line" id="L504">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (fields) |field| {</span>
+<span class="line" id="L505">            wip.extra.items[i] = <span class="tok-kw">switch</span> (field.<span class="tok-type">type</span>) {</span>
+<span class="line" id="L506">                <span class="tok-type">u32</span> =&gt; <span class="tok-builtin">@field</span>(extra, field.name),</span>
+<span class="line" id="L507">                MessageIndex =&gt; <span class="tok-builtin">@intFromEnum</span>(<span class="tok-builtin">@field</span>(extra, field.name)),</span>
+<span class="line" id="L508">                SourceLocationIndex =&gt; <span class="tok-builtin">@intFromEnum</span>(<span class="tok-builtin">@field</span>(extra, field.name)),</span>
+<span class="line" id="L509">                <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;bad field type&quot;</span>),</span>
+<span class="line" id="L510">            };</span>
+<span class="line" id="L511">            i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L512">        }</span>
+<span class="line" id="L513">    }</span>
+<span class="line" id="L514">};</span>
+<span class="line" id="L515"></span>
+</code></pre></body>
+</html>
