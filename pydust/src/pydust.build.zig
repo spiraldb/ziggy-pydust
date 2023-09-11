@@ -15,9 +15,6 @@ const LazyPath = std.Build.LazyPath;
 const GeneratedFile = std.Build.GeneratedFile;
 
 pub const PydustOptions = struct {
-    // The path to your Python executable
-    python_exe: []const u8 = "python3",
-
     // Optionally pass your test_step and we will hook up the Pydust Zig tests.
     test_step: ?*Step = null,
 };
@@ -55,6 +52,7 @@ pub const PydustStep = struct {
 
     test_build_step: *Step,
 
+    python_exe: []const u8,
     libpython: []const u8,
     hexversion: []const u8,
 
@@ -65,13 +63,15 @@ pub const PydustStep = struct {
     pub fn add(b: *std.Build, options: PydustOptions) *PydustStep {
         const test_build_step = b.step("pydust-test-build", "Build Pydust test runners");
 
+        const python_exe = b.option([]const u8, "python-exe", "Python executable to use") orelse "python3";
+
         const libpython = getLibpython(
             b.allocator,
-            options.python_exe,
+            python_exe,
         ) catch @panic("Cannot find libpython");
         const hexversion = getPythonOutput(
             b.allocator,
-            options.python_exe,
+            python_exe,
             "import sys; print(f'{sys.hexversion:#010x}', end='')",
         ) catch @panic("Cannot get python hexversion");
 
@@ -86,6 +86,7 @@ pub const PydustStep = struct {
             .allocator = b.allocator,
             .options = options,
             .test_build_step = test_build_step,
+            .python_exe = python_exe,
             .libpython = libpython,
             .hexversion = hexversion,
             .pydust_source_file = .{ .step = &self.step },
@@ -253,7 +254,7 @@ pub const PydustStep = struct {
     }
 
     fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
-        return getPythonOutput(self.allocator, self.options.python_exe, code);
+        return getPythonOutput(self.allocator, self.python_exe, code);
     }
 };
 
