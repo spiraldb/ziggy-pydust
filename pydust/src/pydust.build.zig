@@ -275,7 +275,7 @@ fn getLibpython(allocator: std.mem.Allocator, python_exe: []const u8) ![]const u
     }
 
     // Strip python3.11.a.so => python3.11.a
-    const lastIdx = std.mem.lastIndexOfScalar(u8, libname, '.');
+    const lastIdx = std.mem.lastIndexOfScalar(u8, libname, '.') orelse libname.len;
     libname = libname[0..lastIdx];
 
     return libname;
