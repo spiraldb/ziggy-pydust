@@ -28,7 +28,8 @@ poetry add -G dev ziggy-pydust
 ```diff title="pyproject.toml"
 [tool.poetry]
 name = "your-package"
-+ include = [ { path = "src/", format = "sdist" } ]
+packages = [ { include = "your-module" } ]
++ include = [ { path = "src/", format = "sdist" }, { path = "your-module/*.so", format = "wheel } ]
 
 + [tool.poetry.build]
 + script = "build.py"
