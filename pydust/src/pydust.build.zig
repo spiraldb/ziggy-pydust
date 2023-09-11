@@ -31,12 +31,7 @@ pub const PythonModuleOptions = struct {
     main_pkg_path: ?std.Build.LazyPath = null,
 
     pub fn short_name(self: *const PythonModuleOptions) [:0]const u8 {
-        var short_name_idx = self.name.len - 1;
-        while (short_name_idx > 0) : (short_name_idx -= 1) {
-            if (self.name[short_name_idx] == '.') {
-                break;
-            }
-        }
+        var short_name_idx = std.mem.lastIndexOfScalar(self.name, '.') orelse -1;
         return self.name[short_name_idx + 1 .. :0];
     }
 };
