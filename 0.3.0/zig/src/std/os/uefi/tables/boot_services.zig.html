@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>os/uefi/tables/boot_services.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> uefi = std.os.uefi;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> Event = uefi.Event;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> Guid = uefi.Guid;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> Handle = uefi.Handle;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> Status = uefi.Status;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> TableHeader = uefi.tables.TableHeader;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> DevicePathProtocol = uefi.protocols.DevicePathProtocol;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> cc = uefi.cc;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-comment">/// Boot services are services provided by the system's firmware until the operating system takes</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// over control over the hardware by calling exitBootServices.</span></span>
+<span class="line" id="L13"><span class="tok-comment">///</span></span>
+<span class="line" id="L14"><span class="tok-comment">/// Boot Services must not be used after exitBootServices has been called. The only exception is</span></span>
+<span class="line" id="L15"><span class="tok-comment">/// getMemoryMap, which may be used after the first unsuccessful call to exitBootServices.</span></span>
+<span class="line" id="L16"><span class="tok-comment">/// After successfully calling exitBootServices, system_table.console_in_handle, system_table.con_in,</span></span>
+<span class="line" id="L17"><span class="tok-comment">/// system_table.console_out_handle, system_table.con_out, system_table.standard_error_handle,</span></span>
+<span class="line" id="L18"><span class="tok-comment">/// system_table.std_err, and system_table.boot_services should be set to null. After setting these</span></span>
+<span class="line" id="L19"><span class="tok-comment">/// attributes to null, system_table.hdr.crc32 must be recomputed.</span></span>
+<span class="line" id="L20"><span class="tok-comment">///</span></span>
+<span class="line" id="L21"><span class="tok-comment">/// As the boot_services table may grow with new UEFI versions, it is important to check hdr.header_size.</span></span>
+<span class="line" id="L22"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> BootServices = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L23">    hdr: TableHeader,</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">    <span class="tok-comment">/// Raises a task's priority level and returns its previous level.</span></span>
+<span class="line" id="L26">    raiseTpl: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (new_tpl: <span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) <span class="tok-type">usize</span>,</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28">    <span class="tok-comment">/// Restores a task's priority level to its previous value.</span></span>
+<span class="line" id="L29">    restoreTpl: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (old_tpl: <span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) <span class="tok-type">void</span>,</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31">    <span class="tok-comment">/// Allocates memory pages from the system.</span></span>
+<span class="line" id="L32">    allocatePages: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (alloc_type: AllocateType, mem_type: MemoryType, pages: <span class="tok-type">usize</span>, memory: *[*]<span class="tok-kw">align</span>(<span class="tok-number">4096</span>) <span class="tok-type">u8</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">    <span class="tok-comment">/// Frees memory pages.</span></span>
+<span class="line" id="L35">    freePages: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (memory: [*]<span class="tok-kw">align</span>(<span class="tok-number">4096</span>) <span class="tok-type">u8</span>, pages: <span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L36"></span>
+<span class="line" id="L37">    <span class="tok-comment">/// Returns the current memory map.</span></span>
+<span class="line" id="L38">    getMemoryMap: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (mmap_size: *<span class="tok-type">usize</span>, mmap: ?[*]MemoryDescriptor, mapKey: *<span class="tok-type">usize</span>, descriptor_size: *<span class="tok-type">usize</span>, descriptor_version: *<span class="tok-type">u32</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40">    <span class="tok-comment">/// Allocates pool memory.</span></span>
+<span class="line" id="L41">    allocatePool: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (pool_type: MemoryType, size: <span class="tok-type">usize</span>, buffer: *[*]<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-type">u8</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">    <span class="tok-comment">/// Returns pool memory to the system.</span></span>
+<span class="line" id="L44">    freePool: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (buffer: [*]<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-type">u8</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L45"></span>
+<span class="line" id="L46">    <span class="tok-comment">/// Creates an event.</span></span>
+<span class="line" id="L47">    createEvent: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (<span class="tok-type">type</span>: <span class="tok-type">u32</span>, notify_tpl: <span class="tok-type">usize</span>, notify_func: ?*<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (Event, ?*<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) <span class="tok-type">void</span>, notifyCtx: ?*<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>, event: *Event) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-comment">/// Sets the type of timer and the trigger time for a timer event.</span></span>
+<span class="line" id="L50">    setTimer: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (event: Event, <span class="tok-type">type</span>: TimerDelay, triggerTime: <span class="tok-type">u64</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52">    <span class="tok-comment">/// Stops execution until an event is signaled.</span></span>
+<span class="line" id="L53">    waitForEvent: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (event_len: <span class="tok-type">usize</span>, events: [*]<span class="tok-kw">const</span> Event, index: *<span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">    <span class="tok-comment">/// Signals an event.</span></span>
+<span class="line" id="L56">    signalEvent: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (event: Event) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58">    <span class="tok-comment">/// Closes an event.</span></span>
+<span class="line" id="L59">    closeEvent: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (event: Event) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61">    <span class="tok-comment">/// Checks whether an event is in the signaled state.</span></span>
+<span class="line" id="L62">    checkEvent: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (event: Event) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">    <span class="tok-comment">/// Installs a protocol interface on a device handle. If the handle does not exist, it is created</span></span>
+<span class="line" id="L65">    <span class="tok-comment">/// and added to the list of handles in the system. installMultipleProtocolInterfaces()</span></span>
+<span class="line" id="L66">    <span class="tok-comment">/// performs more error checking than installProtocolInterface(), so its use is recommended over this.</span></span>
+<span class="line" id="L67">    installProtocolInterface: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, interface_type: EfiInterfaceType, interface: *<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L68"></span>
+<span class="line" id="L69">    <span class="tok-comment">/// Reinstalls a protocol interface on a device handle</span></span>
+<span class="line" id="L70">    reinstallProtocolInterface: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, old_interface: *<span class="tok-type">anyopaque</span>, new_interface: *<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72">    <span class="tok-comment">/// Removes a protocol interface from a device handle. Usage of</span></span>
+<span class="line" id="L73">    <span class="tok-comment">/// uninstallMultipleProtocolInterfaces is recommended over this.</span></span>
+<span class="line" id="L74">    uninstallProtocolInterface: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, interface: *<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L75"></span>
+<span class="line" id="L76">    <span class="tok-comment">/// Queries a handle to determine if it supports a specified protocol.</span></span>
+<span class="line" id="L77">    handleProtocol: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, interface: *?*<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L78"></span>
+<span class="line" id="L79">    reserved: *<span class="tok-type">anyopaque</span>,</span>
+<span class="line" id="L80"></span>
+<span class="line" id="L81">    <span class="tok-comment">/// Creates an event that is to be signaled whenever an interface is installed for a specified protocol.</span></span>
+<span class="line" id="L82">    registerProtocolNotify: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, event: Event, registration: **<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84">    <span class="tok-comment">/// Returns an array of handles that support a specified protocol.</span></span>
+<span class="line" id="L85">    locateHandle: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (search_type: LocateSearchType, protocol: ?*<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, search_key: ?*<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>, bufferSize: *<span class="tok-type">usize</span>, buffer: [*]Handle) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    <span class="tok-comment">/// Locates the handle to a device on the device path that supports the specified protocol</span></span>
+<span class="line" id="L88">    locateDevicePath: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (protocols: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, device_path: **<span class="tok-kw">const</span> DevicePathProtocol, device: *?Handle) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">    <span class="tok-comment">/// Adds, updates, or removes a configuration table entry from the EFI System Table.</span></span>
+<span class="line" id="L91">    installConfigurationTable: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (guid: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, table: ?*<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">    <span class="tok-comment">/// Loads an EFI image into memory.</span></span>
+<span class="line" id="L94">    loadImage: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (boot_policy: <span class="tok-type">bool</span>, parent_image_handle: Handle, device_path: ?*<span class="tok-kw">const</span> DevicePathProtocol, source_buffer: ?[*]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, source_size: <span class="tok-type">usize</span>, imageHandle: *?Handle) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L95"></span>
+<span class="line" id="L96">    <span class="tok-comment">/// Transfers control to a loaded image's entry point.</span></span>
+<span class="line" id="L97">    startImage: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (image_handle: Handle, exit_data_size: ?*<span class="tok-type">usize</span>, exit_data: ?*[*]<span class="tok-type">u16</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">    <span class="tok-comment">/// Terminates a loaded EFI image and returns control to boot services.</span></span>
+<span class="line" id="L100">    exit: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (image_handle: Handle, exit_status: Status, exit_data_size: <span class="tok-type">usize</span>, exit_data: ?*<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">    <span class="tok-comment">/// Unloads an image.</span></span>
+<span class="line" id="L103">    unloadImage: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (image_handle: Handle) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">    <span class="tok-comment">/// Terminates all boot services.</span></span>
+<span class="line" id="L106">    exitBootServices: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (image_handle: Handle, map_key: <span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108">    <span class="tok-comment">/// Returns a monotonically increasing count for the platform.</span></span>
+<span class="line" id="L109">    getNextMonotonicCount: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (count: *<span class="tok-type">u64</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111">    <span class="tok-comment">/// Induces a fine-grained stall.</span></span>
+<span class="line" id="L112">    stall: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (microseconds: <span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">    <span class="tok-comment">/// Sets the system's watchdog timer.</span></span>
+<span class="line" id="L115">    setWatchdogTimer: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (timeout: <span class="tok-type">usize</span>, watchdogCode: <span class="tok-type">u64</span>, data_size: <span class="tok-type">usize</span>, watchdog_data: ?[*]<span class="tok-kw">const</span> <span class="tok-type">u16</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">    <span class="tok-comment">/// Connects one or more drives to a controller.</span></span>
+<span class="line" id="L118">    connectController: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (controller_handle: Handle, driver_image_handle: ?Handle, remaining_device_path: ?*DevicePathProtocol, recursive: <span class="tok-type">bool</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120">    <span class="tok-comment">// Disconnects one or more drivers from a controller</span>
+</span>
+<span class="line" id="L121">    disconnectController: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (controller_handle: Handle, driver_image_handle: ?Handle, child_handle: ?Handle) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123">    <span class="tok-comment">/// Queries a handle to determine if it supports a specified protocol.</span></span>
+<span class="line" id="L124">    openProtocol: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, interface: *?*<span class="tok-type">anyopaque</span>, agent_handle: ?Handle, controller_handle: ?Handle, attributes: OpenProtocolAttributes) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">    <span class="tok-comment">/// Closes a protocol on a handle that was opened using openProtocol().</span></span>
+<span class="line" id="L127">    closeProtocol: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, agentHandle: Handle, controller_handle: ?Handle) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L128"></span>
+<span class="line" id="L129">    <span class="tok-comment">/// Retrieves the list of agents that currently have a protocol interface opened.</span></span>
+<span class="line" id="L130">    openProtocolInformation: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, entry_buffer: *[*]ProtocolInformationEntry, entry_count: *<span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">    <span class="tok-comment">/// Retrieves the list of protocol interface GUIDs that are installed on a handle in a buffer allocated from pool.</span></span>
+<span class="line" id="L133">    protocolsPerHandle: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: Handle, protocol_buffer: *[*]*<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, protocol_buffer_count: *<span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L134"></span>
+<span class="line" id="L135">    <span class="tok-comment">/// Returns an array of handles that support the requested protocol in a buffer allocated from pool.</span></span>
+<span class="line" id="L136">    locateHandleBuffer: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (search_type: LocateSearchType, protocol: ?*<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, search_key: ?*<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>, num_handles: *<span class="tok-type">usize</span>, buffer: *[*]Handle) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138">    <span class="tok-comment">/// Returns the first protocol instance that matches the given protocol.</span></span>
+<span class="line" id="L139">    locateProtocol: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (protocol: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, registration: ?*<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>, interface: *?*<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L140"></span>
+<span class="line" id="L141">    <span class="tok-comment">/// Installs one or more protocol interfaces into the boot services environment</span></span>
+<span class="line" id="L142">    <span class="tok-comment">// TODO: use callconv(cc) instead once that works</span>
+</span>
+<span class="line" id="L143">    installMultipleProtocolInterfaces: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: *Handle, ...) <span class="tok-kw">callconv</span>(.C) Status,</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145">    <span class="tok-comment">/// Removes one or more protocol interfaces into the boot services environment</span></span>
+<span class="line" id="L146">    <span class="tok-comment">// TODO: use callconv(cc) instead once that works</span>
+</span>
+<span class="line" id="L147">    uninstallMultipleProtocolInterfaces: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (handle: *Handle, ...) <span class="tok-kw">callconv</span>(.C) Status,</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">    <span class="tok-comment">/// Computes and returns a 32-bit CRC for a data buffer.</span></span>
+<span class="line" id="L150">    calculateCrc32: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (data: [*]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, data_size: <span class="tok-type">usize</span>, *<span class="tok-type">u32</span>) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">    <span class="tok-comment">/// Copies the contents of one buffer to another buffer</span></span>
+<span class="line" id="L153">    copyMem: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (dest: [*]<span class="tok-type">u8</span>, src: [*]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, len: <span class="tok-type">usize</span>) <span class="tok-kw">callconv</span>(cc) <span class="tok-type">void</span>,</span>
+<span class="line" id="L154"></span>
+<span class="line" id="L155">    <span class="tok-comment">/// Fills a buffer with a specified value</span></span>
+<span class="line" id="L156">    setMem: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (buffer: [*]<span class="tok-type">u8</span>, size: <span class="tok-type">usize</span>, value: <span class="tok-type">u8</span>) <span class="tok-kw">callconv</span>(cc) <span class="tok-type">void</span>,</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">    <span class="tok-comment">/// Creates an event in a group.</span></span>
+<span class="line" id="L159">    createEventEx: *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (<span class="tok-type">type</span>: <span class="tok-type">u32</span>, notify_tpl: <span class="tok-type">usize</span>, notify_func: EfiEventNotify, notify_ctx: *<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>, event_group: *<span class="tok-kw">align</span>(<span class="tok-number">8</span>) <span class="tok-kw">const</span> Guid, event: *Event) <span class="tok-kw">callconv</span>(cc) Status,</span>
+<span class="line" id="L160"></span>
+<span class="line" id="L161">    <span class="tok-comment">/// Opens a protocol with a structure as the loaded image for a UEFI application</span></span>
+<span class="line" id="L162">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">openProtocolSt</span>(self: *BootServices, <span class="tok-kw">comptime</span> protocol: <span class="tok-type">type</span>, handle: Handle) !*protocol {</span>
+<span class="line" id="L163">        <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(protocol, <span class="tok-str">&quot;guid&quot;</span>))</span>
+<span class="line" id="L164">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Protocol is missing guid!&quot;</span>);</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">        <span class="tok-kw">var</span> ptr: ?*protocol = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L167"></span>
+<span class="line" id="L168">        <span class="tok-kw">try</span> self.openProtocol(</span>
+<span class="line" id="L169">            handle,</span>
+<span class="line" id="L170">            &amp;protocol.guid,</span>
+<span class="line" id="L171">            <span class="tok-builtin">@as</span>(*?*<span class="tok-type">anyopaque</span>, <span class="tok-builtin">@ptrCast</span>(&amp;ptr)),</span>
+<span class="line" id="L172">            <span class="tok-comment">// Invoking handle (loaded image)</span>
+</span>
+<span class="line" id="L173">            uefi.handle,</span>
+<span class="line" id="L174">            <span class="tok-comment">// Control handle (null as not a driver)</span>
+</span>
+<span class="line" id="L175">            <span class="tok-null">null</span>,</span>
+<span class="line" id="L176">            uefi.tables.OpenProtocolAttributes{ .by_handle_protocol = <span class="tok-null">true</span> },</span>
+<span class="line" id="L177">        ).err();</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179">        <span class="tok-kw">return</span> ptr.?;</span>
+<span class="line" id="L180">    }</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> signature: <span class="tok-type">u64</span> = <span class="tok-number">0x56524553544f4f42</span>;</span>
+<span class="line" id="L183"></span>
+<span class="line" id="L184">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> event_timer: <span class="tok-type">u32</span> = <span class="tok-number">0x80000000</span>;</span>
+<span class="line" id="L185">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> event_runtime: <span class="tok-type">u32</span> = <span class="tok-number">0x40000000</span>;</span>
+<span class="line" id="L186">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> event_notify_wait: <span class="tok-type">u32</span> = <span class="tok-number">0x00000100</span>;</span>
+<span class="line" id="L187">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> event_notify_signal: <span class="tok-type">u32</span> = <span class="tok-number">0x00000200</span>;</span>
+<span class="line" id="L188">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> event_signal_exit_boot_services: <span class="tok-type">u32</span> = <span class="tok-number">0x00000201</span>;</span>
+<span class="line" id="L189">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> event_signal_virtual_address_change: <span class="tok-type">u32</span> = <span class="tok-number">0x00000202</span>;</span>
+<span class="line" id="L190"></span>
+<span class="line" id="L191">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> tpl_application: <span class="tok-type">usize</span> = <span class="tok-number">4</span>;</span>
+<span class="line" id="L192">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> tpl_callback: <span class="tok-type">usize</span> = <span class="tok-number">8</span>;</span>
+<span class="line" id="L193">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> tpl_notify: <span class="tok-type">usize</span> = <span class="tok-number">16</span>;</span>
+<span class="line" id="L194">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> tpl_high_level: <span class="tok-type">usize</span> = <span class="tok-number">31</span>;</span>
+<span class="line" id="L195">};</span>
+<span class="line" id="L196"></span>
+<span class="line" id="L197"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> EfiEventNotify = *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (event: Event, ctx: *<span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(cc) <span class="tok-type">void</span>;</span>
+<span class="line" id="L198"></span>
+<span class="line" id="L199"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> TimerDelay = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L200">    TimerCancel,</span>
+<span class="line" id="L201">    TimerPeriodic,</span>
+<span class="line" id="L202">    TimerRelative,</span>
+<span class="line" id="L203">};</span>
+<span class="line" id="L204"></span>
+<span class="line" id="L205"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MemoryType = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L206">    ReservedMemoryType,</span>
+<span class="line" id="L207">    LoaderCode,</span>
+<span class="line" id="L208">    LoaderData,</span>
+<span class="line" id="L209">    BootServicesCode,</span>
+<span class="line" id="L210">    BootServicesData,</span>
+<span class="line" id="L211">    RuntimeServicesCode,</span>
+<span class="line" id="L212">    RuntimeServicesData,</span>
+<span class="line" id="L213">    ConventionalMemory,</span>
+<span class="line" id="L214">    UnusableMemory,</span>
+<span class="line" id="L215">    ACPIReclaimMemory,</span>
+<span class="line" id="L216">    ACPIMemoryNVS,</span>
+<span class="line" id="L217">    MemoryMappedIO,</span>
+<span class="line" id="L218">    MemoryMappedIOPortSpace,</span>
+<span class="line" id="L219">    PalCode,</span>
+<span class="line" id="L220">    PersistentMemory,</span>
+<span class="line" id="L221">    MaxMemoryType,</span>
+<span class="line" id="L222">    _,</span>
+<span class="line" id="L223">};</span>
+<span class="line" id="L224"></span>
+<span class="line" id="L225"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MemoryDescriptorAttribute = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span>(<span class="tok-type">u64</span>) {</span>
+<span class="line" id="L226">    uc: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L227">    wc: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L228">    wt: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L229">    wb: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L230">    uce: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L231">    _pad1: <span class="tok-type">u7</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L232">    wp: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L233">    rp: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L234">    xp: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L235">    nv: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L236">    more_reliable: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L237">    ro: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L238">    sp: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L239">    cpu_crypto: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L240">    _pad2: <span class="tok-type">u43</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L241">    memory_runtime: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L242">};</span>
+<span class="line" id="L243"></span>
+<span class="line" id="L244"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MemoryDescriptor = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L245">    <span class="tok-type">type</span>: MemoryType,</span>
+<span class="line" id="L246">    physical_start: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L247">    virtual_start: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L248">    number_of_pages: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L249">    attribute: MemoryDescriptorAttribute,</span>
+<span class="line" id="L250">};</span>
+<span class="line" id="L251"></span>
+<span class="line" id="L252"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> LocateSearchType = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L253">    AllHandles,</span>
+<span class="line" id="L254">    ByRegisterNotify,</span>
+<span class="line" id="L255">    ByProtocol,</span>
+<span class="line" id="L256">};</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> OpenProtocolAttributes = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L259">    by_handle_protocol: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L260">    get_protocol: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L261">    test_protocol: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L262">    by_child_controller: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L263">    by_driver: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L264">    exclusive: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L265">    reserved: <span class="tok-type">u26</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L266">};</span>
+<span class="line" id="L267"></span>
+<span class="line" id="L268"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ProtocolInformationEntry = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L269">    agent_handle: ?Handle,</span>
+<span class="line" id="L270">    controller_handle: ?Handle,</span>
+<span class="line" id="L271">    attributes: OpenProtocolAttributes,</span>
+<span class="line" id="L272">    open_count: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L273">};</span>
+<span class="line" id="L274"></span>
+<span class="line" id="L275"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> EfiInterfaceType = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L276">    EfiNativeInterface,</span>
+<span class="line" id="L277">};</span>
+<span class="line" id="L278"></span>
+<span class="line" id="L279"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AllocateType = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L280">    AllocateAnyPages,</span>
+<span class="line" id="L281">    AllocateMaxAddress,</span>
+<span class="line" id="L282">    AllocateAddress,</span>
+<span class="line" id="L283">};</span>
+<span class="line" id="L284"></span>
+</code></pre></body>
+</html>

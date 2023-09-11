@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Build/Step/ObjCopy.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> ObjCopy = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> ArenaAllocator = std.heap.ArenaAllocator;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> ArrayListUnmanaged = std.ArrayListUnmanaged;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> File = std.fs.File;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> InstallDir = std.Build.InstallDir;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> Step = std.Build.Step;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> elf = std.elf;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> io = std.io;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> sort = std.sort;</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> base_id: Step.Id = .objcopy;</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RawFormat = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L18">    bin,</span>
+<span class="line" id="L19">    hex,</span>
+<span class="line" id="L20">};</span>
+<span class="line" id="L21"></span>
+<span class="line" id="L22">step: Step,</span>
+<span class="line" id="L23">input_file: std.Build.LazyPath,</span>
+<span class="line" id="L24">basename: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L25">output_file: std.Build.GeneratedFile,</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27">format: ?RawFormat,</span>
+<span class="line" id="L28">only_section: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L29">pad_to: ?<span class="tok-type">u64</span>,</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L32">    basename: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L33">    format: ?RawFormat = <span class="tok-null">null</span>,</span>
+<span class="line" id="L34">    only_section: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L35">    pad_to: ?<span class="tok-type">u64</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L36">};</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(</span>
+<span class="line" id="L39">    owner: *std.Build,</span>
+<span class="line" id="L40">    input_file: std.Build.LazyPath,</span>
+<span class="line" id="L41">    options: Options,</span>
+<span class="line" id="L42">) *ObjCopy {</span>
+<span class="line" id="L43">    <span class="tok-kw">const</span> self = owner.allocator.create(ObjCopy) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L44">    self.* = ObjCopy{</span>
+<span class="line" id="L45">        .step = Step.init(.{</span>
+<span class="line" id="L46">            .id = base_id,</span>
+<span class="line" id="L47">            .name = owner.fmt(<span class="tok-str">&quot;objcopy {s}&quot;</span>, .{input_file.getDisplayName()}),</span>
+<span class="line" id="L48">            .owner = owner,</span>
+<span class="line" id="L49">            .makeFn = make,</span>
+<span class="line" id="L50">        }),</span>
+<span class="line" id="L51">        .input_file = input_file,</span>
+<span class="line" id="L52">        .basename = options.basename <span class="tok-kw">orelse</span> input_file.getDisplayName(),</span>
+<span class="line" id="L53">        .output_file = std.Build.GeneratedFile{ .step = &amp;self.step },</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">        .format = options.format,</span>
+<span class="line" id="L56">        .only_section = options.only_section,</span>
+<span class="line" id="L57">        .pad_to = options.pad_to,</span>
+<span class="line" id="L58">    };</span>
+<span class="line" id="L59">    input_file.addStepDependencies(&amp;self.step);</span>
+<span class="line" id="L60">    <span class="tok-kw">return</span> self;</span>
+<span class="line" id="L61">}</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63"><span class="tok-comment">/// deprecated: use getOutput</span></span>
+<span class="line" id="L64"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> getOutputSource = getOutput;</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getOutput</span>(self: *<span class="tok-kw">const</span> ObjCopy) std.Build.LazyPath {</span>
+<span class="line" id="L67">    <span class="tok-kw">return</span> .{ .generated = &amp;self.output_file };</span>
+<span class="line" id="L68">}</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70"><span class="tok-kw">fn</span> <span class="tok-fn">make</span>(step: *Step, prog_node: *std.Progress.Node) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L71">    <span class="tok-kw">const</span> b = step.owner;</span>
+<span class="line" id="L72">    <span class="tok-kw">const</span> self = <span class="tok-builtin">@fieldParentPtr</span>(ObjCopy, <span class="tok-str">&quot;step&quot;</span>, step);</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74">    <span class="tok-kw">var</span> man = b.cache.obtain();</span>
+<span class="line" id="L75">    <span class="tok-kw">defer</span> man.deinit();</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77">    <span class="tok-comment">// Random bytes to make ObjCopy unique. Refresh this with new random</span>
+</span>
+<span class="line" id="L78">    <span class="tok-comment">// bytes when ObjCopy implementation is modified incompatibly.</span>
+</span>
+<span class="line" id="L79">    man.hash.add(<span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">0xe18b7baf</span>));</span>
+<span class="line" id="L80"></span>
+<span class="line" id="L81">    <span class="tok-kw">const</span> full_src_path = self.input_file.getPath(b);</span>
+<span class="line" id="L82">    _ = <span class="tok-kw">try</span> man.addFile(full_src_path, <span class="tok-null">null</span>);</span>
+<span class="line" id="L83">    man.hash.addOptionalBytes(self.only_section);</span>
+<span class="line" id="L84">    man.hash.addOptional(self.pad_to);</span>
+<span class="line" id="L85">    man.hash.addOptional(self.format);</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    <span class="tok-kw">if</span> (<span class="tok-kw">try</span> step.cacheHit(&amp;man)) {</span>
+<span class="line" id="L88">        <span class="tok-comment">// Cache hit, skip subprocess execution.</span>
+</span>
+<span class="line" id="L89">        <span class="tok-kw">const</span> digest = man.final();</span>
+<span class="line" id="L90">        self.output_file.path = <span class="tok-kw">try</span> b.cache_root.join(b.allocator, &amp;.{</span>
+<span class="line" id="L91">            <span class="tok-str">&quot;o&quot;</span>, &amp;digest, self.basename,</span>
+<span class="line" id="L92">        });</span>
+<span class="line" id="L93">        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L94">    }</span>
+<span class="line" id="L95"></span>
+<span class="line" id="L96">    <span class="tok-kw">const</span> digest = man.final();</span>
+<span class="line" id="L97">    <span class="tok-kw">const</span> full_dest_path = <span class="tok-kw">try</span> b.cache_root.join(b.allocator, &amp;.{ <span class="tok-str">&quot;o&quot;</span>, &amp;digest, self.basename });</span>
+<span class="line" id="L98">    <span class="tok-kw">const</span> cache_path = <span class="tok-str">&quot;o&quot;</span> ++ fs.path.sep_str ++ digest;</span>
+<span class="line" id="L99">    b.cache_root.handle.makePath(cache_path) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L100">        <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;unable to make path {s}: {s}&quot;</span>, .{ cache_path, <span class="tok-builtin">@errorName</span>(err) });</span>
+<span class="line" id="L101">    };</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103">    <span class="tok-kw">var</span> argv = std.ArrayList([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>).init(b.allocator);</span>
+<span class="line" id="L104">    <span class="tok-kw">try</span> argv.appendSlice(&amp;.{ b.zig_exe, <span class="tok-str">&quot;objcopy&quot;</span> });</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106">    <span class="tok-kw">if</span> (self.only_section) |only_section| {</span>
+<span class="line" id="L107">        <span class="tok-kw">try</span> argv.appendSlice(&amp;.{ <span class="tok-str">&quot;-j&quot;</span>, only_section });</span>
+<span class="line" id="L108">    }</span>
+<span class="line" id="L109">    <span class="tok-kw">if</span> (self.pad_to) |pad_to| {</span>
+<span class="line" id="L110">        <span class="tok-kw">try</span> argv.appendSlice(&amp;.{ <span class="tok-str">&quot;--pad-to&quot;</span>, b.fmt(<span class="tok-str">&quot;{d}&quot;</span>, .{pad_to}) });</span>
+<span class="line" id="L111">    }</span>
+<span class="line" id="L112">    <span class="tok-kw">if</span> (self.format) |format| <span class="tok-kw">switch</span> (format) {</span>
+<span class="line" id="L113">        .bin =&gt; <span class="tok-kw">try</span> argv.appendSlice(&amp;.{ <span class="tok-str">&quot;-O&quot;</span>, <span class="tok-str">&quot;binary&quot;</span> }),</span>
+<span class="line" id="L114">        .hex =&gt; <span class="tok-kw">try</span> argv.appendSlice(&amp;.{ <span class="tok-str">&quot;-O&quot;</span>, <span class="tok-str">&quot;hex&quot;</span> }),</span>
+<span class="line" id="L115">    };</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">    <span class="tok-kw">try</span> argv.appendSlice(&amp;.{ full_src_path, full_dest_path });</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">    <span class="tok-kw">try</span> argv.append(<span class="tok-str">&quot;--listen=-&quot;</span>);</span>
+<span class="line" id="L120">    _ = <span class="tok-kw">try</span> step.evalZigProcess(argv.items, prog_node);</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">    self.output_file.path = full_dest_path;</span>
+<span class="line" id="L123">    <span class="tok-kw">try</span> man.writeManifest();</span>
+<span class="line" id="L124">}</span>
+<span class="line" id="L125"></span>
+</code></pre></body>
+</html>

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>os/linux/start_pie.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> elf = std.elf;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">const</span> R_AMD64_RELATIVE = <span class="tok-number">8</span>;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> R_386_RELATIVE = <span class="tok-number">8</span>;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> R_ARM_RELATIVE = <span class="tok-number">23</span>;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> R_AARCH64_RELATIVE = <span class="tok-number">1027</span>;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> R_RISCV_RELATIVE = <span class="tok-number">3</span>;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> R_SPARC_RELATIVE = <span class="tok-number">22</span>;</span>
+<span class="line" id="L12"></span>
+<span class="line" id="L13"><span class="tok-kw">const</span> R_RELATIVE = <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L14">    .x86 =&gt; R_386_RELATIVE,</span>
+<span class="line" id="L15">    .x86_64 =&gt; R_AMD64_RELATIVE,</span>
+<span class="line" id="L16">    .arm =&gt; R_ARM_RELATIVE,</span>
+<span class="line" id="L17">    .aarch64 =&gt; R_AARCH64_RELATIVE,</span>
+<span class="line" id="L18">    .riscv64 =&gt; R_RISCV_RELATIVE,</span>
+<span class="line" id="L19">    <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Missing R_RELATIVE definition for this target&quot;</span>),</span>
+<span class="line" id="L20">};</span>
+<span class="line" id="L21"></span>
+<span class="line" id="L22"><span class="tok-comment">// Obtain a pointer to the _DYNAMIC array.</span>
+</span>
+<span class="line" id="L23"><span class="tok-comment">// We have to compute its address as a PC-relative quantity not to require a</span>
+</span>
+<span class="line" id="L24"><span class="tok-comment">// relocation that, at this point, is not yet applied.</span>
+</span>
+<span class="line" id="L25"><span class="tok-kw">fn</span> <span class="tok-fn">getDynamicSymbol</span>() [*]elf.Dyn {</span>
+<span class="line" id="L26">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L27">        .x86 =&gt; <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L28">            <span class="tok-str">\\ .weak _DYNAMIC</span></span>
+
+<span class="line" id="L29">            <span class="tok-str">\\ .hidden _DYNAMIC</span></span>
+
+<span class="line" id="L30">            <span class="tok-str">\\ call 1f</span></span>
+
+<span class="line" id="L31">            <span class="tok-str">\\ 1: pop %[ret]</span></span>
+
+<span class="line" id="L32">            <span class="tok-str">\\ lea _DYNAMIC-1b(%[ret]), %[ret]</span></span>
+
+<span class="line" id="L33">            : [ret] <span class="tok-str">&quot;=r&quot;</span> (-&gt; [*]elf.Dyn),</span>
+<span class="line" id="L34">        ),</span>
+<span class="line" id="L35">        .x86_64 =&gt; <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L36">            <span class="tok-str">\\ .weak _DYNAMIC</span></span>
+
+<span class="line" id="L37">            <span class="tok-str">\\ .hidden _DYNAMIC</span></span>
+
+<span class="line" id="L38">            <span class="tok-str">\\ lea _DYNAMIC(%%rip), %[ret]</span></span>
+
+<span class="line" id="L39">            : [ret] <span class="tok-str">&quot;=r&quot;</span> (-&gt; [*]elf.Dyn),</span>
+<span class="line" id="L40">        ),</span>
+<span class="line" id="L41">        <span class="tok-comment">// Work around the limited offset range of `ldr`</span>
+</span>
+<span class="line" id="L42">        .arm =&gt; <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L43">            <span class="tok-str">\\ .weak _DYNAMIC</span></span>
+
+<span class="line" id="L44">            <span class="tok-str">\\ .hidden _DYNAMIC</span></span>
+
+<span class="line" id="L45">            <span class="tok-str">\\ ldr %[ret], 1f</span></span>
+
+<span class="line" id="L46">            <span class="tok-str">\\ add %[ret], pc</span></span>
+
+<span class="line" id="L47">            <span class="tok-str">\\ b 2f</span></span>
+
+<span class="line" id="L48">            <span class="tok-str">\\ 1: .word _DYNAMIC-1b</span></span>
+
+<span class="line" id="L49">            <span class="tok-str">\\ 2:</span></span>
+
+<span class="line" id="L50">            : [ret] <span class="tok-str">&quot;=r&quot;</span> (-&gt; [*]elf.Dyn),</span>
+<span class="line" id="L51">        ),</span>
+<span class="line" id="L52">        <span class="tok-comment">// A simple `adr` is not enough as it has a limited offset range</span>
+</span>
+<span class="line" id="L53">        .aarch64 =&gt; <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L54">            <span class="tok-str">\\ .weak _DYNAMIC</span></span>
+
+<span class="line" id="L55">            <span class="tok-str">\\ .hidden _DYNAMIC</span></span>
+
+<span class="line" id="L56">            <span class="tok-str">\\ adrp %[ret], _DYNAMIC</span></span>
+
+<span class="line" id="L57">            <span class="tok-str">\\ add %[ret], %[ret], #:lo12:_DYNAMIC</span></span>
+
+<span class="line" id="L58">            : [ret] <span class="tok-str">&quot;=r&quot;</span> (-&gt; [*]elf.Dyn),</span>
+<span class="line" id="L59">        ),</span>
+<span class="line" id="L60">        .riscv64 =&gt; <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L61">            <span class="tok-str">\\ .weak _DYNAMIC</span></span>
+
+<span class="line" id="L62">            <span class="tok-str">\\ .hidden _DYNAMIC</span></span>
+
+<span class="line" id="L63">            <span class="tok-str">\\ lla %[ret], _DYNAMIC</span></span>
+
+<span class="line" id="L64">            : [ret] <span class="tok-str">&quot;=r&quot;</span> (-&gt; [*]elf.Dyn),</span>
+<span class="line" id="L65">        ),</span>
+<span class="line" id="L66">        <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L67">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;PIE startup is not yet supported for this target!&quot;</span>);</span>
+<span class="line" id="L68">        },</span>
+<span class="line" id="L69">    };</span>
+<span class="line" id="L70">}</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">relocate</span>(phdrs: []elf.Phdr) <span class="tok-type">void</span> {</span>
+<span class="line" id="L73">    <span class="tok-builtin">@setRuntimeSafety</span>(<span class="tok-null">false</span>);</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75">    <span class="tok-kw">const</span> dynv = getDynamicSymbol();</span>
+<span class="line" id="L76">    <span class="tok-comment">// Recover the delta applied by the loader by comparing the effective and</span>
+</span>
+<span class="line" id="L77">    <span class="tok-comment">// the theoretical load addresses for the `_DYNAMIC` symbol.</span>
+</span>
+<span class="line" id="L78">    <span class="tok-kw">const</span> base_addr = base: {</span>
+<span class="line" id="L79">        <span class="tok-kw">for</span> (phdrs) |*phdr| {</span>
+<span class="line" id="L80">            <span class="tok-kw">if</span> (phdr.p_type != elf.PT_DYNAMIC) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L81">            <span class="tok-kw">break</span> :base <span class="tok-builtin">@intFromPtr</span>(dynv) - phdr.p_vaddr;</span>
+<span class="line" id="L82">        }</span>
+<span class="line" id="L83">        <span class="tok-comment">// This is not supposed to happen for well-formed binaries.</span>
+</span>
+<span class="line" id="L84">        std.os.abort();</span>
+<span class="line" id="L85">    };</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    <span class="tok-kw">var</span> rel_addr: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L88">    <span class="tok-kw">var</span> rela_addr: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L89">    <span class="tok-kw">var</span> rel_size: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L90">    <span class="tok-kw">var</span> rela_size: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L91">    {</span>
+<span class="line" id="L92">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L93">        <span class="tok-kw">while</span> (dynv[i].d_tag != elf.DT_NULL) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L94">            <span class="tok-kw">switch</span> (dynv[i].d_tag) {</span>
+<span class="line" id="L95">                elf.DT_REL =&gt; rel_addr = base_addr + dynv[i].d_val,</span>
+<span class="line" id="L96">                elf.DT_RELA =&gt; rela_addr = base_addr + dynv[i].d_val,</span>
+<span class="line" id="L97">                elf.DT_RELSZ =&gt; rel_size = dynv[i].d_val,</span>
+<span class="line" id="L98">                elf.DT_RELASZ =&gt; rela_size = dynv[i].d_val,</span>
+<span class="line" id="L99">                <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L100">            }</span>
+<span class="line" id="L101">        }</span>
+<span class="line" id="L102">    }</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104">    <span class="tok-comment">// Apply the relocations.</span>
+</span>
+<span class="line" id="L105">    <span class="tok-kw">if</span> (rel_addr != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L106">        <span class="tok-kw">const</span> rel = std.mem.bytesAsSlice(elf.Rel, <span class="tok-builtin">@as</span>([*]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(rel_addr))[<span class="tok-number">0</span>..rel_size]);</span>
+<span class="line" id="L107">        <span class="tok-kw">for</span> (rel) |r| {</span>
+<span class="line" id="L108">            <span class="tok-kw">if</span> (r.r_type() != R_RELATIVE) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L109">            <span class="tok-builtin">@as</span>(*<span class="tok-type">usize</span>, <span class="tok-builtin">@ptrFromInt</span>(base_addr + r.r_offset)).* += base_addr;</span>
+<span class="line" id="L110">        }</span>
+<span class="line" id="L111">    }</span>
+<span class="line" id="L112">    <span class="tok-kw">if</span> (rela_addr != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L113">        <span class="tok-kw">const</span> rela = std.mem.bytesAsSlice(elf.Rela, <span class="tok-builtin">@as</span>([*]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(rela_addr))[<span class="tok-number">0</span>..rela_size]);</span>
+<span class="line" id="L114">        <span class="tok-kw">for</span> (rela) |r| {</span>
+<span class="line" id="L115">            <span class="tok-kw">if</span> (r.r_type() != R_RELATIVE) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L116">            <span class="tok-builtin">@as</span>(*<span class="tok-type">usize</span>, <span class="tok-builtin">@ptrFromInt</span>(base_addr + r.r_offset)).* += base_addr + <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@bitCast</span>(r.r_addend));</span>
+<span class="line" id="L117">        }</span>
+<span class="line" id="L118">    }</span>
+<span class="line" id="L119">}</span>
+<span class="line" id="L120"></span>
+</code></pre></body>
+</html>

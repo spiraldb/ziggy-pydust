@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>math/log1p.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">// Ported from musl, which is licensed under the MIT license:</span>
+</span>
+<span class="line" id="L2"><span class="tok-comment">// https://git.musl-libc.org/cgit/musl/tree/COPYRIGHT</span>
+</span>
+<span class="line" id="L3"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L4"><span class="tok-comment">// https://git.musl-libc.org/cgit/musl/tree/src/math/log1pf.c</span>
+</span>
+<span class="line" id="L5"><span class="tok-comment">// https://git.musl-libc.org/cgit/musl/tree/src/math/log1p.c</span>
+</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> expect = std.testing.expect;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-comment">/// Returns the natural logarithm of 1 + x with greater accuracy when x is near zero.</span></span>
+<span class="line" id="L12"><span class="tok-comment">///</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// Special Cases:</span></span>
+<span class="line" id="L14"><span class="tok-comment">///  - log1p(+inf)  = +inf</span></span>
+<span class="line" id="L15"><span class="tok-comment">///  - log1p(+-0)   = +-0</span></span>
+<span class="line" id="L16"><span class="tok-comment">///  - log1p(-1)    = -inf</span></span>
+<span class="line" id="L17"><span class="tok-comment">///  - log1p(x)     = nan if x &lt; -1</span></span>
+<span class="line" id="L18"><span class="tok-comment">///  - log1p(nan)   = nan</span></span>
+<span class="line" id="L19"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">log1p</span>(x: <span class="tok-kw">anytype</span>) <span class="tok-builtin">@TypeOf</span>(x) {</span>
+<span class="line" id="L20">    <span class="tok-kw">const</span> T = <span class="tok-builtin">@TypeOf</span>(x);</span>
+<span class="line" id="L21">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (T) {</span>
+<span class="line" id="L22">        <span class="tok-type">f32</span> =&gt; log1p_32(x),</span>
+<span class="line" id="L23">        <span class="tok-type">f64</span> =&gt; log1p_64(x),</span>
+<span class="line" id="L24">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;log1p not implemented for &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T)),</span>
+<span class="line" id="L25">    };</span>
+<span class="line" id="L26">}</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28"><span class="tok-kw">fn</span> <span class="tok-fn">log1p_32</span>(x: <span class="tok-type">f32</span>) <span class="tok-type">f32</span> {</span>
+<span class="line" id="L29">    <span class="tok-kw">const</span> ln2_hi = <span class="tok-number">6.9313812256e-01</span>;</span>
+<span class="line" id="L30">    <span class="tok-kw">const</span> ln2_lo = <span class="tok-number">9.0580006145e-06</span>;</span>
+<span class="line" id="L31">    <span class="tok-kw">const</span> Lg1: <span class="tok-type">f32</span> = <span class="tok-number">0xaaaaaa.0p-24</span>;</span>
+<span class="line" id="L32">    <span class="tok-kw">const</span> Lg2: <span class="tok-type">f32</span> = <span class="tok-number">0xccce13.0p-25</span>;</span>
+<span class="line" id="L33">    <span class="tok-kw">const</span> Lg3: <span class="tok-type">f32</span> = <span class="tok-number">0x91e9ee.0p-25</span>;</span>
+<span class="line" id="L34">    <span class="tok-kw">const</span> Lg4: <span class="tok-type">f32</span> = <span class="tok-number">0xf89e26.0p-26</span>;</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36">    <span class="tok-kw">const</span> u = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@bitCast</span>(x));</span>
+<span class="line" id="L37">    <span class="tok-kw">var</span> ix = u;</span>
+<span class="line" id="L38">    <span class="tok-kw">var</span> k: <span class="tok-type">i32</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L39">    <span class="tok-kw">var</span> f: <span class="tok-type">f32</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L40">    <span class="tok-kw">var</span> c: <span class="tok-type">f32</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42">    <span class="tok-comment">// 1 + x &lt; sqrt(2)+</span>
+</span>
+<span class="line" id="L43">    <span class="tok-kw">if</span> (ix &lt; <span class="tok-number">0x3ED413D0</span> <span class="tok-kw">or</span> ix &gt;&gt; <span class="tok-number">31</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L44">        <span class="tok-comment">// x &lt;= -1.0</span>
+</span>
+<span class="line" id="L45">        <span class="tok-kw">if</span> (ix &gt;= <span class="tok-number">0xBF800000</span>) {</span>
+<span class="line" id="L46">            <span class="tok-comment">// log1p(-1) = -inf</span>
+</span>
+<span class="line" id="L47">            <span class="tok-kw">if</span> (x == -<span class="tok-number">1.0</span>) {</span>
+<span class="line" id="L48">                <span class="tok-kw">return</span> -math.inf(<span class="tok-type">f32</span>);</span>
+<span class="line" id="L49">            }</span>
+<span class="line" id="L50">            <span class="tok-comment">// log1p(x &lt; -1) = nan</span>
+</span>
+<span class="line" id="L51">            <span class="tok-kw">else</span> {</span>
+<span class="line" id="L52">                <span class="tok-kw">return</span> math.nan(<span class="tok-type">f32</span>);</span>
+<span class="line" id="L53">            }</span>
+<span class="line" id="L54">        }</span>
+<span class="line" id="L55">        <span class="tok-comment">// |x| &lt; 2^(-24)</span>
+</span>
+<span class="line" id="L56">        <span class="tok-kw">if</span> ((ix &lt;&lt; <span class="tok-number">1</span>) &lt; (<span class="tok-number">0x33800000</span> &lt;&lt; <span class="tok-number">1</span>)) {</span>
+<span class="line" id="L57">            <span class="tok-comment">// underflow if subnormal</span>
+</span>
+<span class="line" id="L58">            <span class="tok-kw">if</span> (ix &amp; <span class="tok-number">0x7F800000</span> == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L59">                math.doNotOptimizeAway(x * x);</span>
+<span class="line" id="L60">            }</span>
+<span class="line" id="L61">            <span class="tok-kw">return</span> x;</span>
+<span class="line" id="L62">        }</span>
+<span class="line" id="L63">        <span class="tok-comment">// sqrt(2) / 2- &lt;= 1 + x &lt; sqrt(2)+</span>
+</span>
+<span class="line" id="L64">        <span class="tok-kw">if</span> (ix &lt;= <span class="tok-number">0xBE95F619</span>) {</span>
+<span class="line" id="L65">            k = <span class="tok-number">0</span>;</span>
+<span class="line" id="L66">            c = <span class="tok-number">0</span>;</span>
+<span class="line" id="L67">            f = x;</span>
+<span class="line" id="L68">        }</span>
+<span class="line" id="L69">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (ix &gt;= <span class="tok-number">0x7F800000</span>) {</span>
+<span class="line" id="L70">        <span class="tok-kw">return</span> x;</span>
+<span class="line" id="L71">    }</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-kw">if</span> (k != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L74">        <span class="tok-kw">const</span> uf = <span class="tok-number">1</span> + x;</span>
+<span class="line" id="L75">        <span class="tok-kw">var</span> iu = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@bitCast</span>(uf));</span>
+<span class="line" id="L76">        iu += <span class="tok-number">0x3F800000</span> - <span class="tok-number">0x3F3504F3</span>;</span>
+<span class="line" id="L77">        k = <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, <span class="tok-builtin">@intCast</span>(iu &gt;&gt; <span class="tok-number">23</span>)) - <span class="tok-number">0x7F</span>;</span>
+<span class="line" id="L78"></span>
+<span class="line" id="L79">        <span class="tok-comment">// correction to avoid underflow in c / u</span>
+</span>
+<span class="line" id="L80">        <span class="tok-kw">if</span> (k &lt; <span class="tok-number">25</span>) {</span>
+<span class="line" id="L81">            c = <span class="tok-kw">if</span> (k &gt;= <span class="tok-number">2</span>) <span class="tok-number">1</span> - (uf - x) <span class="tok-kw">else</span> x - (uf - <span class="tok-number">1</span>);</span>
+<span class="line" id="L82">            c /= uf;</span>
+<span class="line" id="L83">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L84">            c = <span class="tok-number">0</span>;</span>
+<span class="line" id="L85">        }</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">        <span class="tok-comment">// u into [sqrt(2)/2, sqrt(2)]</span>
+</span>
+<span class="line" id="L88">        iu = (iu &amp; <span class="tok-number">0x007FFFFF</span>) + <span class="tok-number">0x3F3504F3</span>;</span>
+<span class="line" id="L89">        f = <span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-builtin">@bitCast</span>(iu)) - <span class="tok-number">1</span>;</span>
+<span class="line" id="L90">    }</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">    <span class="tok-kw">const</span> s = f / (<span class="tok-number">2.0</span> + f);</span>
+<span class="line" id="L93">    <span class="tok-kw">const</span> z = s * s;</span>
+<span class="line" id="L94">    <span class="tok-kw">const</span> w = z * z;</span>
+<span class="line" id="L95">    <span class="tok-kw">const</span> t1 = w * (Lg2 + w * Lg4);</span>
+<span class="line" id="L96">    <span class="tok-kw">const</span> t2 = z * (Lg1 + w * Lg3);</span>
+<span class="line" id="L97">    <span class="tok-kw">const</span> R = t2 + t1;</span>
+<span class="line" id="L98">    <span class="tok-kw">const</span> hfsq = <span class="tok-number">0.5</span> * f * f;</span>
+<span class="line" id="L99">    <span class="tok-kw">const</span> dk = <span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-builtin">@floatFromInt</span>(k));</span>
+<span class="line" id="L100"></span>
+<span class="line" id="L101">    <span class="tok-kw">return</span> s * (hfsq + R) + (dk * ln2_lo + c) - hfsq + f + dk * ln2_hi;</span>
+<span class="line" id="L102">}</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104"><span class="tok-kw">fn</span> <span class="tok-fn">log1p_64</span>(x: <span class="tok-type">f64</span>) <span class="tok-type">f64</span> {</span>
+<span class="line" id="L105">    <span class="tok-kw">const</span> ln2_hi: <span class="tok-type">f64</span> = <span class="tok-number">6.93147180369123816490e-01</span>;</span>
+<span class="line" id="L106">    <span class="tok-kw">const</span> ln2_lo: <span class="tok-type">f64</span> = <span class="tok-number">1.90821492927058770002e-10</span>;</span>
+<span class="line" id="L107">    <span class="tok-kw">const</span> Lg1: <span class="tok-type">f64</span> = <span class="tok-number">6.666666666666735130e-01</span>;</span>
+<span class="line" id="L108">    <span class="tok-kw">const</span> Lg2: <span class="tok-type">f64</span> = <span class="tok-number">3.999999999940941908e-01</span>;</span>
+<span class="line" id="L109">    <span class="tok-kw">const</span> Lg3: <span class="tok-type">f64</span> = <span class="tok-number">2.857142874366239149e-01</span>;</span>
+<span class="line" id="L110">    <span class="tok-kw">const</span> Lg4: <span class="tok-type">f64</span> = <span class="tok-number">2.222219843214978396e-01</span>;</span>
+<span class="line" id="L111">    <span class="tok-kw">const</span> Lg5: <span class="tok-type">f64</span> = <span class="tok-number">1.818357216161805012e-01</span>;</span>
+<span class="line" id="L112">    <span class="tok-kw">const</span> Lg6: <span class="tok-type">f64</span> = <span class="tok-number">1.531383769920937332e-01</span>;</span>
+<span class="line" id="L113">    <span class="tok-kw">const</span> Lg7: <span class="tok-type">f64</span> = <span class="tok-number">1.479819860511658591e-01</span>;</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115">    <span class="tok-kw">var</span> ix = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@bitCast</span>(x));</span>
+<span class="line" id="L116">    <span class="tok-kw">var</span> hx = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(ix &gt;&gt; <span class="tok-number">32</span>));</span>
+<span class="line" id="L117">    <span class="tok-kw">var</span> k: <span class="tok-type">i32</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L118">    <span class="tok-kw">var</span> c: <span class="tok-type">f64</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L119">    <span class="tok-kw">var</span> f: <span class="tok-type">f64</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L120"></span>
+<span class="line" id="L121">    <span class="tok-comment">// 1 + x &lt; sqrt(2)</span>
+</span>
+<span class="line" id="L122">    <span class="tok-kw">if</span> (hx &lt; <span class="tok-number">0x3FDA827A</span> <span class="tok-kw">or</span> hx &gt;&gt; <span class="tok-number">31</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L123">        <span class="tok-comment">// x &lt;= -1.0</span>
+</span>
+<span class="line" id="L124">        <span class="tok-kw">if</span> (hx &gt;= <span class="tok-number">0xBFF00000</span>) {</span>
+<span class="line" id="L125">            <span class="tok-comment">// log1p(-1) = -inf</span>
+</span>
+<span class="line" id="L126">            <span class="tok-kw">if</span> (x == -<span class="tok-number">1.0</span>) {</span>
+<span class="line" id="L127">                <span class="tok-kw">return</span> -math.inf(<span class="tok-type">f64</span>);</span>
+<span class="line" id="L128">            }</span>
+<span class="line" id="L129">            <span class="tok-comment">// log1p(x &lt; -1) = nan</span>
+</span>
+<span class="line" id="L130">            <span class="tok-kw">else</span> {</span>
+<span class="line" id="L131">                <span class="tok-kw">return</span> math.nan(<span class="tok-type">f64</span>);</span>
+<span class="line" id="L132">            }</span>
+<span class="line" id="L133">        }</span>
+<span class="line" id="L134">        <span class="tok-comment">// |x| &lt; 2^(-53)</span>
+</span>
+<span class="line" id="L135">        <span class="tok-kw">if</span> ((hx &lt;&lt; <span class="tok-number">1</span>) &lt; (<span class="tok-number">0x3CA00000</span> &lt;&lt; <span class="tok-number">1</span>)) {</span>
+<span class="line" id="L136">            <span class="tok-kw">if</span> ((hx &amp; <span class="tok-number">0x7FF00000</span>) == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L137">                math.raiseUnderflow();</span>
+<span class="line" id="L138">            }</span>
+<span class="line" id="L139">            <span class="tok-kw">return</span> x;</span>
+<span class="line" id="L140">        }</span>
+<span class="line" id="L141">        <span class="tok-comment">// sqrt(2) / 2- &lt;= 1 + x &lt; sqrt(2)+</span>
+</span>
+<span class="line" id="L142">        <span class="tok-kw">if</span> (hx &lt;= <span class="tok-number">0xBFD2BEC4</span>) {</span>
+<span class="line" id="L143">            k = <span class="tok-number">0</span>;</span>
+<span class="line" id="L144">            c = <span class="tok-number">0</span>;</span>
+<span class="line" id="L145">            f = x;</span>
+<span class="line" id="L146">        }</span>
+<span class="line" id="L147">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (hx &gt;= <span class="tok-number">0x7FF00000</span>) {</span>
+<span class="line" id="L148">        <span class="tok-kw">return</span> x;</span>
+<span class="line" id="L149">    }</span>
+<span class="line" id="L150"></span>
+<span class="line" id="L151">    <span class="tok-kw">if</span> (k != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L152">        <span class="tok-kw">const</span> uf = <span class="tok-number">1</span> + x;</span>
+<span class="line" id="L153">        <span class="tok-kw">const</span> hu = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@bitCast</span>(uf));</span>
+<span class="line" id="L154">        <span class="tok-kw">var</span> iu = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(hu &gt;&gt; <span class="tok-number">32</span>));</span>
+<span class="line" id="L155">        iu += <span class="tok-number">0x3FF00000</span> - <span class="tok-number">0x3FE6A09E</span>;</span>
+<span class="line" id="L156">        k = <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, <span class="tok-builtin">@intCast</span>(iu &gt;&gt; <span class="tok-number">20</span>)) - <span class="tok-number">0x3FF</span>;</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">        <span class="tok-comment">// correction to avoid underflow in c / u</span>
+</span>
+<span class="line" id="L159">        <span class="tok-kw">if</span> (k &lt; <span class="tok-number">54</span>) {</span>
+<span class="line" id="L160">            c = <span class="tok-kw">if</span> (k &gt;= <span class="tok-number">2</span>) <span class="tok-number">1</span> - (uf - x) <span class="tok-kw">else</span> x - (uf - <span class="tok-number">1</span>);</span>
+<span class="line" id="L161">            c /= uf;</span>
+<span class="line" id="L162">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L163">            c = <span class="tok-number">0</span>;</span>
+<span class="line" id="L164">        }</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">        <span class="tok-comment">// u into [sqrt(2)/2, sqrt(2)]</span>
+</span>
+<span class="line" id="L167">        iu = (iu &amp; <span class="tok-number">0x000FFFFF</span>) + <span class="tok-number">0x3FE6A09E</span>;</span>
+<span class="line" id="L168">        <span class="tok-kw">const</span> iq = (<span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, iu) &lt;&lt; <span class="tok-number">32</span>) | (hu &amp; <span class="tok-number">0xFFFFFFFF</span>);</span>
+<span class="line" id="L169">        f = <span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@bitCast</span>(iq)) - <span class="tok-number">1</span>;</span>
+<span class="line" id="L170">    }</span>
+<span class="line" id="L171"></span>
+<span class="line" id="L172">    <span class="tok-kw">const</span> hfsq = <span class="tok-number">0.5</span> * f * f;</span>
+<span class="line" id="L173">    <span class="tok-kw">const</span> s = f / (<span class="tok-number">2.0</span> + f);</span>
+<span class="line" id="L174">    <span class="tok-kw">const</span> z = s * s;</span>
+<span class="line" id="L175">    <span class="tok-kw">const</span> w = z * z;</span>
+<span class="line" id="L176">    <span class="tok-kw">const</span> t1 = w * (Lg2 + w * (Lg4 + w * Lg6));</span>
+<span class="line" id="L177">    <span class="tok-kw">const</span> t2 = z * (Lg1 + w * (Lg3 + w * (Lg5 + w * Lg7)));</span>
+<span class="line" id="L178">    <span class="tok-kw">const</span> R = t2 + t1;</span>
+<span class="line" id="L179">    <span class="tok-kw">const</span> dk = <span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@floatFromInt</span>(k));</span>
+<span class="line" id="L180"></span>
+<span class="line" id="L181">    <span class="tok-kw">return</span> s * (hfsq + R) + (dk * ln2_lo + c) - hfsq + f + dk * ln2_hi;</span>
+<span class="line" id="L182">}</span>
+<span class="line" id="L183"></span>
+<span class="line" id="L184"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.log1p&quot;</span> {</span>
+<span class="line" id="L185">    <span class="tok-kw">try</span> expect(log1p(<span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-number">0.0</span>)) == log1p_32(<span class="tok-number">0.0</span>));</span>
+<span class="line" id="L186">    <span class="tok-kw">try</span> expect(log1p(<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-number">0.0</span>)) == log1p_64(<span class="tok-number">0.0</span>));</span>
+<span class="line" id="L187">}</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.log1p_32&quot;</span> {</span>
+<span class="line" id="L190">    <span class="tok-kw">const</span> epsilon = <span class="tok-number">0.000001</span>;</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, log1p_32(<span class="tok-number">0.0</span>), <span class="tok-number">0.0</span>, epsilon));</span>
+<span class="line" id="L193">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, log1p_32(<span class="tok-number">0.2</span>), <span class="tok-number">0.182322</span>, epsilon));</span>
+<span class="line" id="L194">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, log1p_32(<span class="tok-number">0.8923</span>), <span class="tok-number">0.637793</span>, epsilon));</span>
+<span class="line" id="L195">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, log1p_32(<span class="tok-number">1.5</span>), <span class="tok-number">0.916291</span>, epsilon));</span>
+<span class="line" id="L196">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, log1p_32(<span class="tok-number">37.45</span>), <span class="tok-number">3.649359</span>, epsilon));</span>
+<span class="line" id="L197">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, log1p_32(<span class="tok-number">89.123</span>), <span class="tok-number">4.501175</span>, epsilon));</span>
+<span class="line" id="L198">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f32</span>, log1p_32(<span class="tok-number">123123.234375</span>), <span class="tok-number">11.720949</span>, epsilon));</span>
+<span class="line" id="L199">}</span>
+<span class="line" id="L200"></span>
+<span class="line" id="L201"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.log1p_64&quot;</span> {</span>
+<span class="line" id="L202">    <span class="tok-kw">const</span> epsilon = <span class="tok-number">0.000001</span>;</span>
+<span class="line" id="L203"></span>
+<span class="line" id="L204">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, log1p_64(<span class="tok-number">0.0</span>), <span class="tok-number">0.0</span>, epsilon));</span>
+<span class="line" id="L205">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, log1p_64(<span class="tok-number">0.2</span>), <span class="tok-number">0.182322</span>, epsilon));</span>
+<span class="line" id="L206">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, log1p_64(<span class="tok-number">0.8923</span>), <span class="tok-number">0.637793</span>, epsilon));</span>
+<span class="line" id="L207">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, log1p_64(<span class="tok-number">1.5</span>), <span class="tok-number">0.916291</span>, epsilon));</span>
+<span class="line" id="L208">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, log1p_64(<span class="tok-number">37.45</span>), <span class="tok-number">3.649359</span>, epsilon));</span>
+<span class="line" id="L209">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, log1p_64(<span class="tok-number">89.123</span>), <span class="tok-number">4.501175</span>, epsilon));</span>
+<span class="line" id="L210">    <span class="tok-kw">try</span> expect(math.approxEqAbs(<span class="tok-type">f64</span>, log1p_64(<span class="tok-number">123123.234375</span>), <span class="tok-number">11.720949</span>, epsilon));</span>
+<span class="line" id="L211">}</span>
+<span class="line" id="L212"></span>
+<span class="line" id="L213"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.log1p_32.special&quot;</span> {</span>
+<span class="line" id="L214">    <span class="tok-kw">try</span> expect(math.isPositiveInf(log1p_32(math.inf(<span class="tok-type">f32</span>))));</span>
+<span class="line" id="L215">    <span class="tok-kw">try</span> expect(log1p_32(<span class="tok-number">0.0</span>) == <span class="tok-number">0.0</span>);</span>
+<span class="line" id="L216">    <span class="tok-kw">try</span> expect(log1p_32(-<span class="tok-number">0.0</span>) == -<span class="tok-number">0.0</span>);</span>
+<span class="line" id="L217">    <span class="tok-kw">try</span> expect(math.isNegativeInf(log1p_32(-<span class="tok-number">1.0</span>)));</span>
+<span class="line" id="L218">    <span class="tok-kw">try</span> expect(math.isNan(log1p_32(-<span class="tok-number">2.0</span>)));</span>
+<span class="line" id="L219">    <span class="tok-kw">try</span> expect(math.isNan(log1p_32(math.nan(<span class="tok-type">f32</span>))));</span>
+<span class="line" id="L220">}</span>
+<span class="line" id="L221"></span>
+<span class="line" id="L222"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.log1p_64.special&quot;</span> {</span>
+<span class="line" id="L223">    <span class="tok-kw">try</span> expect(math.isPositiveInf(log1p_64(math.inf(<span class="tok-type">f64</span>))));</span>
+<span class="line" id="L224">    <span class="tok-kw">try</span> expect(log1p_64(<span class="tok-number">0.0</span>) == <span class="tok-number">0.0</span>);</span>
+<span class="line" id="L225">    <span class="tok-kw">try</span> expect(log1p_64(-<span class="tok-number">0.0</span>) == -<span class="tok-number">0.0</span>);</span>
+<span class="line" id="L226">    <span class="tok-kw">try</span> expect(math.isNegativeInf(log1p_64(-<span class="tok-number">1.0</span>)));</span>
+<span class="line" id="L227">    <span class="tok-kw">try</span> expect(math.isNan(log1p_64(-<span class="tok-number">2.0</span>)));</span>
+<span class="line" id="L228">    <span class="tok-kw">try</span> expect(math.isNan(log1p_64(math.nan(<span class="tok-type">f64</span>))));</span>
+<span class="line" id="L229">}</span>
+<span class="line" id="L230"></span>
+</code></pre></body>
+</html>

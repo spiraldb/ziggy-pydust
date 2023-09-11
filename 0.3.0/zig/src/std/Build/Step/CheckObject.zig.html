@@ -1,0 +1,1883 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Build/Step/CheckObject.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> elf = std.elf;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> macho = std.macho;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">const</span> CheckObject = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-kw">const</span> Allocator = mem.Allocator;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> Step = std.Build.Step;</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> base_id = .check_object;</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17">step: Step,</span>
+<span class="line" id="L18">source: std.Build.LazyPath,</span>
+<span class="line" id="L19">max_bytes: <span class="tok-type">usize</span> = <span class="tok-number">20</span> * <span class="tok-number">1024</span> * <span class="tok-number">1024</span>,</span>
+<span class="line" id="L20">checks: std.ArrayList(Check),</span>
+<span class="line" id="L21">obj_format: std.Target.ObjectFormat,</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(</span>
+<span class="line" id="L24">    owner: *std.Build,</span>
+<span class="line" id="L25">    source: std.Build.LazyPath,</span>
+<span class="line" id="L26">    obj_format: std.Target.ObjectFormat,</span>
+<span class="line" id="L27">) *CheckObject {</span>
+<span class="line" id="L28">    <span class="tok-kw">const</span> gpa = owner.allocator;</span>
+<span class="line" id="L29">    <span class="tok-kw">const</span> self = gpa.create(CheckObject) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L30">    self.* = .{</span>
+<span class="line" id="L31">        .step = Step.init(.{</span>
+<span class="line" id="L32">            .id = .check_file,</span>
+<span class="line" id="L33">            .name = <span class="tok-str">&quot;CheckObject&quot;</span>,</span>
+<span class="line" id="L34">            .owner = owner,</span>
+<span class="line" id="L35">            .makeFn = make,</span>
+<span class="line" id="L36">        }),</span>
+<span class="line" id="L37">        .source = source.dupe(owner),</span>
+<span class="line" id="L38">        .checks = std.ArrayList(Check).init(gpa),</span>
+<span class="line" id="L39">        .obj_format = obj_format,</span>
+<span class="line" id="L40">    };</span>
+<span class="line" id="L41">    self.source.addStepDependencies(&amp;self.step);</span>
+<span class="line" id="L42">    <span class="tok-kw">return</span> self;</span>
+<span class="line" id="L43">}</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45"><span class="tok-kw">const</span> SearchPhrase = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L46">    string: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L47">    file_source: ?std.Build.LazyPath = <span class="tok-null">null</span>,</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-kw">fn</span> <span class="tok-fn">resolve</span>(phrase: SearchPhrase, b: *std.Build, step: *Step) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L50">        <span class="tok-kw">const</span> file_source = phrase.file_source <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> phrase.string;</span>
+<span class="line" id="L51">        <span class="tok-kw">return</span> b.fmt(<span class="tok-str">&quot;{s} {s}&quot;</span>, .{ phrase.string, file_source.getPath2(b, step) });</span>
+<span class="line" id="L52">    }</span>
+<span class="line" id="L53">};</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55"><span class="tok-comment">/// There five types of actions currently supported:</span></span>
+<span class="line" id="L56"><span class="tok-comment">/// .exact - will do an exact match against the haystack</span></span>
+<span class="line" id="L57"><span class="tok-comment">/// .contains - will check for existence within the haystack</span></span>
+<span class="line" id="L58"><span class="tok-comment">/// .not_present - will check for non-existence within the haystack</span></span>
+<span class="line" id="L59"><span class="tok-comment">/// .extract - will do an exact match and extract into a variable enclosed within `{name}` braces</span></span>
+<span class="line" id="L60"><span class="tok-comment">/// .compute_cmp - will perform an operation on the extracted global variables</span></span>
+<span class="line" id="L61"><span class="tok-comment">/// using the MatchAction. It currently only supports an addition. The operation is required</span></span>
+<span class="line" id="L62"><span class="tok-comment">/// to be specified in Reverse Polish Notation to ease in operator-precedence parsing (well,</span></span>
+<span class="line" id="L63"><span class="tok-comment">/// to avoid any parsing really).</span></span>
+<span class="line" id="L64"><span class="tok-comment">/// For example, if the two extracted values were saved as `vmaddr` and `entryoff` respectively</span></span>
+<span class="line" id="L65"><span class="tok-comment">/// they could then be added with this simple program `vmaddr entryoff +`.</span></span>
+<span class="line" id="L66"><span class="tok-kw">const</span> Action = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L67">    tag: <span class="tok-kw">enum</span> { exact, contains, not_present, extract, compute_cmp },</span>
+<span class="line" id="L68">    phrase: SearchPhrase,</span>
+<span class="line" id="L69">    expected: ?ComputeCompareExpected = <span class="tok-null">null</span>,</span>
+<span class="line" id="L70"></span>
+<span class="line" id="L71">    <span class="tok-comment">/// Returns true if the `phrase` is an exact match with the haystack and variable was successfully extracted.</span></span>
+<span class="line" id="L72">    <span class="tok-kw">fn</span> <span class="tok-fn">extract</span>(</span>
+<span class="line" id="L73">        act: Action,</span>
+<span class="line" id="L74">        b: *std.Build,</span>
+<span class="line" id="L75">        step: *Step,</span>
+<span class="line" id="L76">        haystack: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L77">        global_vars: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L78">    ) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L79">        assert(act.tag == .extract);</span>
+<span class="line" id="L80">        <span class="tok-kw">const</span> hay = mem.trim(<span class="tok-type">u8</span>, haystack, <span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L81">        <span class="tok-kw">const</span> phrase = mem.trim(<span class="tok-type">u8</span>, act.phrase.resolve(b, step), <span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">        <span class="tok-kw">var</span> candidate_vars = std.ArrayList(<span class="tok-kw">struct</span> { name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, value: <span class="tok-type">u64</span> }).init(b.allocator);</span>
+<span class="line" id="L84">        <span class="tok-kw">var</span> hay_it = mem.tokenizeScalar(<span class="tok-type">u8</span>, hay, <span class="tok-str">' '</span>);</span>
+<span class="line" id="L85">        <span class="tok-kw">var</span> needle_it = mem.tokenizeScalar(<span class="tok-type">u8</span>, phrase, <span class="tok-str">' '</span>);</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">        <span class="tok-kw">while</span> (needle_it.next()) |needle_tok| {</span>
+<span class="line" id="L88">            <span class="tok-kw">const</span> hay_tok = hay_it.next() <span class="tok-kw">orelse</span> <span class="tok-kw">break</span>;</span>
+<span class="line" id="L89">            <span class="tok-kw">if</span> (mem.startsWith(<span class="tok-type">u8</span>, needle_tok, <span class="tok-str">&quot;{&quot;</span>)) {</span>
+<span class="line" id="L90">                <span class="tok-kw">const</span> closing_brace = mem.indexOf(<span class="tok-type">u8</span>, needle_tok, <span class="tok-str">&quot;}&quot;</span>) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MissingClosingBrace;</span>
+<span class="line" id="L91">                <span class="tok-kw">if</span> (closing_brace != needle_tok.len - <span class="tok-number">1</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ClosingBraceNotLast;</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">                <span class="tok-kw">const</span> name = needle_tok[<span class="tok-number">1</span>..closing_brace];</span>
+<span class="line" id="L94">                <span class="tok-kw">if</span> (name.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MissingBraceValue;</span>
+<span class="line" id="L95">                <span class="tok-kw">const</span> value = std.fmt.parseInt(<span class="tok-type">u64</span>, hay_tok, <span class="tok-number">16</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L96">                <span class="tok-kw">try</span> candidate_vars.append(.{</span>
+<span class="line" id="L97">                    .name = name,</span>
+<span class="line" id="L98">                    .value = value,</span>
+<span class="line" id="L99">                });</span>
+<span class="line" id="L100">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L101">                <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, hay_tok, needle_tok)) <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L102">            }</span>
+<span class="line" id="L103">        }</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">        <span class="tok-kw">if</span> (candidate_vars.items.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L106"></span>
+<span class="line" id="L107">        <span class="tok-kw">for</span> (candidate_vars.items) |cv| <span class="tok-kw">try</span> global_vars.putNoClobber(cv.name, cv.value);</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L110">    }</span>
+<span class="line" id="L111"></span>
+<span class="line" id="L112">    <span class="tok-comment">/// Returns true if the `phrase` is an exact match with the haystack.</span></span>
+<span class="line" id="L113">    <span class="tok-kw">fn</span> <span class="tok-fn">exact</span>(</span>
+<span class="line" id="L114">        act: Action,</span>
+<span class="line" id="L115">        b: *std.Build,</span>
+<span class="line" id="L116">        step: *Step,</span>
+<span class="line" id="L117">        haystack: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L118">    ) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L119">        assert(act.tag == .exact);</span>
+<span class="line" id="L120">        <span class="tok-kw">const</span> hay = mem.trim(<span class="tok-type">u8</span>, haystack, <span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L121">        <span class="tok-kw">const</span> phrase = mem.trim(<span class="tok-type">u8</span>, act.phrase.resolve(b, step), <span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L122">        <span class="tok-kw">return</span> mem.eql(<span class="tok-type">u8</span>, hay, phrase);</span>
+<span class="line" id="L123">    }</span>
+<span class="line" id="L124"></span>
+<span class="line" id="L125">    <span class="tok-comment">/// Returns true if the `phrase` exists within the haystack.</span></span>
+<span class="line" id="L126">    <span class="tok-kw">fn</span> <span class="tok-fn">contains</span>(</span>
+<span class="line" id="L127">        act: Action,</span>
+<span class="line" id="L128">        b: *std.Build,</span>
+<span class="line" id="L129">        step: *Step,</span>
+<span class="line" id="L130">        haystack: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L131">    ) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L132">        assert(act.tag == .contains);</span>
+<span class="line" id="L133">        <span class="tok-kw">const</span> hay = mem.trim(<span class="tok-type">u8</span>, haystack, <span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L134">        <span class="tok-kw">const</span> phrase = mem.trim(<span class="tok-type">u8</span>, act.phrase.resolve(b, step), <span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L135">        <span class="tok-kw">return</span> mem.indexOf(<span class="tok-type">u8</span>, hay, phrase) != <span class="tok-null">null</span>;</span>
+<span class="line" id="L136">    }</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138">    <span class="tok-comment">/// Returns true if the `phrase` does not exist within the haystack.</span></span>
+<span class="line" id="L139">    <span class="tok-kw">fn</span> <span class="tok-fn">notPresent</span>(</span>
+<span class="line" id="L140">        act: Action,</span>
+<span class="line" id="L141">        b: *std.Build,</span>
+<span class="line" id="L142">        step: *Step,</span>
+<span class="line" id="L143">        haystack: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L144">    ) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L145">        assert(act.tag == .not_present);</span>
+<span class="line" id="L146">        <span class="tok-kw">return</span> !contains(.{</span>
+<span class="line" id="L147">            .tag = .contains,</span>
+<span class="line" id="L148">            .phrase = act.phrase,</span>
+<span class="line" id="L149">            .expected = act.expected,</span>
+<span class="line" id="L150">        }, b, step, haystack);</span>
+<span class="line" id="L151">    }</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153">    <span class="tok-comment">/// Will return true if the `phrase` is correctly parsed into an RPN program and</span></span>
+<span class="line" id="L154">    <span class="tok-comment">/// its reduced, computed value compares using `op` with the expected value, either</span></span>
+<span class="line" id="L155">    <span class="tok-comment">/// a literal or another extracted variable.</span></span>
+<span class="line" id="L156">    <span class="tok-kw">fn</span> <span class="tok-fn">computeCmp</span>(act: Action, b: *std.Build, step: *Step, global_vars: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L157">        <span class="tok-kw">const</span> gpa = step.owner.allocator;</span>
+<span class="line" id="L158">        <span class="tok-kw">const</span> phrase = act.phrase.resolve(b, step);</span>
+<span class="line" id="L159">        <span class="tok-kw">var</span> op_stack = std.ArrayList(<span class="tok-kw">enum</span> { add, sub, mod, mul }).init(gpa);</span>
+<span class="line" id="L160">        <span class="tok-kw">var</span> values = std.ArrayList(<span class="tok-type">u64</span>).init(gpa);</span>
+<span class="line" id="L161"></span>
+<span class="line" id="L162">        <span class="tok-kw">var</span> it = mem.tokenizeScalar(<span class="tok-type">u8</span>, phrase, <span class="tok-str">' '</span>);</span>
+<span class="line" id="L163">        <span class="tok-kw">while</span> (it.next()) |next| {</span>
+<span class="line" id="L164">            <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, next, <span class="tok-str">&quot;+&quot;</span>)) {</span>
+<span class="line" id="L165">                <span class="tok-kw">try</span> op_stack.append(.add);</span>
+<span class="line" id="L166">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, next, <span class="tok-str">&quot;-&quot;</span>)) {</span>
+<span class="line" id="L167">                <span class="tok-kw">try</span> op_stack.append(.sub);</span>
+<span class="line" id="L168">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, next, <span class="tok-str">&quot;%&quot;</span>)) {</span>
+<span class="line" id="L169">                <span class="tok-kw">try</span> op_stack.append(.mod);</span>
+<span class="line" id="L170">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, next, <span class="tok-str">&quot;*&quot;</span>)) {</span>
+<span class="line" id="L171">                <span class="tok-kw">try</span> op_stack.append(.mul);</span>
+<span class="line" id="L172">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L173">                <span class="tok-kw">const</span> val = std.fmt.parseInt(<span class="tok-type">u64</span>, next, <span class="tok-number">0</span>) <span class="tok-kw">catch</span> blk: {</span>
+<span class="line" id="L174">                    <span class="tok-kw">break</span> :blk global_vars.get(next) <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L175">                        <span class="tok-kw">try</span> step.addError(</span>
+<span class="line" id="L176">                            <span class="tok-str">\\</span></span>
+
+<span class="line" id="L177">                            <span class="tok-str">\\========= variable was not extracted: ===========</span></span>
+
+<span class="line" id="L178">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L179">                            <span class="tok-str">\\=================================================</span></span>
+
+<span class="line" id="L180">                        , .{next});</span>
+<span class="line" id="L181">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnknownVariable;</span>
+<span class="line" id="L182">                    };</span>
+<span class="line" id="L183">                };</span>
+<span class="line" id="L184">                <span class="tok-kw">try</span> values.append(val);</span>
+<span class="line" id="L185">            }</span>
+<span class="line" id="L186">        }</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188">        <span class="tok-kw">var</span> op_i: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L189">        <span class="tok-kw">var</span> reduced: <span class="tok-type">u64</span> = values.items[<span class="tok-number">0</span>];</span>
+<span class="line" id="L190">        <span class="tok-kw">for</span> (op_stack.items) |op| {</span>
+<span class="line" id="L191">            <span class="tok-kw">const</span> other = values.items[op_i];</span>
+<span class="line" id="L192">            <span class="tok-kw">switch</span> (op) {</span>
+<span class="line" id="L193">                .add =&gt; {</span>
+<span class="line" id="L194">                    reduced += other;</span>
+<span class="line" id="L195">                },</span>
+<span class="line" id="L196">                .sub =&gt; {</span>
+<span class="line" id="L197">                    reduced -= other;</span>
+<span class="line" id="L198">                },</span>
+<span class="line" id="L199">                .mod =&gt; {</span>
+<span class="line" id="L200">                    reduced %= other;</span>
+<span class="line" id="L201">                },</span>
+<span class="line" id="L202">                .mul =&gt; {</span>
+<span class="line" id="L203">                    reduced *= other;</span>
+<span class="line" id="L204">                },</span>
+<span class="line" id="L205">            }</span>
+<span class="line" id="L206">            op_i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L207">        }</span>
+<span class="line" id="L208"></span>
+<span class="line" id="L209">        <span class="tok-kw">const</span> exp_value = <span class="tok-kw">switch</span> (act.expected.?.value) {</span>
+<span class="line" id="L210">            .variable =&gt; |name| global_vars.get(name) <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L211">                <span class="tok-kw">try</span> step.addError(</span>
+<span class="line" id="L212">                    <span class="tok-str">\\</span></span>
+
+<span class="line" id="L213">                    <span class="tok-str">\\========= variable was not extracted: ===========</span></span>
+
+<span class="line" id="L214">                    <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L215">                    <span class="tok-str">\\=================================================</span></span>
+
+<span class="line" id="L216">                , .{name});</span>
+<span class="line" id="L217">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnknownVariable;</span>
+<span class="line" id="L218">            },</span>
+<span class="line" id="L219">            .literal =&gt; |x| x,</span>
+<span class="line" id="L220">        };</span>
+<span class="line" id="L221">        <span class="tok-kw">return</span> math.compare(reduced, act.expected.?.op, exp_value);</span>
+<span class="line" id="L222">    }</span>
+<span class="line" id="L223">};</span>
+<span class="line" id="L224"></span>
+<span class="line" id="L225"><span class="tok-kw">const</span> ComputeCompareExpected = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L226">    op: math.CompareOperator,</span>
+<span class="line" id="L227">    value: <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L228">        variable: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L229">        literal: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L230">    },</span>
+<span class="line" id="L231"></span>
+<span class="line" id="L232">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">format</span>(</span>
+<span class="line" id="L233">        value: <span class="tok-builtin">@This</span>(),</span>
+<span class="line" id="L234">        <span class="tok-kw">comptime</span> fmt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L235">        options: std.fmt.FormatOptions,</span>
+<span class="line" id="L236">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L237">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L238">        <span class="tok-kw">if</span> (fmt.len != <span class="tok-number">0</span>) std.fmt.invalidFmtError(fmt, value);</span>
+<span class="line" id="L239">        _ = options;</span>
+<span class="line" id="L240">        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{s} &quot;</span>, .{<span class="tok-builtin">@tagName</span>(value.op)});</span>
+<span class="line" id="L241">        <span class="tok-kw">switch</span> (value.value) {</span>
+<span class="line" id="L242">            .variable =&gt; |name| <span class="tok-kw">try</span> writer.writeAll(name),</span>
+<span class="line" id="L243">            .literal =&gt; |x| <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{x}&quot;</span>, .{x}),</span>
+<span class="line" id="L244">        }</span>
+<span class="line" id="L245">    }</span>
+<span class="line" id="L246">};</span>
+<span class="line" id="L247"></span>
+<span class="line" id="L248"><span class="tok-kw">const</span> Check = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L249">    actions: std.ArrayList(Action),</span>
+<span class="line" id="L250"></span>
+<span class="line" id="L251">    <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(allocator: Allocator) Check {</span>
+<span class="line" id="L252">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L253">            .actions = std.ArrayList(Action).init(allocator),</span>
+<span class="line" id="L254">        };</span>
+<span class="line" id="L255">    }</span>
+<span class="line" id="L256"></span>
+<span class="line" id="L257">    <span class="tok-kw">fn</span> <span class="tok-fn">extract</span>(self: *Check, phrase: SearchPhrase) <span class="tok-type">void</span> {</span>
+<span class="line" id="L258">        self.actions.append(.{</span>
+<span class="line" id="L259">            .tag = .extract,</span>
+<span class="line" id="L260">            .phrase = phrase,</span>
+<span class="line" id="L261">        }) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L262">    }</span>
+<span class="line" id="L263"></span>
+<span class="line" id="L264">    <span class="tok-kw">fn</span> <span class="tok-fn">exact</span>(self: *Check, phrase: SearchPhrase) <span class="tok-type">void</span> {</span>
+<span class="line" id="L265">        self.actions.append(.{</span>
+<span class="line" id="L266">            .tag = .exact,</span>
+<span class="line" id="L267">            .phrase = phrase,</span>
+<span class="line" id="L268">        }) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L269">    }</span>
+<span class="line" id="L270"></span>
+<span class="line" id="L271">    <span class="tok-kw">fn</span> <span class="tok-fn">contains</span>(self: *Check, phrase: SearchPhrase) <span class="tok-type">void</span> {</span>
+<span class="line" id="L272">        self.actions.append(.{</span>
+<span class="line" id="L273">            .tag = .contains,</span>
+<span class="line" id="L274">            .phrase = phrase,</span>
+<span class="line" id="L275">        }) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L276">    }</span>
+<span class="line" id="L277"></span>
+<span class="line" id="L278">    <span class="tok-kw">fn</span> <span class="tok-fn">notPresent</span>(self: *Check, phrase: SearchPhrase) <span class="tok-type">void</span> {</span>
+<span class="line" id="L279">        self.actions.append(.{</span>
+<span class="line" id="L280">            .tag = .not_present,</span>
+<span class="line" id="L281">            .phrase = phrase,</span>
+<span class="line" id="L282">        }) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L283">    }</span>
+<span class="line" id="L284"></span>
+<span class="line" id="L285">    <span class="tok-kw">fn</span> <span class="tok-fn">computeCmp</span>(self: *Check, phrase: SearchPhrase, expected: ComputeCompareExpected) <span class="tok-type">void</span> {</span>
+<span class="line" id="L286">        self.actions.append(.{</span>
+<span class="line" id="L287">            .tag = .compute_cmp,</span>
+<span class="line" id="L288">            .phrase = phrase,</span>
+<span class="line" id="L289">            .expected = expected,</span>
+<span class="line" id="L290">        }) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L291">    }</span>
+<span class="line" id="L292">};</span>
+<span class="line" id="L293"></span>
+<span class="line" id="L294"><span class="tok-comment">/// Creates a new empty sequence of actions.</span></span>
+<span class="line" id="L295"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkStart</span>(self: *CheckObject) <span class="tok-type">void</span> {</span>
+<span class="line" id="L296">    <span class="tok-kw">var</span> new_check = Check.create(self.step.owner.allocator);</span>
+<span class="line" id="L297">    self.checks.append(new_check) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L298">}</span>
+<span class="line" id="L299"></span>
+<span class="line" id="L300"><span class="tok-comment">/// Adds an exact match phrase to the latest created Check with `CheckObject.checkStart()`.</span></span>
+<span class="line" id="L301"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkExact</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L302">    self.checkExactInner(phrase, <span class="tok-null">null</span>);</span>
+<span class="line" id="L303">}</span>
+<span class="line" id="L304"></span>
+<span class="line" id="L305"><span class="tok-comment">/// Like `checkExact()` but takes an additional argument `LazyPath` which will be</span></span>
+<span class="line" id="L306"><span class="tok-comment">/// resolved to a full search query in `make()`.</span></span>
+<span class="line" id="L307"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkExactPath</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: std.Build.LazyPath) <span class="tok-type">void</span> {</span>
+<span class="line" id="L308">    self.checkExactInner(phrase, file_source);</span>
+<span class="line" id="L309">}</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311"><span class="tok-kw">fn</span> <span class="tok-fn">checkExactInner</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: ?std.Build.LazyPath) <span class="tok-type">void</span> {</span>
+<span class="line" id="L312">    assert(self.checks.items.len &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L313">    <span class="tok-kw">const</span> last = &amp;self.checks.items[self.checks.items.len - <span class="tok-number">1</span>];</span>
+<span class="line" id="L314">    last.exact(.{ .string = self.step.owner.dupe(phrase), .file_source = file_source });</span>
+<span class="line" id="L315">}</span>
+<span class="line" id="L316"></span>
+<span class="line" id="L317"><span class="tok-comment">/// Adds a fuzzy match phrase to the latest created Check with `CheckObject.checkStart()`.</span></span>
+<span class="line" id="L318"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkContains</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L319">    self.checkContainsInner(phrase, <span class="tok-null">null</span>);</span>
+<span class="line" id="L320">}</span>
+<span class="line" id="L321"></span>
+<span class="line" id="L322"><span class="tok-comment">/// Like `checkContains()` but takes an additional argument `FileSource` which will be</span></span>
+<span class="line" id="L323"><span class="tok-comment">/// resolved to a full search query in `make()`.</span></span>
+<span class="line" id="L324"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkContainsPath</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: std.Build.LazyPath) <span class="tok-type">void</span> {</span>
+<span class="line" id="L325">    self.checkContainsInner(phrase, file_source);</span>
+<span class="line" id="L326">}</span>
+<span class="line" id="L327"></span>
+<span class="line" id="L328"><span class="tok-kw">fn</span> <span class="tok-fn">checkContainsInner</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: ?std.Build.FileSource) <span class="tok-type">void</span> {</span>
+<span class="line" id="L329">    assert(self.checks.items.len &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L330">    <span class="tok-kw">const</span> last = &amp;self.checks.items[self.checks.items.len - <span class="tok-number">1</span>];</span>
+<span class="line" id="L331">    last.contains(.{ .string = self.step.owner.dupe(phrase), .file_source = file_source });</span>
+<span class="line" id="L332">}</span>
+<span class="line" id="L333"></span>
+<span class="line" id="L334"><span class="tok-comment">/// Adds an exact match phrase with variable extractor to the latest created Check</span></span>
+<span class="line" id="L335"><span class="tok-comment">/// with `CheckObject.checkStart()`.</span></span>
+<span class="line" id="L336"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkExtract</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L337">    self.checkExtractInner(phrase, <span class="tok-null">null</span>);</span>
+<span class="line" id="L338">}</span>
+<span class="line" id="L339"></span>
+<span class="line" id="L340"><span class="tok-comment">/// Like `checkExtract()` but takes an additional argument `FileSource` which will be</span></span>
+<span class="line" id="L341"><span class="tok-comment">/// resolved to a full search query in `make()`.</span></span>
+<span class="line" id="L342"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkExtractFileSource</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: std.Build.FileSource) <span class="tok-type">void</span> {</span>
+<span class="line" id="L343">    self.checkExtractInner(phrase, file_source);</span>
+<span class="line" id="L344">}</span>
+<span class="line" id="L345"></span>
+<span class="line" id="L346"><span class="tok-kw">fn</span> <span class="tok-fn">checkExtractInner</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: ?std.Build.FileSource) <span class="tok-type">void</span> {</span>
+<span class="line" id="L347">    assert(self.checks.items.len &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L348">    <span class="tok-kw">const</span> last = &amp;self.checks.items[self.checks.items.len - <span class="tok-number">1</span>];</span>
+<span class="line" id="L349">    last.extract(.{ .string = self.step.owner.dupe(phrase), .file_source = file_source });</span>
+<span class="line" id="L350">}</span>
+<span class="line" id="L351"></span>
+<span class="line" id="L352"><span class="tok-comment">/// Adds another searched phrase to the latest created Check with `CheckObject.checkStart(...)`</span></span>
+<span class="line" id="L353"><span class="tok-comment">/// however ensures there is no matching phrase in the output.</span></span>
+<span class="line" id="L354"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkNotPresent</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L355">    self.checkNotPresentInner(phrase, <span class="tok-null">null</span>);</span>
+<span class="line" id="L356">}</span>
+<span class="line" id="L357"></span>
+<span class="line" id="L358"><span class="tok-comment">/// Like `checkExtract()` but takes an additional argument `FileSource` which will be</span></span>
+<span class="line" id="L359"><span class="tok-comment">/// resolved to a full search query in `make()`.</span></span>
+<span class="line" id="L360"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkNotPresentFileSource</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: std.Build.FileSource) <span class="tok-type">void</span> {</span>
+<span class="line" id="L361">    self.checkNotPresentInner(phrase, file_source);</span>
+<span class="line" id="L362">}</span>
+<span class="line" id="L363"></span>
+<span class="line" id="L364"><span class="tok-kw">fn</span> <span class="tok-fn">checkNotPresentInner</span>(self: *CheckObject, phrase: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, file_source: ?std.Build.FileSource) <span class="tok-type">void</span> {</span>
+<span class="line" id="L365">    assert(self.checks.items.len &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L366">    <span class="tok-kw">const</span> last = &amp;self.checks.items[self.checks.items.len - <span class="tok-number">1</span>];</span>
+<span class="line" id="L367">    last.notPresent(.{ .string = self.step.owner.dupe(phrase), .file_source = file_source });</span>
+<span class="line" id="L368">}</span>
+<span class="line" id="L369"></span>
+<span class="line" id="L370"><span class="tok-comment">/// Creates a new check checking specifically symbol table parsed and dumped from the object</span></span>
+<span class="line" id="L371"><span class="tok-comment">/// file.</span></span>
+<span class="line" id="L372"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkInSymtab</span>(self: *CheckObject) <span class="tok-type">void</span> {</span>
+<span class="line" id="L373">    <span class="tok-kw">const</span> label = <span class="tok-kw">switch</span> (self.obj_format) {</span>
+<span class="line" id="L374">        .macho =&gt; MachODumper.symtab_label,</span>
+<span class="line" id="L375">        .elf =&gt; ElfDumper.symtab_label,</span>
+<span class="line" id="L376">        .wasm =&gt; WasmDumper.symtab_label,</span>
+<span class="line" id="L377">        .coff =&gt; <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;TODO symtab for coff&quot;</span>),</span>
+<span class="line" id="L378">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;TODO other file formats&quot;</span>),</span>
+<span class="line" id="L379">    };</span>
+<span class="line" id="L380">    self.checkStart();</span>
+<span class="line" id="L381">    self.checkExact(label);</span>
+<span class="line" id="L382">}</span>
+<span class="line" id="L383"></span>
+<span class="line" id="L384"><span class="tok-comment">/// Creates a new check checking specifically dynamic symbol table parsed and dumped from the object</span></span>
+<span class="line" id="L385"><span class="tok-comment">/// file.</span></span>
+<span class="line" id="L386"><span class="tok-comment">/// This check is target-dependent and applicable to ELF only.</span></span>
+<span class="line" id="L387"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkInDynamicSymtab</span>(self: *CheckObject) <span class="tok-type">void</span> {</span>
+<span class="line" id="L388">    <span class="tok-kw">const</span> label = <span class="tok-kw">switch</span> (self.obj_format) {</span>
+<span class="line" id="L389">        .elf =&gt; ElfDumper.dynamic_symtab_label,</span>
+<span class="line" id="L390">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Unsupported target platform&quot;</span>),</span>
+<span class="line" id="L391">    };</span>
+<span class="line" id="L392">    self.checkStart();</span>
+<span class="line" id="L393">    self.checkExact(label);</span>
+<span class="line" id="L394">}</span>
+<span class="line" id="L395"></span>
+<span class="line" id="L396"><span class="tok-comment">/// Creates a new check checking specifically dynamic section parsed and dumped from the object</span></span>
+<span class="line" id="L397"><span class="tok-comment">/// file.</span></span>
+<span class="line" id="L398"><span class="tok-comment">/// This check is target-dependent and applicable to ELF only.</span></span>
+<span class="line" id="L399"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkInDynamicSection</span>(self: *CheckObject) <span class="tok-type">void</span> {</span>
+<span class="line" id="L400">    <span class="tok-kw">const</span> label = <span class="tok-kw">switch</span> (self.obj_format) {</span>
+<span class="line" id="L401">        .elf =&gt; ElfDumper.dynamic_section_label,</span>
+<span class="line" id="L402">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Unsupported target platform&quot;</span>),</span>
+<span class="line" id="L403">    };</span>
+<span class="line" id="L404">    self.checkStart();</span>
+<span class="line" id="L405">    self.checkExact(label);</span>
+<span class="line" id="L406">}</span>
+<span class="line" id="L407"></span>
+<span class="line" id="L408"><span class="tok-comment">/// Creates a new standalone, singular check which allows running simple binary operations</span></span>
+<span class="line" id="L409"><span class="tok-comment">/// on the extracted variables. It will then compare the reduced program with the value of</span></span>
+<span class="line" id="L410"><span class="tok-comment">/// the expected variable.</span></span>
+<span class="line" id="L411"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkComputeCompare</span>(</span>
+<span class="line" id="L412">    self: *CheckObject,</span>
+<span class="line" id="L413">    program: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L414">    expected: ComputeCompareExpected,</span>
+<span class="line" id="L415">) <span class="tok-type">void</span> {</span>
+<span class="line" id="L416">    <span class="tok-kw">var</span> new_check = Check.create(self.step.owner.allocator);</span>
+<span class="line" id="L417">    new_check.computeCmp(.{ .string = self.step.owner.dupe(program) }, expected);</span>
+<span class="line" id="L418">    self.checks.append(new_check) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L419">}</span>
+<span class="line" id="L420"></span>
+<span class="line" id="L421"><span class="tok-kw">fn</span> <span class="tok-fn">make</span>(step: *Step, prog_node: *std.Progress.Node) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L422">    _ = prog_node;</span>
+<span class="line" id="L423">    <span class="tok-kw">const</span> b = step.owner;</span>
+<span class="line" id="L424">    <span class="tok-kw">const</span> gpa = b.allocator;</span>
+<span class="line" id="L425">    <span class="tok-kw">const</span> self = <span class="tok-builtin">@fieldParentPtr</span>(CheckObject, <span class="tok-str">&quot;step&quot;</span>, step);</span>
+<span class="line" id="L426"></span>
+<span class="line" id="L427">    <span class="tok-kw">const</span> src_path = self.source.getPath(b);</span>
+<span class="line" id="L428">    <span class="tok-kw">const</span> contents = fs.cwd().readFileAllocOptions(</span>
+<span class="line" id="L429">        gpa,</span>
+<span class="line" id="L430">        src_path,</span>
+<span class="line" id="L431">        self.max_bytes,</span>
+<span class="line" id="L432">        <span class="tok-null">null</span>,</span>
+<span class="line" id="L433">        <span class="tok-builtin">@alignOf</span>(<span class="tok-type">u64</span>),</span>
+<span class="line" id="L434">        <span class="tok-null">null</span>,</span>
+<span class="line" id="L435">    ) <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;unable to read '{s}': {s}&quot;</span>, .{ src_path, <span class="tok-builtin">@errorName</span>(err) });</span>
+<span class="line" id="L436"></span>
+<span class="line" id="L437">    <span class="tok-kw">const</span> output = <span class="tok-kw">switch</span> (self.obj_format) {</span>
+<span class="line" id="L438">        .macho =&gt; <span class="tok-kw">try</span> MachODumper.parseAndDump(step, contents),</span>
+<span class="line" id="L439">        .elf =&gt; <span class="tok-kw">try</span> ElfDumper.parseAndDump(step, contents),</span>
+<span class="line" id="L440">        .coff =&gt; <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;TODO coff parser&quot;</span>),</span>
+<span class="line" id="L441">        .wasm =&gt; <span class="tok-kw">try</span> WasmDumper.parseAndDump(step, contents),</span>
+<span class="line" id="L442">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L443">    };</span>
+<span class="line" id="L444"></span>
+<span class="line" id="L445">    <span class="tok-kw">var</span> vars = std.StringHashMap(<span class="tok-type">u64</span>).init(gpa);</span>
+<span class="line" id="L446"></span>
+<span class="line" id="L447">    <span class="tok-kw">for</span> (self.checks.items) |chk| {</span>
+<span class="line" id="L448">        <span class="tok-kw">var</span> it = mem.tokenizeAny(<span class="tok-type">u8</span>, output, <span class="tok-str">&quot;\r\n&quot;</span>);</span>
+<span class="line" id="L449">        <span class="tok-kw">for</span> (chk.actions.items) |act| {</span>
+<span class="line" id="L450">            <span class="tok-kw">switch</span> (act.tag) {</span>
+<span class="line" id="L451">                .exact =&gt; {</span>
+<span class="line" id="L452">                    <span class="tok-kw">while</span> (it.next()) |line| {</span>
+<span class="line" id="L453">                        <span class="tok-kw">if</span> (act.exact(b, step, line)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L454">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L455">                        <span class="tok-kw">return</span> step.fail(</span>
+<span class="line" id="L456">                            <span class="tok-str">\\</span></span>
+
+<span class="line" id="L457">                            <span class="tok-str">\\========= expected to find: ==========================</span></span>
+
+<span class="line" id="L458">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L459">                            <span class="tok-str">\\========= but parsed file does not contain it: =======</span></span>
+
+<span class="line" id="L460">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L461">                            <span class="tok-str">\\======================================================</span></span>
+
+<span class="line" id="L462">                        , .{ act.phrase.resolve(b, step), output });</span>
+<span class="line" id="L463">                    }</span>
+<span class="line" id="L464">                },</span>
+<span class="line" id="L465">                .contains =&gt; {</span>
+<span class="line" id="L466">                    <span class="tok-kw">while</span> (it.next()) |line| {</span>
+<span class="line" id="L467">                        <span class="tok-kw">if</span> (act.contains(b, step, line)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L468">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L469">                        <span class="tok-kw">return</span> step.fail(</span>
+<span class="line" id="L470">                            <span class="tok-str">\\</span></span>
+
+<span class="line" id="L471">                            <span class="tok-str">\\========= expected to find: ==========================</span></span>
+
+<span class="line" id="L472">                            <span class="tok-str">\\*{s}*</span></span>
+
+<span class="line" id="L473">                            <span class="tok-str">\\========= but parsed file does not contain it: =======</span></span>
+
+<span class="line" id="L474">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L475">                            <span class="tok-str">\\======================================================</span></span>
+
+<span class="line" id="L476">                        , .{ act.phrase.resolve(b, step), output });</span>
+<span class="line" id="L477">                    }</span>
+<span class="line" id="L478">                },</span>
+<span class="line" id="L479">                .not_present =&gt; {</span>
+<span class="line" id="L480">                    <span class="tok-kw">while</span> (it.next()) |line| {</span>
+<span class="line" id="L481">                        <span class="tok-kw">if</span> (act.notPresent(b, step, line)) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L482">                        <span class="tok-kw">return</span> step.fail(</span>
+<span class="line" id="L483">                            <span class="tok-str">\\</span></span>
+
+<span class="line" id="L484">                            <span class="tok-str">\\========= expected not to find: ===================</span></span>
+
+<span class="line" id="L485">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L486">                            <span class="tok-str">\\========= but parsed file does contain it: ========</span></span>
+
+<span class="line" id="L487">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L488">                            <span class="tok-str">\\===================================================</span></span>
+
+<span class="line" id="L489">                        , .{ act.phrase.resolve(b, step), output });</span>
+<span class="line" id="L490">                    }</span>
+<span class="line" id="L491">                },</span>
+<span class="line" id="L492">                .extract =&gt; {</span>
+<span class="line" id="L493">                    <span class="tok-kw">while</span> (it.next()) |line| {</span>
+<span class="line" id="L494">                        <span class="tok-kw">if</span> (<span class="tok-kw">try</span> act.extract(b, step, line, &amp;vars)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L495">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L496">                        <span class="tok-kw">return</span> step.fail(</span>
+<span class="line" id="L497">                            <span class="tok-str">\\</span></span>
+
+<span class="line" id="L498">                            <span class="tok-str">\\========= expected to find and extract: ==============</span></span>
+
+<span class="line" id="L499">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L500">                            <span class="tok-str">\\========= but parsed file does not contain it: =======</span></span>
+
+<span class="line" id="L501">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L502">                            <span class="tok-str">\\======================================================</span></span>
+
+<span class="line" id="L503">                        , .{ act.phrase.resolve(b, step), output });</span>
+<span class="line" id="L504">                    }</span>
+<span class="line" id="L505">                },</span>
+<span class="line" id="L506">                .compute_cmp =&gt; {</span>
+<span class="line" id="L507">                    <span class="tok-kw">const</span> res = act.computeCmp(b, step, vars) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L508">                        <span class="tok-kw">error</span>.UnknownVariable =&gt; {</span>
+<span class="line" id="L509">                            <span class="tok-kw">return</span> step.fail(</span>
+<span class="line" id="L510">                                <span class="tok-str">\\========= from parsed file: =====================</span></span>
+
+<span class="line" id="L511">                                <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L512">                                <span class="tok-str">\\=================================================</span></span>
+
+<span class="line" id="L513">                            , .{output});</span>
+<span class="line" id="L514">                        },</span>
+<span class="line" id="L515">                        <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L516">                    };</span>
+<span class="line" id="L517">                    <span class="tok-kw">if</span> (!res) {</span>
+<span class="line" id="L518">                        <span class="tok-kw">return</span> step.fail(</span>
+<span class="line" id="L519">                            <span class="tok-str">\\</span></span>
+
+<span class="line" id="L520">                            <span class="tok-str">\\========= comparison failed for action: ===========</span></span>
+
+<span class="line" id="L521">                            <span class="tok-str">\\{s} {}</span></span>
+
+<span class="line" id="L522">                            <span class="tok-str">\\========= from parsed file: =======================</span></span>
+
+<span class="line" id="L523">                            <span class="tok-str">\\{s}</span></span>
+
+<span class="line" id="L524">                            <span class="tok-str">\\===================================================</span></span>
+
+<span class="line" id="L525">                        , .{ act.phrase.resolve(b, step), act.expected.?, output });</span>
+<span class="line" id="L526">                    }</span>
+<span class="line" id="L527">                },</span>
+<span class="line" id="L528">            }</span>
+<span class="line" id="L529">        }</span>
+<span class="line" id="L530">    }</span>
+<span class="line" id="L531">}</span>
+<span class="line" id="L532"></span>
+<span class="line" id="L533"><span class="tok-kw">const</span> MachODumper = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L534">    <span class="tok-kw">const</span> LoadCommandIterator = macho.LoadCommandIterator;</span>
+<span class="line" id="L535">    <span class="tok-kw">const</span> symtab_label = <span class="tok-str">&quot;symbol table&quot;</span>;</span>
+<span class="line" id="L536"></span>
+<span class="line" id="L537">    <span class="tok-kw">const</span> Symtab = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L538">        symbols: []<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> macho.nlist_64,</span>
+<span class="line" id="L539">        strings: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L540">    };</span>
+<span class="line" id="L541"></span>
+<span class="line" id="L542">    <span class="tok-kw">fn</span> <span class="tok-fn">parseAndDump</span>(step: *Step, bytes: []<span class="tok-kw">align</span>(<span class="tok-builtin">@alignOf</span>(<span class="tok-type">u64</span>)) <span class="tok-kw">const</span> <span class="tok-type">u8</span>) ![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L543">        <span class="tok-kw">const</span> gpa = step.owner.allocator;</span>
+<span class="line" id="L544">        <span class="tok-kw">var</span> stream = std.io.fixedBufferStream(bytes);</span>
+<span class="line" id="L545">        <span class="tok-kw">const</span> reader = stream.reader();</span>
+<span class="line" id="L546"></span>
+<span class="line" id="L547">        <span class="tok-kw">const</span> hdr = <span class="tok-kw">try</span> reader.readStruct(macho.mach_header_64);</span>
+<span class="line" id="L548">        <span class="tok-kw">if</span> (hdr.magic != macho.MH_MAGIC_64) {</span>
+<span class="line" id="L549">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidMagicNumber;</span>
+<span class="line" id="L550">        }</span>
+<span class="line" id="L551"></span>
+<span class="line" id="L552">        <span class="tok-kw">var</span> output = std.ArrayList(<span class="tok-type">u8</span>).init(gpa);</span>
+<span class="line" id="L553">        <span class="tok-kw">const</span> writer = output.writer();</span>
+<span class="line" id="L554"></span>
+<span class="line" id="L555">        <span class="tok-kw">var</span> symtab: ?Symtab = <span class="tok-null">null</span>;</span>
+<span class="line" id="L556">        <span class="tok-kw">var</span> sections = std.ArrayList(macho.section_64).init(gpa);</span>
+<span class="line" id="L557">        <span class="tok-kw">var</span> imports = std.ArrayList([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>).init(gpa);</span>
+<span class="line" id="L558"></span>
+<span class="line" id="L559">        <span class="tok-kw">var</span> it = LoadCommandIterator{</span>
+<span class="line" id="L560">            .ncmds = hdr.ncmds,</span>
+<span class="line" id="L561">            .buffer = bytes[<span class="tok-builtin">@sizeOf</span>(macho.mach_header_64)..][<span class="tok-number">0</span>..hdr.sizeofcmds],</span>
+<span class="line" id="L562">        };</span>
+<span class="line" id="L563">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L564">        <span class="tok-kw">while</span> (it.next()) |cmd| {</span>
+<span class="line" id="L565">            <span class="tok-kw">switch</span> (cmd.cmd()) {</span>
+<span class="line" id="L566">                .SEGMENT_64 =&gt; {</span>
+<span class="line" id="L567">                    <span class="tok-kw">const</span> seg = cmd.cast(macho.segment_command_64).?;</span>
+<span class="line" id="L568">                    <span class="tok-kw">try</span> sections.ensureUnusedCapacity(seg.nsects);</span>
+<span class="line" id="L569">                    <span class="tok-kw">for</span> (cmd.getSections()) |sect| {</span>
+<span class="line" id="L570">                        sections.appendAssumeCapacity(sect);</span>
+<span class="line" id="L571">                    }</span>
+<span class="line" id="L572">                },</span>
+<span class="line" id="L573">                .SYMTAB =&gt; {</span>
+<span class="line" id="L574">                    <span class="tok-kw">const</span> lc = cmd.cast(macho.symtab_command).?;</span>
+<span class="line" id="L575">                    <span class="tok-kw">const</span> symbols = <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> macho.nlist_64, <span class="tok-builtin">@ptrCast</span>(bytes.ptr + lc.symoff))[<span class="tok-number">0</span>..lc.nsyms];</span>
+<span class="line" id="L576">                    <span class="tok-kw">const</span> strings = bytes[lc.stroff..][<span class="tok-number">0</span>..lc.strsize];</span>
+<span class="line" id="L577">                    symtab = .{ .symbols = symbols, .strings = strings };</span>
+<span class="line" id="L578">                },</span>
+<span class="line" id="L579">                .LOAD_DYLIB,</span>
+<span class="line" id="L580">                .LOAD_WEAK_DYLIB,</span>
+<span class="line" id="L581">                .REEXPORT_DYLIB,</span>
+<span class="line" id="L582">                =&gt; {</span>
+<span class="line" id="L583">                    <span class="tok-kw">try</span> imports.append(cmd.getDylibPathName());</span>
+<span class="line" id="L584">                },</span>
+<span class="line" id="L585">                <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L586">            }</span>
+<span class="line" id="L587"></span>
+<span class="line" id="L588">            <span class="tok-kw">try</span> dumpLoadCommand(cmd, i, writer);</span>
+<span class="line" id="L589">            <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L590"></span>
+<span class="line" id="L591">            i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L592">        }</span>
+<span class="line" id="L593"></span>
+<span class="line" id="L594">        <span class="tok-kw">if</span> (symtab) |stab| {</span>
+<span class="line" id="L595">            <span class="tok-kw">try</span> dumpSymtab(sections.items, imports.items, stab, writer);</span>
+<span class="line" id="L596">        }</span>
+<span class="line" id="L597"></span>
+<span class="line" id="L598">        <span class="tok-kw">return</span> output.toOwnedSlice();</span>
+<span class="line" id="L599">    }</span>
+<span class="line" id="L600"></span>
+<span class="line" id="L601">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpLoadCommand</span>(lc: macho.LoadCommandIterator.LoadCommand, index: <span class="tok-type">usize</span>, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L602">        <span class="tok-comment">// print header first</span>
+</span>
+<span class="line" id="L603">        <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L604">            <span class="tok-str">\\LC {d}</span></span>
+
+<span class="line" id="L605">            <span class="tok-str">\\cmd {s}</span></span>
+
+<span class="line" id="L606">            <span class="tok-str">\\cmdsize {d}</span></span>
+
+<span class="line" id="L607">        , .{ index, <span class="tok-builtin">@tagName</span>(lc.cmd()), lc.cmdsize() });</span>
+<span class="line" id="L608"></span>
+<span class="line" id="L609">        <span class="tok-kw">switch</span> (lc.cmd()) {</span>
+<span class="line" id="L610">            .SEGMENT_64 =&gt; {</span>
+<span class="line" id="L611">                <span class="tok-kw">const</span> seg = lc.cast(macho.segment_command_64).?;</span>
+<span class="line" id="L612">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L613">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L614">                    <span class="tok-str">\\segname {s}</span></span>
+
+<span class="line" id="L615">                    <span class="tok-str">\\vmaddr {x}</span></span>
+
+<span class="line" id="L616">                    <span class="tok-str">\\vmsize {x}</span></span>
+
+<span class="line" id="L617">                    <span class="tok-str">\\fileoff {x}</span></span>
+
+<span class="line" id="L618">                    <span class="tok-str">\\filesz {x}</span></span>
+
+<span class="line" id="L619">                , .{</span>
+<span class="line" id="L620">                    seg.segName(),</span>
+<span class="line" id="L621">                    seg.vmaddr,</span>
+<span class="line" id="L622">                    seg.vmsize,</span>
+<span class="line" id="L623">                    seg.fileoff,</span>
+<span class="line" id="L624">                    seg.filesize,</span>
+<span class="line" id="L625">                });</span>
+<span class="line" id="L626"></span>
+<span class="line" id="L627">                <span class="tok-kw">for</span> (lc.getSections()) |sect| {</span>
+<span class="line" id="L628">                    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L629">                    <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L630">                        <span class="tok-str">\\sectname {s}</span></span>
+
+<span class="line" id="L631">                        <span class="tok-str">\\addr {x}</span></span>
+
+<span class="line" id="L632">                        <span class="tok-str">\\size {x}</span></span>
+
+<span class="line" id="L633">                        <span class="tok-str">\\offset {x}</span></span>
+
+<span class="line" id="L634">                        <span class="tok-str">\\align {x}</span></span>
+
+<span class="line" id="L635">                    , .{</span>
+<span class="line" id="L636">                        sect.sectName(),</span>
+<span class="line" id="L637">                        sect.addr,</span>
+<span class="line" id="L638">                        sect.size,</span>
+<span class="line" id="L639">                        sect.offset,</span>
+<span class="line" id="L640">                        sect.@&quot;align&quot;,</span>
+<span class="line" id="L641">                    });</span>
+<span class="line" id="L642">                }</span>
+<span class="line" id="L643">            },</span>
+<span class="line" id="L644"></span>
+<span class="line" id="L645">            .ID_DYLIB,</span>
+<span class="line" id="L646">            .LOAD_DYLIB,</span>
+<span class="line" id="L647">            .LOAD_WEAK_DYLIB,</span>
+<span class="line" id="L648">            .REEXPORT_DYLIB,</span>
+<span class="line" id="L649">            =&gt; {</span>
+<span class="line" id="L650">                <span class="tok-kw">const</span> dylib = lc.cast(macho.dylib_command).?;</span>
+<span class="line" id="L651">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L652">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L653">                    <span class="tok-str">\\name {s}</span></span>
+
+<span class="line" id="L654">                    <span class="tok-str">\\timestamp {d}</span></span>
+
+<span class="line" id="L655">                    <span class="tok-str">\\current version {x}</span></span>
+
+<span class="line" id="L656">                    <span class="tok-str">\\compatibility version {x}</span></span>
+
+<span class="line" id="L657">                , .{</span>
+<span class="line" id="L658">                    lc.getDylibPathName(),</span>
+<span class="line" id="L659">                    dylib.dylib.timestamp,</span>
+<span class="line" id="L660">                    dylib.dylib.current_version,</span>
+<span class="line" id="L661">                    dylib.dylib.compatibility_version,</span>
+<span class="line" id="L662">                });</span>
+<span class="line" id="L663">            },</span>
+<span class="line" id="L664"></span>
+<span class="line" id="L665">            .MAIN =&gt; {</span>
+<span class="line" id="L666">                <span class="tok-kw">const</span> main = lc.cast(macho.entry_point_command).?;</span>
+<span class="line" id="L667">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L668">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L669">                    <span class="tok-str">\\entryoff {x}</span></span>
+
+<span class="line" id="L670">                    <span class="tok-str">\\stacksize {x}</span></span>
+
+<span class="line" id="L671">                , .{ main.entryoff, main.stacksize });</span>
+<span class="line" id="L672">            },</span>
+<span class="line" id="L673"></span>
+<span class="line" id="L674">            .RPATH =&gt; {</span>
+<span class="line" id="L675">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L676">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L677">                    <span class="tok-str">\\path {s}</span></span>
+
+<span class="line" id="L678">                , .{</span>
+<span class="line" id="L679">                    lc.getRpathPathName(),</span>
+<span class="line" id="L680">                });</span>
+<span class="line" id="L681">            },</span>
+<span class="line" id="L682"></span>
+<span class="line" id="L683">            .UUID =&gt; {</span>
+<span class="line" id="L684">                <span class="tok-kw">const</span> uuid = lc.cast(macho.uuid_command).?;</span>
+<span class="line" id="L685">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L686">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;uuid {x}&quot;</span>, .{std.fmt.fmtSliceHexLower(&amp;uuid.uuid)});</span>
+<span class="line" id="L687">            },</span>
+<span class="line" id="L688"></span>
+<span class="line" id="L689">            .DATA_IN_CODE,</span>
+<span class="line" id="L690">            .FUNCTION_STARTS,</span>
+<span class="line" id="L691">            .CODE_SIGNATURE,</span>
+<span class="line" id="L692">            =&gt; {</span>
+<span class="line" id="L693">                <span class="tok-kw">const</span> llc = lc.cast(macho.linkedit_data_command).?;</span>
+<span class="line" id="L694">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L695">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L696">                    <span class="tok-str">\\dataoff {x}</span></span>
+
+<span class="line" id="L697">                    <span class="tok-str">\\datasize {x}</span></span>
+
+<span class="line" id="L698">                , .{ llc.dataoff, llc.datasize });</span>
+<span class="line" id="L699">            },</span>
+<span class="line" id="L700"></span>
+<span class="line" id="L701">            .DYLD_INFO_ONLY =&gt; {</span>
+<span class="line" id="L702">                <span class="tok-kw">const</span> dlc = lc.cast(macho.dyld_info_command).?;</span>
+<span class="line" id="L703">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L704">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L705">                    <span class="tok-str">\\rebaseoff {x}</span></span>
+
+<span class="line" id="L706">                    <span class="tok-str">\\rebasesize {x}</span></span>
+
+<span class="line" id="L707">                    <span class="tok-str">\\bindoff {x}</span></span>
+
+<span class="line" id="L708">                    <span class="tok-str">\\bindsize {x}</span></span>
+
+<span class="line" id="L709">                    <span class="tok-str">\\weakbindoff {x}</span></span>
+
+<span class="line" id="L710">                    <span class="tok-str">\\weakbindsize {x}</span></span>
+
+<span class="line" id="L711">                    <span class="tok-str">\\lazybindoff {x}</span></span>
+
+<span class="line" id="L712">                    <span class="tok-str">\\lazybindsize {x}</span></span>
+
+<span class="line" id="L713">                    <span class="tok-str">\\exportoff {x}</span></span>
+
+<span class="line" id="L714">                    <span class="tok-str">\\exportsize {x}</span></span>
+
+<span class="line" id="L715">                , .{</span>
+<span class="line" id="L716">                    dlc.rebase_off,</span>
+<span class="line" id="L717">                    dlc.rebase_size,</span>
+<span class="line" id="L718">                    dlc.bind_off,</span>
+<span class="line" id="L719">                    dlc.bind_size,</span>
+<span class="line" id="L720">                    dlc.weak_bind_off,</span>
+<span class="line" id="L721">                    dlc.weak_bind_size,</span>
+<span class="line" id="L722">                    dlc.lazy_bind_off,</span>
+<span class="line" id="L723">                    dlc.lazy_bind_size,</span>
+<span class="line" id="L724">                    dlc.export_off,</span>
+<span class="line" id="L725">                    dlc.export_size,</span>
+<span class="line" id="L726">                });</span>
+<span class="line" id="L727">            },</span>
+<span class="line" id="L728"></span>
+<span class="line" id="L729">            .SYMTAB =&gt; {</span>
+<span class="line" id="L730">                <span class="tok-kw">const</span> slc = lc.cast(macho.symtab_command).?;</span>
+<span class="line" id="L731">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L732">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L733">                    <span class="tok-str">\\symoff {x}</span></span>
+
+<span class="line" id="L734">                    <span class="tok-str">\\nsyms {x}</span></span>
+
+<span class="line" id="L735">                    <span class="tok-str">\\stroff {x}</span></span>
+
+<span class="line" id="L736">                    <span class="tok-str">\\strsize {x}</span></span>
+
+<span class="line" id="L737">                , .{</span>
+<span class="line" id="L738">                    slc.symoff,</span>
+<span class="line" id="L739">                    slc.nsyms,</span>
+<span class="line" id="L740">                    slc.stroff,</span>
+<span class="line" id="L741">                    slc.strsize,</span>
+<span class="line" id="L742">                });</span>
+<span class="line" id="L743">            },</span>
+<span class="line" id="L744"></span>
+<span class="line" id="L745">            .DYSYMTAB =&gt; {</span>
+<span class="line" id="L746">                <span class="tok-kw">const</span> dlc = lc.cast(macho.dysymtab_command).?;</span>
+<span class="line" id="L747">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L748">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L749">                    <span class="tok-str">\\ilocalsym {x}</span></span>
+
+<span class="line" id="L750">                    <span class="tok-str">\\nlocalsym {x}</span></span>
+
+<span class="line" id="L751">                    <span class="tok-str">\\iextdefsym {x}</span></span>
+
+<span class="line" id="L752">                    <span class="tok-str">\\nextdefsym {x}</span></span>
+
+<span class="line" id="L753">                    <span class="tok-str">\\iundefsym {x}</span></span>
+
+<span class="line" id="L754">                    <span class="tok-str">\\nundefsym {x}</span></span>
+
+<span class="line" id="L755">                    <span class="tok-str">\\indirectsymoff {x}</span></span>
+
+<span class="line" id="L756">                    <span class="tok-str">\\nindirectsyms {x}</span></span>
+
+<span class="line" id="L757">                , .{</span>
+<span class="line" id="L758">                    dlc.ilocalsym,</span>
+<span class="line" id="L759">                    dlc.nlocalsym,</span>
+<span class="line" id="L760">                    dlc.iextdefsym,</span>
+<span class="line" id="L761">                    dlc.nextdefsym,</span>
+<span class="line" id="L762">                    dlc.iundefsym,</span>
+<span class="line" id="L763">                    dlc.nundefsym,</span>
+<span class="line" id="L764">                    dlc.indirectsymoff,</span>
+<span class="line" id="L765">                    dlc.nindirectsyms,</span>
+<span class="line" id="L766">                });</span>
+<span class="line" id="L767">            },</span>
+<span class="line" id="L768"></span>
+<span class="line" id="L769">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L770">        }</span>
+<span class="line" id="L771">    }</span>
+<span class="line" id="L772"></span>
+<span class="line" id="L773">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpSymtab</span>(</span>
+<span class="line" id="L774">        sections: []<span class="tok-kw">const</span> macho.section_64,</span>
+<span class="line" id="L775">        imports: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L776">        symtab: Symtab,</span>
+<span class="line" id="L777">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L778">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L779">        <span class="tok-kw">try</span> writer.writeAll(symtab_label ++ <span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L780"></span>
+<span class="line" id="L781">        <span class="tok-kw">for</span> (symtab.symbols) |sym| {</span>
+<span class="line" id="L782">            <span class="tok-kw">if</span> (sym.stab()) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L783">            <span class="tok-kw">const</span> sym_name = mem.sliceTo(<span class="tok-builtin">@as</span>([*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(symtab.strings.ptr + sym.n_strx)), <span class="tok-number">0</span>);</span>
+<span class="line" id="L784">            <span class="tok-kw">if</span> (sym.sect()) {</span>
+<span class="line" id="L785">                <span class="tok-kw">const</span> sect = sections[sym.n_sect - <span class="tok-number">1</span>];</span>
+<span class="line" id="L786">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{x} ({s},{s})&quot;</span>, .{</span>
+<span class="line" id="L787">                    sym.n_value,</span>
+<span class="line" id="L788">                    sect.segName(),</span>
+<span class="line" id="L789">                    sect.sectName(),</span>
+<span class="line" id="L790">                });</span>
+<span class="line" id="L791">                <span class="tok-kw">if</span> (sym.ext()) {</span>
+<span class="line" id="L792">                    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; external&quot;</span>);</span>
+<span class="line" id="L793">                }</span>
+<span class="line" id="L794">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s}\n&quot;</span>, .{sym_name});</span>
+<span class="line" id="L795">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (sym.undf()) {</span>
+<span class="line" id="L796">                <span class="tok-kw">const</span> ordinal = <span class="tok-builtin">@divTrunc</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">i16</span>, <span class="tok-builtin">@bitCast</span>(sym.n_desc)), macho.N_SYMBOL_RESOLVER);</span>
+<span class="line" id="L797">                <span class="tok-kw">const</span> import_name = blk: {</span>
+<span class="line" id="L798">                    <span class="tok-kw">if</span> (ordinal &lt;= <span class="tok-number">0</span>) {</span>
+<span class="line" id="L799">                        <span class="tok-kw">if</span> (ordinal == macho.BIND_SPECIAL_DYLIB_SELF)</span>
+<span class="line" id="L800">                            <span class="tok-kw">break</span> :blk <span class="tok-str">&quot;self import&quot;</span>;</span>
+<span class="line" id="L801">                        <span class="tok-kw">if</span> (ordinal == macho.BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE)</span>
+<span class="line" id="L802">                            <span class="tok-kw">break</span> :blk <span class="tok-str">&quot;main executable&quot;</span>;</span>
+<span class="line" id="L803">                        <span class="tok-kw">if</span> (ordinal == macho.BIND_SPECIAL_DYLIB_FLAT_LOOKUP)</span>
+<span class="line" id="L804">                            <span class="tok-kw">break</span> :blk <span class="tok-str">&quot;flat lookup&quot;</span>;</span>
+<span class="line" id="L805">                        <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L806">                    }</span>
+<span class="line" id="L807">                    <span class="tok-kw">const</span> full_path = imports[<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-builtin">@bitCast</span>(ordinal)) - <span class="tok-number">1</span>];</span>
+<span class="line" id="L808">                    <span class="tok-kw">const</span> basename = fs.path.basename(full_path);</span>
+<span class="line" id="L809">                    assert(basename.len &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L810">                    <span class="tok-kw">const</span> ext = mem.lastIndexOfScalar(<span class="tok-type">u8</span>, basename, <span class="tok-str">'.'</span>) <span class="tok-kw">orelse</span> basename.len;</span>
+<span class="line" id="L811">                    <span class="tok-kw">break</span> :blk basename[<span class="tok-number">0</span>..ext];</span>
+<span class="line" id="L812">                };</span>
+<span class="line" id="L813">                <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;(undefined)&quot;</span>);</span>
+<span class="line" id="L814">                <span class="tok-kw">if</span> (sym.weakRef()) {</span>
+<span class="line" id="L815">                    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; weak&quot;</span>);</span>
+<span class="line" id="L816">                }</span>
+<span class="line" id="L817">                <span class="tok-kw">if</span> (sym.ext()) {</span>
+<span class="line" id="L818">                    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; external&quot;</span>);</span>
+<span class="line" id="L819">                }</span>
+<span class="line" id="L820">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s} (from {s})\n&quot;</span>, .{</span>
+<span class="line" id="L821">                    sym_name,</span>
+<span class="line" id="L822">                    import_name,</span>
+<span class="line" id="L823">                });</span>
+<span class="line" id="L824">            } <span class="tok-kw">else</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L825">        }</span>
+<span class="line" id="L826">    }</span>
+<span class="line" id="L827">};</span>
+<span class="line" id="L828"></span>
+<span class="line" id="L829"><span class="tok-kw">const</span> ElfDumper = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L830">    <span class="tok-kw">const</span> symtab_label = <span class="tok-str">&quot;symbol table&quot;</span>;</span>
+<span class="line" id="L831">    <span class="tok-kw">const</span> dynamic_symtab_label = <span class="tok-str">&quot;dynamic symbol table&quot;</span>;</span>
+<span class="line" id="L832">    <span class="tok-kw">const</span> dynamic_section_label = <span class="tok-str">&quot;dynamic section&quot;</span>;</span>
+<span class="line" id="L833"></span>
+<span class="line" id="L834">    <span class="tok-kw">const</span> Symtab = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L835">        symbols: []<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> elf.Elf64_Sym,</span>
+<span class="line" id="L836">        strings: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L837"></span>
+<span class="line" id="L838">        <span class="tok-kw">fn</span> <span class="tok-fn">get</span>(st: Symtab, index: <span class="tok-type">usize</span>) ?elf.Elf64_Sym {</span>
+<span class="line" id="L839">            <span class="tok-kw">if</span> (index &gt;= st.symbols.len) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L840">            <span class="tok-kw">return</span> st.symbols[index];</span>
+<span class="line" id="L841">        }</span>
+<span class="line" id="L842"></span>
+<span class="line" id="L843">        <span class="tok-kw">fn</span> <span class="tok-fn">getName</span>(st: Symtab, index: <span class="tok-type">usize</span>) ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L844">            <span class="tok-kw">const</span> sym = st.get(index) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L845">            <span class="tok-kw">return</span> getString(st.strings, sym.st_name);</span>
+<span class="line" id="L846">        }</span>
+<span class="line" id="L847">    };</span>
+<span class="line" id="L848"></span>
+<span class="line" id="L849">    <span class="tok-kw">const</span> Context = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L850">        gpa: Allocator,</span>
+<span class="line" id="L851">        data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L852">        hdr: elf.Elf64_Ehdr,</span>
+<span class="line" id="L853">        shdrs: []<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> elf.Elf64_Shdr,</span>
+<span class="line" id="L854">        phdrs: []<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> elf.Elf64_Phdr,</span>
+<span class="line" id="L855">        shstrtab: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L856">        symtab: ?Symtab = <span class="tok-null">null</span>,</span>
+<span class="line" id="L857">        dysymtab: ?Symtab = <span class="tok-null">null</span>,</span>
+<span class="line" id="L858">    };</span>
+<span class="line" id="L859"></span>
+<span class="line" id="L860">    <span class="tok-kw">fn</span> <span class="tok-fn">parseAndDump</span>(step: *Step, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L861">        <span class="tok-kw">const</span> gpa = step.owner.allocator;</span>
+<span class="line" id="L862">        <span class="tok-kw">var</span> stream = std.io.fixedBufferStream(bytes);</span>
+<span class="line" id="L863">        <span class="tok-kw">const</span> reader = stream.reader();</span>
+<span class="line" id="L864"></span>
+<span class="line" id="L865">        <span class="tok-kw">const</span> hdr = <span class="tok-kw">try</span> reader.readStruct(elf.Elf64_Ehdr);</span>
+<span class="line" id="L866">        <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, hdr.e_ident[<span class="tok-number">0</span>..<span class="tok-number">4</span>], <span class="tok-str">&quot;\x7fELF&quot;</span>)) {</span>
+<span class="line" id="L867">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidMagicNumber;</span>
+<span class="line" id="L868">        }</span>
+<span class="line" id="L869"></span>
+<span class="line" id="L870">        <span class="tok-kw">const</span> shdrs = <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> elf.Elf64_Shdr, <span class="tok-builtin">@ptrCast</span>(bytes.ptr + hdr.e_shoff))[<span class="tok-number">0</span>..hdr.e_shnum];</span>
+<span class="line" id="L871">        <span class="tok-kw">const</span> phdrs = <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> elf.Elf64_Phdr, <span class="tok-builtin">@ptrCast</span>(bytes.ptr + hdr.e_phoff))[<span class="tok-number">0</span>..hdr.e_phnum];</span>
+<span class="line" id="L872"></span>
+<span class="line" id="L873">        <span class="tok-kw">var</span> ctx = Context{</span>
+<span class="line" id="L874">            .gpa = gpa,</span>
+<span class="line" id="L875">            .data = bytes,</span>
+<span class="line" id="L876">            .hdr = hdr,</span>
+<span class="line" id="L877">            .shdrs = shdrs,</span>
+<span class="line" id="L878">            .phdrs = phdrs,</span>
+<span class="line" id="L879">            .shstrtab = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L880">        };</span>
+<span class="line" id="L881">        ctx.shstrtab = getSectionContents(ctx, ctx.hdr.e_shstrndx);</span>
+<span class="line" id="L882"></span>
+<span class="line" id="L883">        <span class="tok-kw">for</span> (ctx.shdrs, <span class="tok-number">0</span>..) |shdr, i| <span class="tok-kw">switch</span> (shdr.sh_type) {</span>
+<span class="line" id="L884">            elf.SHT_SYMTAB, elf.SHT_DYNSYM =&gt; {</span>
+<span class="line" id="L885">                <span class="tok-kw">const</span> raw = getSectionContents(ctx, i);</span>
+<span class="line" id="L886">                <span class="tok-kw">const</span> nsyms = <span class="tok-builtin">@divExact</span>(raw.len, <span class="tok-builtin">@sizeOf</span>(elf.Elf64_Sym));</span>
+<span class="line" id="L887">                <span class="tok-kw">const</span> symbols = <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> elf.Elf64_Sym, <span class="tok-builtin">@ptrCast</span>(raw.ptr))[<span class="tok-number">0</span>..nsyms];</span>
+<span class="line" id="L888">                <span class="tok-kw">const</span> strings = getSectionContents(ctx, shdr.sh_link);</span>
+<span class="line" id="L889"></span>
+<span class="line" id="L890">                <span class="tok-kw">switch</span> (shdr.sh_type) {</span>
+<span class="line" id="L891">                    elf.SHT_SYMTAB =&gt; {</span>
+<span class="line" id="L892">                        ctx.symtab = .{</span>
+<span class="line" id="L893">                            .symbols = symbols,</span>
+<span class="line" id="L894">                            .strings = strings,</span>
+<span class="line" id="L895">                        };</span>
+<span class="line" id="L896">                    },</span>
+<span class="line" id="L897">                    elf.SHT_DYNSYM =&gt; {</span>
+<span class="line" id="L898">                        ctx.dysymtab = .{</span>
+<span class="line" id="L899">                            .symbols = symbols,</span>
+<span class="line" id="L900">                            .strings = strings,</span>
+<span class="line" id="L901">                        };</span>
+<span class="line" id="L902">                    },</span>
+<span class="line" id="L903">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L904">                }</span>
+<span class="line" id="L905">            },</span>
+<span class="line" id="L906"></span>
+<span class="line" id="L907">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L908">        };</span>
+<span class="line" id="L909"></span>
+<span class="line" id="L910">        <span class="tok-kw">var</span> output = std.ArrayList(<span class="tok-type">u8</span>).init(gpa);</span>
+<span class="line" id="L911">        <span class="tok-kw">const</span> writer = output.writer();</span>
+<span class="line" id="L912"></span>
+<span class="line" id="L913">        <span class="tok-kw">try</span> dumpHeader(ctx, writer);</span>
+<span class="line" id="L914">        <span class="tok-kw">try</span> dumpShdrs(ctx, writer);</span>
+<span class="line" id="L915">        <span class="tok-kw">try</span> dumpPhdrs(ctx, writer);</span>
+<span class="line" id="L916">        <span class="tok-kw">try</span> dumpDynamicSection(ctx, writer);</span>
+<span class="line" id="L917">        <span class="tok-kw">try</span> dumpSymtab(ctx, .symtab, writer);</span>
+<span class="line" id="L918">        <span class="tok-kw">try</span> dumpSymtab(ctx, .dysymtab, writer);</span>
+<span class="line" id="L919"></span>
+<span class="line" id="L920">        <span class="tok-kw">return</span> output.toOwnedSlice();</span>
+<span class="line" id="L921">    }</span>
+<span class="line" id="L922"></span>
+<span class="line" id="L923">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSectionName</span>(ctx: Context, shndx: <span class="tok-type">usize</span>) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L924">        <span class="tok-kw">const</span> shdr = ctx.shdrs[shndx];</span>
+<span class="line" id="L925">        <span class="tok-kw">return</span> getString(ctx.shstrtab, shdr.sh_name);</span>
+<span class="line" id="L926">    }</span>
+<span class="line" id="L927"></span>
+<span class="line" id="L928">    <span class="tok-kw">fn</span> <span class="tok-fn">getSectionContents</span>(ctx: Context, shndx: <span class="tok-type">usize</span>) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L929">        <span class="tok-kw">const</span> shdr = ctx.shdrs[shndx];</span>
+<span class="line" id="L930">        assert(shdr.sh_offset &lt; ctx.data.len);</span>
+<span class="line" id="L931">        assert(shdr.sh_offset + shdr.sh_size &lt;= ctx.data.len);</span>
+<span class="line" id="L932">        <span class="tok-kw">return</span> ctx.data[shdr.sh_offset..][<span class="tok-number">0</span>..shdr.sh_size];</span>
+<span class="line" id="L933">    }</span>
+<span class="line" id="L934"></span>
+<span class="line" id="L935">    <span class="tok-kw">fn</span> <span class="tok-fn">getSectionByName</span>(ctx: Context, name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ?<span class="tok-type">usize</span> {</span>
+<span class="line" id="L936">        <span class="tok-kw">for</span> (<span class="tok-number">0</span>..ctx.shdrs.len) |shndx| {</span>
+<span class="line" id="L937">            <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, getSectionName(ctx, shndx), name)) <span class="tok-kw">return</span> shndx;</span>
+<span class="line" id="L938">        } <span class="tok-kw">else</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L939">    }</span>
+<span class="line" id="L940"></span>
+<span class="line" id="L941">    <span class="tok-kw">fn</span> <span class="tok-fn">getString</span>(strtab: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, off: <span class="tok-type">u32</span>) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L942">        assert(off &lt; strtab.len);</span>
+<span class="line" id="L943">        <span class="tok-kw">return</span> mem.sliceTo(<span class="tok-builtin">@as</span>([*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(strtab.ptr + off)), <span class="tok-number">0</span>);</span>
+<span class="line" id="L944">    }</span>
+<span class="line" id="L945"></span>
+<span class="line" id="L946">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpHeader</span>(ctx: Context, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L947">        <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;header\n&quot;</span>);</span>
+<span class="line" id="L948">        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;type {s}\n&quot;</span>, .{<span class="tok-builtin">@tagName</span>(ctx.hdr.e_type)});</span>
+<span class="line" id="L949">        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;entry {x}\n&quot;</span>, .{ctx.hdr.e_entry});</span>
+<span class="line" id="L950">    }</span>
+<span class="line" id="L951"></span>
+<span class="line" id="L952">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpShdrs</span>(ctx: Context, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L953">        <span class="tok-kw">if</span> (ctx.shdrs.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L954"></span>
+<span class="line" id="L955">        <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;section headers\n&quot;</span>);</span>
+<span class="line" id="L956"></span>
+<span class="line" id="L957">        <span class="tok-kw">for</span> (ctx.shdrs, <span class="tok-number">0</span>..) |shdr, shndx| {</span>
+<span class="line" id="L958">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;shdr {d}\n&quot;</span>, .{shndx});</span>
+<span class="line" id="L959">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;name {s}\n&quot;</span>, .{getSectionName(ctx, shndx)});</span>
+<span class="line" id="L960">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;type {s}\n&quot;</span>, .{fmtShType(shdr.sh_type)});</span>
+<span class="line" id="L961">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;addr {x}\n&quot;</span>, .{shdr.sh_addr});</span>
+<span class="line" id="L962">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;offset {x}\n&quot;</span>, .{shdr.sh_offset});</span>
+<span class="line" id="L963">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;size {x}\n&quot;</span>, .{shdr.sh_size});</span>
+<span class="line" id="L964">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;addralign {x}\n&quot;</span>, .{shdr.sh_addralign});</span>
+<span class="line" id="L965">            <span class="tok-comment">// TODO dump formatted sh_flags</span>
+</span>
+<span class="line" id="L966">        }</span>
+<span class="line" id="L967">    }</span>
+<span class="line" id="L968"></span>
+<span class="line" id="L969">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpDynamicSection</span>(ctx: Context, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L970">        <span class="tok-kw">const</span> shndx = getSectionByName(ctx, <span class="tok-str">&quot;.dynamic&quot;</span>) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>;</span>
+<span class="line" id="L971">        <span class="tok-kw">const</span> shdr = ctx.shdrs[shndx];</span>
+<span class="line" id="L972">        <span class="tok-kw">const</span> strtab = getSectionContents(ctx, shdr.sh_link);</span>
+<span class="line" id="L973">        <span class="tok-kw">const</span> data = getSectionContents(ctx, shndx);</span>
+<span class="line" id="L974">        <span class="tok-kw">const</span> nentries = <span class="tok-builtin">@divExact</span>(data.len, <span class="tok-builtin">@sizeOf</span>(elf.Elf64_Dyn));</span>
+<span class="line" id="L975">        <span class="tok-kw">const</span> entries = <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> elf.Elf64_Dyn, <span class="tok-builtin">@ptrCast</span>(data.ptr))[<span class="tok-number">0</span>..nentries];</span>
+<span class="line" id="L976"></span>
+<span class="line" id="L977">        <span class="tok-kw">try</span> writer.writeAll(ElfDumper.dynamic_section_label ++ <span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L978"></span>
+<span class="line" id="L979">        <span class="tok-kw">for</span> (entries) |entry| {</span>
+<span class="line" id="L980">            <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@bitCast</span>(entry.d_tag));</span>
+<span class="line" id="L981">            <span class="tok-kw">const</span> value = entry.d_val;</span>
+<span class="line" id="L982"></span>
+<span class="line" id="L983">            <span class="tok-kw">const</span> key_str = <span class="tok-kw">switch</span> (key) {</span>
+<span class="line" id="L984">                elf.DT_NEEDED =&gt; <span class="tok-str">&quot;NEEDED&quot;</span>,</span>
+<span class="line" id="L985">                elf.DT_SONAME =&gt; <span class="tok-str">&quot;SONAME&quot;</span>,</span>
+<span class="line" id="L986">                elf.DT_INIT_ARRAY =&gt; <span class="tok-str">&quot;INIT_ARRAY&quot;</span>,</span>
+<span class="line" id="L987">                elf.DT_INIT_ARRAYSZ =&gt; <span class="tok-str">&quot;INIT_ARRAYSZ&quot;</span>,</span>
+<span class="line" id="L988">                elf.DT_FINI_ARRAY =&gt; <span class="tok-str">&quot;FINI_ARRAY&quot;</span>,</span>
+<span class="line" id="L989">                elf.DT_FINI_ARRAYSZ =&gt; <span class="tok-str">&quot;FINI_ARRAYSZ&quot;</span>,</span>
+<span class="line" id="L990">                elf.DT_HASH =&gt; <span class="tok-str">&quot;HASH&quot;</span>,</span>
+<span class="line" id="L991">                elf.DT_GNU_HASH =&gt; <span class="tok-str">&quot;GNU_HASH&quot;</span>,</span>
+<span class="line" id="L992">                elf.DT_STRTAB =&gt; <span class="tok-str">&quot;STRTAB&quot;</span>,</span>
+<span class="line" id="L993">                elf.DT_SYMTAB =&gt; <span class="tok-str">&quot;SYMTAB&quot;</span>,</span>
+<span class="line" id="L994">                elf.DT_STRSZ =&gt; <span class="tok-str">&quot;STRSZ&quot;</span>,</span>
+<span class="line" id="L995">                elf.DT_SYMENT =&gt; <span class="tok-str">&quot;SYMENT&quot;</span>,</span>
+<span class="line" id="L996">                elf.DT_PLTGOT =&gt; <span class="tok-str">&quot;PLTGOT&quot;</span>,</span>
+<span class="line" id="L997">                elf.DT_PLTRELSZ =&gt; <span class="tok-str">&quot;PLTRELSZ&quot;</span>,</span>
+<span class="line" id="L998">                elf.DT_PLTREL =&gt; <span class="tok-str">&quot;PLTREL&quot;</span>,</span>
+<span class="line" id="L999">                elf.DT_JMPREL =&gt; <span class="tok-str">&quot;JMPREL&quot;</span>,</span>
+<span class="line" id="L1000">                elf.DT_RELA =&gt; <span class="tok-str">&quot;RELA&quot;</span>,</span>
+<span class="line" id="L1001">                elf.DT_RELASZ =&gt; <span class="tok-str">&quot;RELASZ&quot;</span>,</span>
+<span class="line" id="L1002">                elf.DT_RELAENT =&gt; <span class="tok-str">&quot;RELAENT&quot;</span>,</span>
+<span class="line" id="L1003">                elf.DT_VERDEF =&gt; <span class="tok-str">&quot;VERDEF&quot;</span>,</span>
+<span class="line" id="L1004">                elf.DT_VERDEFNUM =&gt; <span class="tok-str">&quot;VERDEFNUM&quot;</span>,</span>
+<span class="line" id="L1005">                elf.DT_FLAGS =&gt; <span class="tok-str">&quot;FLAGS&quot;</span>,</span>
+<span class="line" id="L1006">                elf.DT_FLAGS_1 =&gt; <span class="tok-str">&quot;FLAGS_1&quot;</span>,</span>
+<span class="line" id="L1007">                elf.DT_VERNEED =&gt; <span class="tok-str">&quot;VERNEED&quot;</span>,</span>
+<span class="line" id="L1008">                elf.DT_VERNEEDNUM =&gt; <span class="tok-str">&quot;VERNEEDNUM&quot;</span>,</span>
+<span class="line" id="L1009">                elf.DT_VERSYM =&gt; <span class="tok-str">&quot;VERSYM&quot;</span>,</span>
+<span class="line" id="L1010">                elf.DT_RELACOUNT =&gt; <span class="tok-str">&quot;RELACOUNT&quot;</span>,</span>
+<span class="line" id="L1011">                elf.DT_RPATH =&gt; <span class="tok-str">&quot;RPATH&quot;</span>,</span>
+<span class="line" id="L1012">                elf.DT_RUNPATH =&gt; <span class="tok-str">&quot;RUNPATH&quot;</span>,</span>
+<span class="line" id="L1013">                elf.DT_INIT =&gt; <span class="tok-str">&quot;INIT&quot;</span>,</span>
+<span class="line" id="L1014">                elf.DT_FINI =&gt; <span class="tok-str">&quot;FINI&quot;</span>,</span>
+<span class="line" id="L1015">                elf.DT_NULL =&gt; <span class="tok-str">&quot;NULL&quot;</span>,</span>
+<span class="line" id="L1016">                <span class="tok-kw">else</span> =&gt; <span class="tok-str">&quot;UNKNOWN&quot;</span>,</span>
+<span class="line" id="L1017">            };</span>
+<span class="line" id="L1018">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{s}&quot;</span>, .{key_str});</span>
+<span class="line" id="L1019"></span>
+<span class="line" id="L1020">            <span class="tok-kw">switch</span> (key) {</span>
+<span class="line" id="L1021">                elf.DT_NEEDED,</span>
+<span class="line" id="L1022">                elf.DT_SONAME,</span>
+<span class="line" id="L1023">                elf.DT_RPATH,</span>
+<span class="line" id="L1024">                elf.DT_RUNPATH,</span>
+<span class="line" id="L1025">                =&gt; {</span>
+<span class="line" id="L1026">                    <span class="tok-kw">const</span> name = getString(strtab, <span class="tok-builtin">@intCast</span>(value));</span>
+<span class="line" id="L1027">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s}&quot;</span>, .{name});</span>
+<span class="line" id="L1028">                },</span>
+<span class="line" id="L1029"></span>
+<span class="line" id="L1030">                elf.DT_INIT_ARRAY,</span>
+<span class="line" id="L1031">                elf.DT_FINI_ARRAY,</span>
+<span class="line" id="L1032">                elf.DT_HASH,</span>
+<span class="line" id="L1033">                elf.DT_GNU_HASH,</span>
+<span class="line" id="L1034">                elf.DT_STRTAB,</span>
+<span class="line" id="L1035">                elf.DT_SYMTAB,</span>
+<span class="line" id="L1036">                elf.DT_PLTGOT,</span>
+<span class="line" id="L1037">                elf.DT_JMPREL,</span>
+<span class="line" id="L1038">                elf.DT_RELA,</span>
+<span class="line" id="L1039">                elf.DT_VERDEF,</span>
+<span class="line" id="L1040">                elf.DT_VERNEED,</span>
+<span class="line" id="L1041">                elf.DT_VERSYM,</span>
+<span class="line" id="L1042">                elf.DT_INIT,</span>
+<span class="line" id="L1043">                elf.DT_FINI,</span>
+<span class="line" id="L1044">                elf.DT_NULL,</span>
+<span class="line" id="L1045">                =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {x}&quot;</span>, .{value}),</span>
+<span class="line" id="L1046"></span>
+<span class="line" id="L1047">                elf.DT_INIT_ARRAYSZ,</span>
+<span class="line" id="L1048">                elf.DT_FINI_ARRAYSZ,</span>
+<span class="line" id="L1049">                elf.DT_STRSZ,</span>
+<span class="line" id="L1050">                elf.DT_SYMENT,</span>
+<span class="line" id="L1051">                elf.DT_PLTRELSZ,</span>
+<span class="line" id="L1052">                elf.DT_RELASZ,</span>
+<span class="line" id="L1053">                elf.DT_RELAENT,</span>
+<span class="line" id="L1054">                elf.DT_RELACOUNT,</span>
+<span class="line" id="L1055">                =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {d}&quot;</span>, .{value}),</span>
+<span class="line" id="L1056"></span>
+<span class="line" id="L1057">                elf.DT_PLTREL =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-kw">switch</span> (value) {</span>
+<span class="line" id="L1058">                    elf.DT_REL =&gt; <span class="tok-str">&quot; REL&quot;</span>,</span>
+<span class="line" id="L1059">                    elf.DT_RELA =&gt; <span class="tok-str">&quot; RELA&quot;</span>,</span>
+<span class="line" id="L1060">                    <span class="tok-kw">else</span> =&gt; <span class="tok-str">&quot; UNKNOWN&quot;</span>,</span>
+<span class="line" id="L1061">                }),</span>
+<span class="line" id="L1062"></span>
+<span class="line" id="L1063">                elf.DT_FLAGS =&gt; <span class="tok-kw">if</span> (value &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1064">                    <span class="tok-kw">if</span> (value &amp; elf.DF_ORIGIN != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; ORIGIN&quot;</span>);</span>
+<span class="line" id="L1065">                    <span class="tok-kw">if</span> (value &amp; elf.DF_SYMBOLIC != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; SYMBOLIC&quot;</span>);</span>
+<span class="line" id="L1066">                    <span class="tok-kw">if</span> (value &amp; elf.DF_TEXTREL != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; TEXTREL&quot;</span>);</span>
+<span class="line" id="L1067">                    <span class="tok-kw">if</span> (value &amp; elf.DF_BIND_NOW != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; BIND_NOW&quot;</span>);</span>
+<span class="line" id="L1068">                    <span class="tok-kw">if</span> (value &amp; elf.DF_STATIC_TLS != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; STATIC_TLS&quot;</span>);</span>
+<span class="line" id="L1069">                },</span>
+<span class="line" id="L1070"></span>
+<span class="line" id="L1071">                elf.DT_FLAGS_1 =&gt; <span class="tok-kw">if</span> (value &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1072">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NOW != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NOW&quot;</span>);</span>
+<span class="line" id="L1073">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_GLOBAL != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; GLOBAL&quot;</span>);</span>
+<span class="line" id="L1074">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_GROUP != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; GROUP&quot;</span>);</span>
+<span class="line" id="L1075">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NODELETE != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NODELETE&quot;</span>);</span>
+<span class="line" id="L1076">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_LOADFLTR != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; LOADFLTR&quot;</span>);</span>
+<span class="line" id="L1077">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_INITFIRST != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; INITFIRST&quot;</span>);</span>
+<span class="line" id="L1078">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NOOPEN != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NOOPEN&quot;</span>);</span>
+<span class="line" id="L1079">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_ORIGIN != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; ORIGIN&quot;</span>);</span>
+<span class="line" id="L1080">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_DIRECT != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; DIRECT&quot;</span>);</span>
+<span class="line" id="L1081">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_TRANS != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; TRANS&quot;</span>);</span>
+<span class="line" id="L1082">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_INTERPOSE != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; INTERPOSE&quot;</span>);</span>
+<span class="line" id="L1083">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NODEFLIB != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NODEFLIB&quot;</span>);</span>
+<span class="line" id="L1084">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NODUMP != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NODUMP&quot;</span>);</span>
+<span class="line" id="L1085">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_CONFALT != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; CONFALT&quot;</span>);</span>
+<span class="line" id="L1086">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_ENDFILTEE != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; ENDFILTEE&quot;</span>);</span>
+<span class="line" id="L1087">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_DISPRELDNE != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; DISPRELDNE&quot;</span>);</span>
+<span class="line" id="L1088">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_DISPRELPND != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; DISPRELPND&quot;</span>);</span>
+<span class="line" id="L1089">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NODIRECT != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NODIRECT&quot;</span>);</span>
+<span class="line" id="L1090">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_IGNMULDEF != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; IGNMULDEF&quot;</span>);</span>
+<span class="line" id="L1091">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NOKSYMS != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NOKSYMS&quot;</span>);</span>
+<span class="line" id="L1092">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NOHDR != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NOHDR&quot;</span>);</span>
+<span class="line" id="L1093">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_EDITED != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; EDITED&quot;</span>);</span>
+<span class="line" id="L1094">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_NORELOC != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; NORELOC&quot;</span>);</span>
+<span class="line" id="L1095">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_SYMINTPOSE != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; SYMINTPOSE&quot;</span>);</span>
+<span class="line" id="L1096">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_GLOBAUDIT != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; GLOBAUDIT&quot;</span>);</span>
+<span class="line" id="L1097">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_SINGLETON != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; SINGLETON&quot;</span>);</span>
+<span class="line" id="L1098">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_STUB != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; STUB&quot;</span>);</span>
+<span class="line" id="L1099">                    <span class="tok-kw">if</span> (value &amp; elf.DF_1_PIE != <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; PIE&quot;</span>);</span>
+<span class="line" id="L1100">                },</span>
+<span class="line" id="L1101"></span>
+<span class="line" id="L1102">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {x}&quot;</span>, .{value}),</span>
+<span class="line" id="L1103">            }</span>
+<span class="line" id="L1104">            <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1105">        }</span>
+<span class="line" id="L1106">    }</span>
+<span class="line" id="L1107"></span>
+<span class="line" id="L1108">    <span class="tok-kw">fn</span> <span class="tok-fn">fmtShType</span>(sh_type: <span class="tok-type">u32</span>) std.fmt.Formatter(formatShType) {</span>
+<span class="line" id="L1109">        <span class="tok-kw">return</span> .{ .data = sh_type };</span>
+<span class="line" id="L1110">    }</span>
+<span class="line" id="L1111"></span>
+<span class="line" id="L1112">    <span class="tok-kw">fn</span> <span class="tok-fn">formatShType</span>(</span>
+<span class="line" id="L1113">        sh_type: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1114">        <span class="tok-kw">comptime</span> unused_fmt_string: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1115">        options: std.fmt.FormatOptions,</span>
+<span class="line" id="L1116">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L1117">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1118">        _ = unused_fmt_string;</span>
+<span class="line" id="L1119">        _ = options;</span>
+<span class="line" id="L1120">        <span class="tok-kw">const</span> name = <span class="tok-kw">switch</span> (sh_type) {</span>
+<span class="line" id="L1121">            elf.SHT_NULL =&gt; <span class="tok-str">&quot;NULL&quot;</span>,</span>
+<span class="line" id="L1122">            elf.SHT_PROGBITS =&gt; <span class="tok-str">&quot;PROGBITS&quot;</span>,</span>
+<span class="line" id="L1123">            elf.SHT_SYMTAB =&gt; <span class="tok-str">&quot;SYMTAB&quot;</span>,</span>
+<span class="line" id="L1124">            elf.SHT_STRTAB =&gt; <span class="tok-str">&quot;STRTAB&quot;</span>,</span>
+<span class="line" id="L1125">            elf.SHT_RELA =&gt; <span class="tok-str">&quot;RELA&quot;</span>,</span>
+<span class="line" id="L1126">            elf.SHT_HASH =&gt; <span class="tok-str">&quot;HASH&quot;</span>,</span>
+<span class="line" id="L1127">            elf.SHT_DYNAMIC =&gt; <span class="tok-str">&quot;DYNAMIC&quot;</span>,</span>
+<span class="line" id="L1128">            elf.SHT_NOTE =&gt; <span class="tok-str">&quot;NOTE&quot;</span>,</span>
+<span class="line" id="L1129">            elf.SHT_NOBITS =&gt; <span class="tok-str">&quot;NOBITS&quot;</span>,</span>
+<span class="line" id="L1130">            elf.SHT_REL =&gt; <span class="tok-str">&quot;REL&quot;</span>,</span>
+<span class="line" id="L1131">            elf.SHT_SHLIB =&gt; <span class="tok-str">&quot;SHLIB&quot;</span>,</span>
+<span class="line" id="L1132">            elf.SHT_DYNSYM =&gt; <span class="tok-str">&quot;DYNSYM&quot;</span>,</span>
+<span class="line" id="L1133">            elf.SHT_INIT_ARRAY =&gt; <span class="tok-str">&quot;INIT_ARRAY&quot;</span>,</span>
+<span class="line" id="L1134">            elf.SHT_FINI_ARRAY =&gt; <span class="tok-str">&quot;FINI_ARRAY&quot;</span>,</span>
+<span class="line" id="L1135">            elf.SHT_PREINIT_ARRAY =&gt; <span class="tok-str">&quot;PREINIT_ARRAY&quot;</span>,</span>
+<span class="line" id="L1136">            elf.SHT_GROUP =&gt; <span class="tok-str">&quot;GROUP&quot;</span>,</span>
+<span class="line" id="L1137">            elf.SHT_SYMTAB_SHNDX =&gt; <span class="tok-str">&quot;SYMTAB_SHNDX&quot;</span>,</span>
+<span class="line" id="L1138">            elf.SHT_X86_64_UNWIND =&gt; <span class="tok-str">&quot;X86_64_UNWIND&quot;</span>,</span>
+<span class="line" id="L1139">            elf.SHT_LLVM_ADDRSIG =&gt; <span class="tok-str">&quot;LLVM_ADDRSIG&quot;</span>,</span>
+<span class="line" id="L1140">            elf.SHT_GNU_HASH =&gt; <span class="tok-str">&quot;GNU_HASH&quot;</span>,</span>
+<span class="line" id="L1141">            elf.SHT_GNU_VERDEF =&gt; <span class="tok-str">&quot;VERDEF&quot;</span>,</span>
+<span class="line" id="L1142">            elf.SHT_GNU_VERNEED =&gt; <span class="tok-str">&quot;VERNEED&quot;</span>,</span>
+<span class="line" id="L1143">            elf.SHT_GNU_VERSYM =&gt; <span class="tok-str">&quot;VERSYM&quot;</span>,</span>
+<span class="line" id="L1144">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">if</span> (elf.SHT_LOOS &lt;= sh_type <span class="tok-kw">and</span> sh_type &lt; elf.SHT_HIOS) {</span>
+<span class="line" id="L1145">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;LOOS+0x{x}&quot;</span>, .{sh_type - elf.SHT_LOOS});</span>
+<span class="line" id="L1146">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (elf.SHT_LOPROC &lt;= sh_type <span class="tok-kw">and</span> sh_type &lt; elf.SHT_HIPROC) {</span>
+<span class="line" id="L1147">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;LOPROC+0x{x}&quot;</span>, .{sh_type - elf.SHT_LOPROC});</span>
+<span class="line" id="L1148">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (elf.SHT_LOUSER &lt;= sh_type <span class="tok-kw">and</span> sh_type &lt; elf.SHT_HIUSER) {</span>
+<span class="line" id="L1149">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;LOUSER+0x{x}&quot;</span>, .{sh_type - elf.SHT_LOUSER});</span>
+<span class="line" id="L1150">            } <span class="tok-kw">else</span> <span class="tok-str">&quot;UNKNOWN&quot;</span>,</span>
+<span class="line" id="L1151">        };</span>
+<span class="line" id="L1152">        <span class="tok-kw">try</span> writer.writeAll(name);</span>
+<span class="line" id="L1153">    }</span>
+<span class="line" id="L1154"></span>
+<span class="line" id="L1155">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpPhdrs</span>(ctx: Context, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1156">        <span class="tok-kw">if</span> (ctx.phdrs.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L1157"></span>
+<span class="line" id="L1158">        <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;program headers\n&quot;</span>);</span>
+<span class="line" id="L1159"></span>
+<span class="line" id="L1160">        <span class="tok-kw">for</span> (ctx.phdrs, <span class="tok-number">0</span>..) |phdr, phndx| {</span>
+<span class="line" id="L1161">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;phdr {d}\n&quot;</span>, .{phndx});</span>
+<span class="line" id="L1162">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;type {s}\n&quot;</span>, .{fmtPhType(phdr.p_type)});</span>
+<span class="line" id="L1163">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;vaddr {x}\n&quot;</span>, .{phdr.p_vaddr});</span>
+<span class="line" id="L1164">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;paddr {x}\n&quot;</span>, .{phdr.p_paddr});</span>
+<span class="line" id="L1165">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;offset {x}\n&quot;</span>, .{phdr.p_offset});</span>
+<span class="line" id="L1166">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;memsz {x}\n&quot;</span>, .{phdr.p_memsz});</span>
+<span class="line" id="L1167">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;filesz {x}\n&quot;</span>, .{phdr.p_filesz});</span>
+<span class="line" id="L1168">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;align {x}\n&quot;</span>, .{phdr.p_align});</span>
+<span class="line" id="L1169"></span>
+<span class="line" id="L1170">            {</span>
+<span class="line" id="L1171">                <span class="tok-kw">const</span> flags = phdr.p_flags;</span>
+<span class="line" id="L1172">                <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;flags&quot;</span>);</span>
+<span class="line" id="L1173">                <span class="tok-kw">if</span> (flags &gt; <span class="tok-number">0</span>) <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">' '</span>);</span>
+<span class="line" id="L1174">                <span class="tok-kw">if</span> (flags &amp; elf.PF_R != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1175">                    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'R'</span>);</span>
+<span class="line" id="L1176">                }</span>
+<span class="line" id="L1177">                <span class="tok-kw">if</span> (flags &amp; elf.PF_W != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1178">                    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'W'</span>);</span>
+<span class="line" id="L1179">                }</span>
+<span class="line" id="L1180">                <span class="tok-kw">if</span> (flags &amp; elf.PF_X != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1181">                    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'E'</span>);</span>
+<span class="line" id="L1182">                }</span>
+<span class="line" id="L1183">                <span class="tok-kw">if</span> (flags &amp; elf.PF_MASKOS != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1184">                    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;OS&quot;</span>);</span>
+<span class="line" id="L1185">                }</span>
+<span class="line" id="L1186">                <span class="tok-kw">if</span> (flags &amp; elf.PF_MASKPROC != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1187">                    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;PROC&quot;</span>);</span>
+<span class="line" id="L1188">                }</span>
+<span class="line" id="L1189">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1190">            }</span>
+<span class="line" id="L1191">        }</span>
+<span class="line" id="L1192">    }</span>
+<span class="line" id="L1193"></span>
+<span class="line" id="L1194">    <span class="tok-kw">fn</span> <span class="tok-fn">fmtPhType</span>(ph_type: <span class="tok-type">u32</span>) std.fmt.Formatter(formatPhType) {</span>
+<span class="line" id="L1195">        <span class="tok-kw">return</span> .{ .data = ph_type };</span>
+<span class="line" id="L1196">    }</span>
+<span class="line" id="L1197"></span>
+<span class="line" id="L1198">    <span class="tok-kw">fn</span> <span class="tok-fn">formatPhType</span>(</span>
+<span class="line" id="L1199">        ph_type: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1200">        <span class="tok-kw">comptime</span> unused_fmt_string: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1201">        options: std.fmt.FormatOptions,</span>
+<span class="line" id="L1202">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L1203">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1204">        _ = unused_fmt_string;</span>
+<span class="line" id="L1205">        _ = options;</span>
+<span class="line" id="L1206">        <span class="tok-kw">const</span> p_type = <span class="tok-kw">switch</span> (ph_type) {</span>
+<span class="line" id="L1207">            elf.PT_NULL =&gt; <span class="tok-str">&quot;NULL&quot;</span>,</span>
+<span class="line" id="L1208">            elf.PT_LOAD =&gt; <span class="tok-str">&quot;LOAD&quot;</span>,</span>
+<span class="line" id="L1209">            elf.PT_DYNAMIC =&gt; <span class="tok-str">&quot;DYNAMIC&quot;</span>,</span>
+<span class="line" id="L1210">            elf.PT_INTERP =&gt; <span class="tok-str">&quot;INTERP&quot;</span>,</span>
+<span class="line" id="L1211">            elf.PT_NOTE =&gt; <span class="tok-str">&quot;NOTE&quot;</span>,</span>
+<span class="line" id="L1212">            elf.PT_SHLIB =&gt; <span class="tok-str">&quot;SHLIB&quot;</span>,</span>
+<span class="line" id="L1213">            elf.PT_PHDR =&gt; <span class="tok-str">&quot;PHDR&quot;</span>,</span>
+<span class="line" id="L1214">            elf.PT_TLS =&gt; <span class="tok-str">&quot;TLS&quot;</span>,</span>
+<span class="line" id="L1215">            elf.PT_NUM =&gt; <span class="tok-str">&quot;NUM&quot;</span>,</span>
+<span class="line" id="L1216">            elf.PT_GNU_EH_FRAME =&gt; <span class="tok-str">&quot;GNU_EH_FRAME&quot;</span>,</span>
+<span class="line" id="L1217">            elf.PT_GNU_STACK =&gt; <span class="tok-str">&quot;GNU_STACK&quot;</span>,</span>
+<span class="line" id="L1218">            elf.PT_GNU_RELRO =&gt; <span class="tok-str">&quot;GNU_RELRO&quot;</span>,</span>
+<span class="line" id="L1219">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">if</span> (elf.PT_LOOS &lt;= ph_type <span class="tok-kw">and</span> ph_type &lt; elf.PT_HIOS) {</span>
+<span class="line" id="L1220">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;LOOS+0x{x}&quot;</span>, .{ph_type - elf.PT_LOOS});</span>
+<span class="line" id="L1221">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (elf.PT_LOPROC &lt;= ph_type <span class="tok-kw">and</span> ph_type &lt; elf.PT_HIPROC) {</span>
+<span class="line" id="L1222">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;LOPROC+0x{x}&quot;</span>, .{ph_type - elf.PT_LOPROC});</span>
+<span class="line" id="L1223">            } <span class="tok-kw">else</span> <span class="tok-str">&quot;UNKNOWN&quot;</span>,</span>
+<span class="line" id="L1224">        };</span>
+<span class="line" id="L1225">        <span class="tok-kw">try</span> writer.writeAll(p_type);</span>
+<span class="line" id="L1226">    }</span>
+<span class="line" id="L1227"></span>
+<span class="line" id="L1228">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpSymtab</span>(ctx: Context, <span class="tok-kw">comptime</span> @&quot;type&quot;: <span class="tok-kw">enum</span> { symtab, dysymtab }, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1229">        <span class="tok-kw">const</span> symtab = <span class="tok-kw">switch</span> (@&quot;type&quot;) {</span>
+<span class="line" id="L1230">            .symtab =&gt; ctx.symtab,</span>
+<span class="line" id="L1231">            .dysymtab =&gt; ctx.dysymtab,</span>
+<span class="line" id="L1232">        } <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>;</span>
+<span class="line" id="L1233"></span>
+<span class="line" id="L1234">        <span class="tok-kw">try</span> writer.writeAll(<span class="tok-kw">switch</span> (@&quot;type&quot;) {</span>
+<span class="line" id="L1235">            .symtab =&gt; symtab_label,</span>
+<span class="line" id="L1236">            .dysymtab =&gt; dynamic_symtab_label,</span>
+<span class="line" id="L1237">        } ++ <span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L1238"></span>
+<span class="line" id="L1239">        <span class="tok-kw">for</span> (symtab.symbols, <span class="tok-number">0</span>..) |sym, index| {</span>
+<span class="line" id="L1240">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{x} {x}&quot;</span>, .{ sym.st_value, sym.st_size });</span>
+<span class="line" id="L1241"></span>
+<span class="line" id="L1242">            {</span>
+<span class="line" id="L1243">                <span class="tok-kw">if</span> (elf.SHN_LORESERVE &lt;= sym.st_shndx <span class="tok-kw">and</span> sym.st_shndx &lt; elf.SHN_HIRESERVE) {</span>
+<span class="line" id="L1244">                    <span class="tok-kw">if</span> (elf.SHN_LOPROC &lt;= sym.st_shndx <span class="tok-kw">and</span> sym.st_shndx &lt; elf.SHN_HIPROC) {</span>
+<span class="line" id="L1245">                        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; LO+{d}&quot;</span>, .{sym.st_shndx - elf.SHN_LOPROC});</span>
+<span class="line" id="L1246">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1247">                        <span class="tok-kw">const</span> sym_ndx = &amp;<span class="tok-kw">switch</span> (sym.st_shndx) {</span>
+<span class="line" id="L1248">                            elf.SHN_ABS =&gt; <span class="tok-str">&quot;ABS&quot;</span>,</span>
+<span class="line" id="L1249">                            elf.SHN_COMMON =&gt; <span class="tok-str">&quot;COM&quot;</span>,</span>
+<span class="line" id="L1250">                            elf.SHN_LIVEPATCH =&gt; <span class="tok-str">&quot;LIV&quot;</span>,</span>
+<span class="line" id="L1251">                            <span class="tok-kw">else</span> =&gt; <span class="tok-str">&quot;UNK&quot;</span>,</span>
+<span class="line" id="L1252">                        };</span>
+<span class="line" id="L1253">                        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s}&quot;</span>, .{sym_ndx});</span>
+<span class="line" id="L1254">                    }</span>
+<span class="line" id="L1255">                } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (sym.st_shndx == elf.SHN_UNDEF) {</span>
+<span class="line" id="L1256">                    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot; UND&quot;</span>);</span>
+<span class="line" id="L1257">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1258">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {x}&quot;</span>, .{sym.st_shndx});</span>
+<span class="line" id="L1259">                }</span>
+<span class="line" id="L1260">            }</span>
+<span class="line" id="L1261"></span>
+<span class="line" id="L1262">            blk: {</span>
+<span class="line" id="L1263">                <span class="tok-kw">const</span> tt = sym.st_type();</span>
+<span class="line" id="L1264">                <span class="tok-kw">const</span> sym_type = <span class="tok-kw">switch</span> (tt) {</span>
+<span class="line" id="L1265">                    elf.STT_NOTYPE =&gt; <span class="tok-str">&quot;NOTYPE&quot;</span>,</span>
+<span class="line" id="L1266">                    elf.STT_OBJECT =&gt; <span class="tok-str">&quot;OBJECT&quot;</span>,</span>
+<span class="line" id="L1267">                    elf.STT_FUNC =&gt; <span class="tok-str">&quot;FUNC&quot;</span>,</span>
+<span class="line" id="L1268">                    elf.STT_SECTION =&gt; <span class="tok-str">&quot;SECTION&quot;</span>,</span>
+<span class="line" id="L1269">                    elf.STT_FILE =&gt; <span class="tok-str">&quot;FILE&quot;</span>,</span>
+<span class="line" id="L1270">                    elf.STT_COMMON =&gt; <span class="tok-str">&quot;COMMON&quot;</span>,</span>
+<span class="line" id="L1271">                    elf.STT_TLS =&gt; <span class="tok-str">&quot;TLS&quot;</span>,</span>
+<span class="line" id="L1272">                    elf.STT_NUM =&gt; <span class="tok-str">&quot;NUM&quot;</span>,</span>
+<span class="line" id="L1273">                    elf.STT_GNU_IFUNC =&gt; <span class="tok-str">&quot;IFUNC&quot;</span>,</span>
+<span class="line" id="L1274">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">if</span> (elf.STT_LOPROC &lt;= tt <span class="tok-kw">and</span> tt &lt; elf.STT_HIPROC) {</span>
+<span class="line" id="L1275">                        <span class="tok-kw">break</span> :blk <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; LOPROC+{d}&quot;</span>, .{tt - elf.STT_LOPROC});</span>
+<span class="line" id="L1276">                    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (elf.STT_LOOS &lt;= tt <span class="tok-kw">and</span> tt &lt; elf.STT_HIOS) {</span>
+<span class="line" id="L1277">                        <span class="tok-kw">break</span> :blk <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; LOOS+{d}&quot;</span>, .{tt - elf.STT_LOOS});</span>
+<span class="line" id="L1278">                    } <span class="tok-kw">else</span> <span class="tok-str">&quot;UNK&quot;</span>,</span>
+<span class="line" id="L1279">                };</span>
+<span class="line" id="L1280">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s}&quot;</span>, .{sym_type});</span>
+<span class="line" id="L1281">            }</span>
+<span class="line" id="L1282"></span>
+<span class="line" id="L1283">            blk: {</span>
+<span class="line" id="L1284">                <span class="tok-kw">const</span> bind = sym.st_bind();</span>
+<span class="line" id="L1285">                <span class="tok-kw">const</span> sym_bind = <span class="tok-kw">switch</span> (bind) {</span>
+<span class="line" id="L1286">                    elf.STB_LOCAL =&gt; <span class="tok-str">&quot;LOCAL&quot;</span>,</span>
+<span class="line" id="L1287">                    elf.STB_GLOBAL =&gt; <span class="tok-str">&quot;GLOBAL&quot;</span>,</span>
+<span class="line" id="L1288">                    elf.STB_WEAK =&gt; <span class="tok-str">&quot;WEAK&quot;</span>,</span>
+<span class="line" id="L1289">                    elf.STB_NUM =&gt; <span class="tok-str">&quot;NUM&quot;</span>,</span>
+<span class="line" id="L1290">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">if</span> (elf.STB_LOPROC &lt;= bind <span class="tok-kw">and</span> bind &lt; elf.STB_HIPROC) {</span>
+<span class="line" id="L1291">                        <span class="tok-kw">break</span> :blk <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; LOPROC+{d}&quot;</span>, .{bind - elf.STB_LOPROC});</span>
+<span class="line" id="L1292">                    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (elf.STB_LOOS &lt;= bind <span class="tok-kw">and</span> bind &lt; elf.STB_HIOS) {</span>
+<span class="line" id="L1293">                        <span class="tok-kw">break</span> :blk <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; LOOS+{d}&quot;</span>, .{bind - elf.STB_LOOS});</span>
+<span class="line" id="L1294">                    } <span class="tok-kw">else</span> <span class="tok-str">&quot;UNKNOWN&quot;</span>,</span>
+<span class="line" id="L1295">                };</span>
+<span class="line" id="L1296">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s}&quot;</span>, .{sym_bind});</span>
+<span class="line" id="L1297">            }</span>
+<span class="line" id="L1298"></span>
+<span class="line" id="L1299">            <span class="tok-kw">const</span> sym_vis = <span class="tok-builtin">@as</span>(elf.STV, <span class="tok-builtin">@enumFromInt</span>(sym.st_other));</span>
+<span class="line" id="L1300">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s}&quot;</span>, .{<span class="tok-builtin">@tagName</span>(sym_vis)});</span>
+<span class="line" id="L1301"></span>
+<span class="line" id="L1302">            <span class="tok-kw">const</span> sym_name = <span class="tok-kw">switch</span> (sym.st_type()) {</span>
+<span class="line" id="L1303">                elf.STT_SECTION =&gt; getSectionName(ctx, sym.st_shndx),</span>
+<span class="line" id="L1304">                <span class="tok-kw">else</span> =&gt; symtab.getName(index).?,</span>
+<span class="line" id="L1305">            };</span>
+<span class="line" id="L1306">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; {s}\n&quot;</span>, .{sym_name});</span>
+<span class="line" id="L1307">        }</span>
+<span class="line" id="L1308">    }</span>
+<span class="line" id="L1309">};</span>
+<span class="line" id="L1310"></span>
+<span class="line" id="L1311"><span class="tok-kw">const</span> WasmDumper = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1312">    <span class="tok-kw">const</span> symtab_label = <span class="tok-str">&quot;symbols&quot;</span>;</span>
+<span class="line" id="L1313"></span>
+<span class="line" id="L1314">    <span class="tok-kw">fn</span> <span class="tok-fn">parseAndDump</span>(step: *Step, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L1315">        <span class="tok-kw">const</span> gpa = step.owner.allocator;</span>
+<span class="line" id="L1316">        <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(bytes);</span>
+<span class="line" id="L1317">        <span class="tok-kw">const</span> reader = fbs.reader();</span>
+<span class="line" id="L1318"></span>
+<span class="line" id="L1319">        <span class="tok-kw">const</span> buf = <span class="tok-kw">try</span> reader.readBytesNoEof(<span class="tok-number">8</span>);</span>
+<span class="line" id="L1320">        <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, buf[<span class="tok-number">0</span>..<span class="tok-number">4</span>], &amp;std.wasm.magic)) {</span>
+<span class="line" id="L1321">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidMagicByte;</span>
+<span class="line" id="L1322">        }</span>
+<span class="line" id="L1323">        <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, buf[<span class="tok-number">4</span>..], &amp;std.wasm.version)) {</span>
+<span class="line" id="L1324">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnsupportedWasmVersion;</span>
+<span class="line" id="L1325">        }</span>
+<span class="line" id="L1326"></span>
+<span class="line" id="L1327">        <span class="tok-kw">var</span> output = std.ArrayList(<span class="tok-type">u8</span>).init(gpa);</span>
+<span class="line" id="L1328">        <span class="tok-kw">errdefer</span> output.deinit();</span>
+<span class="line" id="L1329">        <span class="tok-kw">const</span> writer = output.writer();</span>
+<span class="line" id="L1330"></span>
+<span class="line" id="L1331">        <span class="tok-kw">while</span> (reader.readByte()) |current_byte| {</span>
+<span class="line" id="L1332">            <span class="tok-kw">const</span> section = std.meta.intToEnum(std.wasm.Section, current_byte) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L1333">                <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;Found invalid section id '{d}'&quot;</span>, .{current_byte});</span>
+<span class="line" id="L1334">            };</span>
+<span class="line" id="L1335"></span>
+<span class="line" id="L1336">            <span class="tok-kw">const</span> section_length = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1337">            <span class="tok-kw">try</span> parseAndDumpSection(step, section, bytes[fbs.pos..][<span class="tok-number">0</span>..section_length], writer);</span>
+<span class="line" id="L1338">            fbs.pos += section_length;</span>
+<span class="line" id="L1339">        } <span class="tok-kw">else</span> |_| {} <span class="tok-comment">// reached end of stream</span>
+</span>
+<span class="line" id="L1340"></span>
+<span class="line" id="L1341">        <span class="tok-kw">return</span> output.toOwnedSlice();</span>
+<span class="line" id="L1342">    }</span>
+<span class="line" id="L1343"></span>
+<span class="line" id="L1344">    <span class="tok-kw">fn</span> <span class="tok-fn">parseAndDumpSection</span>(</span>
+<span class="line" id="L1345">        step: *Step,</span>
+<span class="line" id="L1346">        section: std.wasm.Section,</span>
+<span class="line" id="L1347">        data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1348">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L1349">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1350">        <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(data);</span>
+<span class="line" id="L1351">        <span class="tok-kw">const</span> reader = fbs.reader();</span>
+<span class="line" id="L1352"></span>
+<span class="line" id="L1353">        <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L1354">            <span class="tok-str">\\Section {s}</span></span>
+
+<span class="line" id="L1355">            <span class="tok-str">\\size {d}</span></span>
+
+<span class="line" id="L1356">        , .{ <span class="tok-builtin">@tagName</span>(section), data.len });</span>
+<span class="line" id="L1357"></span>
+<span class="line" id="L1358">        <span class="tok-kw">switch</span> (section) {</span>
+<span class="line" id="L1359">            .<span class="tok-type">type</span>,</span>
+<span class="line" id="L1360">            .import,</span>
+<span class="line" id="L1361">            .function,</span>
+<span class="line" id="L1362">            .table,</span>
+<span class="line" id="L1363">            .memory,</span>
+<span class="line" id="L1364">            .global,</span>
+<span class="line" id="L1365">            .@&quot;export&quot;,</span>
+<span class="line" id="L1366">            .element,</span>
+<span class="line" id="L1367">            .code,</span>
+<span class="line" id="L1368">            .data,</span>
+<span class="line" id="L1369">            =&gt; {</span>
+<span class="line" id="L1370">                <span class="tok-kw">const</span> entries = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1371">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;\nentries {d}\n&quot;</span>, .{entries});</span>
+<span class="line" id="L1372">                <span class="tok-kw">try</span> dumpSection(step, section, data[fbs.pos..], entries, writer);</span>
+<span class="line" id="L1373">            },</span>
+<span class="line" id="L1374">            .custom =&gt; {</span>
+<span class="line" id="L1375">                <span class="tok-kw">const</span> name_length = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1376">                <span class="tok-kw">const</span> name = data[fbs.pos..][<span class="tok-number">0</span>..name_length];</span>
+<span class="line" id="L1377">                fbs.pos += name_length;</span>
+<span class="line" id="L1378">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;\nname {s}\n&quot;</span>, .{name});</span>
+<span class="line" id="L1379"></span>
+<span class="line" id="L1380">                <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, name, <span class="tok-str">&quot;name&quot;</span>)) {</span>
+<span class="line" id="L1381">                    <span class="tok-kw">try</span> parseDumpNames(step, reader, writer, data);</span>
+<span class="line" id="L1382">                } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, name, <span class="tok-str">&quot;producers&quot;</span>)) {</span>
+<span class="line" id="L1383">                    <span class="tok-kw">try</span> parseDumpProducers(reader, writer, data);</span>
+<span class="line" id="L1384">                } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, name, <span class="tok-str">&quot;target_features&quot;</span>)) {</span>
+<span class="line" id="L1385">                    <span class="tok-kw">try</span> parseDumpFeatures(reader, writer, data);</span>
+<span class="line" id="L1386">                }</span>
+<span class="line" id="L1387">                <span class="tok-comment">// TODO: Implement parsing and dumping other custom sections (such as relocations)</span>
+</span>
+<span class="line" id="L1388">            },</span>
+<span class="line" id="L1389">            .start =&gt; {</span>
+<span class="line" id="L1390">                <span class="tok-kw">const</span> start = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1391">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;\nstart {d}\n&quot;</span>, .{start});</span>
+<span class="line" id="L1392">            },</span>
+<span class="line" id="L1393">            .data_count =&gt; {</span>
+<span class="line" id="L1394">                <span class="tok-kw">const</span> count = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1395">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;\ncount {d}\n&quot;</span>, .{count});</span>
+<span class="line" id="L1396">            },</span>
+<span class="line" id="L1397">            <span class="tok-kw">else</span> =&gt; {}, <span class="tok-comment">// skip unknown sections</span>
+</span>
+<span class="line" id="L1398">        }</span>
+<span class="line" id="L1399">    }</span>
+<span class="line" id="L1400"></span>
+<span class="line" id="L1401">    <span class="tok-kw">fn</span> <span class="tok-fn">dumpSection</span>(step: *Step, section: std.wasm.Section, data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, entries: <span class="tok-type">u32</span>, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1402">        <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(data);</span>
+<span class="line" id="L1403">        <span class="tok-kw">const</span> reader = fbs.reader();</span>
+<span class="line" id="L1404"></span>
+<span class="line" id="L1405">        <span class="tok-kw">switch</span> (section) {</span>
+<span class="line" id="L1406">            .<span class="tok-type">type</span> =&gt; {</span>
+<span class="line" id="L1407">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1408">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1409">                    <span class="tok-kw">const</span> func_type = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L1410">                    <span class="tok-kw">if</span> (func_type != std.wasm.function_type) {</span>
+<span class="line" id="L1411">                        <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;expected function type, found byte '{d}'&quot;</span>, .{func_type});</span>
+<span class="line" id="L1412">                    }</span>
+<span class="line" id="L1413">                    <span class="tok-kw">const</span> params = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1414">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;params {d}\n&quot;</span>, .{params});</span>
+<span class="line" id="L1415">                    <span class="tok-kw">var</span> index: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1416">                    <span class="tok-kw">while</span> (index &lt; params) : (index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1417">                        <span class="tok-kw">try</span> parseDumpType(step, std.wasm.Valtype, reader, writer);</span>
+<span class="line" id="L1418">                    } <span class="tok-kw">else</span> index = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1419">                    <span class="tok-kw">const</span> returns = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1420">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;returns {d}\n&quot;</span>, .{returns});</span>
+<span class="line" id="L1421">                    <span class="tok-kw">while</span> (index &lt; returns) : (index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1422">                        <span class="tok-kw">try</span> parseDumpType(step, std.wasm.Valtype, reader, writer);</span>
+<span class="line" id="L1423">                    }</span>
+<span class="line" id="L1424">                }</span>
+<span class="line" id="L1425">            },</span>
+<span class="line" id="L1426">            .import =&gt; {</span>
+<span class="line" id="L1427">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1428">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1429">                    <span class="tok-kw">const</span> module_name_len = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1430">                    <span class="tok-kw">const</span> module_name = data[fbs.pos..][<span class="tok-number">0</span>..module_name_len];</span>
+<span class="line" id="L1431">                    fbs.pos += module_name_len;</span>
+<span class="line" id="L1432">                    <span class="tok-kw">const</span> name_len = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1433">                    <span class="tok-kw">const</span> name = data[fbs.pos..][<span class="tok-number">0</span>..name_len];</span>
+<span class="line" id="L1434">                    fbs.pos += name_len;</span>
+<span class="line" id="L1435"></span>
+<span class="line" id="L1436">                    <span class="tok-kw">const</span> kind = std.meta.intToEnum(std.wasm.ExternalKind, <span class="tok-kw">try</span> reader.readByte()) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L1437">                        <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;invalid import kind&quot;</span>, .{});</span>
+<span class="line" id="L1438">                    };</span>
+<span class="line" id="L1439"></span>
+<span class="line" id="L1440">                    <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L1441">                        <span class="tok-str">\\module {s}</span></span>
+
+<span class="line" id="L1442">                        <span class="tok-str">\\name {s}</span></span>
+
+<span class="line" id="L1443">                        <span class="tok-str">\\kind {s}</span></span>
+
+<span class="line" id="L1444">                    , .{ module_name, name, <span class="tok-builtin">@tagName</span>(kind) });</span>
+<span class="line" id="L1445">                    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1446">                    <span class="tok-kw">switch</span> (kind) {</span>
+<span class="line" id="L1447">                        .function =&gt; {</span>
+<span class="line" id="L1448">                            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;index {d}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)});</span>
+<span class="line" id="L1449">                        },</span>
+<span class="line" id="L1450">                        .memory =&gt; {</span>
+<span class="line" id="L1451">                            <span class="tok-kw">try</span> parseDumpLimits(reader, writer);</span>
+<span class="line" id="L1452">                        },</span>
+<span class="line" id="L1453">                        .global =&gt; {</span>
+<span class="line" id="L1454">                            <span class="tok-kw">try</span> parseDumpType(step, std.wasm.Valtype, reader, writer);</span>
+<span class="line" id="L1455">                            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;mutable {}\n&quot;</span>, .{<span class="tok-number">0x01</span> == <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)});</span>
+<span class="line" id="L1456">                        },</span>
+<span class="line" id="L1457">                        .table =&gt; {</span>
+<span class="line" id="L1458">                            <span class="tok-kw">try</span> parseDumpType(step, std.wasm.RefType, reader, writer);</span>
+<span class="line" id="L1459">                            <span class="tok-kw">try</span> parseDumpLimits(reader, writer);</span>
+<span class="line" id="L1460">                        },</span>
+<span class="line" id="L1461">                    }</span>
+<span class="line" id="L1462">                }</span>
+<span class="line" id="L1463">            },</span>
+<span class="line" id="L1464">            .function =&gt; {</span>
+<span class="line" id="L1465">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1466">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1467">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;index {d}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)});</span>
+<span class="line" id="L1468">                }</span>
+<span class="line" id="L1469">            },</span>
+<span class="line" id="L1470">            .table =&gt; {</span>
+<span class="line" id="L1471">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1472">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1473">                    <span class="tok-kw">try</span> parseDumpType(step, std.wasm.RefType, reader, writer);</span>
+<span class="line" id="L1474">                    <span class="tok-kw">try</span> parseDumpLimits(reader, writer);</span>
+<span class="line" id="L1475">                }</span>
+<span class="line" id="L1476">            },</span>
+<span class="line" id="L1477">            .memory =&gt; {</span>
+<span class="line" id="L1478">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1479">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1480">                    <span class="tok-kw">try</span> parseDumpLimits(reader, writer);</span>
+<span class="line" id="L1481">                }</span>
+<span class="line" id="L1482">            },</span>
+<span class="line" id="L1483">            .global =&gt; {</span>
+<span class="line" id="L1484">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1485">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1486">                    <span class="tok-kw">try</span> parseDumpType(step, std.wasm.Valtype, reader, writer);</span>
+<span class="line" id="L1487">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;mutable {}\n&quot;</span>, .{<span class="tok-number">0x01</span> == <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u1</span>, reader)});</span>
+<span class="line" id="L1488">                    <span class="tok-kw">try</span> parseDumpInit(step, reader, writer);</span>
+<span class="line" id="L1489">                }</span>
+<span class="line" id="L1490">            },</span>
+<span class="line" id="L1491">            .@&quot;export&quot; =&gt; {</span>
+<span class="line" id="L1492">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1493">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1494">                    <span class="tok-kw">const</span> name_len = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1495">                    <span class="tok-kw">const</span> name = data[fbs.pos..][<span class="tok-number">0</span>..name_len];</span>
+<span class="line" id="L1496">                    fbs.pos += name_len;</span>
+<span class="line" id="L1497">                    <span class="tok-kw">const</span> kind_byte = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u8</span>, reader);</span>
+<span class="line" id="L1498">                    <span class="tok-kw">const</span> kind = std.meta.intToEnum(std.wasm.ExternalKind, kind_byte) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L1499">                        <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;invalid export kind value '{d}'&quot;</span>, .{kind_byte});</span>
+<span class="line" id="L1500">                    };</span>
+<span class="line" id="L1501">                    <span class="tok-kw">const</span> index = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1502">                    <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L1503">                        <span class="tok-str">\\name {s}</span></span>
+
+<span class="line" id="L1504">                        <span class="tok-str">\\kind {s}</span></span>
+
+<span class="line" id="L1505">                        <span class="tok-str">\\index {d}</span></span>
+
+<span class="line" id="L1506">                    , .{ name, <span class="tok-builtin">@tagName</span>(kind), index });</span>
+<span class="line" id="L1507">                    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1508">                }</span>
+<span class="line" id="L1509">            },</span>
+<span class="line" id="L1510">            .element =&gt; {</span>
+<span class="line" id="L1511">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1512">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1513">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;table index {d}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)});</span>
+<span class="line" id="L1514">                    <span class="tok-kw">try</span> parseDumpInit(step, reader, writer);</span>
+<span class="line" id="L1515"></span>
+<span class="line" id="L1516">                    <span class="tok-kw">const</span> function_indexes = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1517">                    <span class="tok-kw">var</span> function_index: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1518">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;indexes {d}\n&quot;</span>, .{function_indexes});</span>
+<span class="line" id="L1519">                    <span class="tok-kw">while</span> (function_index &lt; function_indexes) : (function_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1520">                        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;index {d}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)});</span>
+<span class="line" id="L1521">                    }</span>
+<span class="line" id="L1522">                }</span>
+<span class="line" id="L1523">            },</span>
+<span class="line" id="L1524">            .code =&gt; {}, <span class="tok-comment">// code section is considered opaque to linker</span>
+</span>
+<span class="line" id="L1525">            .data =&gt; {</span>
+<span class="line" id="L1526">                <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1527">                <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1528">                    <span class="tok-kw">const</span> flags = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1529">                    <span class="tok-kw">const</span> index = <span class="tok-kw">if</span> (flags &amp; <span class="tok-number">0x02</span> != <span class="tok-number">0</span>)</span>
+<span class="line" id="L1530">                        <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)</span>
+<span class="line" id="L1531">                    <span class="tok-kw">else</span></span>
+<span class="line" id="L1532">                        <span class="tok-number">0</span>;</span>
+<span class="line" id="L1533">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;memory index 0x{x}\n&quot;</span>, .{index});</span>
+<span class="line" id="L1534">                    <span class="tok-kw">if</span> (flags == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1535">                        <span class="tok-kw">try</span> parseDumpInit(step, reader, writer);</span>
+<span class="line" id="L1536">                    }</span>
+<span class="line" id="L1537"></span>
+<span class="line" id="L1538">                    <span class="tok-kw">const</span> size = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1539">                    <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;size {d}\n&quot;</span>, .{size});</span>
+<span class="line" id="L1540">                    <span class="tok-kw">try</span> reader.skipBytes(size, .{}); <span class="tok-comment">// we do not care about the content of the segments</span>
+</span>
+<span class="line" id="L1541">                }</span>
+<span class="line" id="L1542">            },</span>
+<span class="line" id="L1543">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L1544">        }</span>
+<span class="line" id="L1545">    }</span>
+<span class="line" id="L1546"></span>
+<span class="line" id="L1547">    <span class="tok-kw">fn</span> <span class="tok-fn">parseDumpType</span>(step: *Step, <span class="tok-kw">comptime</span> WasmType: <span class="tok-type">type</span>, reader: <span class="tok-kw">anytype</span>, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1548">        <span class="tok-kw">const</span> type_byte = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L1549">        <span class="tok-kw">const</span> valtype = std.meta.intToEnum(WasmType, type_byte) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L1550">            <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;Invalid wasm type value '{d}'&quot;</span>, .{type_byte});</span>
+<span class="line" id="L1551">        };</span>
+<span class="line" id="L1552">        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;type {s}\n&quot;</span>, .{<span class="tok-builtin">@tagName</span>(valtype)});</span>
+<span class="line" id="L1553">    }</span>
+<span class="line" id="L1554"></span>
+<span class="line" id="L1555">    <span class="tok-kw">fn</span> <span class="tok-fn">parseDumpLimits</span>(reader: <span class="tok-kw">anytype</span>, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1556">        <span class="tok-kw">const</span> flags = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u8</span>, reader);</span>
+<span class="line" id="L1557">        <span class="tok-kw">const</span> min = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1558"></span>
+<span class="line" id="L1559">        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;min {x}\n&quot;</span>, .{min});</span>
+<span class="line" id="L1560">        <span class="tok-kw">if</span> (flags != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1561">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;max {x}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)});</span>
+<span class="line" id="L1562">        }</span>
+<span class="line" id="L1563">    }</span>
+<span class="line" id="L1564"></span>
+<span class="line" id="L1565">    <span class="tok-kw">fn</span> <span class="tok-fn">parseDumpInit</span>(step: *Step, reader: <span class="tok-kw">anytype</span>, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1566">        <span class="tok-kw">const</span> byte = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L1567">        <span class="tok-kw">const</span> opcode = std.meta.intToEnum(std.wasm.Opcode, byte) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L1568">            <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;invalid wasm opcode '{d}'&quot;</span>, .{byte});</span>
+<span class="line" id="L1569">        };</span>
+<span class="line" id="L1570">        <span class="tok-kw">switch</span> (opcode) {</span>
+<span class="line" id="L1571">            .i32_const =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;i32.const {x}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readILEB128(<span class="tok-type">i32</span>, reader)}),</span>
+<span class="line" id="L1572">            .i64_const =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;i64.const {x}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readILEB128(<span class="tok-type">i64</span>, reader)}),</span>
+<span class="line" id="L1573">            .f32_const =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;f32.const {x}\n&quot;</span>, .{<span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u32</span>)))}),</span>
+<span class="line" id="L1574">            .f64_const =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;f64.const {x}\n&quot;</span>, .{<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u64</span>)))}),</span>
+<span class="line" id="L1575">            .global_get =&gt; <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;global.get {x}\n&quot;</span>, .{<span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader)}),</span>
+<span class="line" id="L1576">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L1577">        }</span>
+<span class="line" id="L1578">        <span class="tok-kw">const</span> end_opcode = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u8</span>, reader);</span>
+<span class="line" id="L1579">        <span class="tok-kw">if</span> (end_opcode != std.wasm.opcode(.end)) {</span>
+<span class="line" id="L1580">            <span class="tok-kw">return</span> step.fail(<span class="tok-str">&quot;expected 'end' opcode in init expression&quot;</span>, .{});</span>
+<span class="line" id="L1581">        }</span>
+<span class="line" id="L1582">    }</span>
+<span class="line" id="L1583"></span>
+<span class="line" id="L1584">    <span class="tok-kw">fn</span> <span class="tok-fn">parseDumpNames</span>(step: *Step, reader: <span class="tok-kw">anytype</span>, writer: <span class="tok-kw">anytype</span>, data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1585">        <span class="tok-kw">while</span> (reader.context.pos &lt; data.len) {</span>
+<span class="line" id="L1586">            <span class="tok-kw">try</span> parseDumpType(step, std.wasm.NameSubsection, reader, writer);</span>
+<span class="line" id="L1587">            <span class="tok-kw">const</span> size = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1588">            <span class="tok-kw">const</span> entries = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1589">            <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L1590">                <span class="tok-str">\\size {d}</span></span>
+
+<span class="line" id="L1591">                <span class="tok-str">\\names {d}</span></span>
+
+<span class="line" id="L1592">            , .{ size, entries });</span>
+<span class="line" id="L1593">            <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1594">            <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1595">            <span class="tok-kw">while</span> (i &lt; entries) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1596">                <span class="tok-kw">const</span> index = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1597">                <span class="tok-kw">const</span> name_len = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1598">                <span class="tok-kw">const</span> pos = reader.context.pos;</span>
+<span class="line" id="L1599">                <span class="tok-kw">const</span> name = data[pos..][<span class="tok-number">0</span>..name_len];</span>
+<span class="line" id="L1600">                reader.context.pos += name_len;</span>
+<span class="line" id="L1601"></span>
+<span class="line" id="L1602">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L1603">                    <span class="tok-str">\\index {d}</span></span>
+
+<span class="line" id="L1604">                    <span class="tok-str">\\name {s}</span></span>
+
+<span class="line" id="L1605">                , .{ index, name });</span>
+<span class="line" id="L1606">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1607">            }</span>
+<span class="line" id="L1608">        }</span>
+<span class="line" id="L1609">    }</span>
+<span class="line" id="L1610"></span>
+<span class="line" id="L1611">    <span class="tok-kw">fn</span> <span class="tok-fn">parseDumpProducers</span>(reader: <span class="tok-kw">anytype</span>, writer: <span class="tok-kw">anytype</span>, data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1612">        <span class="tok-kw">const</span> field_count = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1613">        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;fields {d}\n&quot;</span>, .{field_count});</span>
+<span class="line" id="L1614">        <span class="tok-kw">var</span> current_field: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1615">        <span class="tok-kw">while</span> (current_field &lt; field_count) : (current_field += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1616">            <span class="tok-kw">const</span> field_name_length = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1617">            <span class="tok-kw">const</span> field_name = data[reader.context.pos..][<span class="tok-number">0</span>..field_name_length];</span>
+<span class="line" id="L1618">            reader.context.pos += field_name_length;</span>
+<span class="line" id="L1619"></span>
+<span class="line" id="L1620">            <span class="tok-kw">const</span> value_count = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1621">            <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L1622">                <span class="tok-str">\\field_name {s}</span></span>
+
+<span class="line" id="L1623">                <span class="tok-str">\\values {d}</span></span>
+
+<span class="line" id="L1624">            , .{ field_name, value_count });</span>
+<span class="line" id="L1625">            <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1626">            <span class="tok-kw">var</span> current_value: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1627">            <span class="tok-kw">while</span> (current_value &lt; value_count) : (current_value += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1628">                <span class="tok-kw">const</span> value_length = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1629">                <span class="tok-kw">const</span> value = data[reader.context.pos..][<span class="tok-number">0</span>..value_length];</span>
+<span class="line" id="L1630">                reader.context.pos += value_length;</span>
+<span class="line" id="L1631"></span>
+<span class="line" id="L1632">                <span class="tok-kw">const</span> version_length = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1633">                <span class="tok-kw">const</span> version = data[reader.context.pos..][<span class="tok-number">0</span>..version_length];</span>
+<span class="line" id="L1634">                reader.context.pos += version_length;</span>
+<span class="line" id="L1635"></span>
+<span class="line" id="L1636">                <span class="tok-kw">try</span> writer.print(</span>
+<span class="line" id="L1637">                    <span class="tok-str">\\value_name {s}</span></span>
+
+<span class="line" id="L1638">                    <span class="tok-str">\\version {s}</span></span>
+
+<span class="line" id="L1639">                , .{ value, version });</span>
+<span class="line" id="L1640">                <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L1641">            }</span>
+<span class="line" id="L1642">        }</span>
+<span class="line" id="L1643">    }</span>
+<span class="line" id="L1644"></span>
+<span class="line" id="L1645">    <span class="tok-kw">fn</span> <span class="tok-fn">parseDumpFeatures</span>(reader: <span class="tok-kw">anytype</span>, writer: <span class="tok-kw">anytype</span>, data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1646">        <span class="tok-kw">const</span> feature_count = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1647">        <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;features {d}\n&quot;</span>, .{feature_count});</span>
+<span class="line" id="L1648"></span>
+<span class="line" id="L1649">        <span class="tok-kw">var</span> index: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1650">        <span class="tok-kw">while</span> (index &lt; feature_count) : (index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1651">            <span class="tok-kw">const</span> prefix_byte = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u8</span>, reader);</span>
+<span class="line" id="L1652">            <span class="tok-kw">const</span> name_length = <span class="tok-kw">try</span> std.leb.readULEB128(<span class="tok-type">u32</span>, reader);</span>
+<span class="line" id="L1653">            <span class="tok-kw">const</span> feature_name = data[reader.context.pos..][<span class="tok-number">0</span>..name_length];</span>
+<span class="line" id="L1654">            reader.context.pos += name_length;</span>
+<span class="line" id="L1655"></span>
+<span class="line" id="L1656">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{c} {s}\n&quot;</span>, .{ prefix_byte, feature_name });</span>
+<span class="line" id="L1657">        }</span>
+<span class="line" id="L1658">    }</span>
+<span class="line" id="L1659">};</span>
+<span class="line" id="L1660"></span>
+</code></pre></body>
+</html>

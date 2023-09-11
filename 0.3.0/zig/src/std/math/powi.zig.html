@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>math/powi.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">// Based on Rust, which is licensed under the MIT license.</span>
+</span>
+<span class="line" id="L2"><span class="tok-comment">// https://github.com/rust-lang/rust/blob/360432f1e8794de58cd94f34c9c17ad65871e5b5/LICENSE-MIT</span>
+</span>
+<span class="line" id="L3"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L4"><span class="tok-comment">// https://github.com/rust-lang/rust/blob/360432f1e8794de58cd94f34c9c17ad65871e5b5/src/libcore/num/mod.rs#L3423</span>
+</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-comment">/// Returns the power of x raised by the integer y (x^y).</span></span>
+<span class="line" id="L12"><span class="tok-comment">///</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// Errors:</span></span>
+<span class="line" id="L14"><span class="tok-comment">///  - Overflow: Integer overflow or Infinity</span></span>
+<span class="line" id="L15"><span class="tok-comment">///  - Underflow: Absolute value of result smaller than 1</span></span>
+<span class="line" id="L16"><span class="tok-comment">/// Edge case rules ordered by precedence:</span></span>
+<span class="line" id="L17"><span class="tok-comment">///  - powi(T, x, 0)   = 1 unless T is i1, i0, u0</span></span>
+<span class="line" id="L18"><span class="tok-comment">///  - powi(T, 0, x)   = 0 when x &gt; 0</span></span>
+<span class="line" id="L19"><span class="tok-comment">///  - powi(T, 0, x)   = Overflow</span></span>
+<span class="line" id="L20"><span class="tok-comment">///  - powi(T, 1, y)   = 1</span></span>
+<span class="line" id="L21"><span class="tok-comment">///  - powi(T, -1, y)  = -1 for y an odd integer</span></span>
+<span class="line" id="L22"><span class="tok-comment">///  - powi(T, -1, y)  = 1 unless T is i1, i0, u0</span></span>
+<span class="line" id="L23"><span class="tok-comment">///  - powi(T, -1, y)  = Overflow</span></span>
+<span class="line" id="L24"><span class="tok-comment">///  - powi(T, x, y)   = Overflow when y &gt;= @bitSizeOf(x)</span></span>
+<span class="line" id="L25"><span class="tok-comment">///  - powi(T, x, y)   = Underflow when y &lt; 0</span></span>
+<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">powi</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, x: T, y: T) (<span class="tok-kw">error</span>{</span>
+<span class="line" id="L27">    Overflow,</span>
+<span class="line" id="L28">    Underflow,</span>
+<span class="line" id="L29">}!T) {</span>
+<span class="line" id="L30">    <span class="tok-kw">const</span> bit_size = <span class="tok-builtin">@typeInfo</span>(T).Int.bits;</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">    <span class="tok-comment">// `y &amp; 1 == 0` won't compile when `does_one_overflow`.</span>
+</span>
+<span class="line" id="L33">    <span class="tok-kw">const</span> does_one_overflow = math.maxInt(T) &lt; <span class="tok-number">1</span>;</span>
+<span class="line" id="L34">    <span class="tok-kw">const</span> is_y_even = !does_one_overflow <span class="tok-kw">and</span> y &amp; <span class="tok-number">1</span> == <span class="tok-number">0</span>;</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36">    <span class="tok-kw">if</span> (x == <span class="tok-number">1</span> <span class="tok-kw">or</span> y == <span class="tok-number">0</span> <span class="tok-kw">or</span> (x == -<span class="tok-number">1</span> <span class="tok-kw">and</span> is_y_even)) {</span>
+<span class="line" id="L37">        <span class="tok-kw">if</span> (does_one_overflow) {</span>
+<span class="line" id="L38">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L39">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L40">            <span class="tok-kw">return</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L41">        }</span>
+<span class="line" id="L42">    }</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44">    <span class="tok-kw">if</span> (x == -<span class="tok-number">1</span>) {</span>
+<span class="line" id="L45">        <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
+<span class="line" id="L46">    }</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">    <span class="tok-kw">if</span> (x == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L49">        <span class="tok-kw">if</span> (y &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L50">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L51">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L52">            <span class="tok-comment">// Infinity/NaN, not overflow in strict sense</span>
+</span>
+<span class="line" id="L53">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L54">        }</span>
+<span class="line" id="L55">    }</span>
+<span class="line" id="L56">    <span class="tok-comment">// x &gt;= 2 or x &lt;= -2 from this point</span>
+</span>
+<span class="line" id="L57">    <span class="tok-kw">if</span> (y &gt;= bit_size) {</span>
+<span class="line" id="L58">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L59">    }</span>
+<span class="line" id="L60">    <span class="tok-kw">if</span> (y &lt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L61">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Underflow;</span>
+<span class="line" id="L62">    }</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">    <span class="tok-comment">// invariant :</span>
+</span>
+<span class="line" id="L65">    <span class="tok-comment">// return value = powi(T, base, exp) * acc;</span>
+</span>
+<span class="line" id="L66"></span>
+<span class="line" id="L67">    <span class="tok-kw">var</span> base = x;</span>
+<span class="line" id="L68">    <span class="tok-kw">var</span> exp = y;</span>
+<span class="line" id="L69">    <span class="tok-kw">var</span> acc: T = <span class="tok-kw">if</span> (does_one_overflow) <span class="tok-kw">unreachable</span> <span class="tok-kw">else</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L70"></span>
+<span class="line" id="L71">    <span class="tok-kw">while</span> (exp &gt; <span class="tok-number">1</span>) {</span>
+<span class="line" id="L72">        <span class="tok-kw">if</span> (exp &amp; <span class="tok-number">1</span> == <span class="tok-number">1</span>) {</span>
+<span class="line" id="L73">            <span class="tok-kw">const</span> ov = <span class="tok-builtin">@mulWithOverflow</span>(acc, base);</span>
+<span class="line" id="L74">            <span class="tok-kw">if</span> (ov[<span class="tok-number">1</span>] != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L75">            acc = ov[<span class="tok-number">0</span>];</span>
+<span class="line" id="L76">        }</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">        exp &gt;&gt;= <span class="tok-number">1</span>;</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">        <span class="tok-kw">const</span> ov = <span class="tok-builtin">@mulWithOverflow</span>(base, base);</span>
+<span class="line" id="L81">        <span class="tok-kw">if</span> (ov[<span class="tok-number">1</span>] != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L82">        base = ov[<span class="tok-number">0</span>];</span>
+<span class="line" id="L83">    }</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85">    <span class="tok-kw">if</span> (exp == <span class="tok-number">1</span>) {</span>
+<span class="line" id="L86">        <span class="tok-kw">const</span> ov = <span class="tok-builtin">@mulWithOverflow</span>(acc, base);</span>
+<span class="line" id="L87">        <span class="tok-kw">if</span> (ov[<span class="tok-number">1</span>] != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L88">        acc = ov[<span class="tok-number">0</span>];</span>
+<span class="line" id="L89">    }</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91">    <span class="tok-kw">return</span> acc;</span>
+<span class="line" id="L92">}</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.powi&quot;</span> {</span>
+<span class="line" id="L95">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i8</span>, -<span class="tok-number">66</span>, <span class="tok-number">6</span>));</span>
+<span class="line" id="L96">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i16</span>, -<span class="tok-number">13</span>, <span class="tok-number">13</span>));</span>
+<span class="line" id="L97">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i32</span>, -<span class="tok-number">32</span>, <span class="tok-number">21</span>));</span>
+<span class="line" id="L98">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i64</span>, -<span class="tok-number">24</span>, <span class="tok-number">61</span>));</span>
+<span class="line" id="L99">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i17</span>, -<span class="tok-number">15</span>, <span class="tok-number">15</span>));</span>
+<span class="line" id="L100">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i42</span>, -<span class="tok-number">6</span>, <span class="tok-number">40</span>));</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i8</span>, -<span class="tok-number">5</span>, <span class="tok-number">3</span>)) == -<span class="tok-number">125</span>);</span>
+<span class="line" id="L103">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i16</span>, -<span class="tok-number">16</span>, <span class="tok-number">3</span>)) == -<span class="tok-number">4096</span>);</span>
+<span class="line" id="L104">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i32</span>, -<span class="tok-number">91</span>, <span class="tok-number">3</span>)) == -<span class="tok-number">753571</span>);</span>
+<span class="line" id="L105">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i64</span>, -<span class="tok-number">36</span>, <span class="tok-number">6</span>)) == <span class="tok-number">2176782336</span>);</span>
+<span class="line" id="L106">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i17</span>, -<span class="tok-number">2</span>, <span class="tok-number">15</span>)) == -<span class="tok-number">32768</span>);</span>
+<span class="line" id="L107">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i42</span>, -<span class="tok-number">5</span>, <span class="tok-number">7</span>)) == -<span class="tok-number">78125</span>);</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u8</span>, <span class="tok-number">6</span>, <span class="tok-number">2</span>)) == <span class="tok-number">36</span>);</span>
+<span class="line" id="L110">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u16</span>, <span class="tok-number">5</span>, <span class="tok-number">4</span>)) == <span class="tok-number">625</span>);</span>
+<span class="line" id="L111">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u32</span>, <span class="tok-number">12</span>, <span class="tok-number">6</span>)) == <span class="tok-number">2985984</span>);</span>
+<span class="line" id="L112">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u64</span>, <span class="tok-number">34</span>, <span class="tok-number">2</span>)) == <span class="tok-number">1156</span>);</span>
+<span class="line" id="L113">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u17</span>, <span class="tok-number">16</span>, <span class="tok-number">3</span>)) == <span class="tok-number">4096</span>);</span>
+<span class="line" id="L114">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u42</span>, <span class="tok-number">34</span>, <span class="tok-number">6</span>)) == <span class="tok-number">1544804416</span>);</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i8</span>, <span class="tok-number">120</span>, <span class="tok-number">7</span>));</span>
+<span class="line" id="L117">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i16</span>, <span class="tok-number">73</span>, <span class="tok-number">15</span>));</span>
+<span class="line" id="L118">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i32</span>, <span class="tok-number">23</span>, <span class="tok-number">31</span>));</span>
+<span class="line" id="L119">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i64</span>, <span class="tok-number">68</span>, <span class="tok-number">61</span>));</span>
+<span class="line" id="L120">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i17</span>, <span class="tok-number">15</span>, <span class="tok-number">15</span>));</span>
+<span class="line" id="L121">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i42</span>, <span class="tok-number">121312</span>, <span class="tok-number">41</span>));</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u8</span>, <span class="tok-number">123</span>, <span class="tok-number">7</span>));</span>
+<span class="line" id="L124">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u16</span>, <span class="tok-number">2313</span>, <span class="tok-number">15</span>));</span>
+<span class="line" id="L125">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u32</span>, <span class="tok-number">8968</span>, <span class="tok-number">31</span>));</span>
+<span class="line" id="L126">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u64</span>, <span class="tok-number">2342</span>, <span class="tok-number">63</span>));</span>
+<span class="line" id="L127">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u17</span>, <span class="tok-number">2723</span>, <span class="tok-number">16</span>));</span>
+<span class="line" id="L128">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u42</span>, <span class="tok-number">8234</span>, <span class="tok-number">41</span>));</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">    <span class="tok-kw">const</span> minInt = std.math.minInt;</span>
+<span class="line" id="L131">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i8</span>, -<span class="tok-number">2</span>, <span class="tok-number">7</span>)) == minInt(<span class="tok-type">i8</span>));</span>
+<span class="line" id="L132">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i16</span>, -<span class="tok-number">2</span>, <span class="tok-number">15</span>)) == minInt(<span class="tok-type">i16</span>));</span>
+<span class="line" id="L133">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i32</span>, -<span class="tok-number">2</span>, <span class="tok-number">31</span>)) == minInt(<span class="tok-type">i32</span>));</span>
+<span class="line" id="L134">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i64</span>, -<span class="tok-number">2</span>, <span class="tok-number">63</span>)) == minInt(<span class="tok-type">i64</span>));</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Underflow, powi(<span class="tok-type">i8</span>, <span class="tok-number">6</span>, -<span class="tok-number">2</span>));</span>
+<span class="line" id="L137">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Underflow, powi(<span class="tok-type">i16</span>, <span class="tok-number">5</span>, -<span class="tok-number">4</span>));</span>
+<span class="line" id="L138">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Underflow, powi(<span class="tok-type">i32</span>, <span class="tok-number">12</span>, -<span class="tok-number">6</span>));</span>
+<span class="line" id="L139">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Underflow, powi(<span class="tok-type">i64</span>, <span class="tok-number">34</span>, -<span class="tok-number">2</span>));</span>
+<span class="line" id="L140">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Underflow, powi(<span class="tok-type">i17</span>, <span class="tok-number">16</span>, -<span class="tok-number">3</span>));</span>
+<span class="line" id="L141">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Underflow, powi(<span class="tok-type">i42</span>, <span class="tok-number">34</span>, -<span class="tok-number">6</span>));</span>
+<span class="line" id="L142">}</span>
+<span class="line" id="L143"></span>
+<span class="line" id="L144"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.powi.special&quot;</span> {</span>
+<span class="line" id="L145">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i8</span>, -<span class="tok-number">2</span>, <span class="tok-number">8</span>));</span>
+<span class="line" id="L146">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i16</span>, -<span class="tok-number">2</span>, <span class="tok-number">16</span>));</span>
+<span class="line" id="L147">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i32</span>, -<span class="tok-number">2</span>, <span class="tok-number">32</span>));</span>
+<span class="line" id="L148">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i64</span>, -<span class="tok-number">2</span>, <span class="tok-number">64</span>));</span>
+<span class="line" id="L149">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i17</span>, -<span class="tok-number">2</span>, <span class="tok-number">17</span>));</span>
+<span class="line" id="L150">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i17</span>, -<span class="tok-number">2</span>, <span class="tok-number">16</span>));</span>
+<span class="line" id="L151">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i42</span>, -<span class="tok-number">2</span>, <span class="tok-number">42</span>));</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i8</span>, -<span class="tok-number">1</span>, <span class="tok-number">3</span>)) == -<span class="tok-number">1</span>);</span>
+<span class="line" id="L154">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i16</span>, -<span class="tok-number">1</span>, <span class="tok-number">2</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L155">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i32</span>, -<span class="tok-number">1</span>, <span class="tok-number">16</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L156">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i64</span>, -<span class="tok-number">1</span>, <span class="tok-number">6</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L157">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i17</span>, -<span class="tok-number">1</span>, <span class="tok-number">15</span>)) == -<span class="tok-number">1</span>);</span>
+<span class="line" id="L158">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i42</span>, -<span class="tok-number">1</span>, <span class="tok-number">7</span>)) == -<span class="tok-number">1</span>);</span>
+<span class="line" id="L159"></span>
+<span class="line" id="L160">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u8</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L161">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u16</span>, <span class="tok-number">1</span>, <span class="tok-number">4</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L162">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u32</span>, <span class="tok-number">1</span>, <span class="tok-number">6</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L163">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u64</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L164">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u17</span>, <span class="tok-number">1</span>, <span class="tok-number">3</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L165">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u42</span>, <span class="tok-number">1</span>, <span class="tok-number">6</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i8</span>, <span class="tok-number">2</span>, <span class="tok-number">7</span>));</span>
+<span class="line" id="L168">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i16</span>, <span class="tok-number">2</span>, <span class="tok-number">15</span>));</span>
+<span class="line" id="L169">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i32</span>, <span class="tok-number">2</span>, <span class="tok-number">31</span>));</span>
+<span class="line" id="L170">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i64</span>, <span class="tok-number">2</span>, <span class="tok-number">63</span>));</span>
+<span class="line" id="L171">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i17</span>, <span class="tok-number">2</span>, <span class="tok-number">16</span>));</span>
+<span class="line" id="L172">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i42</span>, <span class="tok-number">2</span>, <span class="tok-number">41</span>));</span>
+<span class="line" id="L173"></span>
+<span class="line" id="L174">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u8</span>, <span class="tok-number">2</span>, <span class="tok-number">8</span>));</span>
+<span class="line" id="L175">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u16</span>, <span class="tok-number">2</span>, <span class="tok-number">16</span>));</span>
+<span class="line" id="L176">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u32</span>, <span class="tok-number">2</span>, <span class="tok-number">32</span>));</span>
+<span class="line" id="L177">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u64</span>, <span class="tok-number">2</span>, <span class="tok-number">64</span>));</span>
+<span class="line" id="L178">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u17</span>, <span class="tok-number">2</span>, <span class="tok-number">17</span>));</span>
+<span class="line" id="L179">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u42</span>, <span class="tok-number">2</span>, <span class="tok-number">42</span>));</span>
+<span class="line" id="L180"></span>
+<span class="line" id="L181">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u8</span>, <span class="tok-number">6</span>, <span class="tok-number">0</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L182">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u16</span>, <span class="tok-number">5</span>, <span class="tok-number">0</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L183">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u32</span>, <span class="tok-number">12</span>, <span class="tok-number">0</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L184">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u64</span>, <span class="tok-number">34</span>, <span class="tok-number">0</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L185">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u17</span>, <span class="tok-number">16</span>, <span class="tok-number">0</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L186">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">u42</span>, <span class="tok-number">34</span>, <span class="tok-number">0</span>)) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L187">}</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189"><span class="tok-kw">test</span> <span class="tok-str">&quot;math.powi.narrow&quot;</span> {</span>
+<span class="line" id="L190">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">u0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>));</span>
+<span class="line" id="L191">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>));</span>
+<span class="line" id="L192">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i1</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>));</span>
+<span class="line" id="L193">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i1</span>, -<span class="tok-number">1</span>, <span class="tok-number">0</span>));</span>
+<span class="line" id="L194">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, powi(<span class="tok-type">i1</span>, <span class="tok-number">0</span>, -<span class="tok-number">1</span>));</span>
+<span class="line" id="L195">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> powi(<span class="tok-type">i1</span>, -<span class="tok-number">1</span>, -<span class="tok-number">1</span>)) == -<span class="tok-number">1</span>);</span>
+<span class="line" id="L196">}</span>
+<span class="line" id="L197"></span>
+</code></pre></body>
+</html>

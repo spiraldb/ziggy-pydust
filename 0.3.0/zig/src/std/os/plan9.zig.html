@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>os/plan9.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> fd_t = <span class="tok-type">i32</span>;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> STDIN_FILENO = <span class="tok-number">0</span>;</span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> STDOUT_FILENO = <span class="tok-number">1</span>;</span>
+<span class="line" id="L8"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> STDERR_FILENO = <span class="tok-number">2</span>;</span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> PATH_MAX = <span class="tok-number">1023</span>;</span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> syscall_bits = <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L11">    .x86_64 =&gt; <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;plan9/x86_64.zig&quot;</span>),</span>
+<span class="line" id="L12">    <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;more plan9 syscall implementations (needs more inline asm in stage2&quot;</span>),</span>
+<span class="line" id="L13">};</span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> E = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;plan9/errno.zig&quot;</span>).E;</span>
+<span class="line" id="L15"><span class="tok-comment">/// Get the errno from a syscall return value, or 0 for no error.</span></span>
+<span class="line" id="L16"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getErrno</span>(r: <span class="tok-type">usize</span>) E {</span>
+<span class="line" id="L17">    <span class="tok-kw">const</span> signed_r = <span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-builtin">@bitCast</span>(r));</span>
+<span class="line" id="L18">    <span class="tok-kw">const</span> int = <span class="tok-kw">if</span> (signed_r &gt; -<span class="tok-number">4096</span> <span class="tok-kw">and</span> signed_r &lt; <span class="tok-number">0</span>) -signed_r <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L19">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(int));</span>
+<span class="line" id="L20">}</span>
+<span class="line" id="L21"><span class="tok-comment">// The max bytes that can be in the errstr buff</span>
+</span>
+<span class="line" id="L22"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ERRMAX = <span class="tok-number">128</span>;</span>
+<span class="line" id="L23"><span class="tok-kw">var</span> errstr_buf: [ERRMAX]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L24"><span class="tok-comment">/// Gets whatever the last errstr was</span></span>
+<span class="line" id="L25"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">errstr</span>() []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L26">    _ = syscall_bits.syscall2(.ERRSTR, <span class="tok-builtin">@intFromPtr</span>(&amp;errstr_buf), ERRMAX);</span>
+<span class="line" id="L27">    <span class="tok-kw">return</span> std.mem.span(<span class="tok-builtin">@as</span>([*:<span class="tok-number">0</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;errstr_buf)));</span>
+<span class="line" id="L28">}</span>
+<span class="line" id="L29"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Plink = <span class="tok-type">anyopaque</span>;</span>
+<span class="line" id="L30"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Tos = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L31">    <span class="tok-comment">/// Per process profiling</span></span>
+<span class="line" id="L32">    prof: <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L33">        <span class="tok-comment">/// known to be 0(ptr)</span></span>
+<span class="line" id="L34">        pp: *Plink,</span>
+<span class="line" id="L35">        <span class="tok-comment">/// known to be 4(ptr)</span></span>
+<span class="line" id="L36">        next: *Plink,</span>
+<span class="line" id="L37">        last: *Plink,</span>
+<span class="line" id="L38">        first: *Plink,</span>
+<span class="line" id="L39">        pid: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L40">        what: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L41">    },</span>
+<span class="line" id="L42">    <span class="tok-comment">/// cycle clock frequency if there is one, 0 otherwise</span></span>
+<span class="line" id="L43">    cyclefreq: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L44">    <span class="tok-comment">/// cycles spent in kernel</span></span>
+<span class="line" id="L45">    kcycles: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L46">    <span class="tok-comment">/// cycles spent in process (kernel + user)</span></span>
+<span class="line" id="L47">    pcycles: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L48">    <span class="tok-comment">/// might as well put the pid here</span></span>
+<span class="line" id="L49">    pid: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L50">    clock: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L51">    <span class="tok-comment">// top of stack is here</span>
+</span>
+<span class="line" id="L52">};</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54"><span class="tok-kw">pub</span> <span class="tok-kw">var</span> tos: *Tos = <span class="tok-null">undefined</span>; <span class="tok-comment">// set in start.zig</span>
+</span>
+<span class="line" id="L55"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getpid</span>() <span class="tok-type">u32</span> {</span>
+<span class="line" id="L56">    <span class="tok-kw">return</span> tos.pid;</span>
+<span class="line" id="L57">}</span>
+<span class="line" id="L58"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SIG = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L59">    <span class="tok-comment">/// hangup</span></span>
+<span class="line" id="L60">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> HUP = <span class="tok-number">1</span>;</span>
+<span class="line" id="L61">    <span class="tok-comment">/// interrupt</span></span>
+<span class="line" id="L62">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> INT = <span class="tok-number">2</span>;</span>
+<span class="line" id="L63">    <span class="tok-comment">/// quit</span></span>
+<span class="line" id="L64">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> QUIT = <span class="tok-number">3</span>;</span>
+<span class="line" id="L65">    <span class="tok-comment">/// illegal instruction (not reset when caught)</span></span>
+<span class="line" id="L66">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ILL = <span class="tok-number">4</span>;</span>
+<span class="line" id="L67">    <span class="tok-comment">/// used by abort</span></span>
+<span class="line" id="L68">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ABRT = <span class="tok-number">5</span>;</span>
+<span class="line" id="L69">    <span class="tok-comment">/// floating point exception</span></span>
+<span class="line" id="L70">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> FPE = <span class="tok-number">6</span>;</span>
+<span class="line" id="L71">    <span class="tok-comment">/// kill (cannot be caught or ignored)</span></span>
+<span class="line" id="L72">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> KILL = <span class="tok-number">7</span>;</span>
+<span class="line" id="L73">    <span class="tok-comment">/// segmentation violation</span></span>
+<span class="line" id="L74">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SEGV = <span class="tok-number">8</span>;</span>
+<span class="line" id="L75">    <span class="tok-comment">/// write on a pipe with no one to read it</span></span>
+<span class="line" id="L76">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> PIPE = <span class="tok-number">9</span>;</span>
+<span class="line" id="L77">    <span class="tok-comment">/// alarm clock</span></span>
+<span class="line" id="L78">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ALRM = <span class="tok-number">10</span>;</span>
+<span class="line" id="L79">    <span class="tok-comment">/// software termination signal from kill</span></span>
+<span class="line" id="L80">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TERM = <span class="tok-number">11</span>;</span>
+<span class="line" id="L81">    <span class="tok-comment">/// user defined signal 1</span></span>
+<span class="line" id="L82">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> USR1 = <span class="tok-number">12</span>;</span>
+<span class="line" id="L83">    <span class="tok-comment">/// user defined signal 2</span></span>
+<span class="line" id="L84">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> USR2 = <span class="tok-number">13</span>;</span>
+<span class="line" id="L85">    <span class="tok-comment">/// bus error</span></span>
+<span class="line" id="L86">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> BUS = <span class="tok-number">14</span>;</span>
+<span class="line" id="L87">    <span class="tok-comment">// The following symbols must be defined, but the signals needn't be supported</span>
+</span>
+<span class="line" id="L88">    <span class="tok-comment">/// child process terminated or stopped</span></span>
+<span class="line" id="L89">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> CHLD = <span class="tok-number">15</span>;</span>
+<span class="line" id="L90">    <span class="tok-comment">/// continue if stopped</span></span>
+<span class="line" id="L91">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> CONT = <span class="tok-number">16</span>;</span>
+<span class="line" id="L92">    <span class="tok-comment">/// stop</span></span>
+<span class="line" id="L93">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> STOP = <span class="tok-number">17</span>;</span>
+<span class="line" id="L94">    <span class="tok-comment">/// interactive stop</span></span>
+<span class="line" id="L95">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TSTP = <span class="tok-number">18</span>;</span>
+<span class="line" id="L96">    <span class="tok-comment">/// read from ctl tty by member of background</span></span>
+<span class="line" id="L97">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TTIN = <span class="tok-number">19</span>;</span>
+<span class="line" id="L98">    <span class="tok-comment">/// write to ctl tty by member of background</span></span>
+<span class="line" id="L99">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TTOU = <span class="tok-number">20</span>;</span>
+<span class="line" id="L100">};</span>
+<span class="line" id="L101"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> sigset_t = <span class="tok-type">c_long</span>;</span>
+<span class="line" id="L102"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> empty_sigset = <span class="tok-number">0</span>;</span>
+<span class="line" id="L103"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> siginfo_t = <span class="tok-type">c_long</span>;</span>
+<span class="line" id="L104"><span class="tok-comment">// TODO plan9 doesn't have sigaction_fn. Sigaction is not a union, but we incude it here to be compatible.</span>
+</span>
+<span class="line" id="L105"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Sigaction = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L106">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> handler_fn = *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (<span class="tok-type">c_int</span>) <span class="tok-kw">callconv</span>(.C) <span class="tok-type">void</span>;</span>
+<span class="line" id="L107">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> sigaction_fn = *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (<span class="tok-type">c_int</span>, *<span class="tok-kw">const</span> siginfo_t, ?*<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>) <span class="tok-kw">callconv</span>(.C) <span class="tok-type">void</span>;</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">    handler: <span class="tok-kw">extern</span> <span class="tok-kw">union</span> {</span>
+<span class="line" id="L110">        handler: ?handler_fn,</span>
+<span class="line" id="L111">        sigaction: ?sigaction_fn,</span>
+<span class="line" id="L112">    },</span>
+<span class="line" id="L113">    mask: sigset_t,</span>
+<span class="line" id="L114">    flags: <span class="tok-type">c_int</span>,</span>
+<span class="line" id="L115">};</span>
+<span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AT = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L117">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> FDCWD = -<span class="tok-number">100</span>; <span class="tok-comment">// we just make up a constant; FDCWD and openat don't actually exist in plan9</span>
+</span>
+<span class="line" id="L118">};</span>
+<span class="line" id="L119"><span class="tok-comment">// TODO implement sigaction</span>
+</span>
+<span class="line" id="L120"><span class="tok-comment">// right now it is just a shim to allow using start.zig code</span>
+</span>
+<span class="line" id="L121"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sigaction</span>(sig: <span class="tok-type">u6</span>, <span class="tok-kw">noalias</span> act: ?*<span class="tok-kw">const</span> Sigaction, <span class="tok-kw">noalias</span> oact: ?*Sigaction) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L122">    _ = oact;</span>
+<span class="line" id="L123">    _ = act;</span>
+<span class="line" id="L124">    _ = sig;</span>
+<span class="line" id="L125">    <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L126">}</span>
+<span class="line" id="L127"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SYS = <span class="tok-kw">enum</span>(<span class="tok-type">usize</span>) {</span>
+<span class="line" id="L128">    SYSR1 = <span class="tok-number">0</span>,</span>
+<span class="line" id="L129">    _ERRSTR = <span class="tok-number">1</span>,</span>
+<span class="line" id="L130">    BIND = <span class="tok-number">2</span>,</span>
+<span class="line" id="L131">    CHDIR = <span class="tok-number">3</span>,</span>
+<span class="line" id="L132">    CLOSE = <span class="tok-number">4</span>,</span>
+<span class="line" id="L133">    DUP = <span class="tok-number">5</span>,</span>
+<span class="line" id="L134">    ALARM = <span class="tok-number">6</span>,</span>
+<span class="line" id="L135">    EXEC = <span class="tok-number">7</span>,</span>
+<span class="line" id="L136">    EXITS = <span class="tok-number">8</span>,</span>
+<span class="line" id="L137">    _FSESSION = <span class="tok-number">9</span>,</span>
+<span class="line" id="L138">    FAUTH = <span class="tok-number">10</span>,</span>
+<span class="line" id="L139">    _FSTAT = <span class="tok-number">11</span>,</span>
+<span class="line" id="L140">    SEGBRK = <span class="tok-number">12</span>,</span>
+<span class="line" id="L141">    _MOUNT = <span class="tok-number">13</span>,</span>
+<span class="line" id="L142">    OPEN = <span class="tok-number">14</span>,</span>
+<span class="line" id="L143">    _READ = <span class="tok-number">15</span>,</span>
+<span class="line" id="L144">    OSEEK = <span class="tok-number">16</span>,</span>
+<span class="line" id="L145">    SLEEP = <span class="tok-number">17</span>,</span>
+<span class="line" id="L146">    _STAT = <span class="tok-number">18</span>,</span>
+<span class="line" id="L147">    RFORK = <span class="tok-number">19</span>,</span>
+<span class="line" id="L148">    _WRITE = <span class="tok-number">20</span>,</span>
+<span class="line" id="L149">    PIPE = <span class="tok-number">21</span>,</span>
+<span class="line" id="L150">    CREATE = <span class="tok-number">22</span>,</span>
+<span class="line" id="L151">    FD2PATH = <span class="tok-number">23</span>,</span>
+<span class="line" id="L152">    BRK_ = <span class="tok-number">24</span>,</span>
+<span class="line" id="L153">    REMOVE = <span class="tok-number">25</span>,</span>
+<span class="line" id="L154">    _WSTAT = <span class="tok-number">26</span>,</span>
+<span class="line" id="L155">    _FWSTAT = <span class="tok-number">27</span>,</span>
+<span class="line" id="L156">    NOTIFY = <span class="tok-number">28</span>,</span>
+<span class="line" id="L157">    NOTED = <span class="tok-number">29</span>,</span>
+<span class="line" id="L158">    SEGATTACH = <span class="tok-number">30</span>,</span>
+<span class="line" id="L159">    SEGDETACH = <span class="tok-number">31</span>,</span>
+<span class="line" id="L160">    SEGFREE = <span class="tok-number">32</span>,</span>
+<span class="line" id="L161">    SEGFLUSH = <span class="tok-number">33</span>,</span>
+<span class="line" id="L162">    RENDEZVOUS = <span class="tok-number">34</span>,</span>
+<span class="line" id="L163">    UNMOUNT = <span class="tok-number">35</span>,</span>
+<span class="line" id="L164">    _WAIT = <span class="tok-number">36</span>,</span>
+<span class="line" id="L165">    SEMACQUIRE = <span class="tok-number">37</span>,</span>
+<span class="line" id="L166">    SEMRELEASE = <span class="tok-number">38</span>,</span>
+<span class="line" id="L167">    SEEK = <span class="tok-number">39</span>,</span>
+<span class="line" id="L168">    FVERSION = <span class="tok-number">40</span>,</span>
+<span class="line" id="L169">    ERRSTR = <span class="tok-number">41</span>,</span>
+<span class="line" id="L170">    STAT = <span class="tok-number">42</span>,</span>
+<span class="line" id="L171">    FSTAT = <span class="tok-number">43</span>,</span>
+<span class="line" id="L172">    WSTAT = <span class="tok-number">44</span>,</span>
+<span class="line" id="L173">    FWSTAT = <span class="tok-number">45</span>,</span>
+<span class="line" id="L174">    MOUNT = <span class="tok-number">46</span>,</span>
+<span class="line" id="L175">    AWAIT = <span class="tok-number">47</span>,</span>
+<span class="line" id="L176">    PREAD = <span class="tok-number">50</span>,</span>
+<span class="line" id="L177">    PWRITE = <span class="tok-number">51</span>,</span>
+<span class="line" id="L178">    TSEMACQUIRE = <span class="tok-number">52</span>,</span>
+<span class="line" id="L179">    _NSEC = <span class="tok-number">53</span>,</span>
+<span class="line" id="L180">};</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(fd: <span class="tok-type">i32</span>, buf: [*]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, count: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L183">    <span class="tok-kw">return</span> syscall_bits.syscall4(.PWRITE, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, fd)), <span class="tok-builtin">@intFromPtr</span>(buf), count, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, -<span class="tok-number">1</span>)));</span>
+<span class="line" id="L184">}</span>
+<span class="line" id="L185"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pwrite</span>(fd: <span class="tok-type">i32</span>, buf: [*]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, count: <span class="tok-type">usize</span>, offset: <span class="tok-type">isize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L186">    <span class="tok-kw">return</span> syscall_bits.syscall4(.PWRITE, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, fd)), <span class="tok-builtin">@intFromPtr</span>(buf), count, <span class="tok-builtin">@bitCast</span>(offset));</span>
+<span class="line" id="L187">}</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(fd: <span class="tok-type">i32</span>, buf: [*]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, count: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L190">    <span class="tok-kw">return</span> syscall_bits.syscall4(.PREAD, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, fd)), <span class="tok-builtin">@intFromPtr</span>(buf), count, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, -<span class="tok-number">1</span>)));</span>
+<span class="line" id="L191">}</span>
+<span class="line" id="L192"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pread</span>(fd: <span class="tok-type">i32</span>, buf: [*]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, count: <span class="tok-type">usize</span>, offset: <span class="tok-type">isize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L193">    <span class="tok-kw">return</span> syscall_bits.syscall4(.PREAD, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, fd)), <span class="tok-builtin">@intFromPtr</span>(buf), count, <span class="tok-builtin">@bitCast</span>(offset));</span>
+<span class="line" id="L194">}</span>
+<span class="line" id="L195"></span>
+<span class="line" id="L196"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">open</span>(path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, flags: <span class="tok-type">u32</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L197">    <span class="tok-kw">return</span> syscall_bits.syscall2(.OPEN, <span class="tok-builtin">@intFromPtr</span>(path), <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, flags)));</span>
+<span class="line" id="L198">}</span>
+<span class="line" id="L199"></span>
+<span class="line" id="L200"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">openat</span>(dirfd: <span class="tok-type">i32</span>, path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, flags: <span class="tok-type">u32</span>, _: mode_t) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L201">    <span class="tok-comment">// we skip perms because only create supports perms</span>
+</span>
+<span class="line" id="L202">    <span class="tok-kw">if</span> (dirfd == AT.FDCWD) { <span class="tok-comment">// openat(AT_FDCWD, ...) == open(...)</span>
+</span>
+<span class="line" id="L203">        <span class="tok-kw">return</span> open(path, flags);</span>
+<span class="line" id="L204">    }</span>
+<span class="line" id="L205">    <span class="tok-kw">var</span> dir_path_buf: [std.fs.MAX_PATH_BYTES]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L206">    <span class="tok-kw">var</span> total_path_buf: [std.fs.MAX_PATH_BYTES + <span class="tok-number">1</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L207">    <span class="tok-kw">const</span> rc = fd2path(dirfd, &amp;dir_path_buf, std.fs.MAX_PATH_BYTES);</span>
+<span class="line" id="L208">    <span class="tok-kw">if</span> (rc != <span class="tok-number">0</span>) <span class="tok-kw">return</span> rc;</span>
+<span class="line" id="L209">    <span class="tok-kw">var</span> fba = std.heap.FixedBufferAllocator.init(&amp;total_path_buf);</span>
+<span class="line" id="L210">    <span class="tok-kw">var</span> alloc = fba.allocator();</span>
+<span class="line" id="L211">    <span class="tok-kw">const</span> dir_path = std.mem.span(<span class="tok-builtin">@as</span>([*:<span class="tok-number">0</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(&amp;dir_path_buf)));</span>
+<span class="line" id="L212">    <span class="tok-kw">const</span> total_path = std.fs.path.join(alloc, &amp;.{ dir_path, std.mem.span(path) }) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>; <span class="tok-comment">// the allocation shouldn't fail because it should not exceed MAX_PATH_BYTES</span>
+</span>
+<span class="line" id="L213">    fba.reset();</span>
+<span class="line" id="L214">    <span class="tok-kw">const</span> total_path_z = alloc.dupeZ(<span class="tok-type">u8</span>, total_path) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>; <span class="tok-comment">// should not exceed MAX_PATH_BYTES + 1</span>
+</span>
+<span class="line" id="L215">    <span class="tok-kw">return</span> open(total_path_z.ptr, flags);</span>
+<span class="line" id="L216">}</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fd2path</span>(fd: <span class="tok-type">i32</span>, buf: [*]<span class="tok-type">u8</span>, nbuf: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L219">    <span class="tok-kw">return</span> syscall_bits.syscall3(.FD2PATH, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, fd)), <span class="tok-builtin">@intFromPtr</span>(buf), nbuf);</span>
+<span class="line" id="L220">}</span>
+<span class="line" id="L221"></span>
+<span class="line" id="L222"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, omode: mode_t, perms: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L223">    <span class="tok-kw">return</span> syscall_bits.syscall3(.CREATE, <span class="tok-builtin">@intFromPtr</span>(path), <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, omode)), perms);</span>
+<span class="line" id="L224">}</span>
+<span class="line" id="L225"></span>
+<span class="line" id="L226"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">exit</span>(status: <span class="tok-type">u8</span>) <span class="tok-type">noreturn</span> {</span>
+<span class="line" id="L227">    <span class="tok-kw">if</span> (status == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L228">        exits(<span class="tok-null">null</span>);</span>
+<span class="line" id="L229">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L230">        <span class="tok-comment">// TODO plan9 does not have exit codes. You either exit with 0 or a string</span>
+</span>
+<span class="line" id="L231">        <span class="tok-kw">const</span> arr: [<span class="tok-number">1</span>:<span class="tok-number">0</span>]<span class="tok-type">u8</span> = .{status};</span>
+<span class="line" id="L232">        exits(&amp;arr);</span>
+<span class="line" id="L233">    }</span>
+<span class="line" id="L234">}</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">exits</span>(status: ?[*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">noreturn</span> {</span>
+<span class="line" id="L237">    _ = syscall_bits.syscall1(.EXITS, <span class="tok-kw">if</span> (status) |s| <span class="tok-builtin">@intFromPtr</span>(s) <span class="tok-kw">else</span> <span class="tok-number">0</span>);</span>
+<span class="line" id="L238">    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L239">}</span>
+<span class="line" id="L240"></span>
+<span class="line" id="L241"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">close</span>(fd: <span class="tok-type">i32</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L242">    <span class="tok-kw">return</span> syscall_bits.syscall1(.CLOSE, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, fd)));</span>
+<span class="line" id="L243">}</span>
+<span class="line" id="L244"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> mode_t = <span class="tok-type">i32</span>;</span>
+<span class="line" id="L245"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> O = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L246">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> READ = <span class="tok-number">0</span>; <span class="tok-comment">// open for read</span>
+</span>
+<span class="line" id="L247">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> RDONLY = <span class="tok-number">0</span>;</span>
+<span class="line" id="L248">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> WRITE = <span class="tok-number">1</span>; <span class="tok-comment">// write</span>
+</span>
+<span class="line" id="L249">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> WRONLY = <span class="tok-number">1</span>;</span>
+<span class="line" id="L250">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> RDWR = <span class="tok-number">2</span>; <span class="tok-comment">// read and write</span>
+</span>
+<span class="line" id="L251">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> EXEC = <span class="tok-number">3</span>; <span class="tok-comment">// execute, == read but check execute permission</span>
+</span>
+<span class="line" id="L252">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TRUNC = <span class="tok-number">16</span>; <span class="tok-comment">// or'ed in (except for exec), truncate file first</span>
+</span>
+<span class="line" id="L253">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> CEXEC = <span class="tok-number">32</span>; <span class="tok-comment">// or'ed in (per file descriptor), close on exec</span>
+</span>
+<span class="line" id="L254">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> RCLOSE = <span class="tok-number">64</span>; <span class="tok-comment">// or'ed in, remove on close</span>
+</span>
+<span class="line" id="L255">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> EXCL = <span class="tok-number">0x1000</span>; <span class="tok-comment">// or'ed in, exclusive create</span>
+</span>
+<span class="line" id="L256">};</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ExecData = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L259">    <span class="tok-kw">pub</span> <span class="tok-kw">extern</span> <span class="tok-kw">const</span> etext: <span class="tok-type">anyopaque</span>;</span>
+<span class="line" id="L260">    <span class="tok-kw">pub</span> <span class="tok-kw">extern</span> <span class="tok-kw">const</span> edata: <span class="tok-type">anyopaque</span>;</span>
+<span class="line" id="L261">    <span class="tok-kw">pub</span> <span class="tok-kw">extern</span> <span class="tok-kw">const</span> end: <span class="tok-type">anyopaque</span>;</span>
+<span class="line" id="L262">};</span>
+<span class="line" id="L263"></span>
+<span class="line" id="L264"><span class="tok-comment">/// Brk sets the system's idea of the lowest bss location not</span></span>
+<span class="line" id="L265"><span class="tok-comment">/// used by the program (called the break) to addr rounded up to</span></span>
+<span class="line" id="L266"><span class="tok-comment">/// the next multiple of 8 bytes.  Locations not less than addr</span></span>
+<span class="line" id="L267"><span class="tok-comment">/// and below the stack pointer may cause a memory violation if</span></span>
+<span class="line" id="L268"><span class="tok-comment">/// accessed. -9front brk(2)</span></span>
+<span class="line" id="L269"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">brk_</span>(addr: <span class="tok-type">usize</span>) <span class="tok-type">i32</span> {</span>
+<span class="line" id="L270">    <span class="tok-kw">return</span> <span class="tok-builtin">@intCast</span>(syscall_bits.syscall1(.BRK_, addr));</span>
+<span class="line" id="L271">}</span>
+<span class="line" id="L272"><span class="tok-kw">var</span> bloc: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L273"><span class="tok-kw">var</span> bloc_max: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L274"></span>
+<span class="line" id="L275"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sbrk</span>(n: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L276">    <span class="tok-kw">if</span> (bloc == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L277">        <span class="tok-comment">// we are at the start</span>
+</span>
+<span class="line" id="L278">        bloc = <span class="tok-builtin">@intFromPtr</span>(&amp;ExecData.end);</span>
+<span class="line" id="L279">        bloc_max = <span class="tok-builtin">@intFromPtr</span>(&amp;ExecData.end);</span>
+<span class="line" id="L280">    }</span>
+<span class="line" id="L281">    <span class="tok-kw">var</span> bl = std.mem.alignForward(<span class="tok-type">usize</span>, bloc, std.mem.page_size);</span>
+<span class="line" id="L282">    <span class="tok-kw">const</span> n_aligned = std.mem.alignForward(<span class="tok-type">usize</span>, n, std.mem.page_size);</span>
+<span class="line" id="L283">    <span class="tok-kw">if</span> (bl + n_aligned &gt; bloc_max) {</span>
+<span class="line" id="L284">        <span class="tok-comment">// we need to allocate</span>
+</span>
+<span class="line" id="L285">        <span class="tok-kw">if</span> (brk_(bl + n_aligned) &lt; <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L286">        bloc_max = bl + n_aligned;</span>
+<span class="line" id="L287">    }</span>
+<span class="line" id="L288">    bloc = bloc + n_aligned;</span>
+<span class="line" id="L289">    <span class="tok-kw">return</span> bl;</span>
+<span class="line" id="L290">}</span>
+<span class="line" id="L291"></span>
+</code></pre></body>
+</html>
