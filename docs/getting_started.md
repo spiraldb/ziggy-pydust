@@ -29,7 +29,7 @@ poetry add -G dev ziggy-pydust
 [tool.poetry]
 name = "your-package"
 packages = [ { include = "your-module" } ]
-+ include = [ { path = "src/", format = "sdist" }, { path = "your-module/*.so", format = "wheel } ]
++ include = [ { path = "src/", format = "sdist" }, { path = "your-module/*.so", format = "wheel" } ]
 
 + [tool.poetry.build]
 + script = "build.py"
