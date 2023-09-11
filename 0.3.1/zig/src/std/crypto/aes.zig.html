@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/aes.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-kw">const</span> has_aesni = std.Target.x86.featureSetHas(builtin.cpu.features, .aes);</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> has_avx = std.Target.x86.featureSetHas(builtin.cpu.features, .avx);</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> has_armaes = std.Target.aarch64.featureSetHas(builtin.cpu.features, .aes);</span>
+<span class="line" id="L8"><span class="tok-comment">// C backend doesn't currently support passing vectors to inline asm.</span>
+</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> impl = <span class="tok-kw">if</span> (builtin.cpu.arch == .x86_64 <span class="tok-kw">and</span> builtin.zig_backend != .stage2_c <span class="tok-kw">and</span> has_aesni <span class="tok-kw">and</span> has_avx) impl: {</span>
+<span class="line" id="L10">    <span class="tok-kw">break</span> :impl <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;aes/aesni.zig&quot;</span>);</span>
+<span class="line" id="L11">} <span class="tok-kw">else</span> <span class="tok-kw">if</span> (builtin.cpu.arch == .aarch64 <span class="tok-kw">and</span> builtin.zig_backend != .stage2_c <span class="tok-kw">and</span> has_armaes)</span>
+<span class="line" id="L12">impl: {</span>
+<span class="line" id="L13">    <span class="tok-kw">break</span> :impl <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;aes/armcrypto.zig&quot;</span>);</span>
+<span class="line" id="L14">} <span class="tok-kw">else</span> impl: {</span>
+<span class="line" id="L15">    <span class="tok-kw">break</span> :impl <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;aes/soft.zig&quot;</span>);</span>
+<span class="line" id="L16">};</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-comment">/// `true` if AES is backed by hardware (AES-NI on x86_64, ARM Crypto Extensions on AArch64).</span></span>
+<span class="line" id="L19"><span class="tok-comment">/// Software implementations are much slower, and should be avoided if possible.</span></span>
+<span class="line" id="L20"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> has_hardware_support =</span>
+<span class="line" id="L21">    (builtin.cpu.arch == .x86_64 <span class="tok-kw">and</span> has_aesni <span class="tok-kw">and</span> has_avx) <span class="tok-kw">or</span></span>
+<span class="line" id="L22">    (builtin.cpu.arch == .aarch64 <span class="tok-kw">and</span> has_armaes);</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Block = impl.Block;</span>
+<span class="line" id="L25"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AesEncryptCtx = impl.AesEncryptCtx;</span>
+<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AesDecryptCtx = impl.AesDecryptCtx;</span>
+<span class="line" id="L27"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aes128 = impl.Aes128;</span>
+<span class="line" id="L28"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aes256 = impl.Aes256;</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30"><span class="tok-kw">test</span> <span class="tok-str">&quot;ctr&quot;</span> {</span>
+<span class="line" id="L31">    <span class="tok-comment">// NIST SP 800-38A pp 55-58</span>
+</span>
+<span class="line" id="L32">    <span class="tok-kw">const</span> ctr = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;modes.zig&quot;</span>).ctr;</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">    <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x2b</span>, <span class="tok-number">0x7e</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x28</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0xa6</span>, <span class="tok-number">0xab</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0xcf</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x3c</span> };</span>
+<span class="line" id="L35">    <span class="tok-kw">const</span> iv = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0xf0</span>, <span class="tok-number">0xf1</span>, <span class="tok-number">0xf2</span>, <span class="tok-number">0xf3</span>, <span class="tok-number">0xf4</span>, <span class="tok-number">0xf5</span>, <span class="tok-number">0xf6</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0xf8</span>, <span class="tok-number">0xf9</span>, <span class="tok-number">0xfa</span>, <span class="tok-number">0xfb</span>, <span class="tok-number">0xfc</span>, <span class="tok-number">0xfd</span>, <span class="tok-number">0xfe</span>, <span class="tok-number">0xff</span> };</span>
+<span class="line" id="L36">    <span class="tok-kw">const</span> in = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L37">        <span class="tok-number">0x6b</span>, <span class="tok-number">0xc1</span>, <span class="tok-number">0xbe</span>, <span class="tok-number">0xe2</span>, <span class="tok-number">0x2e</span>, <span class="tok-number">0x40</span>, <span class="tok-number">0x9f</span>, <span class="tok-number">0x96</span>, <span class="tok-number">0xe9</span>, <span class="tok-number">0x3d</span>, <span class="tok-number">0x7e</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x73</span>, <span class="tok-number">0x93</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0x2a</span>,</span>
+<span class="line" id="L38">        <span class="tok-number">0xae</span>, <span class="tok-number">0x2d</span>, <span class="tok-number">0x8a</span>, <span class="tok-number">0x57</span>, <span class="tok-number">0x1e</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0xac</span>, <span class="tok-number">0x9c</span>, <span class="tok-number">0x9e</span>, <span class="tok-number">0xb7</span>, <span class="tok-number">0x6f</span>, <span class="tok-number">0xac</span>, <span class="tok-number">0x45</span>, <span class="tok-number">0xaf</span>, <span class="tok-number">0x8e</span>, <span class="tok-number">0x51</span>,</span>
+<span class="line" id="L39">        <span class="tok-number">0x30</span>, <span class="tok-number">0xc8</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x46</span>, <span class="tok-number">0xa3</span>, <span class="tok-number">0x5c</span>, <span class="tok-number">0xe4</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0xe5</span>, <span class="tok-number">0xfb</span>, <span class="tok-number">0xc1</span>, <span class="tok-number">0x19</span>, <span class="tok-number">0x1a</span>, <span class="tok-number">0x0a</span>, <span class="tok-number">0x52</span>, <span class="tok-number">0xef</span>,</span>
+<span class="line" id="L40">        <span class="tok-number">0xf6</span>, <span class="tok-number">0x9f</span>, <span class="tok-number">0x24</span>, <span class="tok-number">0x45</span>, <span class="tok-number">0xdf</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x9b</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0xad</span>, <span class="tok-number">0x2b</span>, <span class="tok-number">0x41</span>, <span class="tok-number">0x7b</span>, <span class="tok-number">0xe6</span>, <span class="tok-number">0x6c</span>, <span class="tok-number">0x37</span>, <span class="tok-number">0x10</span>,</span>
+<span class="line" id="L41">    };</span>
+<span class="line" id="L42">    <span class="tok-kw">const</span> exp_out = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L43">        <span class="tok-number">0x87</span>, <span class="tok-number">0x4d</span>, <span class="tok-number">0x61</span>, <span class="tok-number">0x91</span>, <span class="tok-number">0xb6</span>, <span class="tok-number">0x20</span>, <span class="tok-number">0xe3</span>, <span class="tok-number">0x26</span>, <span class="tok-number">0x1b</span>, <span class="tok-number">0xef</span>, <span class="tok-number">0x68</span>, <span class="tok-number">0x64</span>, <span class="tok-number">0x99</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0xb6</span>, <span class="tok-number">0xce</span>,</span>
+<span class="line" id="L44">        <span class="tok-number">0x98</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0xf6</span>, <span class="tok-number">0x6b</span>, <span class="tok-number">0x79</span>, <span class="tok-number">0x70</span>, <span class="tok-number">0xfd</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0x86</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x7b</span>, <span class="tok-number">0xb9</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xfd</span>, <span class="tok-number">0xff</span>,</span>
+<span class="line" id="L45">        <span class="tok-number">0x5a</span>, <span class="tok-number">0xe4</span>, <span class="tok-number">0xdf</span>, <span class="tok-number">0x3e</span>, <span class="tok-number">0xdb</span>, <span class="tok-number">0xd5</span>, <span class="tok-number">0xd3</span>, <span class="tok-number">0x5e</span>, <span class="tok-number">0x5b</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0xb0</span>, <span class="tok-number">0x3e</span>, <span class="tok-number">0xab</span>,</span>
+<span class="line" id="L46">        <span class="tok-number">0x1e</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x1d</span>, <span class="tok-number">0xda</span>, <span class="tok-number">0x2f</span>, <span class="tok-number">0xbe</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0xd1</span>, <span class="tok-number">0x79</span>, <span class="tok-number">0x21</span>, <span class="tok-number">0x70</span>, <span class="tok-number">0xa0</span>, <span class="tok-number">0xf3</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x9c</span>, <span class="tok-number">0xee</span>,</span>
+<span class="line" id="L47">    };</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-kw">var</span> out: [exp_out.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L50">    <span class="tok-kw">var</span> ctx = Aes128.initEnc(key);</span>
+<span class="line" id="L51">    ctr(AesEncryptCtx(Aes128), ctx, out[<span class="tok-number">0</span>..], in[<span class="tok-number">0</span>..], iv, std.builtin.Endian.Big);</span>
+<span class="line" id="L52">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, exp_out[<span class="tok-number">0</span>..], out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L53">}</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55"><span class="tok-kw">test</span> <span class="tok-str">&quot;encrypt&quot;</span> {</span>
+<span class="line" id="L56">    <span class="tok-comment">// Appendix B</span>
+</span>
+<span class="line" id="L57">    {</span>
+<span class="line" id="L58">        <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x2b</span>, <span class="tok-number">0x7e</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x28</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0xa6</span>, <span class="tok-number">0xab</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0xcf</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x3c</span> };</span>
+<span class="line" id="L59">        <span class="tok-kw">const</span> in = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x32</span>, <span class="tok-number">0x43</span>, <span class="tok-number">0xf6</span>, <span class="tok-number">0xa8</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x5a</span>, <span class="tok-number">0x30</span>, <span class="tok-number">0x8d</span>, <span class="tok-number">0x31</span>, <span class="tok-number">0x31</span>, <span class="tok-number">0x98</span>, <span class="tok-number">0xa2</span>, <span class="tok-number">0xe0</span>, <span class="tok-number">0x37</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x34</span> };</span>
+<span class="line" id="L60">        <span class="tok-kw">const</span> exp_out = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x39</span>, <span class="tok-number">0x25</span>, <span class="tok-number">0x84</span>, <span class="tok-number">0x1d</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0xdc</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0xfb</span>, <span class="tok-number">0xdc</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x85</span>, <span class="tok-number">0x97</span>, <span class="tok-number">0x19</span>, <span class="tok-number">0x6a</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x32</span> };</span>
+<span class="line" id="L61"></span>
+<span class="line" id="L62">        <span class="tok-kw">var</span> out: [exp_out.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L63">        <span class="tok-kw">var</span> ctx = Aes128.initEnc(key);</span>
+<span class="line" id="L64">        ctx.encrypt(out[<span class="tok-number">0</span>..], in[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L65">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, exp_out[<span class="tok-number">0</span>..], out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L66">    }</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">    <span class="tok-comment">// Appendix C.3</span>
+</span>
+<span class="line" id="L69">    {</span>
+<span class="line" id="L70">        <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L71">            <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x0a</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x0c</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0x0e</span>, <span class="tok-number">0x0f</span>,</span>
+<span class="line" id="L72">            <span class="tok-number">0x10</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x12</span>, <span class="tok-number">0x13</span>, <span class="tok-number">0x14</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x19</span>, <span class="tok-number">0x1a</span>, <span class="tok-number">0x1b</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x1d</span>, <span class="tok-number">0x1e</span>, <span class="tok-number">0x1f</span>,</span>
+<span class="line" id="L73">        };</span>
+<span class="line" id="L74">        <span class="tok-kw">const</span> in = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x22</span>, <span class="tok-number">0x33</span>, <span class="tok-number">0x44</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x66</span>, <span class="tok-number">0x77</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x99</span>, <span class="tok-number">0xaa</span>, <span class="tok-number">0xbb</span>, <span class="tok-number">0xcc</span>, <span class="tok-number">0xdd</span>, <span class="tok-number">0xee</span>, <span class="tok-number">0xff</span> };</span>
+<span class="line" id="L75">        <span class="tok-kw">const</span> exp_out = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x8e</span>, <span class="tok-number">0xa2</span>, <span class="tok-number">0xb7</span>, <span class="tok-number">0xca</span>, <span class="tok-number">0x51</span>, <span class="tok-number">0x67</span>, <span class="tok-number">0x45</span>, <span class="tok-number">0xbf</span>, <span class="tok-number">0xea</span>, <span class="tok-number">0xfc</span>, <span class="tok-number">0x49</span>, <span class="tok-number">0x90</span>, <span class="tok-number">0x4b</span>, <span class="tok-number">0x49</span>, <span class="tok-number">0x60</span>, <span class="tok-number">0x89</span> };</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77">        <span class="tok-kw">var</span> out: [exp_out.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L78">        <span class="tok-kw">var</span> ctx = Aes256.initEnc(key);</span>
+<span class="line" id="L79">        ctx.encrypt(out[<span class="tok-number">0</span>..], in[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L80">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, exp_out[<span class="tok-number">0</span>..], out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82">}</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84"><span class="tok-kw">test</span> <span class="tok-str">&quot;decrypt&quot;</span> {</span>
+<span class="line" id="L85">    <span class="tok-comment">// Appendix B</span>
+</span>
+<span class="line" id="L86">    {</span>
+<span class="line" id="L87">        <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x2b</span>, <span class="tok-number">0x7e</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x28</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0xa6</span>, <span class="tok-number">0xab</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0xcf</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x3c</span> };</span>
+<span class="line" id="L88">        <span class="tok-kw">const</span> in = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x39</span>, <span class="tok-number">0x25</span>, <span class="tok-number">0x84</span>, <span class="tok-number">0x1d</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0xdc</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0xfb</span>, <span class="tok-number">0xdc</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x85</span>, <span class="tok-number">0x97</span>, <span class="tok-number">0x19</span>, <span class="tok-number">0x6a</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x32</span> };</span>
+<span class="line" id="L89">        <span class="tok-kw">const</span> exp_out = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x32</span>, <span class="tok-number">0x43</span>, <span class="tok-number">0xf6</span>, <span class="tok-number">0xa8</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x5a</span>, <span class="tok-number">0x30</span>, <span class="tok-number">0x8d</span>, <span class="tok-number">0x31</span>, <span class="tok-number">0x31</span>, <span class="tok-number">0x98</span>, <span class="tok-number">0xa2</span>, <span class="tok-number">0xe0</span>, <span class="tok-number">0x37</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x34</span> };</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91">        <span class="tok-kw">var</span> out: [exp_out.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L92">        <span class="tok-kw">var</span> ctx = Aes128.initDec(key);</span>
+<span class="line" id="L93">        ctx.decrypt(out[<span class="tok-number">0</span>..], in[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L94">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, exp_out[<span class="tok-number">0</span>..], out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L95">    }</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">    <span class="tok-comment">// Appendix C.3</span>
+</span>
+<span class="line" id="L98">    {</span>
+<span class="line" id="L99">        <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L100">            <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x0a</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x0c</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0x0e</span>, <span class="tok-number">0x0f</span>,</span>
+<span class="line" id="L101">            <span class="tok-number">0x10</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x12</span>, <span class="tok-number">0x13</span>, <span class="tok-number">0x14</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x19</span>, <span class="tok-number">0x1a</span>, <span class="tok-number">0x1b</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x1d</span>, <span class="tok-number">0x1e</span>, <span class="tok-number">0x1f</span>,</span>
+<span class="line" id="L102">        };</span>
+<span class="line" id="L103">        <span class="tok-kw">const</span> in = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x8e</span>, <span class="tok-number">0xa2</span>, <span class="tok-number">0xb7</span>, <span class="tok-number">0xca</span>, <span class="tok-number">0x51</span>, <span class="tok-number">0x67</span>, <span class="tok-number">0x45</span>, <span class="tok-number">0xbf</span>, <span class="tok-number">0xea</span>, <span class="tok-number">0xfc</span>, <span class="tok-number">0x49</span>, <span class="tok-number">0x90</span>, <span class="tok-number">0x4b</span>, <span class="tok-number">0x49</span>, <span class="tok-number">0x60</span>, <span class="tok-number">0x89</span> };</span>
+<span class="line" id="L104">        <span class="tok-kw">const</span> exp_out = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x22</span>, <span class="tok-number">0x33</span>, <span class="tok-number">0x44</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x66</span>, <span class="tok-number">0x77</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x99</span>, <span class="tok-number">0xaa</span>, <span class="tok-number">0xbb</span>, <span class="tok-number">0xcc</span>, <span class="tok-number">0xdd</span>, <span class="tok-number">0xee</span>, <span class="tok-number">0xff</span> };</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106">        <span class="tok-kw">var</span> out: [exp_out.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L107">        <span class="tok-kw">var</span> ctx = Aes256.initDec(key);</span>
+<span class="line" id="L108">        ctx.decrypt(out[<span class="tok-number">0</span>..], in[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L109">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, exp_out[<span class="tok-number">0</span>..], out[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L110">    }</span>
+<span class="line" id="L111">}</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113"><span class="tok-kw">test</span> <span class="tok-str">&quot;expand 128-bit key&quot;</span> {</span>
+<span class="line" id="L114">    <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x2b</span>, <span class="tok-number">0x7e</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x28</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0xa6</span>, <span class="tok-number">0xab</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0xcf</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x3c</span> };</span>
+<span class="line" id="L115">    <span class="tok-kw">const</span> exp_enc = [_]*<span class="tok-kw">const</span> [<span class="tok-number">32</span>:<span class="tok-number">0</span>]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L116">        <span class="tok-str">&quot;2b7e151628aed2a6abf7158809cf4f3c&quot;</span>, <span class="tok-str">&quot;a0fafe1788542cb123a339392a6c7605&quot;</span>, <span class="tok-str">&quot;f2c295f27a96b9435935807a7359f67f&quot;</span>, <span class="tok-str">&quot;3d80477d4716fe3e1e237e446d7a883b&quot;</span>, <span class="tok-str">&quot;ef44a541a8525b7fb671253bdb0bad00&quot;</span>, <span class="tok-str">&quot;d4d1c6f87c839d87caf2b8bc11f915bc&quot;</span>, <span class="tok-str">&quot;6d88a37a110b3efddbf98641ca0093fd&quot;</span>, <span class="tok-str">&quot;4e54f70e5f5fc9f384a64fb24ea6dc4f&quot;</span>, <span class="tok-str">&quot;ead27321b58dbad2312bf5607f8d292f&quot;</span>, <span class="tok-str">&quot;ac7766f319fadc2128d12941575c006e&quot;</span>, <span class="tok-str">&quot;d014f9a8c9ee2589e13f0cc8b6630ca6&quot;</span>,</span>
+<span class="line" id="L117">    };</span>
+<span class="line" id="L118">    <span class="tok-kw">const</span> exp_dec = [_]*<span class="tok-kw">const</span> [<span class="tok-number">32</span>:<span class="tok-number">0</span>]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L119">        <span class="tok-str">&quot;d014f9a8c9ee2589e13f0cc8b6630ca6&quot;</span>, <span class="tok-str">&quot;0c7b5a631319eafeb0398890664cfbb4&quot;</span>, <span class="tok-str">&quot;df7d925a1f62b09da320626ed6757324&quot;</span>, <span class="tok-str">&quot;12c07647c01f22c7bc42d2f37555114a&quot;</span>, <span class="tok-str">&quot;6efcd876d2df54807c5df034c917c3b9&quot;</span>, <span class="tok-str">&quot;6ea30afcbc238cf6ae82a4b4b54a338d&quot;</span>, <span class="tok-str">&quot;90884413d280860a12a128421bc89739&quot;</span>, <span class="tok-str">&quot;7c1f13f74208c219c021ae480969bf7b&quot;</span>, <span class="tok-str">&quot;cc7505eb3e17d1ee82296c51c9481133&quot;</span>, <span class="tok-str">&quot;2b3708a7f262d405bc3ebdbf4b617d62&quot;</span>, <span class="tok-str">&quot;2b7e151628aed2a6abf7158809cf4f3c&quot;</span>,</span>
+<span class="line" id="L120">    };</span>
+<span class="line" id="L121">    <span class="tok-kw">const</span> enc = Aes128.initEnc(key);</span>
+<span class="line" id="L122">    <span class="tok-kw">const</span> dec = Aes128.initDec(key);</span>
+<span class="line" id="L123">    <span class="tok-kw">var</span> exp: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L124"></span>
+<span class="line" id="L125">    <span class="tok-kw">for</span> (enc.key_schedule.round_keys, <span class="tok-number">0</span>..) |round_key, i| {</span>
+<span class="line" id="L126">        _ = <span class="tok-kw">try</span> std.fmt.hexToBytes(&amp;exp, exp_enc[i]);</span>
+<span class="line" id="L127">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;exp, &amp;round_key.toBytes());</span>
+<span class="line" id="L128">    }</span>
+<span class="line" id="L129">    <span class="tok-kw">for</span> (dec.key_schedule.round_keys, <span class="tok-number">0</span>..) |round_key, i| {</span>
+<span class="line" id="L130">        _ = <span class="tok-kw">try</span> std.fmt.hexToBytes(&amp;exp, exp_dec[i]);</span>
+<span class="line" id="L131">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;exp, &amp;round_key.toBytes());</span>
+<span class="line" id="L132">    }</span>
+<span class="line" id="L133">}</span>
+<span class="line" id="L134"></span>
+<span class="line" id="L135"><span class="tok-kw">test</span> <span class="tok-str">&quot;expand 256-bit key&quot;</span> {</span>
+<span class="line" id="L136">    <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L137">        <span class="tok-number">0x60</span>, <span class="tok-number">0x3d</span>, <span class="tok-number">0xeb</span>, <span class="tok-number">0x10</span>,</span>
+<span class="line" id="L138">        <span class="tok-number">0x15</span>, <span class="tok-number">0xca</span>, <span class="tok-number">0x71</span>, <span class="tok-number">0xbe</span>,</span>
+<span class="line" id="L139">        <span class="tok-number">0x2b</span>, <span class="tok-number">0x73</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0xf0</span>,</span>
+<span class="line" id="L140">        <span class="tok-number">0x85</span>, <span class="tok-number">0x7d</span>, <span class="tok-number">0x77</span>, <span class="tok-number">0x81</span>,</span>
+<span class="line" id="L141">        <span class="tok-number">0x1f</span>, <span class="tok-number">0x35</span>, <span class="tok-number">0x2c</span>, <span class="tok-number">0x07</span>,</span>
+<span class="line" id="L142">        <span class="tok-number">0x3b</span>, <span class="tok-number">0x61</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0xd7</span>,</span>
+<span class="line" id="L143">        <span class="tok-number">0x2d</span>, <span class="tok-number">0x98</span>, <span class="tok-number">0x10</span>, <span class="tok-number">0xa3</span>,</span>
+<span class="line" id="L144">        <span class="tok-number">0x09</span>, <span class="tok-number">0x14</span>, <span class="tok-number">0xdf</span>, <span class="tok-number">0xf4</span>,</span>
+<span class="line" id="L145">    };</span>
+<span class="line" id="L146">    <span class="tok-kw">const</span> exp_enc = [_]*<span class="tok-kw">const</span> [<span class="tok-number">32</span>:<span class="tok-number">0</span>]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L147">        <span class="tok-str">&quot;603deb1015ca71be2b73aef0857d7781&quot;</span>, <span class="tok-str">&quot;1f352c073b6108d72d9810a30914dff4&quot;</span>, <span class="tok-str">&quot;9ba354118e6925afa51a8b5f2067fcde&quot;</span>,</span>
+<span class="line" id="L148">        <span class="tok-str">&quot;a8b09c1a93d194cdbe49846eb75d5b9a&quot;</span>, <span class="tok-str">&quot;d59aecb85bf3c917fee94248de8ebe96&quot;</span>, <span class="tok-str">&quot;b5a9328a2678a647983122292f6c79b3&quot;</span>,</span>
+<span class="line" id="L149">        <span class="tok-str">&quot;812c81addadf48ba24360af2fab8b464&quot;</span>, <span class="tok-str">&quot;98c5bfc9bebd198e268c3ba709e04214&quot;</span>, <span class="tok-str">&quot;68007bacb2df331696e939e46c518d80&quot;</span>,</span>
+<span class="line" id="L150">        <span class="tok-str">&quot;c814e20476a9fb8a5025c02d59c58239&quot;</span>, <span class="tok-str">&quot;de1369676ccc5a71fa2563959674ee15&quot;</span>, <span class="tok-str">&quot;5886ca5d2e2f31d77e0af1fa27cf73c3&quot;</span>,</span>
+<span class="line" id="L151">        <span class="tok-str">&quot;749c47ab18501ddae2757e4f7401905a&quot;</span>, <span class="tok-str">&quot;cafaaae3e4d59b349adf6acebd10190d&quot;</span>, <span class="tok-str">&quot;fe4890d1e6188d0b046df344706c631e&quot;</span>,</span>
+<span class="line" id="L152">    };</span>
+<span class="line" id="L153">    <span class="tok-kw">const</span> exp_dec = [_]*<span class="tok-kw">const</span> [<span class="tok-number">32</span>:<span class="tok-number">0</span>]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L154">        <span class="tok-str">&quot;fe4890d1e6188d0b046df344706c631e&quot;</span>, <span class="tok-str">&quot;ada23f4963e23b2455427c8a5c709104&quot;</span>, <span class="tok-str">&quot;57c96cf6074f07c0706abb07137f9241&quot;</span>,</span>
+<span class="line" id="L155">        <span class="tok-str">&quot;b668b621ce40046d36a047ae0932ed8e&quot;</span>, <span class="tok-str">&quot;34ad1e4450866b367725bcc763152946&quot;</span>, <span class="tok-str">&quot;32526c367828b24cf8e043c33f92aa20&quot;</span>,</span>
+<span class="line" id="L156">        <span class="tok-str">&quot;c440b289642b757227a3d7f114309581&quot;</span>, <span class="tok-str">&quot;d669a7334a7ade7a80c8f18fc772e9e3&quot;</span>, <span class="tok-str">&quot;25ba3c22a06bc7fb4388a28333934270&quot;</span>,</span>
+<span class="line" id="L157">        <span class="tok-str">&quot;54fb808b9c137949cab22ff547ba186c&quot;</span>, <span class="tok-str">&quot;6c3d632985d1fbd9e3e36578701be0f3&quot;</span>, <span class="tok-str">&quot;4a7459f9c8e8f9c256a156bc8d083799&quot;</span>,</span>
+<span class="line" id="L158">        <span class="tok-str">&quot;42107758e9ec98f066329ea193f8858b&quot;</span>, <span class="tok-str">&quot;8ec6bff6829ca03b9e49af7edba96125&quot;</span>, <span class="tok-str">&quot;603deb1015ca71be2b73aef0857d7781&quot;</span>,</span>
+<span class="line" id="L159">    };</span>
+<span class="line" id="L160">    <span class="tok-kw">const</span> enc = Aes256.initEnc(key);</span>
+<span class="line" id="L161">    <span class="tok-kw">const</span> dec = Aes256.initDec(key);</span>
+<span class="line" id="L162">    <span class="tok-kw">var</span> exp: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164">    <span class="tok-kw">for</span> (enc.key_schedule.round_keys, <span class="tok-number">0</span>..) |round_key, i| {</span>
+<span class="line" id="L165">        _ = <span class="tok-kw">try</span> std.fmt.hexToBytes(&amp;exp, exp_enc[i]);</span>
+<span class="line" id="L166">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;exp, &amp;round_key.toBytes());</span>
+<span class="line" id="L167">    }</span>
+<span class="line" id="L168">    <span class="tok-kw">for</span> (dec.key_schedule.round_keys, <span class="tok-number">0</span>..) |round_key, i| {</span>
+<span class="line" id="L169">        _ = <span class="tok-kw">try</span> std.fmt.hexToBytes(&amp;exp, exp_dec[i]);</span>
+<span class="line" id="L170">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;exp, &amp;round_key.toBytes());</span>
+<span class="line" id="L171">    }</span>
+<span class="line" id="L172">}</span>
+<span class="line" id="L173"></span>
+</code></pre></body>
+</html>
