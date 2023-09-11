@@ -37,7 +37,7 @@ pub const PythonModuleOptions = struct {
                 break;
             }
         }
-        return self.name[short_name_idx.. :0];
+        return self.name[short_name_idx + 1 .. :0];
     }
 };
 
