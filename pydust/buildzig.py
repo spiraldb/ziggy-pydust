@@ -223,6 +223,17 @@ def generate_build_zig(build_zig_file):
         )
 
 
+def generate_pydust_build_zig(build_zig_file):
+    """Generate the supporting pydust.build.zig file exporting functions for configuring Python extensions."""
+    conf = config.load()
+
+    with open(build_zig_file, "w+") as f:
+        b = Writer(f)
+
+        b.writeln('const std = @import("std");')
+        b.writeln()
+
+
 class Writer:
     def __init__(self, fileobj: TextIO) -> None:
         self.f = fileobj

@@ -11,6 +11,7 @@
 // limitations under the License.
 
 const std = @import("std");
+const pydust = @import("pydust.build.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
