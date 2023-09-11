@@ -90,7 +90,6 @@ def generate_build_zig(build_zig_file):
                     _ = pydust.addPythonModule(.{{
                         .name = "{ext_module.name}",
                         .root_source_file = .{{ .path = "{ext_module.root}" }},
-                        .main_pkg_path = .{{ .path = "{conf.root}" }},
                         .limited_api = {str(ext_module.limited_api).lower()},
                         .target = target,
                         .optimize = optimize,

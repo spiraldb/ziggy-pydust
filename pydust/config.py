@@ -44,7 +44,6 @@ class ExtModule(BaseModel):
 class ToolPydust(BaseModel):
     """Model for tool.pydust section of a pyproject.toml."""
 
-    root: str = "src/"
     build_zig: str = "build.zig"
 
     # When true, python module definitions are configured by the user in their own build.zig file.
