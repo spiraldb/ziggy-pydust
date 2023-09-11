@@ -16,7 +16,7 @@ import functools
 import os
 
 import tomllib
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator, root_validator
 
 
 class ExtModule(BaseModel):
@@ -45,11 +45,23 @@ class ToolPydust(BaseModel):
     """Model for tool.pydust section of a pyproject.toml."""
 
     root: str = "src/"
-
     build_zig: str = "build.zig"
+
+    # When true, python module definitions are configured by the user in their own build.zig file.
+    # When false, ext_modules is used to auto-generated a build.zig file.
+    self_managed: bool = False
 
     # We rename pluralized config sections so the pyproject.toml reads better.
     ext_modules: list[ExtModule] = Field(alias="ext_module", default_factory=list)
+
+    @property
+    def pydust_build_zig(self):
+        return os.path.join(os.path.dirname(self.build_zig), "pydust.build.zig")
+
+    @model_validator(mode="after")
+    def validate_atts(self):
+        if self.self_managed and self.ext_modules:
+            raise ValueError("ext_modules cannot be defined when using Pydust in self-managed mode.")
 
 
 @functools.cache

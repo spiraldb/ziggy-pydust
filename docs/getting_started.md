@@ -67,3 +67,47 @@ able to import your module from within `poetry shell` or `poetry run pytest`.
 ```python title="test/test_hello.py"
 --8<-- "test/test_hello.py:ex"
 ```
+
+## Self-managed Mode
+
+Pydust makes it easy to get started building a Zig extension for Python. But when your use-case becomes sufficiently
+complex, you may wish to have full control of your `build.zig` file.
+
+By default, Pydust will generated two files:
+
+* `pydust.build.zig` - a Zig file used for bootstrapping Pydust and configuring Python modules.
+* `build.zig` - a valid Zig build configuration based on the `tool.pydust.ext_module` entries in your `pyproject.toml`.
+
+In self-managed mode, Pydust will only generate the `pydust.build.zig` file and your are free to manage your own `build.zig`.
+To enable this mode, set the flag in your `pyproject.toml` and remove any `ext_module` entries.
+
+```diff title="pyproject.toml"
+[tools.pydust]
++ self_managed = true
+
+- [[tool.pydust.ext_module]]
+- name = "example.hello"
+- root = "example/hello.zig"
+```
+
+You can then configure Python modules from a custom `build.zig` file:
+
+```zig title="build.zig"
+const std = @import("std");
+const py = @import("./pydust.build.zig");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    // Each Python module consists of a library_step and a test_step
+    const module = pydust.addPythonModule(.{
+        .name = "example.hello",
+        .root_source_file = .{ .path = "example/hello.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    module.library_step.addModule(..., ...);
+    module.test_step.addModule(..., ...);
+}
+```

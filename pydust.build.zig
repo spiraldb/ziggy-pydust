@@ -14,20 +14,39 @@ const Step = std.Build.Step;
 const LazyPath = std.Build.LazyPath;
 const GeneratedFile = std.Build.GeneratedFile;
 
-pub const PydustOptions = struct {};
+pub const PydustOptions = struct {
+    // The path to your Python executable
+    python_exe: []const u8 = "python3",
+
+    // Optionally pass your test_step and we will hook up the Pydust Zig tests.
+    test_step: ?*Step = null,
+};
 
 pub const PythonModuleOptions = struct {
     name: [:0]const u8,
-    // TODO(ngates): compute short name from full name
-    short_name: [:0]const u8,
     root_source_file: std.Build.LazyPath,
     limited_api: bool = true,
     target: std.zig.CrossTarget,
     optimize: std.builtin.Mode,
     main_pkg_path: ?std.Build.LazyPath = null,
+
+    pub fn short_name(self: *const PythonModuleOptions) [:0]const u8 {
+        var short_name_idx = self.name.len - 1;
+        while (short_name_idx > 0) : (short_name_idx -= 1) {
+            if (self.name[short_name_idx] == '.') {
+                break;
+            }
+        }
+        return self.name[short_name_idx.. :0];
+    }
 };
 
-/// Configure a Pydust step
+pub const PythonModule = struct {
+    library_step: *std.build.CompileStep,
+    test_step: *std.build.CompileStep,
+};
+
+/// Configure a Pydust step in the build. From this, you can define Python modules.
 pub fn addPydust(b: *std.Build, options: PydustOptions) *PydustStep {
     return PydustStep.add(b, options);
 }
@@ -37,11 +56,15 @@ pub const PydustStep = struct {
     allocator: std.mem.Allocator,
     options: PydustOptions,
 
+    test_build_step: *Step,
+
     pydust_source_file: GeneratedFile,
     python_include_dir: GeneratedFile,
     python_library_dir: GeneratedFile,
 
     pub fn add(b: *std.Build, options: PydustOptions) *PydustStep {
+        const test_build_step = b.step("pydust-test-build", "Build pydust test runners");
+
         var pydust = b.allocator.create(PydustStep) catch @panic("OOM");
         pydust.* = .{
             .step = Step.init(.{
@@ -52,6 +75,7 @@ pub const PydustStep = struct {
             }),
             .allocator = b.allocator,
             .options = options,
+            .test_build_step = test_build_step,
             .pydust_source_file = .{ .step = &pydust.step },
             .python_include_dir = .{ .step = &pydust.step },
             .python_library_dir = .{ .step = &pydust.step },
@@ -59,17 +83,22 @@ pub const PydustStep = struct {
         return pydust;
     }
 
-    pub fn addPythonModule(self: *PydustStep, options: PythonModuleOptions) *std.build.CompileStep {
+    /// Adds a Pydust Python module. The resulting library and test binaries can be further configured with
+    /// additional dependencies or modules.
+    pub fn addPythonModule(self: *PydustStep, options: PythonModuleOptions) PythonModule {
         const b = self.step.owner;
+
+        const short_name = options.short_name();
 
         const pyconf = b.addOptions();
         pyconf.addOption([:0]const u8, "module_name", options.name);
         pyconf.addOption(bool, "limited_api", options.limited_api);
+        // TODO(ngates): lookup from Python
         pyconf.addOption([:0]const u8, "hexversion", "0x030b05f0");
 
         // Configure and install the Python module shared library
         const lib = b.addSharedLibrary(.{
-            .name = options.name,
+            .name = short_name,
             .root_source_file = options.root_source_file,
             .target = options.target,
             .optimize = options.optimize,
@@ -89,14 +118,14 @@ pub const PydustStep = struct {
             lib.getEmittedBin(),
             // TODO(ngates): find this somehow?
             .{ .custom = ".." }, // Relative to project root: zig-out/../
-            "example/exceptions.abi3.so",
+            libraryDestRelPath(self.allocator, options) catch @panic("OOM"),
         );
         b.getInstallStep().dependOn(&install.step);
 
         // Configure a test runner for the module
         const libtest = b.addTest(.{
-            .root_source_file = .{ .path = "example/exceptions.zig" },
-            .main_pkg_path = .{ .path = "example/" },
+            .root_source_file = options.root_source_file,
+            .main_pkg_path = options.main_pkg_path,
             .target = options.target,
             .optimize = options.optimize,
         });
@@ -108,22 +137,64 @@ pub const PydustStep = struct {
         libtest.addIncludePath(.{ .generated = &self.python_include_dir });
         libtest.linkLibC();
         libtest.linker_allow_shlib_undefined = true;
+        // FIXME(ngates): lookup from Python
         libtest.linkSystemLibrary("python3.11");
         libtest.addLibraryPath(.{ .generated = &self.python_library_dir });
+        // Needed to support miniconda statically linking libpython on macos
+        libtest.addRPath(.{ .generated = &self.python_library_dir });
 
-        // // Install the test binary
-        // const install_libtest = b.addInstallBinFile(
-        //     libtest.getEmittedBin(),
-        //     "exceptions.test.bin",
-        // );
-        // test_build_step.dependOn(&installexceptions.step);
-        // test_build_step.dependOn(&installtestexceptions.step);
+        // Install the test binary
+        const install_libtest = b.addInstallBinFile(
+            libtest.getEmittedBin(),
+            testDestRelPath(self.allocator, short_name) catch @panic("OOM"),
+        );
+        // self.test_build_step.dependOn(&installexceptions.step);
+        self.test_build_step.dependOn(&install_libtest.step);
 
-        // // Run the tests as part of zig build test.
-        // const run_testexceptions = b.addRunArtifact(testexceptions);
-        // test_step.dependOn(&run_testexceptions.step);
+        // Run the tests as part of zig build test.
+        if (self.options.test_step) |test_step| {
+            const run_libtest = b.addRunArtifact(libtest);
+            test_step.dependOn(&run_libtest.step);
+        }
 
-        return lib;
+        return .{
+            .library_step = lib,
+            .test_step = libtest,
+        };
+    }
+
+    fn libraryDestRelPath(allocator: std.mem.Allocator, options: PythonModuleOptions) ![]const u8 {
+        const name = options.name;
+
+        if (!options.limited_api) {
+            @panic("Pydust currently only supports limited API");
+        }
+
+        const suffix = ".abi3.so";
+        const destPath = try allocator.alloc(u8, name.len + suffix.len);
+
+        // Take the module name, replace dots for slashes.
+        @memcpy(destPath[0..name.len], name);
+        for (name, 0..) |c, i| {
+            if (c == '.') {
+                destPath[i] = '/';
+            }
+        }
+
+        // Append the suffix
+        @memcpy(destPath[name.len..], suffix);
+
+        return destPath;
+    }
+
+    fn testDestRelPath(allocator: std.mem.Allocator, short_name: []const u8) ![]const u8 {
+        const suffix = ".test.bin";
+        const destPath = try allocator.alloc(u8, short_name.len + suffix.len);
+
+        @memcpy(destPath[0..short_name.len], short_name);
+        @memcpy(destPath[short_name.len..], suffix);
+
+        return destPath;
     }
 
     /// During this step we discover the locations of the Python include and lib directories
@@ -147,7 +218,7 @@ pub const PydustStep = struct {
     fn getPythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
         const result = try std.process.Child.exec(.{
             .allocator = self.allocator,
-            .argv = &.{ "python", "-c", code },
+            .argv = &.{ self.options.python_exe, "-c", code },
         });
         if (result.term.Exited != 0) {
             std.debug.print("Failed to execute {s}:\n{s}\n", .{ code, result.stderr });

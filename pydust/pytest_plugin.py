@@ -35,7 +35,7 @@ def pytest_collection(session):
     This is fine due to zig build's caching. We then run test collection for each of the Pydust
     entrypoints in the pyproject.toml.
     """
-    buildzig.zig_build(["test-build"])
+    buildzig.zig_build(["pydust-test-build"])
 
 
 def pytest_collect_file(file_path, path, parent):
