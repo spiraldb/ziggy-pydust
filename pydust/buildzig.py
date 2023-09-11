@@ -98,35 +98,6 @@ def generate_build_zig(build_zig_file):
                     """
                 )
 
-            # FIXME(ngates): move this into pydust
-            # b.write(
-            #     f"""
-            #     // Option for emitting test binary based on the given root source. This can be helpful for debugging.
-            #     const debugRoot = b.option(
-            #         []const u8,
-            #         "debug-root",
-            #         "The root path of a file emitted as a binary for use with the debugger",
-            #     );
-            #     if (debugRoot) |root| {{
-            #         const pyconf = b.addOptions();
-            #         pyconf.addOption([:0]const u8, "module_name", "debug");
-            #         pyconf.addOption(bool, "limited_api", false);
-            #         pyconf.addOption([:0]const u8, "hexversion", "{PYVER_HEX}");
-
-            #         const testdebug = b.addTest(.{{
-            #             .root_source_file = .{{ .path = root }},
-            #             .main_pkg_path = .{{ .path = "{conf.root}" }},
-            #             .target = target,
-            #             .optimize = optimize,
-            #         }});
-            #         configurePythonRuntime(pydust, testdebug, pyconf);
-
-            #         const debugBin = b.addInstallBinFile(testdebug.getEmittedBin(), "debug.bin");
-            #         b.getInstallStep().dependOn(&debugBin.step);
-            #     }}
-            #     """
-            # )
-
 
 def generate_pydust_build_zig(pydust_build_zig_file):
     """Copy the supporting pydust.build.zig into the project directory."""
