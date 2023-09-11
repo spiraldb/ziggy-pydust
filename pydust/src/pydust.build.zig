@@ -219,11 +219,7 @@ pub const PydustStep = struct {
 
         // Take the module name, replace dots for slashes.
         @memcpy(destPath[0..name.len], name);
-        for (name, 0..) |c, i| {
-            if (c == '.') {
-                destPath[i] = '/';
-            }
-        }
+        std.mem.replaceScalar(u8, destPath[0..name.len], '.', '/');
 
         // Append the suffix
         @memcpy(destPath[name.len..], suffix);
@@ -279,12 +275,7 @@ fn getLibpython(allocator: std.mem.Allocator, python_exe: []const u8) ![]const u
     }
 
     // Strip python3.11.a.so => python3.11.a
-    var lastIdx: usize = 0;
-    for (0..libname.len) |i| {
-        if (libname[i] == '.') {
-            lastIdx = i;
-        }
-    }
+    const lastIdx = std.mem.lastIndexOfScalar(u8, libname, '.');
     libname = libname[0..lastIdx];
 
     return libname;
