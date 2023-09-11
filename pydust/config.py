@@ -16,7 +16,7 @@ import functools
 import os
 
 import tomllib
-from pydantic import BaseModel, Field, model_validator, root_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class ExtModule(BaseModel):
