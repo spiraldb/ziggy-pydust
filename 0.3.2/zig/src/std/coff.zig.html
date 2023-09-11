@@ -1,0 +1,1537 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>coff.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> io = std.io;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> os = std.os;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> CoffHeaderFlags = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L9">    <span class="tok-comment">/// Image only, Windows CE, and Microsoft Windows NT and later.</span></span>
+<span class="line" id="L10">    <span class="tok-comment">/// This indicates that the file does not contain base relocations</span></span>
+<span class="line" id="L11">    <span class="tok-comment">/// and must therefore be loaded at its preferred base address.</span></span>
+<span class="line" id="L12">    <span class="tok-comment">/// If the base address is not available, the loader reports an error.</span></span>
+<span class="line" id="L13">    <span class="tok-comment">/// The default behavior of the linker is to strip base relocations</span></span>
+<span class="line" id="L14">    <span class="tok-comment">/// from executable (EXE) files.</span></span>
+<span class="line" id="L15">    RELOCS_STRIPPED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17">    <span class="tok-comment">/// Image only. This indicates that the image file is valid and can be run.</span></span>
+<span class="line" id="L18">    <span class="tok-comment">/// If this flag is not set, it indicates a linker error.</span></span>
+<span class="line" id="L19">    EXECUTABLE_IMAGE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">    <span class="tok-comment">/// COFF line numbers have been removed. This flag is deprecated and should be zero.</span></span>
+<span class="line" id="L22">    LINE_NUMS_STRIPPED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24">    <span class="tok-comment">/// COFF symbol table entries for local symbols have been removed.</span></span>
+<span class="line" id="L25">    <span class="tok-comment">/// This flag is deprecated and should be zero.</span></span>
+<span class="line" id="L26">    LOCAL_SYMS_STRIPPED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28">    <span class="tok-comment">/// Obsolete. Aggressively trim working set.</span></span>
+<span class="line" id="L29">    <span class="tok-comment">/// This flag is deprecated for Windows 2000 and later and must be zero.</span></span>
+<span class="line" id="L30">    AGGRESSIVE_WS_TRIM: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">    <span class="tok-comment">/// Application can handle &gt; 2-GB addresses.</span></span>
+<span class="line" id="L33">    LARGE_ADDRESS_AWARE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">    <span class="tok-comment">/// This flag is reserved for future use.</span></span>
+<span class="line" id="L36">    RESERVED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38">    <span class="tok-comment">/// Little endian: the least significant bit (LSB) precedes the</span></span>
+<span class="line" id="L39">    <span class="tok-comment">/// most significant bit (MSB) in memory. This flag is deprecated and should be zero.</span></span>
+<span class="line" id="L40">    BYTES_REVERSED_LO: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42">    <span class="tok-comment">/// Machine is based on a 32-bit-word architecture.</span></span>
+<span class="line" id="L43">    @&quot;32BIT_MACHINE&quot;: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45">    <span class="tok-comment">/// Debugging information is removed from the image file.</span></span>
+<span class="line" id="L46">    DEBUG_STRIPPED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">    <span class="tok-comment">/// If the image is on removable media, fully load it and copy it to the swap file.</span></span>
+<span class="line" id="L49">    REMOVABLE_RUN_FROM_SWAP: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L50"></span>
+<span class="line" id="L51">    <span class="tok-comment">/// If the image is on network media, fully load it and copy it to the swap file.</span></span>
+<span class="line" id="L52">    NET_RUN_FROM_SWAP: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54">    <span class="tok-comment">/// The image file is a system file, not a user program.</span></span>
+<span class="line" id="L55">    SYSTEM: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">    <span class="tok-comment">/// The image file is a dynamic-link library (DLL).</span></span>
+<span class="line" id="L58">    <span class="tok-comment">/// Such files are considered executable files for almost all purposes,</span></span>
+<span class="line" id="L59">    <span class="tok-comment">/// although they cannot be directly run.</span></span>
+<span class="line" id="L60">    DLL: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L61"></span>
+<span class="line" id="L62">    <span class="tok-comment">/// The file should be run only on a uniprocessor machine.</span></span>
+<span class="line" id="L63">    UP_SYSTEM_ONLY: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">    <span class="tok-comment">/// Big endian: the MSB precedes the LSB in memory. This flag is deprecated and should be zero.</span></span>
+<span class="line" id="L66">    BYTES_REVERSED_HI: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L67">};</span>
+<span class="line" id="L68"></span>
+<span class="line" id="L69"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> CoffHeader = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L70">    <span class="tok-comment">/// The number that identifies the type of target machine.</span></span>
+<span class="line" id="L71">    machine: MachineType,</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-comment">/// The number of sections. This indicates the size of the section table, which immediately follows the headers.</span></span>
+<span class="line" id="L74">    number_of_sections: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L75"></span>
+<span class="line" id="L76">    <span class="tok-comment">/// The low 32 bits of the number of seconds since 00:00 January 1, 1970 (a C run-time time_t value),</span></span>
+<span class="line" id="L77">    <span class="tok-comment">/// which indicates when the file was created.</span></span>
+<span class="line" id="L78">    time_date_stamp: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">    <span class="tok-comment">/// The file offset of the COFF symbol table, or zero if no COFF symbol table is present.</span></span>
+<span class="line" id="L81">    <span class="tok-comment">/// This value should be zero for an image because COFF debugging information is deprecated.</span></span>
+<span class="line" id="L82">    pointer_to_symbol_table: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84">    <span class="tok-comment">/// The number of entries in the symbol table.</span></span>
+<span class="line" id="L85">    <span class="tok-comment">/// This data can be used to locate the string table, which immediately follows the symbol table.</span></span>
+<span class="line" id="L86">    <span class="tok-comment">/// This value should be zero for an image because COFF debugging information is deprecated.</span></span>
+<span class="line" id="L87">    number_of_symbols: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L88"></span>
+<span class="line" id="L89">    <span class="tok-comment">/// The size of the optional header, which is required for executable files but not for object files.</span></span>
+<span class="line" id="L90">    <span class="tok-comment">/// This value should be zero for an object file. For a description of the header format, see Optional Header (Image Only).</span></span>
+<span class="line" id="L91">    size_of_optional_header: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">    <span class="tok-comment">/// The flags that indicate the attributes of the file.</span></span>
+<span class="line" id="L94">    flags: CoffHeaderFlags,</span>
+<span class="line" id="L95">};</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97"><span class="tok-comment">// OptionalHeader.magic values</span>
+</span>
+<span class="line" id="L98"><span class="tok-comment">// see https://msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx</span>
+</span>
+<span class="line" id="L99"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IMAGE_NT_OPTIONAL_HDR32_MAGIC = <span class="tok-number">0x10b</span>;</span>
+<span class="line" id="L100"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IMAGE_NT_OPTIONAL_HDR64_MAGIC = <span class="tok-number">0x20b</span>;</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DllFlags = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L103">    _reserved_0: <span class="tok-type">u5</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">    <span class="tok-comment">/// Image can handle a high entropy 64-bit virtual address space.</span></span>
+<span class="line" id="L106">    HIGH_ENTROPY_VA: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108">    <span class="tok-comment">/// DLL can be relocated at load time.</span></span>
+<span class="line" id="L109">    DYNAMIC_BASE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111">    <span class="tok-comment">/// Code Integrity checks are enforced.</span></span>
+<span class="line" id="L112">    FORCE_INTEGRITY: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">    <span class="tok-comment">/// Image is NX compatible.</span></span>
+<span class="line" id="L115">    NX_COMPAT: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">    <span class="tok-comment">/// Isolation aware, but do not isolate the image.</span></span>
+<span class="line" id="L118">    NO_ISOLATION: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120">    <span class="tok-comment">/// Does not use structured exception (SE) handling. No SE handler may be called in this image.</span></span>
+<span class="line" id="L121">    NO_SEH: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123">    <span class="tok-comment">/// Do not bind the image.</span></span>
+<span class="line" id="L124">    NO_BIND: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">    <span class="tok-comment">/// Image must execute in an AppContainer.</span></span>
+<span class="line" id="L127">    APPCONTAINER: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L128"></span>
+<span class="line" id="L129">    <span class="tok-comment">/// A WDM driver.</span></span>
+<span class="line" id="L130">    WDM_DRIVER: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">    <span class="tok-comment">/// Image supports Control Flow Guard.</span></span>
+<span class="line" id="L133">    GUARD_CF: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L134"></span>
+<span class="line" id="L135">    <span class="tok-comment">/// Terminal Server aware.</span></span>
+<span class="line" id="L136">    TERMINAL_SERVER_AWARE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L137">};</span>
+<span class="line" id="L138"></span>
+<span class="line" id="L139"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Subsystem = <span class="tok-kw">enum</span>(<span class="tok-type">u16</span>) {</span>
+<span class="line" id="L140">    <span class="tok-comment">/// An unknown subsystem</span></span>
+<span class="line" id="L141">    UNKNOWN = <span class="tok-number">0</span>,</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-comment">/// Device drivers and native Windows processes</span></span>
+<span class="line" id="L144">    NATIVE = <span class="tok-number">1</span>,</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146">    <span class="tok-comment">/// The Windows graphical user interface (GUI) subsystem</span></span>
+<span class="line" id="L147">    WINDOWS_GUI = <span class="tok-number">2</span>,</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">    <span class="tok-comment">/// The Windows character subsystem</span></span>
+<span class="line" id="L150">    WINDOWS_CUI = <span class="tok-number">3</span>,</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">    <span class="tok-comment">/// The OS/2 character subsystem</span></span>
+<span class="line" id="L153">    OS2_CUI = <span class="tok-number">5</span>,</span>
+<span class="line" id="L154"></span>
+<span class="line" id="L155">    <span class="tok-comment">/// The Posix character subsystem</span></span>
+<span class="line" id="L156">    POSIX_CUI = <span class="tok-number">7</span>,</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">    <span class="tok-comment">/// Native Win9x driver</span></span>
+<span class="line" id="L159">    NATIVE_WINDOWS = <span class="tok-number">8</span>,</span>
+<span class="line" id="L160"></span>
+<span class="line" id="L161">    <span class="tok-comment">/// Windows CE</span></span>
+<span class="line" id="L162">    WINDOWS_CE_GUI = <span class="tok-number">9</span>,</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164">    <span class="tok-comment">/// An Extensible Firmware Interface (EFI) application</span></span>
+<span class="line" id="L165">    EFI_APPLICATION = <span class="tok-number">10</span>,</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167">    <span class="tok-comment">/// An EFI driver with boot services</span></span>
+<span class="line" id="L168">    EFI_BOOT_SERVICE_DRIVER = <span class="tok-number">11</span>,</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170">    <span class="tok-comment">/// An EFI driver with run-time services</span></span>
+<span class="line" id="L171">    EFI_RUNTIME_DRIVER = <span class="tok-number">12</span>,</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173">    <span class="tok-comment">/// An EFI ROM image</span></span>
+<span class="line" id="L174">    EFI_ROM = <span class="tok-number">13</span>,</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176">    <span class="tok-comment">/// XBOX</span></span>
+<span class="line" id="L177">    XBOX = <span class="tok-number">14</span>,</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179">    <span class="tok-comment">/// Windows boot application</span></span>
+<span class="line" id="L180">    WINDOWS_BOOT_APPLICATION = <span class="tok-number">16</span>,</span>
+<span class="line" id="L181">};</span>
+<span class="line" id="L182"></span>
+<span class="line" id="L183"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> OptionalHeader = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L184">    magic: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L185">    major_linker_version: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L186">    minor_linker_version: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L187">    size_of_code: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L188">    size_of_initialized_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L189">    size_of_uninitialized_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L190">    address_of_entry_point: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L191">    base_of_code: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L192">};</span>
+<span class="line" id="L193"></span>
+<span class="line" id="L194"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> OptionalHeaderPE32 = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L195">    magic: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L196">    major_linker_version: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L197">    minor_linker_version: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L198">    size_of_code: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L199">    size_of_initialized_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L200">    size_of_uninitialized_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L201">    address_of_entry_point: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L202">    base_of_code: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L203">    base_of_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L204">    image_base: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L205">    section_alignment: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L206">    file_alignment: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L207">    major_operating_system_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L208">    minor_operating_system_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L209">    major_image_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L210">    minor_image_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L211">    major_subsystem_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L212">    minor_subsystem_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L213">    win32_version_value: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L214">    size_of_image: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L215">    size_of_headers: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L216">    checksum: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L217">    subsystem: Subsystem,</span>
+<span class="line" id="L218">    dll_flags: DllFlags,</span>
+<span class="line" id="L219">    size_of_stack_reserve: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L220">    size_of_stack_commit: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L221">    size_of_heap_reserve: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L222">    size_of_heap_commit: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L223">    loader_flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L224">    number_of_rva_and_sizes: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L225">};</span>
+<span class="line" id="L226"></span>
+<span class="line" id="L227"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> OptionalHeaderPE64 = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L228">    magic: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L229">    major_linker_version: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L230">    minor_linker_version: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L231">    size_of_code: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L232">    size_of_initialized_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L233">    size_of_uninitialized_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L234">    address_of_entry_point: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L235">    base_of_code: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L236">    image_base: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L237">    section_alignment: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L238">    file_alignment: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L239">    major_operating_system_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L240">    minor_operating_system_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L241">    major_image_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L242">    minor_image_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L243">    major_subsystem_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L244">    minor_subsystem_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L245">    win32_version_value: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L246">    size_of_image: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L247">    size_of_headers: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L248">    checksum: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L249">    subsystem: Subsystem,</span>
+<span class="line" id="L250">    dll_flags: DllFlags,</span>
+<span class="line" id="L251">    size_of_stack_reserve: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L252">    size_of_stack_commit: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L253">    size_of_heap_reserve: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L254">    size_of_heap_commit: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L255">    loader_flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L256">    number_of_rva_and_sizes: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L257">};</span>
+<span class="line" id="L258"></span>
+<span class="line" id="L259"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IMAGE_NUMBEROF_DIRECTORY_ENTRIES = <span class="tok-number">16</span>;</span>
+<span class="line" id="L260"></span>
+<span class="line" id="L261"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DirectoryEntry = <span class="tok-kw">enum</span>(<span class="tok-type">u16</span>) {</span>
+<span class="line" id="L262">    <span class="tok-comment">/// Export Directory</span></span>
+<span class="line" id="L263">    EXPORT = <span class="tok-number">0</span>,</span>
+<span class="line" id="L264"></span>
+<span class="line" id="L265">    <span class="tok-comment">/// Import Directory</span></span>
+<span class="line" id="L266">    IMPORT = <span class="tok-number">1</span>,</span>
+<span class="line" id="L267"></span>
+<span class="line" id="L268">    <span class="tok-comment">/// Resource Directory</span></span>
+<span class="line" id="L269">    RESOURCE = <span class="tok-number">2</span>,</span>
+<span class="line" id="L270"></span>
+<span class="line" id="L271">    <span class="tok-comment">/// Exception Directory</span></span>
+<span class="line" id="L272">    EXCEPTION = <span class="tok-number">3</span>,</span>
+<span class="line" id="L273"></span>
+<span class="line" id="L274">    <span class="tok-comment">/// Security Directory</span></span>
+<span class="line" id="L275">    SECURITY = <span class="tok-number">4</span>,</span>
+<span class="line" id="L276"></span>
+<span class="line" id="L277">    <span class="tok-comment">/// Base Relocation Table</span></span>
+<span class="line" id="L278">    BASERELOC = <span class="tok-number">5</span>,</span>
+<span class="line" id="L279"></span>
+<span class="line" id="L280">    <span class="tok-comment">/// Debug Directory</span></span>
+<span class="line" id="L281">    DEBUG = <span class="tok-number">6</span>,</span>
+<span class="line" id="L282"></span>
+<span class="line" id="L283">    <span class="tok-comment">/// Architecture Specific Data</span></span>
+<span class="line" id="L284">    ARCHITECTURE = <span class="tok-number">7</span>,</span>
+<span class="line" id="L285"></span>
+<span class="line" id="L286">    <span class="tok-comment">/// RVA of GP</span></span>
+<span class="line" id="L287">    GLOBALPTR = <span class="tok-number">8</span>,</span>
+<span class="line" id="L288"></span>
+<span class="line" id="L289">    <span class="tok-comment">/// TLS Directory</span></span>
+<span class="line" id="L290">    TLS = <span class="tok-number">9</span>,</span>
+<span class="line" id="L291"></span>
+<span class="line" id="L292">    <span class="tok-comment">/// Load Configuration Directory</span></span>
+<span class="line" id="L293">    LOAD_CONFIG = <span class="tok-number">10</span>,</span>
+<span class="line" id="L294"></span>
+<span class="line" id="L295">    <span class="tok-comment">/// Bound Import Directory in headers</span></span>
+<span class="line" id="L296">    BOUND_IMPORT = <span class="tok-number">11</span>,</span>
+<span class="line" id="L297"></span>
+<span class="line" id="L298">    <span class="tok-comment">/// Import Address Table</span></span>
+<span class="line" id="L299">    IAT = <span class="tok-number">12</span>,</span>
+<span class="line" id="L300"></span>
+<span class="line" id="L301">    <span class="tok-comment">/// Delay Load Import Descriptors</span></span>
+<span class="line" id="L302">    DELAY_IMPORT = <span class="tok-number">13</span>,</span>
+<span class="line" id="L303"></span>
+<span class="line" id="L304">    <span class="tok-comment">/// COM Runtime descriptor</span></span>
+<span class="line" id="L305">    COM_DESCRIPTOR = <span class="tok-number">14</span>,</span>
+<span class="line" id="L306">};</span>
+<span class="line" id="L307"></span>
+<span class="line" id="L308"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ImageDataDirectory = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L309">    virtual_address: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L310">    size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L311">};</span>
+<span class="line" id="L312"></span>
+<span class="line" id="L313"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> BaseRelocationDirectoryEntry = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L314">    <span class="tok-comment">/// The image base plus the page RVA is added to each offset to create the VA where the base relocation must be applied.</span></span>
+<span class="line" id="L315">    page_rva: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L316"></span>
+<span class="line" id="L317">    <span class="tok-comment">/// The total number of bytes in the base relocation block, including the Page RVA and Block Size fields and the Type/Offset fields that follow.</span></span>
+<span class="line" id="L318">    block_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L319">};</span>
+<span class="line" id="L320"></span>
+<span class="line" id="L321"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> BaseRelocation = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L322">    <span class="tok-comment">/// Stored in the remaining 12 bits of the WORD, an offset from the starting address that was specified in the Page RVA field for the block.</span></span>
+<span class="line" id="L323">    <span class="tok-comment">/// This offset specifies where the base relocation is to be applied.</span></span>
+<span class="line" id="L324">    offset: <span class="tok-type">u12</span>,</span>
+<span class="line" id="L325"></span>
+<span class="line" id="L326">    <span class="tok-comment">/// Stored in the high 4 bits of the WORD, a value that indicates the type of base relocation to be applied.</span></span>
+<span class="line" id="L327">    <span class="tok-type">type</span>: BaseRelocationType,</span>
+<span class="line" id="L328">};</span>
+<span class="line" id="L329"></span>
+<span class="line" id="L330"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> BaseRelocationType = <span class="tok-kw">enum</span>(<span class="tok-type">u4</span>) {</span>
+<span class="line" id="L331">    <span class="tok-comment">/// The base relocation is skipped. This type can be used to pad a block.</span></span>
+<span class="line" id="L332">    ABSOLUTE = <span class="tok-number">0</span>,</span>
+<span class="line" id="L333"></span>
+<span class="line" id="L334">    <span class="tok-comment">/// The base relocation adds the high 16 bits of the difference to the 16-bit field at offset. The 16-bit field represents the high value of a 32-bit word.</span></span>
+<span class="line" id="L335">    HIGH = <span class="tok-number">1</span>,</span>
+<span class="line" id="L336"></span>
+<span class="line" id="L337">    <span class="tok-comment">/// The base relocation adds the low 16 bits of the difference to the 16-bit field at offset. The 16-bit field represents the low half of a 32-bit word.</span></span>
+<span class="line" id="L338">    LOW = <span class="tok-number">2</span>,</span>
+<span class="line" id="L339"></span>
+<span class="line" id="L340">    <span class="tok-comment">/// The base relocation applies all 32 bits of the difference to the 32-bit field at offset.</span></span>
+<span class="line" id="L341">    HIGHLOW = <span class="tok-number">3</span>,</span>
+<span class="line" id="L342"></span>
+<span class="line" id="L343">    <span class="tok-comment">/// The base relocation adds the high 16 bits of the difference to the 16-bit field at offset.</span></span>
+<span class="line" id="L344">    <span class="tok-comment">/// The 16-bit field represents the high value of a 32-bit word.</span></span>
+<span class="line" id="L345">    <span class="tok-comment">/// The low 16 bits of the 32-bit value are stored in the 16-bit word that follows this base relocation.</span></span>
+<span class="line" id="L346">    <span class="tok-comment">/// This means that this base relocation occupies two slots.</span></span>
+<span class="line" id="L347">    HIGHADJ = <span class="tok-number">4</span>,</span>
+<span class="line" id="L348"></span>
+<span class="line" id="L349">    <span class="tok-comment">/// When the machine type is MIPS, the base relocation applies to a MIPS jump instruction.</span></span>
+<span class="line" id="L350">    MIPS_JMPADDR = <span class="tok-number">5</span>,</span>
+<span class="line" id="L351"></span>
+<span class="line" id="L352">    <span class="tok-comment">/// This relocation is meaningful only when the machine type is ARM or Thumb.</span></span>
+<span class="line" id="L353">    <span class="tok-comment">/// The base relocation applies the 32-bit address of a symbol across a consecutive MOVW/MOVT instruction pair.</span></span>
+<span class="line" id="L354">    <span class="tok-comment">// ARM_MOV32 = 5,</span>
+</span>
+<span class="line" id="L355"></span>
+<span class="line" id="L356">    <span class="tok-comment">/// This relocation is only meaningful when the machine type is RISC-V.</span></span>
+<span class="line" id="L357">    <span class="tok-comment">/// The base relocation applies to the high 20 bits of a 32-bit absolute address.</span></span>
+<span class="line" id="L358">    <span class="tok-comment">// RISCV_HIGH20 = 5,</span>
+</span>
+<span class="line" id="L359"></span>
+<span class="line" id="L360">    <span class="tok-comment">/// Reserved, must be zero.</span></span>
+<span class="line" id="L361">    RESERVED = <span class="tok-number">6</span>,</span>
+<span class="line" id="L362"></span>
+<span class="line" id="L363">    <span class="tok-comment">/// This relocation is meaningful only when the machine type is Thumb.</span></span>
+<span class="line" id="L364">    <span class="tok-comment">/// The base relocation applies the 32-bit address of a symbol to a consecutive MOVW/MOVT instruction pair.</span></span>
+<span class="line" id="L365">    THUMB_MOV32 = <span class="tok-number">7</span>,</span>
+<span class="line" id="L366"></span>
+<span class="line" id="L367">    <span class="tok-comment">/// This relocation is only meaningful when the machine type is RISC-V.</span></span>
+<span class="line" id="L368">    <span class="tok-comment">/// The base relocation applies to the low 12 bits of a 32-bit absolute address formed in RISC-V I-type instruction format.</span></span>
+<span class="line" id="L369">    <span class="tok-comment">// RISCV_LOW12I = 7,</span>
+</span>
+<span class="line" id="L370"></span>
+<span class="line" id="L371">    <span class="tok-comment">/// This relocation is only meaningful when the machine type is RISC-V.</span></span>
+<span class="line" id="L372">    <span class="tok-comment">/// The base relocation applies to the low 12 bits of a 32-bit absolute address formed in RISC-V S-type instruction format.</span></span>
+<span class="line" id="L373">    RISCV_LOW12S = <span class="tok-number">8</span>,</span>
+<span class="line" id="L374"></span>
+<span class="line" id="L375">    <span class="tok-comment">/// This relocation is only meaningful when the machine type is LoongArch 32-bit.</span></span>
+<span class="line" id="L376">    <span class="tok-comment">/// The base relocation applies to a 32-bit absolute address formed in two consecutive instructions.</span></span>
+<span class="line" id="L377">    <span class="tok-comment">// LOONGARCH32_MARK_LA = 8,</span>
+</span>
+<span class="line" id="L378"></span>
+<span class="line" id="L379">    <span class="tok-comment">/// This relocation is only meaningful when the machine type is LoongArch 64-bit.</span></span>
+<span class="line" id="L380">    <span class="tok-comment">/// The base relocation applies to a 64-bit absolute address formed in four consecutive instructions.</span></span>
+<span class="line" id="L381">    <span class="tok-comment">// LOONGARCH64_MARK_LA = 8,</span>
+</span>
+<span class="line" id="L382"></span>
+<span class="line" id="L383">    <span class="tok-comment">/// The relocation is only meaningful when the machine type is MIPS.</span></span>
+<span class="line" id="L384">    <span class="tok-comment">/// The base relocation applies to a MIPS16 jump instruction.</span></span>
+<span class="line" id="L385">    MIPS_JMPADDR16 = <span class="tok-number">9</span>,</span>
+<span class="line" id="L386"></span>
+<span class="line" id="L387">    <span class="tok-comment">/// The base relocation applies the difference to the 64-bit field at offset.</span></span>
+<span class="line" id="L388">    DIR64 = <span class="tok-number">10</span>,</span>
+<span class="line" id="L389">};</span>
+<span class="line" id="L390"></span>
+<span class="line" id="L391"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DebugDirectoryEntry = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L392">    characteristics: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L393">    time_date_stamp: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L394">    major_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L395">    minor_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L396">    <span class="tok-type">type</span>: DebugType,</span>
+<span class="line" id="L397">    size_of_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L398">    address_of_raw_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L399">    pointer_to_raw_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L400">};</span>
+<span class="line" id="L401"></span>
+<span class="line" id="L402"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DebugType = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L403">    UNKNOWN = <span class="tok-number">0</span>,</span>
+<span class="line" id="L404">    COFF = <span class="tok-number">1</span>,</span>
+<span class="line" id="L405">    CODEVIEW = <span class="tok-number">2</span>,</span>
+<span class="line" id="L406">    FPO = <span class="tok-number">3</span>,</span>
+<span class="line" id="L407">    MISC = <span class="tok-number">4</span>,</span>
+<span class="line" id="L408">    EXCEPTION = <span class="tok-number">5</span>,</span>
+<span class="line" id="L409">    FIXUP = <span class="tok-number">6</span>,</span>
+<span class="line" id="L410">    OMAP_TO_SRC = <span class="tok-number">7</span>,</span>
+<span class="line" id="L411">    OMAP_FROM_SRC = <span class="tok-number">8</span>,</span>
+<span class="line" id="L412">    BORLAND = <span class="tok-number">9</span>,</span>
+<span class="line" id="L413">    RESERVED10 = <span class="tok-number">10</span>,</span>
+<span class="line" id="L414">    VC_FEATURE = <span class="tok-number">12</span>,</span>
+<span class="line" id="L415">    POGO = <span class="tok-number">13</span>,</span>
+<span class="line" id="L416">    ILTCG = <span class="tok-number">14</span>,</span>
+<span class="line" id="L417">    MPX = <span class="tok-number">15</span>,</span>
+<span class="line" id="L418">    REPRO = <span class="tok-number">16</span>,</span>
+<span class="line" id="L419">    EX_DLLCHARACTERISTICS = <span class="tok-number">20</span>,</span>
+<span class="line" id="L420">};</span>
+<span class="line" id="L421"></span>
+<span class="line" id="L422"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ImportDirectoryEntry = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L423">    <span class="tok-comment">/// The RVA of the import lookup table.</span></span>
+<span class="line" id="L424">    <span class="tok-comment">/// This table contains a name or ordinal for each import.</span></span>
+<span class="line" id="L425">    <span class="tok-comment">/// (The name &quot;Characteristics&quot; is used in Winnt.h, but no longer describes this field.)</span></span>
+<span class="line" id="L426">    import_lookup_table_rva: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">    <span class="tok-comment">/// The stamp that is set to zero until the image is bound.</span></span>
+<span class="line" id="L429">    <span class="tok-comment">/// After the image is bound, this field is set to the time/data stamp of the DLL.</span></span>
+<span class="line" id="L430">    time_date_stamp: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L431"></span>
+<span class="line" id="L432">    <span class="tok-comment">/// The index of the first forwarder reference.</span></span>
+<span class="line" id="L433">    forwarder_chain: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L434"></span>
+<span class="line" id="L435">    <span class="tok-comment">/// The address of an ASCII string that contains the name of the DLL.</span></span>
+<span class="line" id="L436">    <span class="tok-comment">/// This address is relative to the image base.</span></span>
+<span class="line" id="L437">    name_rva: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L438"></span>
+<span class="line" id="L439">    <span class="tok-comment">/// The RVA of the import address table.</span></span>
+<span class="line" id="L440">    <span class="tok-comment">/// The contents of this table are identical to the contents of the import lookup table until the image is bound.</span></span>
+<span class="line" id="L441">    import_address_table_rva: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L442">};</span>
+<span class="line" id="L443"></span>
+<span class="line" id="L444"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ImportLookupEntry32 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L445">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ByName = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L446">        name_table_rva: <span class="tok-type">u31</span>,</span>
+<span class="line" id="L447">        flag: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L448">    };</span>
+<span class="line" id="L449"></span>
+<span class="line" id="L450">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ByOrdinal = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L451">        ordinal_number: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L452">        unused: <span class="tok-type">u15</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L453">        flag: <span class="tok-type">u1</span> = <span class="tok-number">1</span>,</span>
+<span class="line" id="L454">    };</span>
+<span class="line" id="L455"></span>
+<span class="line" id="L456">    <span class="tok-kw">const</span> mask = <span class="tok-number">0x80000000</span>;</span>
+<span class="line" id="L457"></span>
+<span class="line" id="L458">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getImportByName</span>(raw: <span class="tok-type">u32</span>) ?ByName {</span>
+<span class="line" id="L459">        <span class="tok-kw">if</span> (mask &amp; raw != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L460">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(ByName, <span class="tok-builtin">@bitCast</span>(raw));</span>
+<span class="line" id="L461">    }</span>
+<span class="line" id="L462"></span>
+<span class="line" id="L463">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getImportByOrdinal</span>(raw: <span class="tok-type">u32</span>) ?ByOrdinal {</span>
+<span class="line" id="L464">        <span class="tok-kw">if</span> (mask &amp; raw == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L465">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(ByOrdinal, <span class="tok-builtin">@bitCast</span>(raw));</span>
+<span class="line" id="L466">    }</span>
+<span class="line" id="L467">};</span>
+<span class="line" id="L468"></span>
+<span class="line" id="L469"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ImportLookupEntry64 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L470">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ByName = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L471">        name_table_rva: <span class="tok-type">u31</span>,</span>
+<span class="line" id="L472">        unused: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L473">        flag: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L474">    };</span>
+<span class="line" id="L475"></span>
+<span class="line" id="L476">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ByOrdinal = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L477">        ordinal_number: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L478">        unused: <span class="tok-type">u47</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L479">        flag: <span class="tok-type">u1</span> = <span class="tok-number">1</span>,</span>
+<span class="line" id="L480">    };</span>
+<span class="line" id="L481"></span>
+<span class="line" id="L482">    <span class="tok-kw">const</span> mask = <span class="tok-number">0x8000000000000000</span>;</span>
+<span class="line" id="L483"></span>
+<span class="line" id="L484">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getImportByName</span>(raw: <span class="tok-type">u64</span>) ?ByName {</span>
+<span class="line" id="L485">        <span class="tok-kw">if</span> (mask &amp; raw != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L486">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(ByName, <span class="tok-builtin">@bitCast</span>(raw));</span>
+<span class="line" id="L487">    }</span>
+<span class="line" id="L488"></span>
+<span class="line" id="L489">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getImportByOrdinal</span>(raw: <span class="tok-type">u64</span>) ?ByOrdinal {</span>
+<span class="line" id="L490">        <span class="tok-kw">if</span> (mask &amp; raw == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L491">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(ByOrdinal, <span class="tok-builtin">@bitCast</span>(raw));</span>
+<span class="line" id="L492">    }</span>
+<span class="line" id="L493">};</span>
+<span class="line" id="L494"></span>
+<span class="line" id="L495"><span class="tok-comment">/// Every name ends with a NULL byte. IF the NULL byte does not fall on</span></span>
+<span class="line" id="L496"><span class="tok-comment">/// 2byte boundary, the entry structure is padded to ensure 2byte alignment.</span></span>
+<span class="line" id="L497"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ImportHintNameEntry = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L498">    <span class="tok-comment">/// An index into the export name pointer table.</span></span>
+<span class="line" id="L499">    <span class="tok-comment">/// A match is attempted first with this value. If it fails, a binary search is performed on the DLL's export name pointer table.</span></span>
+<span class="line" id="L500">    hint: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L501"></span>
+<span class="line" id="L502">    <span class="tok-comment">/// Pointer to NULL terminated ASCII name.</span></span>
+<span class="line" id="L503">    <span class="tok-comment">/// Variable length...</span></span>
+<span class="line" id="L504">    name: [<span class="tok-number">1</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L505">};</span>
+<span class="line" id="L506"></span>
+<span class="line" id="L507"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SectionHeader = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L508">    name: [<span class="tok-number">8</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L509">    virtual_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L510">    virtual_address: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L511">    size_of_raw_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L512">    pointer_to_raw_data: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L513">    pointer_to_relocations: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L514">    pointer_to_linenumbers: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L515">    number_of_relocations: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L516">    number_of_linenumbers: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L517">    flags: SectionHeaderFlags,</span>
+<span class="line" id="L518"></span>
+<span class="line" id="L519">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getName</span>(self: *<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> SectionHeader) ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L520">        <span class="tok-kw">if</span> (self.name[<span class="tok-number">0</span>] == <span class="tok-str">'/'</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L521">        <span class="tok-kw">const</span> len = std.mem.indexOfScalar(<span class="tok-type">u8</span>, &amp;self.name, <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0</span>)) <span class="tok-kw">orelse</span> self.name.len;</span>
+<span class="line" id="L522">        <span class="tok-kw">return</span> self.name[<span class="tok-number">0</span>..len];</span>
+<span class="line" id="L523">    }</span>
+<span class="line" id="L524"></span>
+<span class="line" id="L525">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getNameOffset</span>(self: SectionHeader) ?<span class="tok-type">u32</span> {</span>
+<span class="line" id="L526">        <span class="tok-kw">if</span> (self.name[<span class="tok-number">0</span>] != <span class="tok-str">'/'</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L527">        <span class="tok-kw">const</span> len = std.mem.indexOfScalar(<span class="tok-type">u8</span>, &amp;self.name, <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0</span>)) <span class="tok-kw">orelse</span> self.name.len;</span>
+<span class="line" id="L528">        <span class="tok-kw">const</span> offset = std.fmt.parseInt(<span class="tok-type">u32</span>, self.name[<span class="tok-number">1</span>..len], <span class="tok-number">10</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L529">        <span class="tok-kw">return</span> offset;</span>
+<span class="line" id="L530">    }</span>
+<span class="line" id="L531"></span>
+<span class="line" id="L532">    <span class="tok-comment">/// Applicable only to section headers in COFF objects.</span></span>
+<span class="line" id="L533">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getAlignment</span>(self: SectionHeader) ?<span class="tok-type">u16</span> {</span>
+<span class="line" id="L534">        <span class="tok-kw">if</span> (self.flags.ALIGN == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L535">        <span class="tok-kw">return</span> std.math.powi(<span class="tok-type">u16</span>, <span class="tok-number">2</span>, self.flags.ALIGN - <span class="tok-number">1</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L536">    }</span>
+<span class="line" id="L537"></span>
+<span class="line" id="L538">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setAlignment</span>(self: *SectionHeader, new_alignment: <span class="tok-type">u16</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L539">        assert(new_alignment &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> new_alignment &lt;= <span class="tok-number">8192</span>);</span>
+<span class="line" id="L540">        self.flags.ALIGN = std.math.log2(new_alignment);</span>
+<span class="line" id="L541">    }</span>
+<span class="line" id="L542"></span>
+<span class="line" id="L543">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isCode</span>(self: SectionHeader) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L544">        <span class="tok-kw">return</span> self.flags.CNT_CODE == <span class="tok-number">0b1</span>;</span>
+<span class="line" id="L545">    }</span>
+<span class="line" id="L546"></span>
+<span class="line" id="L547">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isComdat</span>(self: SectionHeader) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L548">        <span class="tok-kw">return</span> self.flags.LNK_COMDAT == <span class="tok-number">0b1</span>;</span>
+<span class="line" id="L549">    }</span>
+<span class="line" id="L550">};</span>
+<span class="line" id="L551"></span>
+<span class="line" id="L552"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SectionHeaderFlags = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L553">    _reserved_0: <span class="tok-type">u3</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L554"></span>
+<span class="line" id="L555">    <span class="tok-comment">/// The section should not be padded to the next boundary.</span></span>
+<span class="line" id="L556">    <span class="tok-comment">/// This flag is obsolete and is replaced by IMAGE_SCN_ALIGN_1BYTES.</span></span>
+<span class="line" id="L557">    <span class="tok-comment">/// This is valid only for object files.</span></span>
+<span class="line" id="L558">    TYPE_NO_PAD: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L559"></span>
+<span class="line" id="L560">    _reserved_1: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L561"></span>
+<span class="line" id="L562">    <span class="tok-comment">/// The section contains executable code.</span></span>
+<span class="line" id="L563">    CNT_CODE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L564"></span>
+<span class="line" id="L565">    <span class="tok-comment">/// The section contains initialized data.</span></span>
+<span class="line" id="L566">    CNT_INITIALIZED_DATA: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L567"></span>
+<span class="line" id="L568">    <span class="tok-comment">/// The section contains uninitialized data.</span></span>
+<span class="line" id="L569">    CNT_UNINITIALIZED_DATA: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L570"></span>
+<span class="line" id="L571">    <span class="tok-comment">/// Reserved for future use.</span></span>
+<span class="line" id="L572">    LNK_OTHER: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L573"></span>
+<span class="line" id="L574">    <span class="tok-comment">/// The section contains comments or other information.</span></span>
+<span class="line" id="L575">    <span class="tok-comment">/// The .drectve section has this type.</span></span>
+<span class="line" id="L576">    <span class="tok-comment">/// This is valid for object files only.</span></span>
+<span class="line" id="L577">    LNK_INFO: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L578"></span>
+<span class="line" id="L579">    _reserverd_2: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L580"></span>
+<span class="line" id="L581">    <span class="tok-comment">/// The section will not become part of the image.</span></span>
+<span class="line" id="L582">    <span class="tok-comment">/// This is valid only for object files.</span></span>
+<span class="line" id="L583">    LNK_REMOVE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L584"></span>
+<span class="line" id="L585">    <span class="tok-comment">/// The section contains COMDAT data.</span></span>
+<span class="line" id="L586">    <span class="tok-comment">/// For more information, see COMDAT Sections (Object Only).</span></span>
+<span class="line" id="L587">    <span class="tok-comment">/// This is valid only for object files.</span></span>
+<span class="line" id="L588">    LNK_COMDAT: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L589"></span>
+<span class="line" id="L590">    _reserved_3: <span class="tok-type">u2</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L591"></span>
+<span class="line" id="L592">    <span class="tok-comment">/// The section contains data referenced through the global pointer (GP).</span></span>
+<span class="line" id="L593">    GPREL: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L594"></span>
+<span class="line" id="L595">    <span class="tok-comment">/// Reserved for future use.</span></span>
+<span class="line" id="L596">    MEM_PURGEABLE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L597"></span>
+<span class="line" id="L598">    <span class="tok-comment">/// Reserved for future use.</span></span>
+<span class="line" id="L599">    MEM_16BIT: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L600"></span>
+<span class="line" id="L601">    <span class="tok-comment">/// Reserved for future use.</span></span>
+<span class="line" id="L602">    MEM_LOCKED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L603"></span>
+<span class="line" id="L604">    <span class="tok-comment">/// Reserved for future use.</span></span>
+<span class="line" id="L605">    MEM_PRELOAD: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L606"></span>
+<span class="line" id="L607">    <span class="tok-comment">/// Takes on multiple values according to flags:</span></span>
+<span class="line" id="L608">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_1BYTES: u32 = 0x100000;</span></span>
+<span class="line" id="L609">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_2BYTES: u32 = 0x200000;</span></span>
+<span class="line" id="L610">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_4BYTES: u32 = 0x300000;</span></span>
+<span class="line" id="L611">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_8BYTES: u32 = 0x400000;</span></span>
+<span class="line" id="L612">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_16BYTES: u32 = 0x500000;</span></span>
+<span class="line" id="L613">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_32BYTES: u32 = 0x600000;</span></span>
+<span class="line" id="L614">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_64BYTES: u32 = 0x700000;</span></span>
+<span class="line" id="L615">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_128BYTES: u32 = 0x800000;</span></span>
+<span class="line" id="L616">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_256BYTES: u32 = 0x900000;</span></span>
+<span class="line" id="L617">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_512BYTES: u32 = 0xA00000;</span></span>
+<span class="line" id="L618">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_1024BYTES: u32 = 0xB00000;</span></span>
+<span class="line" id="L619">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_2048BYTES: u32 = 0xC00000;</span></span>
+<span class="line" id="L620">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_4096BYTES: u32 = 0xD00000;</span></span>
+<span class="line" id="L621">    <span class="tok-comment">/// pub const IMAGE_SCN_ALIGN_8192BYTES: u32 = 0xE00000;</span></span>
+<span class="line" id="L622">    ALIGN: <span class="tok-type">u4</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L623"></span>
+<span class="line" id="L624">    <span class="tok-comment">/// The section contains extended relocations.</span></span>
+<span class="line" id="L625">    LNK_NRELOC_OVFL: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L626"></span>
+<span class="line" id="L627">    <span class="tok-comment">/// The section can be discarded as needed.</span></span>
+<span class="line" id="L628">    MEM_DISCARDABLE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L629"></span>
+<span class="line" id="L630">    <span class="tok-comment">/// The section cannot be cached.</span></span>
+<span class="line" id="L631">    MEM_NOT_CACHED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L632"></span>
+<span class="line" id="L633">    <span class="tok-comment">/// The section is not pageable.</span></span>
+<span class="line" id="L634">    MEM_NOT_PAGED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L635"></span>
+<span class="line" id="L636">    <span class="tok-comment">/// The section can be shared in memory.</span></span>
+<span class="line" id="L637">    MEM_SHARED: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L638"></span>
+<span class="line" id="L639">    <span class="tok-comment">/// The section can be executed as code.</span></span>
+<span class="line" id="L640">    MEM_EXECUTE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L641"></span>
+<span class="line" id="L642">    <span class="tok-comment">/// The section can be read.</span></span>
+<span class="line" id="L643">    MEM_READ: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L644"></span>
+<span class="line" id="L645">    <span class="tok-comment">/// The section can be written to.</span></span>
+<span class="line" id="L646">    MEM_WRITE: <span class="tok-type">u1</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L647">};</span>
+<span class="line" id="L648"></span>
+<span class="line" id="L649"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Symbol = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L650">    name: [<span class="tok-number">8</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L651">    value: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L652">    section_number: SectionNumber,</span>
+<span class="line" id="L653">    <span class="tok-type">type</span>: SymType,</span>
+<span class="line" id="L654">    storage_class: StorageClass,</span>
+<span class="line" id="L655">    number_of_aux_symbols: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L656"></span>
+<span class="line" id="L657">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sizeOf</span>() <span class="tok-type">usize</span> {</span>
+<span class="line" id="L658">        <span class="tok-kw">return</span> <span class="tok-number">18</span>;</span>
+<span class="line" id="L659">    }</span>
+<span class="line" id="L660"></span>
+<span class="line" id="L661">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getName</span>(self: *<span class="tok-kw">const</span> Symbol) ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L662">        <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, self.name[<span class="tok-number">0</span>..<span class="tok-number">4</span>], <span class="tok-str">&quot;\x00\x00\x00\x00&quot;</span>)) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L663">        <span class="tok-kw">const</span> len = std.mem.indexOfScalar(<span class="tok-type">u8</span>, &amp;self.name, <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0</span>)) <span class="tok-kw">orelse</span> self.name.len;</span>
+<span class="line" id="L664">        <span class="tok-kw">return</span> self.name[<span class="tok-number">0</span>..len];</span>
+<span class="line" id="L665">    }</span>
+<span class="line" id="L666"></span>
+<span class="line" id="L667">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getNameOffset</span>(self: Symbol) ?<span class="tok-type">u32</span> {</span>
+<span class="line" id="L668">        <span class="tok-kw">if</span> (!std.mem.eql(<span class="tok-type">u8</span>, self.name[<span class="tok-number">0</span>..<span class="tok-number">4</span>], <span class="tok-str">&quot;\x00\x00\x00\x00&quot;</span>)) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L669">        <span class="tok-kw">const</span> offset = std.mem.readIntLittle(<span class="tok-type">u32</span>, self.name[<span class="tok-number">4</span>..<span class="tok-number">8</span>]);</span>
+<span class="line" id="L670">        <span class="tok-kw">return</span> offset;</span>
+<span class="line" id="L671">    }</span>
+<span class="line" id="L672">};</span>
+<span class="line" id="L673"></span>
+<span class="line" id="L674"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SectionNumber = <span class="tok-kw">enum</span>(<span class="tok-type">u16</span>) {</span>
+<span class="line" id="L675">    <span class="tok-comment">/// The symbol record is not yet assigned a section.</span></span>
+<span class="line" id="L676">    <span class="tok-comment">/// A value of zero indicates that a reference to an external symbol is defined elsewhere.</span></span>
+<span class="line" id="L677">    <span class="tok-comment">/// A value of non-zero is a common symbol with a size that is specified by the value.</span></span>
+<span class="line" id="L678">    UNDEFINED = <span class="tok-number">0</span>,</span>
+<span class="line" id="L679"></span>
+<span class="line" id="L680">    <span class="tok-comment">/// The symbol has an absolute (non-relocatable) value and is not an address.</span></span>
+<span class="line" id="L681">    ABSOLUTE = <span class="tok-number">0xffff</span>,</span>
+<span class="line" id="L682"></span>
+<span class="line" id="L683">    <span class="tok-comment">/// The symbol provides general type or debugging information but does not correspond to a section.</span></span>
+<span class="line" id="L684">    <span class="tok-comment">/// Microsoft tools use this setting along with .file records (storage class FILE).</span></span>
+<span class="line" id="L685">    DEBUG = <span class="tok-number">0xfffe</span>,</span>
+<span class="line" id="L686">    _,</span>
+<span class="line" id="L687">};</span>
+<span class="line" id="L688"></span>
+<span class="line" id="L689"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SymType = <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L690">    complex_type: ComplexType,</span>
+<span class="line" id="L691">    base_type: BaseType,</span>
+<span class="line" id="L692">};</span>
+<span class="line" id="L693"></span>
+<span class="line" id="L694"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> BaseType = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L695">    <span class="tok-comment">/// No type information or unknown base type. Microsoft tools use this setting</span></span>
+<span class="line" id="L696">    NULL = <span class="tok-number">0</span>,</span>
+<span class="line" id="L697"></span>
+<span class="line" id="L698">    <span class="tok-comment">/// No valid type; used with void pointers and functions</span></span>
+<span class="line" id="L699">    VOID = <span class="tok-number">1</span>,</span>
+<span class="line" id="L700"></span>
+<span class="line" id="L701">    <span class="tok-comment">/// A character (signed byte)</span></span>
+<span class="line" id="L702">    CHAR = <span class="tok-number">2</span>,</span>
+<span class="line" id="L703"></span>
+<span class="line" id="L704">    <span class="tok-comment">/// A 2-byte signed integer</span></span>
+<span class="line" id="L705">    SHORT = <span class="tok-number">3</span>,</span>
+<span class="line" id="L706"></span>
+<span class="line" id="L707">    <span class="tok-comment">/// A natural integer type (normally 4 bytes in Windows)</span></span>
+<span class="line" id="L708">    INT = <span class="tok-number">4</span>,</span>
+<span class="line" id="L709"></span>
+<span class="line" id="L710">    <span class="tok-comment">/// A 4-byte signed integer</span></span>
+<span class="line" id="L711">    LONG = <span class="tok-number">5</span>,</span>
+<span class="line" id="L712"></span>
+<span class="line" id="L713">    <span class="tok-comment">/// A 4-byte floating-point number</span></span>
+<span class="line" id="L714">    FLOAT = <span class="tok-number">6</span>,</span>
+<span class="line" id="L715"></span>
+<span class="line" id="L716">    <span class="tok-comment">/// An 8-byte floating-point number</span></span>
+<span class="line" id="L717">    DOUBLE = <span class="tok-number">7</span>,</span>
+<span class="line" id="L718"></span>
+<span class="line" id="L719">    <span class="tok-comment">/// A structure</span></span>
+<span class="line" id="L720">    STRUCT = <span class="tok-number">8</span>,</span>
+<span class="line" id="L721"></span>
+<span class="line" id="L722">    <span class="tok-comment">/// A union</span></span>
+<span class="line" id="L723">    UNION = <span class="tok-number">9</span>,</span>
+<span class="line" id="L724"></span>
+<span class="line" id="L725">    <span class="tok-comment">/// An enumerated type</span></span>
+<span class="line" id="L726">    ENUM = <span class="tok-number">10</span>,</span>
+<span class="line" id="L727"></span>
+<span class="line" id="L728">    <span class="tok-comment">/// A member of enumeration (a specified value)</span></span>
+<span class="line" id="L729">    MOE = <span class="tok-number">11</span>,</span>
+<span class="line" id="L730"></span>
+<span class="line" id="L731">    <span class="tok-comment">/// A byte; unsigned 1-byte integer</span></span>
+<span class="line" id="L732">    BYTE = <span class="tok-number">12</span>,</span>
+<span class="line" id="L733"></span>
+<span class="line" id="L734">    <span class="tok-comment">/// A word; unsigned 2-byte integer</span></span>
+<span class="line" id="L735">    WORD = <span class="tok-number">13</span>,</span>
+<span class="line" id="L736"></span>
+<span class="line" id="L737">    <span class="tok-comment">/// An unsigned integer of natural size (normally, 4 bytes)</span></span>
+<span class="line" id="L738">    UINT = <span class="tok-number">14</span>,</span>
+<span class="line" id="L739"></span>
+<span class="line" id="L740">    <span class="tok-comment">/// An unsigned 4-byte integer</span></span>
+<span class="line" id="L741">    DWORD = <span class="tok-number">15</span>,</span>
+<span class="line" id="L742">};</span>
+<span class="line" id="L743"></span>
+<span class="line" id="L744"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ComplexType = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L745">    <span class="tok-comment">/// No derived type; the symbol is a simple scalar variable.</span></span>
+<span class="line" id="L746">    NULL = <span class="tok-number">0</span>,</span>
+<span class="line" id="L747"></span>
+<span class="line" id="L748">    <span class="tok-comment">/// The symbol is a pointer to base type.</span></span>
+<span class="line" id="L749">    POINTER = <span class="tok-number">16</span>,</span>
+<span class="line" id="L750"></span>
+<span class="line" id="L751">    <span class="tok-comment">/// The symbol is a function that returns a base type.</span></span>
+<span class="line" id="L752">    FUNCTION = <span class="tok-number">32</span>,</span>
+<span class="line" id="L753"></span>
+<span class="line" id="L754">    <span class="tok-comment">/// The symbol is an array of base type.</span></span>
+<span class="line" id="L755">    ARRAY = <span class="tok-number">48</span>,</span>
+<span class="line" id="L756">};</span>
+<span class="line" id="L757"></span>
+<span class="line" id="L758"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> StorageClass = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L759">    <span class="tok-comment">/// A special symbol that represents the end of function, for debugging purposes.</span></span>
+<span class="line" id="L760">    END_OF_FUNCTION = <span class="tok-number">0xff</span>,</span>
+<span class="line" id="L761"></span>
+<span class="line" id="L762">    <span class="tok-comment">/// No assigned storage class.</span></span>
+<span class="line" id="L763">    NULL = <span class="tok-number">0</span>,</span>
+<span class="line" id="L764"></span>
+<span class="line" id="L765">    <span class="tok-comment">/// The automatic (stack) variable. The Value field specifies the stack frame offset.</span></span>
+<span class="line" id="L766">    AUTOMATIC = <span class="tok-number">1</span>,</span>
+<span class="line" id="L767"></span>
+<span class="line" id="L768">    <span class="tok-comment">/// A value that Microsoft tools use for external symbols.</span></span>
+<span class="line" id="L769">    <span class="tok-comment">/// The Value field indicates the size if the section number is IMAGE_SYM_UNDEFINED (0).</span></span>
+<span class="line" id="L770">    <span class="tok-comment">/// If the section number is not zero, then the Value field specifies the offset within the section.</span></span>
+<span class="line" id="L771">    EXTERNAL = <span class="tok-number">2</span>,</span>
+<span class="line" id="L772"></span>
+<span class="line" id="L773">    <span class="tok-comment">/// The offset of the symbol within the section.</span></span>
+<span class="line" id="L774">    <span class="tok-comment">/// If the Value field is zero, then the symbol represents a section name.</span></span>
+<span class="line" id="L775">    STATIC = <span class="tok-number">3</span>,</span>
+<span class="line" id="L776"></span>
+<span class="line" id="L777">    <span class="tok-comment">/// A register variable.</span></span>
+<span class="line" id="L778">    <span class="tok-comment">/// The Value field specifies the register number.</span></span>
+<span class="line" id="L779">    REGISTER = <span class="tok-number">4</span>,</span>
+<span class="line" id="L780"></span>
+<span class="line" id="L781">    <span class="tok-comment">/// A symbol that is defined externally.</span></span>
+<span class="line" id="L782">    EXTERNAL_DEF = <span class="tok-number">5</span>,</span>
+<span class="line" id="L783"></span>
+<span class="line" id="L784">    <span class="tok-comment">/// A code label that is defined within the module.</span></span>
+<span class="line" id="L785">    <span class="tok-comment">/// The Value field specifies the offset of the symbol within the section.</span></span>
+<span class="line" id="L786">    LABEL = <span class="tok-number">6</span>,</span>
+<span class="line" id="L787"></span>
+<span class="line" id="L788">    <span class="tok-comment">/// A reference to a code label that is not defined.</span></span>
+<span class="line" id="L789">    UNDEFINED_LABEL = <span class="tok-number">7</span>,</span>
+<span class="line" id="L790"></span>
+<span class="line" id="L791">    <span class="tok-comment">/// The structure member. The Value field specifies the n th member.</span></span>
+<span class="line" id="L792">    MEMBER_OF_STRUCT = <span class="tok-number">8</span>,</span>
+<span class="line" id="L793"></span>
+<span class="line" id="L794">    <span class="tok-comment">/// A formal argument (parameter) of a function. The Value field specifies the n th argument.</span></span>
+<span class="line" id="L795">    ARGUMENT = <span class="tok-number">9</span>,</span>
+<span class="line" id="L796"></span>
+<span class="line" id="L797">    <span class="tok-comment">/// The structure tag-name entry.</span></span>
+<span class="line" id="L798">    STRUCT_TAG = <span class="tok-number">10</span>,</span>
+<span class="line" id="L799"></span>
+<span class="line" id="L800">    <span class="tok-comment">/// A union member. The Value field specifies the n th member.</span></span>
+<span class="line" id="L801">    MEMBER_OF_UNION = <span class="tok-number">11</span>,</span>
+<span class="line" id="L802"></span>
+<span class="line" id="L803">    <span class="tok-comment">/// The Union tag-name entry.</span></span>
+<span class="line" id="L804">    UNION_TAG = <span class="tok-number">12</span>,</span>
+<span class="line" id="L805"></span>
+<span class="line" id="L806">    <span class="tok-comment">/// A Typedef entry.</span></span>
+<span class="line" id="L807">    TYPE_DEFINITION = <span class="tok-number">13</span>,</span>
+<span class="line" id="L808"></span>
+<span class="line" id="L809">    <span class="tok-comment">/// A static data declaration.</span></span>
+<span class="line" id="L810">    UNDEFINED_STATIC = <span class="tok-number">14</span>,</span>
+<span class="line" id="L811"></span>
+<span class="line" id="L812">    <span class="tok-comment">/// An enumerated type tagname entry.</span></span>
+<span class="line" id="L813">    ENUM_TAG = <span class="tok-number">15</span>,</span>
+<span class="line" id="L814"></span>
+<span class="line" id="L815">    <span class="tok-comment">/// A member of an enumeration. The Value field specifies the n th member.</span></span>
+<span class="line" id="L816">    MEMBER_OF_ENUM = <span class="tok-number">16</span>,</span>
+<span class="line" id="L817"></span>
+<span class="line" id="L818">    <span class="tok-comment">/// A register parameter.</span></span>
+<span class="line" id="L819">    REGISTER_PARAM = <span class="tok-number">17</span>,</span>
+<span class="line" id="L820"></span>
+<span class="line" id="L821">    <span class="tok-comment">/// A bit-field reference. The Value field specifies the n th bit in the bit field.</span></span>
+<span class="line" id="L822">    BIT_FIELD = <span class="tok-number">18</span>,</span>
+<span class="line" id="L823"></span>
+<span class="line" id="L824">    <span class="tok-comment">/// A .bb (beginning of block) or .eb (end of block) record.</span></span>
+<span class="line" id="L825">    <span class="tok-comment">/// The Value field is the relocatable address of the code location.</span></span>
+<span class="line" id="L826">    BLOCK = <span class="tok-number">100</span>,</span>
+<span class="line" id="L827"></span>
+<span class="line" id="L828">    <span class="tok-comment">/// A value that Microsoft tools use for symbol records that define the extent of a function: begin function (.bf ), end function ( .ef ), and lines in function ( .lf ).</span></span>
+<span class="line" id="L829">    <span class="tok-comment">/// For .lf records, the Value field gives the number of source lines in the function.</span></span>
+<span class="line" id="L830">    <span class="tok-comment">/// For .ef records, the Value field gives the size of the function code.</span></span>
+<span class="line" id="L831">    FUNCTION = <span class="tok-number">101</span>,</span>
+<span class="line" id="L832"></span>
+<span class="line" id="L833">    <span class="tok-comment">/// An end-of-structure entry.</span></span>
+<span class="line" id="L834">    END_OF_STRUCT = <span class="tok-number">102</span>,</span>
+<span class="line" id="L835"></span>
+<span class="line" id="L836">    <span class="tok-comment">/// A value that Microsoft tools, as well as traditional COFF format, use for the source-file symbol record.</span></span>
+<span class="line" id="L837">    <span class="tok-comment">/// The symbol is followed by auxiliary records that name the file.</span></span>
+<span class="line" id="L838">    FILE = <span class="tok-number">103</span>,</span>
+<span class="line" id="L839"></span>
+<span class="line" id="L840">    <span class="tok-comment">/// A definition of a section (Microsoft tools use STATIC storage class instead).</span></span>
+<span class="line" id="L841">    SECTION = <span class="tok-number">104</span>,</span>
+<span class="line" id="L842"></span>
+<span class="line" id="L843">    <span class="tok-comment">/// A weak external. For more information, see Auxiliary Format 3: Weak Externals.</span></span>
+<span class="line" id="L844">    WEAK_EXTERNAL = <span class="tok-number">105</span>,</span>
+<span class="line" id="L845"></span>
+<span class="line" id="L846">    <span class="tok-comment">/// A CLR token symbol. The name is an ASCII string that consists of the hexadecimal value of the token.</span></span>
+<span class="line" id="L847">    <span class="tok-comment">/// For more information, see CLR Token Definition (Object Only).</span></span>
+<span class="line" id="L848">    CLR_TOKEN = <span class="tok-number">107</span>,</span>
+<span class="line" id="L849">};</span>
+<span class="line" id="L850"></span>
+<span class="line" id="L851"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FunctionDefinition = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L852">    <span class="tok-comment">/// The symbol-table index of the corresponding .bf (begin function) symbol record.</span></span>
+<span class="line" id="L853">    tag_index: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L854"></span>
+<span class="line" id="L855">    <span class="tok-comment">/// The size of the executable code for the function itself.</span></span>
+<span class="line" id="L856">    <span class="tok-comment">/// If the function is in its own section, the SizeOfRawData in the section header is greater or equal to this field,</span></span>
+<span class="line" id="L857">    <span class="tok-comment">/// depending on alignment considerations.</span></span>
+<span class="line" id="L858">    total_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L859"></span>
+<span class="line" id="L860">    <span class="tok-comment">/// The file offset of the first COFF line-number entry for the function, or zero if none exists.</span></span>
+<span class="line" id="L861">    pointer_to_linenumber: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L862"></span>
+<span class="line" id="L863">    <span class="tok-comment">/// The symbol-table index of the record for the next function.</span></span>
+<span class="line" id="L864">    <span class="tok-comment">/// If the function is the last in the symbol table, this field is set to zero.</span></span>
+<span class="line" id="L865">    pointer_to_next_function: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L866"></span>
+<span class="line" id="L867">    unused: [<span class="tok-number">2</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L868">};</span>
+<span class="line" id="L869"></span>
+<span class="line" id="L870"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SectionDefinition = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L871">    <span class="tok-comment">/// The size of section data; the same as SizeOfRawData in the section header.</span></span>
+<span class="line" id="L872">    length: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L873"></span>
+<span class="line" id="L874">    <span class="tok-comment">/// The number of relocation entries for the section.</span></span>
+<span class="line" id="L875">    number_of_relocations: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L876"></span>
+<span class="line" id="L877">    <span class="tok-comment">/// The number of line-number entries for the section.</span></span>
+<span class="line" id="L878">    number_of_linenumbers: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L879"></span>
+<span class="line" id="L880">    <span class="tok-comment">/// The checksum for communal data. It is applicable if the IMAGE_SCN_LNK_COMDAT flag is set in the section header.</span></span>
+<span class="line" id="L881">    checksum: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L882"></span>
+<span class="line" id="L883">    <span class="tok-comment">/// One-based index into the section table for the associated section. This is used when the COMDAT selection setting is 5.</span></span>
+<span class="line" id="L884">    number: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L885"></span>
+<span class="line" id="L886">    <span class="tok-comment">/// The COMDAT selection number. This is applicable if the section is a COMDAT section.</span></span>
+<span class="line" id="L887">    selection: ComdatSelection,</span>
+<span class="line" id="L888"></span>
+<span class="line" id="L889">    unused: [<span class="tok-number">3</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L890">};</span>
+<span class="line" id="L891"></span>
+<span class="line" id="L892"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FileDefinition = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L893">    <span class="tok-comment">/// An ANSI string that gives the name of the source file.</span></span>
+<span class="line" id="L894">    <span class="tok-comment">/// This is padded with nulls if it is less than the maximum length.</span></span>
+<span class="line" id="L895">    file_name: [<span class="tok-number">18</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L896"></span>
+<span class="line" id="L897">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getFileName</span>(self: *<span class="tok-kw">const</span> FileDefinition) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L898">        <span class="tok-kw">const</span> len = std.mem.indexOfScalar(<span class="tok-type">u8</span>, &amp;self.file_name, <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0</span>)) <span class="tok-kw">orelse</span> self.file_name.len;</span>
+<span class="line" id="L899">        <span class="tok-kw">return</span> self.file_name[<span class="tok-number">0</span>..len];</span>
+<span class="line" id="L900">    }</span>
+<span class="line" id="L901">};</span>
+<span class="line" id="L902"></span>
+<span class="line" id="L903"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> WeakExternalDefinition = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L904">    <span class="tok-comment">/// The symbol-table index of sym2, the symbol to be linked if sym1 is not found.</span></span>
+<span class="line" id="L905">    tag_index: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L906"></span>
+<span class="line" id="L907">    <span class="tok-comment">/// A value of IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY indicates that no library search for sym1 should be performed.</span></span>
+<span class="line" id="L908">    <span class="tok-comment">/// A value of IMAGE_WEAK_EXTERN_SEARCH_LIBRARY indicates that a library search for sym1 should be performed.</span></span>
+<span class="line" id="L909">    <span class="tok-comment">/// A value of IMAGE_WEAK_EXTERN_SEARCH_ALIAS indicates that sym1 is an alias for sym2.</span></span>
+<span class="line" id="L910">    flag: WeakExternalFlag,</span>
+<span class="line" id="L911"></span>
+<span class="line" id="L912">    unused: [<span class="tok-number">10</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L913">};</span>
+<span class="line" id="L914"></span>
+<span class="line" id="L915"><span class="tok-comment">// https://github.com/tpn/winsdk-10/blob/master/Include/10.0.16299.0/km/ntimage.h</span>
+</span>
+<span class="line" id="L916"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> WeakExternalFlag = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L917">    SEARCH_NOLIBRARY = <span class="tok-number">1</span>,</span>
+<span class="line" id="L918">    SEARCH_LIBRARY = <span class="tok-number">2</span>,</span>
+<span class="line" id="L919">    SEARCH_ALIAS = <span class="tok-number">3</span>,</span>
+<span class="line" id="L920">    ANTI_DEPENDENCY = <span class="tok-number">4</span>,</span>
+<span class="line" id="L921">};</span>
+<span class="line" id="L922"></span>
+<span class="line" id="L923"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ComdatSelection = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L924">    <span class="tok-comment">/// Not a COMDAT section.</span></span>
+<span class="line" id="L925">    NONE = <span class="tok-number">0</span>,</span>
+<span class="line" id="L926"></span>
+<span class="line" id="L927">    <span class="tok-comment">/// If this symbol is already defined, the linker issues a &quot;multiply defined symbol&quot; error.</span></span>
+<span class="line" id="L928">    NODUPLICATES = <span class="tok-number">1</span>,</span>
+<span class="line" id="L929"></span>
+<span class="line" id="L930">    <span class="tok-comment">/// Any section that defines the same COMDAT symbol can be linked; the rest are removed.</span></span>
+<span class="line" id="L931">    ANY = <span class="tok-number">2</span>,</span>
+<span class="line" id="L932"></span>
+<span class="line" id="L933">    <span class="tok-comment">/// The linker chooses an arbitrary section among the definitions for this symbol.</span></span>
+<span class="line" id="L934">    <span class="tok-comment">/// If all definitions are not the same size, a &quot;multiply defined symbol&quot; error is issued.</span></span>
+<span class="line" id="L935">    SAME_SIZE = <span class="tok-number">3</span>,</span>
+<span class="line" id="L936"></span>
+<span class="line" id="L937">    <span class="tok-comment">/// The linker chooses an arbitrary section among the definitions for this symbol.</span></span>
+<span class="line" id="L938">    <span class="tok-comment">/// If all definitions do not match exactly, a &quot;multiply defined symbol&quot; error is issued.</span></span>
+<span class="line" id="L939">    EXACT_MATCH = <span class="tok-number">4</span>,</span>
+<span class="line" id="L940"></span>
+<span class="line" id="L941">    <span class="tok-comment">/// The section is linked if a certain other COMDAT section is linked.</span></span>
+<span class="line" id="L942">    <span class="tok-comment">/// This other section is indicated by the Number field of the auxiliary symbol record for the section definition.</span></span>
+<span class="line" id="L943">    <span class="tok-comment">/// This setting is useful for definitions that have components in multiple sections</span></span>
+<span class="line" id="L944">    <span class="tok-comment">/// (for example, code in one and data in another), but where all must be linked or discarded as a set.</span></span>
+<span class="line" id="L945">    <span class="tok-comment">/// The other section this section is associated with must be a COMDAT section, which can be another</span></span>
+<span class="line" id="L946">    <span class="tok-comment">/// associative COMDAT section. An associative COMDAT section's section association chain can't form a loop.</span></span>
+<span class="line" id="L947">    <span class="tok-comment">/// The section association chain must eventually come to a COMDAT section that doesn't have IMAGE_COMDAT_SELECT_ASSOCIATIVE set.</span></span>
+<span class="line" id="L948">    ASSOCIATIVE = <span class="tok-number">5</span>,</span>
+<span class="line" id="L949"></span>
+<span class="line" id="L950">    <span class="tok-comment">/// The linker chooses the largest definition from among all of the definitions for this symbol.</span></span>
+<span class="line" id="L951">    <span class="tok-comment">/// If multiple definitions have this size, the choice between them is arbitrary.</span></span>
+<span class="line" id="L952">    LARGEST = <span class="tok-number">6</span>,</span>
+<span class="line" id="L953">};</span>
+<span class="line" id="L954"></span>
+<span class="line" id="L955"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> DebugInfoDefinition = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L956">    unused_1: [<span class="tok-number">4</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L957"></span>
+<span class="line" id="L958">    <span class="tok-comment">/// The actual ordinal line number (1, 2, 3, and so on) within the source file, corresponding to the .bf or .ef record.</span></span>
+<span class="line" id="L959">    linenumber: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L960"></span>
+<span class="line" id="L961">    unused_2: [<span class="tok-number">6</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L962"></span>
+<span class="line" id="L963">    <span class="tok-comment">/// The symbol-table index of the next .bf symbol record.</span></span>
+<span class="line" id="L964">    <span class="tok-comment">/// If the function is the last in the symbol table, this field is set to zero.</span></span>
+<span class="line" id="L965">    <span class="tok-comment">/// It is not used for .ef records.</span></span>
+<span class="line" id="L966">    pointer_to_next_function: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L967"></span>
+<span class="line" id="L968">    unused_3: [<span class="tok-number">2</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L969">};</span>
+<span class="line" id="L970"></span>
+<span class="line" id="L971"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MachineType = <span class="tok-kw">enum</span>(<span class="tok-type">u16</span>) {</span>
+<span class="line" id="L972">    Unknown = <span class="tok-number">0x0</span>,</span>
+<span class="line" id="L973">    <span class="tok-comment">/// Matsushita AM33</span></span>
+<span class="line" id="L974">    AM33 = <span class="tok-number">0x1d3</span>,</span>
+<span class="line" id="L975">    <span class="tok-comment">/// x64</span></span>
+<span class="line" id="L976">    X64 = <span class="tok-number">0x8664</span>,</span>
+<span class="line" id="L977">    <span class="tok-comment">/// ARM little endian</span></span>
+<span class="line" id="L978">    ARM = <span class="tok-number">0x1c0</span>,</span>
+<span class="line" id="L979">    <span class="tok-comment">/// ARM64 little endian</span></span>
+<span class="line" id="L980">    ARM64 = <span class="tok-number">0xaa64</span>,</span>
+<span class="line" id="L981">    <span class="tok-comment">/// ARM Thumb-2 little endian</span></span>
+<span class="line" id="L982">    ARMNT = <span class="tok-number">0x1c4</span>,</span>
+<span class="line" id="L983">    <span class="tok-comment">/// EFI byte code</span></span>
+<span class="line" id="L984">    EBC = <span class="tok-number">0xebc</span>,</span>
+<span class="line" id="L985">    <span class="tok-comment">/// Intel 386 or later processors and compatible processors</span></span>
+<span class="line" id="L986">    I386 = <span class="tok-number">0x14c</span>,</span>
+<span class="line" id="L987">    <span class="tok-comment">/// Intel Itanium processor family</span></span>
+<span class="line" id="L988">    IA64 = <span class="tok-number">0x200</span>,</span>
+<span class="line" id="L989">    <span class="tok-comment">/// Mitsubishi M32R little endian</span></span>
+<span class="line" id="L990">    M32R = <span class="tok-number">0x9041</span>,</span>
+<span class="line" id="L991">    <span class="tok-comment">/// MIPS16</span></span>
+<span class="line" id="L992">    MIPS16 = <span class="tok-number">0x266</span>,</span>
+<span class="line" id="L993">    <span class="tok-comment">/// MIPS with FPU</span></span>
+<span class="line" id="L994">    MIPSFPU = <span class="tok-number">0x366</span>,</span>
+<span class="line" id="L995">    <span class="tok-comment">/// MIPS16 with FPU</span></span>
+<span class="line" id="L996">    MIPSFPU16 = <span class="tok-number">0x466</span>,</span>
+<span class="line" id="L997">    <span class="tok-comment">/// Power PC little endian</span></span>
+<span class="line" id="L998">    POWERPC = <span class="tok-number">0x1f0</span>,</span>
+<span class="line" id="L999">    <span class="tok-comment">/// Power PC with floating point support</span></span>
+<span class="line" id="L1000">    POWERPCFP = <span class="tok-number">0x1f1</span>,</span>
+<span class="line" id="L1001">    <span class="tok-comment">/// MIPS little endian</span></span>
+<span class="line" id="L1002">    R4000 = <span class="tok-number">0x166</span>,</span>
+<span class="line" id="L1003">    <span class="tok-comment">/// RISC-V 32-bit address space</span></span>
+<span class="line" id="L1004">    RISCV32 = <span class="tok-number">0x5032</span>,</span>
+<span class="line" id="L1005">    <span class="tok-comment">/// RISC-V 64-bit address space</span></span>
+<span class="line" id="L1006">    RISCV64 = <span class="tok-number">0x5064</span>,</span>
+<span class="line" id="L1007">    <span class="tok-comment">/// RISC-V 128-bit address space</span></span>
+<span class="line" id="L1008">    RISCV128 = <span class="tok-number">0x5128</span>,</span>
+<span class="line" id="L1009">    <span class="tok-comment">/// Hitachi SH3</span></span>
+<span class="line" id="L1010">    SH3 = <span class="tok-number">0x1a2</span>,</span>
+<span class="line" id="L1011">    <span class="tok-comment">/// Hitachi SH3 DSP</span></span>
+<span class="line" id="L1012">    SH3DSP = <span class="tok-number">0x1a3</span>,</span>
+<span class="line" id="L1013">    <span class="tok-comment">/// Hitachi SH4</span></span>
+<span class="line" id="L1014">    SH4 = <span class="tok-number">0x1a6</span>,</span>
+<span class="line" id="L1015">    <span class="tok-comment">/// Hitachi SH5</span></span>
+<span class="line" id="L1016">    SH5 = <span class="tok-number">0x1a8</span>,</span>
+<span class="line" id="L1017">    <span class="tok-comment">/// Thumb</span></span>
+<span class="line" id="L1018">    Thumb = <span class="tok-number">0x1c2</span>,</span>
+<span class="line" id="L1019">    <span class="tok-comment">/// MIPS little-endian WCE v2</span></span>
+<span class="line" id="L1020">    WCEMIPSV2 = <span class="tok-number">0x169</span>,</span>
+<span class="line" id="L1021"></span>
+<span class="line" id="L1022">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromTargetCpuArch</span>(arch: std.Target.Cpu.Arch) MachineType {</span>
+<span class="line" id="L1023">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (arch) {</span>
+<span class="line" id="L1024">            .arm =&gt; .ARM,</span>
+<span class="line" id="L1025">            .powerpc =&gt; .POWERPC,</span>
+<span class="line" id="L1026">            .riscv32 =&gt; .RISCV32,</span>
+<span class="line" id="L1027">            .thumb =&gt; .Thumb,</span>
+<span class="line" id="L1028">            .x86 =&gt; .I386,</span>
+<span class="line" id="L1029">            .aarch64 =&gt; .ARM64,</span>
+<span class="line" id="L1030">            .riscv64 =&gt; .RISCV64,</span>
+<span class="line" id="L1031">            .x86_64 =&gt; .X64,</span>
+<span class="line" id="L1032">            <span class="tok-comment">// there's cases we don't (yet) handle</span>
+</span>
+<span class="line" id="L1033">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L1034">        };</span>
+<span class="line" id="L1035">    }</span>
+<span class="line" id="L1036"></span>
+<span class="line" id="L1037">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toTargetCpuArch</span>(machine_type: MachineType) ?std.Target.Cpu.Arch {</span>
+<span class="line" id="L1038">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (machine_type) {</span>
+<span class="line" id="L1039">            .ARM =&gt; .arm,</span>
+<span class="line" id="L1040">            .POWERPC =&gt; .powerpc,</span>
+<span class="line" id="L1041">            .RISCV32 =&gt; .riscv32,</span>
+<span class="line" id="L1042">            .Thumb =&gt; .thumb,</span>
+<span class="line" id="L1043">            .I386 =&gt; .x86,</span>
+<span class="line" id="L1044">            .ARM64 =&gt; .aarch64,</span>
+<span class="line" id="L1045">            .RISCV64 =&gt; .riscv64,</span>
+<span class="line" id="L1046">            .X64 =&gt; .x86_64,</span>
+<span class="line" id="L1047">            <span class="tok-comment">// there's cases we don't (yet) handle</span>
+</span>
+<span class="line" id="L1048">            <span class="tok-kw">else</span> =&gt; <span class="tok-null">null</span>,</span>
+<span class="line" id="L1049">        };</span>
+<span class="line" id="L1050">    }</span>
+<span class="line" id="L1051">};</span>
+<span class="line" id="L1052"></span>
+<span class="line" id="L1053"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> CoffError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L1054">    InvalidPEMagic,</span>
+<span class="line" id="L1055">    InvalidPEHeader,</span>
+<span class="line" id="L1056">    InvalidMachine,</span>
+<span class="line" id="L1057">    MissingPEHeader,</span>
+<span class="line" id="L1058">    MissingCoffSection,</span>
+<span class="line" id="L1059">    MissingStringTable,</span>
+<span class="line" id="L1060">};</span>
+<span class="line" id="L1061"></span>
+<span class="line" id="L1062"><span class="tok-comment">// Official documentation of the format: https://docs.microsoft.com/en-us/windows/win32/debug/pe-format</span>
+</span>
+<span class="line" id="L1063"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Coff = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1064">    data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1065">    is_image: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L1066">    coff_header_offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L1067"></span>
+<span class="line" id="L1068">    guid: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1069">    age: <span class="tok-type">u32</span> = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1070"></span>
+<span class="line" id="L1071">    <span class="tok-comment">// The lifetime of `data` must be longer than the lifetime of the returned Coff</span>
+</span>
+<span class="line" id="L1072">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !Coff {</span>
+<span class="line" id="L1073">        <span class="tok-kw">const</span> pe_pointer_offset = <span class="tok-number">0x3C</span>;</span>
+<span class="line" id="L1074">        <span class="tok-kw">const</span> pe_magic = <span class="tok-str">&quot;PE\x00\x00&quot;</span>;</span>
+<span class="line" id="L1075"></span>
+<span class="line" id="L1076">        <span class="tok-kw">var</span> stream = std.io.fixedBufferStream(data);</span>
+<span class="line" id="L1077">        <span class="tok-kw">const</span> reader = stream.reader();</span>
+<span class="line" id="L1078">        <span class="tok-kw">try</span> stream.seekTo(pe_pointer_offset);</span>
+<span class="line" id="L1079">        <span class="tok-kw">var</span> coff_header_offset = <span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L1080">        <span class="tok-kw">try</span> stream.seekTo(coff_header_offset);</span>
+<span class="line" id="L1081">        <span class="tok-kw">var</span> buf: [<span class="tok-number">4</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1082">        <span class="tok-kw">try</span> reader.readNoEof(&amp;buf);</span>
+<span class="line" id="L1083">        <span class="tok-kw">const</span> is_image = mem.eql(<span class="tok-type">u8</span>, pe_magic, &amp;buf);</span>
+<span class="line" id="L1084"></span>
+<span class="line" id="L1085">        <span class="tok-kw">var</span> coff = <span class="tok-builtin">@This</span>(){</span>
+<span class="line" id="L1086">            .data = data,</span>
+<span class="line" id="L1087">            .is_image = is_image,</span>
+<span class="line" id="L1088">            .coff_header_offset = coff_header_offset,</span>
+<span class="line" id="L1089">        };</span>
+<span class="line" id="L1090"></span>
+<span class="line" id="L1091">        <span class="tok-comment">// Do some basic validation upfront</span>
+</span>
+<span class="line" id="L1092">        <span class="tok-kw">if</span> (is_image) {</span>
+<span class="line" id="L1093">            coff.coff_header_offset = coff.coff_header_offset + <span class="tok-number">4</span>;</span>
+<span class="line" id="L1094">            <span class="tok-kw">const</span> coff_header = coff.getCoffHeader();</span>
+<span class="line" id="L1095">            <span class="tok-kw">if</span> (coff_header.size_of_optional_header == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MissingPEHeader;</span>
+<span class="line" id="L1096">        }</span>
+<span class="line" id="L1097"></span>
+<span class="line" id="L1098">        <span class="tok-comment">// JK: we used to check for architecture here and throw an error if not x86 or derivative.</span>
+</span>
+<span class="line" id="L1099">        <span class="tok-comment">// However I am willing to take a leap of faith and let aarch64 have a shot also.</span>
+</span>
+<span class="line" id="L1100"></span>
+<span class="line" id="L1101">        <span class="tok-kw">return</span> coff;</span>
+<span class="line" id="L1102">    }</span>
+<span class="line" id="L1103"></span>
+<span class="line" id="L1104">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPdbPath</span>(self: *Coff, buffer: []<span class="tok-type">u8</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1105">        assert(self.is_image);</span>
+<span class="line" id="L1106"></span>
+<span class="line" id="L1107">        <span class="tok-kw">const</span> data_dirs = self.getDataDirectories();</span>
+<span class="line" id="L1108">        <span class="tok-kw">const</span> debug_dir = data_dirs[<span class="tok-builtin">@intFromEnum</span>(DirectoryEntry.DEBUG)];</span>
+<span class="line" id="L1109"></span>
+<span class="line" id="L1110">        <span class="tok-kw">var</span> stream = std.io.fixedBufferStream(self.data);</span>
+<span class="line" id="L1111">        <span class="tok-kw">const</span> reader = stream.reader();</span>
+<span class="line" id="L1112">        <span class="tok-kw">try</span> stream.seekTo(debug_dir.virtual_address);</span>
+<span class="line" id="L1113"></span>
+<span class="line" id="L1114">        <span class="tok-comment">// Find the correct DebugDirectoryEntry, and where its data is stored.</span>
+</span>
+<span class="line" id="L1115">        <span class="tok-comment">// It can be in any section.</span>
+</span>
+<span class="line" id="L1116">        <span class="tok-kw">const</span> debug_dir_entry_count = debug_dir.size / <span class="tok-builtin">@sizeOf</span>(DebugDirectoryEntry);</span>
+<span class="line" id="L1117">        <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1118">        blk: <span class="tok-kw">while</span> (i &lt; debug_dir_entry_count) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1119">            <span class="tok-kw">const</span> debug_dir_entry = <span class="tok-kw">try</span> reader.readStruct(DebugDirectoryEntry);</span>
+<span class="line" id="L1120">            <span class="tok-kw">if</span> (debug_dir_entry.<span class="tok-type">type</span> == .CODEVIEW) {</span>
+<span class="line" id="L1121">                <span class="tok-kw">try</span> stream.seekTo(debug_dir_entry.address_of_raw_data);</span>
+<span class="line" id="L1122">                <span class="tok-kw">break</span> :blk;</span>
+<span class="line" id="L1123">            }</span>
+<span class="line" id="L1124">        }</span>
+<span class="line" id="L1125"></span>
+<span class="line" id="L1126">        <span class="tok-kw">var</span> cv_signature: [<span class="tok-number">4</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>; <span class="tok-comment">// CodeView signature</span>
+</span>
+<span class="line" id="L1127">        <span class="tok-kw">try</span> reader.readNoEof(cv_signature[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L1128">        <span class="tok-comment">// 'RSDS' indicates PDB70 format, used by lld.</span>
+</span>
+<span class="line" id="L1129">        <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, &amp;cv_signature, <span class="tok-str">&quot;RSDS&quot;</span>))</span>
+<span class="line" id="L1130">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidPEMagic;</span>
+<span class="line" id="L1131">        <span class="tok-kw">try</span> reader.readNoEof(self.guid[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L1132">        self.age = <span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L1133"></span>
+<span class="line" id="L1134">        <span class="tok-comment">// Finally read the null-terminated string.</span>
+</span>
+<span class="line" id="L1135">        <span class="tok-kw">var</span> byte = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L1136">        i = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1137">        <span class="tok-kw">while</span> (byte != <span class="tok-number">0</span> <span class="tok-kw">and</span> i &lt; buffer.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1138">            buffer[i] = byte;</span>
+<span class="line" id="L1139">            byte = <span class="tok-kw">try</span> reader.readByte();</span>
+<span class="line" id="L1140">        }</span>
+<span class="line" id="L1141"></span>
+<span class="line" id="L1142">        <span class="tok-kw">if</span> (byte != <span class="tok-number">0</span> <span class="tok-kw">and</span> i == buffer.len)</span>
+<span class="line" id="L1143">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NameTooLong;</span>
+<span class="line" id="L1144"></span>
+<span class="line" id="L1145">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, i);</span>
+<span class="line" id="L1146">    }</span>
+<span class="line" id="L1147"></span>
+<span class="line" id="L1148">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getCoffHeader</span>(self: Coff) CoffHeader {</span>
+<span class="line" id="L1149">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> CoffHeader, <span class="tok-builtin">@ptrCast</span>(self.data[self.coff_header_offset..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(CoffHeader)])).*;</span>
+<span class="line" id="L1150">    }</span>
+<span class="line" id="L1151"></span>
+<span class="line" id="L1152">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getOptionalHeader</span>(self: Coff) OptionalHeader {</span>
+<span class="line" id="L1153">        assert(self.is_image);</span>
+<span class="line" id="L1154">        <span class="tok-kw">const</span> offset = self.coff_header_offset + <span class="tok-builtin">@sizeOf</span>(CoffHeader);</span>
+<span class="line" id="L1155">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> OptionalHeader, <span class="tok-builtin">@ptrCast</span>(self.data[offset..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(OptionalHeader)])).*;</span>
+<span class="line" id="L1156">    }</span>
+<span class="line" id="L1157"></span>
+<span class="line" id="L1158">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getOptionalHeader32</span>(self: Coff) OptionalHeaderPE32 {</span>
+<span class="line" id="L1159">        assert(self.is_image);</span>
+<span class="line" id="L1160">        <span class="tok-kw">const</span> offset = self.coff_header_offset + <span class="tok-builtin">@sizeOf</span>(CoffHeader);</span>
+<span class="line" id="L1161">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> OptionalHeaderPE32, <span class="tok-builtin">@ptrCast</span>(self.data[offset..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(OptionalHeaderPE32)])).*;</span>
+<span class="line" id="L1162">    }</span>
+<span class="line" id="L1163"></span>
+<span class="line" id="L1164">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getOptionalHeader64</span>(self: Coff) OptionalHeaderPE64 {</span>
+<span class="line" id="L1165">        assert(self.is_image);</span>
+<span class="line" id="L1166">        <span class="tok-kw">const</span> offset = self.coff_header_offset + <span class="tok-builtin">@sizeOf</span>(CoffHeader);</span>
+<span class="line" id="L1167">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> OptionalHeaderPE64, <span class="tok-builtin">@ptrCast</span>(self.data[offset..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(OptionalHeaderPE64)])).*;</span>
+<span class="line" id="L1168">    }</span>
+<span class="line" id="L1169"></span>
+<span class="line" id="L1170">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getImageBase</span>(self: Coff) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L1171">        <span class="tok-kw">const</span> hdr = self.getOptionalHeader();</span>
+<span class="line" id="L1172">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (hdr.magic) {</span>
+<span class="line" id="L1173">            IMAGE_NT_OPTIONAL_HDR32_MAGIC =&gt; self.getOptionalHeader32().image_base,</span>
+<span class="line" id="L1174">            IMAGE_NT_OPTIONAL_HDR64_MAGIC =&gt; self.getOptionalHeader64().image_base,</span>
+<span class="line" id="L1175">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// We assume we have validated the header already</span>
+</span>
+<span class="line" id="L1176">        };</span>
+<span class="line" id="L1177">    }</span>
+<span class="line" id="L1178"></span>
+<span class="line" id="L1179">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getNumberOfDataDirectories</span>(self: Coff) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L1180">        <span class="tok-kw">const</span> hdr = self.getOptionalHeader();</span>
+<span class="line" id="L1181">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (hdr.magic) {</span>
+<span class="line" id="L1182">            IMAGE_NT_OPTIONAL_HDR32_MAGIC =&gt; self.getOptionalHeader32().number_of_rva_and_sizes,</span>
+<span class="line" id="L1183">            IMAGE_NT_OPTIONAL_HDR64_MAGIC =&gt; self.getOptionalHeader64().number_of_rva_and_sizes,</span>
+<span class="line" id="L1184">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// We assume we have validated the header already</span>
+</span>
+<span class="line" id="L1185">        };</span>
+<span class="line" id="L1186">    }</span>
+<span class="line" id="L1187"></span>
+<span class="line" id="L1188">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getDataDirectories</span>(self: *<span class="tok-kw">const</span> Coff) []<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> ImageDataDirectory {</span>
+<span class="line" id="L1189">        <span class="tok-kw">const</span> hdr = self.getOptionalHeader();</span>
+<span class="line" id="L1190">        <span class="tok-kw">const</span> size: <span class="tok-type">usize</span> = <span class="tok-kw">switch</span> (hdr.magic) {</span>
+<span class="line" id="L1191">            IMAGE_NT_OPTIONAL_HDR32_MAGIC =&gt; <span class="tok-builtin">@sizeOf</span>(OptionalHeaderPE32),</span>
+<span class="line" id="L1192">            IMAGE_NT_OPTIONAL_HDR64_MAGIC =&gt; <span class="tok-builtin">@sizeOf</span>(OptionalHeaderPE64),</span>
+<span class="line" id="L1193">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// We assume we have validated the header already</span>
+</span>
+<span class="line" id="L1194">        };</span>
+<span class="line" id="L1195">        <span class="tok-kw">const</span> offset = self.coff_header_offset + <span class="tok-builtin">@sizeOf</span>(CoffHeader) + size;</span>
+<span class="line" id="L1196">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> ImageDataDirectory, <span class="tok-builtin">@ptrCast</span>(self.data[offset..]))[<span class="tok-number">0</span>..self.getNumberOfDataDirectories()];</span>
+<span class="line" id="L1197">    }</span>
+<span class="line" id="L1198"></span>
+<span class="line" id="L1199">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSymtab</span>(self: *<span class="tok-kw">const</span> Coff) ?Symtab {</span>
+<span class="line" id="L1200">        <span class="tok-kw">const</span> coff_header = self.getCoffHeader();</span>
+<span class="line" id="L1201">        <span class="tok-kw">if</span> (coff_header.pointer_to_symbol_table == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1202"></span>
+<span class="line" id="L1203">        <span class="tok-kw">const</span> offset = coff_header.pointer_to_symbol_table;</span>
+<span class="line" id="L1204">        <span class="tok-kw">const</span> size = coff_header.number_of_symbols * Symbol.sizeOf();</span>
+<span class="line" id="L1205">        <span class="tok-kw">return</span> .{ .buffer = self.data[offset..][<span class="tok-number">0</span>..size] };</span>
+<span class="line" id="L1206">    }</span>
+<span class="line" id="L1207"></span>
+<span class="line" id="L1208">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getStrtab</span>(self: *<span class="tok-kw">const</span> Coff) <span class="tok-kw">error</span>{InvalidStrtabSize}!?Strtab {</span>
+<span class="line" id="L1209">        <span class="tok-kw">const</span> coff_header = self.getCoffHeader();</span>
+<span class="line" id="L1210">        <span class="tok-kw">if</span> (coff_header.pointer_to_symbol_table == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1211"></span>
+<span class="line" id="L1212">        <span class="tok-kw">const</span> offset = coff_header.pointer_to_symbol_table + Symbol.sizeOf() * coff_header.number_of_symbols;</span>
+<span class="line" id="L1213">        <span class="tok-kw">const</span> size = mem.readIntLittle(<span class="tok-type">u32</span>, self.data[offset..][<span class="tok-number">0</span>..<span class="tok-number">4</span>]);</span>
+<span class="line" id="L1214">        <span class="tok-kw">if</span> ((offset + size) &gt; self.data.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidStrtabSize;</span>
+<span class="line" id="L1215"></span>
+<span class="line" id="L1216">        <span class="tok-kw">return</span> Strtab{ .buffer = self.data[offset..][<span class="tok-number">0</span>..size] };</span>
+<span class="line" id="L1217">    }</span>
+<span class="line" id="L1218"></span>
+<span class="line" id="L1219">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">strtabRequired</span>(self: *<span class="tok-kw">const</span> Coff) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L1220">        <span class="tok-kw">for</span> (self.getSectionHeaders()) |*sect_hdr| <span class="tok-kw">if</span> (sect_hdr.getName() == <span class="tok-null">null</span>) <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L1221">        <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L1222">    }</span>
+<span class="line" id="L1223"></span>
+<span class="line" id="L1224">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSectionHeaders</span>(self: *<span class="tok-kw">const</span> Coff) []<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> SectionHeader {</span>
+<span class="line" id="L1225">        <span class="tok-kw">const</span> coff_header = self.getCoffHeader();</span>
+<span class="line" id="L1226">        <span class="tok-kw">const</span> offset = self.coff_header_offset + <span class="tok-builtin">@sizeOf</span>(CoffHeader) + coff_header.size_of_optional_header;</span>
+<span class="line" id="L1227">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> SectionHeader, <span class="tok-builtin">@ptrCast</span>(self.data.ptr + offset))[<span class="tok-number">0</span>..coff_header.number_of_sections];</span>
+<span class="line" id="L1228">    }</span>
+<span class="line" id="L1229"></span>
+<span class="line" id="L1230">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSectionHeadersAlloc</span>(self: *<span class="tok-kw">const</span> Coff, allocator: mem.Allocator) ![]SectionHeader {</span>
+<span class="line" id="L1231">        <span class="tok-kw">const</span> section_headers = self.getSectionHeaders();</span>
+<span class="line" id="L1232">        <span class="tok-kw">const</span> out_buff = <span class="tok-kw">try</span> allocator.alloc(SectionHeader, section_headers.len);</span>
+<span class="line" id="L1233">        <span class="tok-kw">for</span> (out_buff, <span class="tok-number">0</span>..) |*section_header, i| {</span>
+<span class="line" id="L1234">            section_header.* = section_headers[i];</span>
+<span class="line" id="L1235">        }</span>
+<span class="line" id="L1236"></span>
+<span class="line" id="L1237">        <span class="tok-kw">return</span> out_buff;</span>
+<span class="line" id="L1238">    }</span>
+<span class="line" id="L1239"></span>
+<span class="line" id="L1240">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSectionName</span>(self: *<span class="tok-kw">const</span> Coff, sect_hdr: *<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> SectionHeader) <span class="tok-kw">error</span>{InvalidStrtabSize}![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L1241">        <span class="tok-kw">const</span> name = sect_hdr.getName() <span class="tok-kw">orelse</span> blk: {</span>
+<span class="line" id="L1242">            <span class="tok-kw">const</span> strtab = (<span class="tok-kw">try</span> self.getStrtab()).?;</span>
+<span class="line" id="L1243">            <span class="tok-kw">const</span> name_offset = sect_hdr.getNameOffset().?;</span>
+<span class="line" id="L1244">            <span class="tok-kw">break</span> :blk strtab.get(name_offset);</span>
+<span class="line" id="L1245">        };</span>
+<span class="line" id="L1246">        <span class="tok-kw">return</span> name;</span>
+<span class="line" id="L1247">    }</span>
+<span class="line" id="L1248"></span>
+<span class="line" id="L1249">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSectionByName</span>(self: *<span class="tok-kw">const</span> Coff, <span class="tok-kw">comptime</span> name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ?*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> SectionHeader {</span>
+<span class="line" id="L1250">        <span class="tok-kw">for</span> (self.getSectionHeaders()) |*sect| {</span>
+<span class="line" id="L1251">            <span class="tok-kw">const</span> section_name = self.getSectionName(sect) <span class="tok-kw">catch</span> |e| <span class="tok-kw">switch</span> (e) {</span>
+<span class="line" id="L1252">                <span class="tok-kw">error</span>.InvalidStrtabSize =&gt; <span class="tok-kw">continue</span>, <span class="tok-comment">//ignore invalid(?) strtab entries - see also GitHub issue #15238</span>
+</span>
+<span class="line" id="L1253">            };</span>
+<span class="line" id="L1254">            <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, section_name, name)) {</span>
+<span class="line" id="L1255">                <span class="tok-kw">return</span> sect;</span>
+<span class="line" id="L1256">            }</span>
+<span class="line" id="L1257">        }</span>
+<span class="line" id="L1258">        <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1259">    }</span>
+<span class="line" id="L1260"></span>
+<span class="line" id="L1261">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSectionData</span>(self: *<span class="tok-kw">const</span> Coff, sec: *<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> SectionHeader) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L1262">        <span class="tok-kw">return</span> self.data[sec.pointer_to_raw_data..][<span class="tok-number">0</span>..sec.virtual_size];</span>
+<span class="line" id="L1263">    }</span>
+<span class="line" id="L1264"></span>
+<span class="line" id="L1265">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getSectionDataAlloc</span>(self: *<span class="tok-kw">const</span> Coff, sec: *<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> SectionHeader, allocator: mem.Allocator) ![]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L1266">        <span class="tok-kw">const</span> section_data = self.getSectionData(sec);</span>
+<span class="line" id="L1267">        <span class="tok-kw">return</span> allocator.dupe(<span class="tok-type">u8</span>, section_data);</span>
+<span class="line" id="L1268">    }</span>
+<span class="line" id="L1269">};</span>
+<span class="line" id="L1270"></span>
+<span class="line" id="L1271"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Symtab = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1272">    buffer: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1273"></span>
+<span class="line" id="L1274">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">len</span>(self: Symtab) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1275">        <span class="tok-kw">return</span> <span class="tok-builtin">@divExact</span>(self.buffer.len, Symbol.sizeOf());</span>
+<span class="line" id="L1276">    }</span>
+<span class="line" id="L1277"></span>
+<span class="line" id="L1278">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Tag = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L1279">        symbol,</span>
+<span class="line" id="L1280">        func_def,</span>
+<span class="line" id="L1281">        debug_info,</span>
+<span class="line" id="L1282">        weak_ext,</span>
+<span class="line" id="L1283">        file_def,</span>
+<span class="line" id="L1284">        sect_def,</span>
+<span class="line" id="L1285">    };</span>
+<span class="line" id="L1286"></span>
+<span class="line" id="L1287">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Record = <span class="tok-kw">union</span>(Tag) {</span>
+<span class="line" id="L1288">        symbol: Symbol,</span>
+<span class="line" id="L1289">        debug_info: DebugInfoDefinition,</span>
+<span class="line" id="L1290">        func_def: FunctionDefinition,</span>
+<span class="line" id="L1291">        weak_ext: WeakExternalDefinition,</span>
+<span class="line" id="L1292">        file_def: FileDefinition,</span>
+<span class="line" id="L1293">        sect_def: SectionDefinition,</span>
+<span class="line" id="L1294">    };</span>
+<span class="line" id="L1295"></span>
+<span class="line" id="L1296">    <span class="tok-comment">/// Lives as long as Symtab instance.</span></span>
+<span class="line" id="L1297">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">at</span>(self: Symtab, index: <span class="tok-type">usize</span>, tag: Tag) Record {</span>
+<span class="line" id="L1298">        <span class="tok-kw">const</span> offset = index * Symbol.sizeOf();</span>
+<span class="line" id="L1299">        <span class="tok-kw">const</span> raw = self.buffer[offset..][<span class="tok-number">0</span>..Symbol.sizeOf()];</span>
+<span class="line" id="L1300">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (tag) {</span>
+<span class="line" id="L1301">            .symbol =&gt; .{ .symbol = asSymbol(raw) },</span>
+<span class="line" id="L1302">            .debug_info =&gt; .{ .debug_info = asDebugInfo(raw) },</span>
+<span class="line" id="L1303">            .func_def =&gt; .{ .func_def = asFuncDef(raw) },</span>
+<span class="line" id="L1304">            .weak_ext =&gt; .{ .weak_ext = asWeakExtDef(raw) },</span>
+<span class="line" id="L1305">            .file_def =&gt; .{ .file_def = asFileDef(raw) },</span>
+<span class="line" id="L1306">            .sect_def =&gt; .{ .sect_def = asSectDef(raw) },</span>
+<span class="line" id="L1307">        };</span>
+<span class="line" id="L1308">    }</span>
+<span class="line" id="L1309"></span>
+<span class="line" id="L1310">    <span class="tok-kw">fn</span> <span class="tok-fn">asSymbol</span>(raw: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Symbol {</span>
+<span class="line" id="L1311">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1312">            .name = raw[<span class="tok-number">0</span>..<span class="tok-number">8</span>].*,</span>
+<span class="line" id="L1313">            .value = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">8</span>..<span class="tok-number">12</span>]),</span>
+<span class="line" id="L1314">            .section_number = <span class="tok-builtin">@as</span>(SectionNumber, <span class="tok-builtin">@enumFromInt</span>(mem.readIntLittle(<span class="tok-type">u16</span>, raw[<span class="tok-number">12</span>..<span class="tok-number">14</span>]))),</span>
+<span class="line" id="L1315">            .<span class="tok-type">type</span> = <span class="tok-builtin">@as</span>(SymType, <span class="tok-builtin">@bitCast</span>(mem.readIntLittle(<span class="tok-type">u16</span>, raw[<span class="tok-number">14</span>..<span class="tok-number">16</span>]))),</span>
+<span class="line" id="L1316">            .storage_class = <span class="tok-builtin">@as</span>(StorageClass, <span class="tok-builtin">@enumFromInt</span>(raw[<span class="tok-number">16</span>])),</span>
+<span class="line" id="L1317">            .number_of_aux_symbols = raw[<span class="tok-number">17</span>],</span>
+<span class="line" id="L1318">        };</span>
+<span class="line" id="L1319">    }</span>
+<span class="line" id="L1320"></span>
+<span class="line" id="L1321">    <span class="tok-kw">fn</span> <span class="tok-fn">asDebugInfo</span>(raw: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) DebugInfoDefinition {</span>
+<span class="line" id="L1322">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1323">            .unused_1 = raw[<span class="tok-number">0</span>..<span class="tok-number">4</span>].*,</span>
+<span class="line" id="L1324">            .linenumber = mem.readIntLittle(<span class="tok-type">u16</span>, raw[<span class="tok-number">4</span>..<span class="tok-number">6</span>]),</span>
+<span class="line" id="L1325">            .unused_2 = raw[<span class="tok-number">6</span>..<span class="tok-number">12</span>].*,</span>
+<span class="line" id="L1326">            .pointer_to_next_function = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">12</span>..<span class="tok-number">16</span>]),</span>
+<span class="line" id="L1327">            .unused_3 = raw[<span class="tok-number">16</span>..<span class="tok-number">18</span>].*,</span>
+<span class="line" id="L1328">        };</span>
+<span class="line" id="L1329">    }</span>
+<span class="line" id="L1330"></span>
+<span class="line" id="L1331">    <span class="tok-kw">fn</span> <span class="tok-fn">asFuncDef</span>(raw: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) FunctionDefinition {</span>
+<span class="line" id="L1332">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1333">            .tag_index = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">0</span>..<span class="tok-number">4</span>]),</span>
+<span class="line" id="L1334">            .total_size = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">4</span>..<span class="tok-number">8</span>]),</span>
+<span class="line" id="L1335">            .pointer_to_linenumber = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">8</span>..<span class="tok-number">12</span>]),</span>
+<span class="line" id="L1336">            .pointer_to_next_function = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">12</span>..<span class="tok-number">16</span>]),</span>
+<span class="line" id="L1337">            .unused = raw[<span class="tok-number">16</span>..<span class="tok-number">18</span>].*,</span>
+<span class="line" id="L1338">        };</span>
+<span class="line" id="L1339">    }</span>
+<span class="line" id="L1340"></span>
+<span class="line" id="L1341">    <span class="tok-kw">fn</span> <span class="tok-fn">asWeakExtDef</span>(raw: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) WeakExternalDefinition {</span>
+<span class="line" id="L1342">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1343">            .tag_index = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">0</span>..<span class="tok-number">4</span>]),</span>
+<span class="line" id="L1344">            .flag = <span class="tok-builtin">@as</span>(WeakExternalFlag, <span class="tok-builtin">@enumFromInt</span>(mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">4</span>..<span class="tok-number">8</span>]))),</span>
+<span class="line" id="L1345">            .unused = raw[<span class="tok-number">8</span>..<span class="tok-number">18</span>].*,</span>
+<span class="line" id="L1346">        };</span>
+<span class="line" id="L1347">    }</span>
+<span class="line" id="L1348"></span>
+<span class="line" id="L1349">    <span class="tok-kw">fn</span> <span class="tok-fn">asFileDef</span>(raw: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) FileDefinition {</span>
+<span class="line" id="L1350">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1351">            .file_name = raw[<span class="tok-number">0</span>..<span class="tok-number">18</span>].*,</span>
+<span class="line" id="L1352">        };</span>
+<span class="line" id="L1353">    }</span>
+<span class="line" id="L1354"></span>
+<span class="line" id="L1355">    <span class="tok-kw">fn</span> <span class="tok-fn">asSectDef</span>(raw: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) SectionDefinition {</span>
+<span class="line" id="L1356">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1357">            .length = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">0</span>..<span class="tok-number">4</span>]),</span>
+<span class="line" id="L1358">            .number_of_relocations = mem.readIntLittle(<span class="tok-type">u16</span>, raw[<span class="tok-number">4</span>..<span class="tok-number">6</span>]),</span>
+<span class="line" id="L1359">            .number_of_linenumbers = mem.readIntLittle(<span class="tok-type">u16</span>, raw[<span class="tok-number">6</span>..<span class="tok-number">8</span>]),</span>
+<span class="line" id="L1360">            .checksum = mem.readIntLittle(<span class="tok-type">u32</span>, raw[<span class="tok-number">8</span>..<span class="tok-number">12</span>]),</span>
+<span class="line" id="L1361">            .number = mem.readIntLittle(<span class="tok-type">u16</span>, raw[<span class="tok-number">12</span>..<span class="tok-number">14</span>]),</span>
+<span class="line" id="L1362">            .selection = <span class="tok-builtin">@as</span>(ComdatSelection, <span class="tok-builtin">@enumFromInt</span>(raw[<span class="tok-number">14</span>])),</span>
+<span class="line" id="L1363">            .unused = raw[<span class="tok-number">15</span>..<span class="tok-number">18</span>].*,</span>
+<span class="line" id="L1364">        };</span>
+<span class="line" id="L1365">    }</span>
+<span class="line" id="L1366"></span>
+<span class="line" id="L1367">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Slice = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1368">        buffer: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1369">        num: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L1370">        count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1371"></span>
+<span class="line" id="L1372">        <span class="tok-comment">/// Lives as long as Symtab instance.</span></span>
+<span class="line" id="L1373">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(self: *Slice) ?Symbol {</span>
+<span class="line" id="L1374">            <span class="tok-kw">if</span> (self.count &gt;= self.num) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1375">            <span class="tok-kw">const</span> sym = asSymbol(self.buffer[<span class="tok-number">0</span>..Symbol.sizeOf()]);</span>
+<span class="line" id="L1376">            self.count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1377">            self.buffer = self.buffer[Symbol.sizeOf()..];</span>
+<span class="line" id="L1378">            <span class="tok-kw">return</span> sym;</span>
+<span class="line" id="L1379">        }</span>
+<span class="line" id="L1380">    };</span>
+<span class="line" id="L1381"></span>
+<span class="line" id="L1382">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">slice</span>(self: Symtab, start: <span class="tok-type">usize</span>, end: ?<span class="tok-type">usize</span>) Slice {</span>
+<span class="line" id="L1383">        <span class="tok-kw">const</span> offset = start * Symbol.sizeOf();</span>
+<span class="line" id="L1384">        <span class="tok-kw">const</span> llen = <span class="tok-kw">if</span> (end) |e| e * Symbol.sizeOf() <span class="tok-kw">else</span> self.buffer.len;</span>
+<span class="line" id="L1385">        <span class="tok-kw">const</span> num = <span class="tok-builtin">@divExact</span>(llen - offset, Symbol.sizeOf());</span>
+<span class="line" id="L1386">        <span class="tok-kw">return</span> Slice{ .buffer = self.buffer[offset..][<span class="tok-number">0</span>..llen], .num = num };</span>
+<span class="line" id="L1387">    }</span>
+<span class="line" id="L1388">};</span>
+<span class="line" id="L1389"></span>
+<span class="line" id="L1390"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Strtab = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1391">    buffer: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1392"></span>
+<span class="line" id="L1393">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">get</span>(self: Strtab, off: <span class="tok-type">u32</span>) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L1394">        assert(off &lt; self.buffer.len);</span>
+<span class="line" id="L1395">        <span class="tok-kw">return</span> mem.sliceTo(<span class="tok-builtin">@as</span>([*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(self.buffer.ptr + off)), <span class="tok-number">0</span>);</span>
+<span class="line" id="L1396">    }</span>
+<span class="line" id="L1397">};</span>
+<span class="line" id="L1398"></span>
+</code></pre></body>
+</html>
