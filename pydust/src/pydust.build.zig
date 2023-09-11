@@ -190,7 +190,6 @@ pub const PydustStep = struct {
             libtest.getEmittedBin(),
             testDestRelPath(self.allocator, short_name) catch @panic("OOM"),
         );
-        // self.test_build_step.dependOn(&installexceptions.step);
         self.test_build_step.dependOn(&install_libtest.step);
 
         // Run the tests as part of zig build test.

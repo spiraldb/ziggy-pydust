@@ -17,6 +17,7 @@ import io
 import pathlib
 import struct
 import subprocess
+import sys
 import tempfile
 
 import pytest
@@ -28,14 +29,13 @@ pydust_conf = config.load()
 
 
 def pytest_collection(session):
-    """Invoke a `zig build test-build` once for all of our modules at the start of the session.
+    """Setup the testing environment for Pydust.
 
-    This is our own build target that generates the test runners but doesn't invoke them.
-
-    This is fine due to zig build's caching. We then run test collection for each of the Pydust
-    entrypoints in the pyproject.toml.
+    * Invoke a `zig build install` to generate the Python extension modules (used by Python tests)
+    * Invoke a `zig build pydust-test-build` to generate the Zig test runners (used by Zig tests)
     """
-    buildzig.zig_build(["pydust-test-build"])
+    buildzig.zig_build(["install", f"-Dpython-exe={sys.executable}"])
+    buildzig.zig_build(["pydust-test-build", f"-Dpython-exe={sys.executable}"])
 
 
 def pytest_collect_file(file_path, path, parent):
