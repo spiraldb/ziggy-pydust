@@ -182,7 +182,6 @@ pub const PydustStep = struct {
         });
         libtest.addIncludePath(.{ .generated = &self.python_include_dir });
         libtest.linkLibC();
-        // FIXME(ngates): lookup from Python
         libtest.linkSystemLibrary(self.libpython);
         libtest.addLibraryPath(.{ .generated = &self.python_library_dir });
         // Needed to support miniconda statically linking libpython on macos
