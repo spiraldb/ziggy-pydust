@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>heap/PageAllocator.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> os = std.os;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> maxInt = std.math.maxInt;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> vtable = Allocator.VTable{</span>
+<span class="line" id="L10">    .alloc = alloc,</span>
+<span class="line" id="L11">    .resize = resize,</span>
+<span class="line" id="L12">    .free = free,</span>
+<span class="line" id="L13">};</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15"><span class="tok-kw">fn</span> <span class="tok-fn">alloc</span>(_: *<span class="tok-type">anyopaque</span>, n: <span class="tok-type">usize</span>, log2_align: <span class="tok-type">u8</span>, ra: <span class="tok-type">usize</span>) ?[*]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L16">    _ = ra;</span>
+<span class="line" id="L17">    _ = log2_align;</span>
+<span class="line" id="L18">    assert(n &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L19">    <span class="tok-kw">if</span> (n &gt; maxInt(<span class="tok-type">usize</span>) - (mem.page_size - <span class="tok-number">1</span>)) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L20">    <span class="tok-kw">const</span> aligned_len = mem.alignForward(<span class="tok-type">usize</span>, n, mem.page_size);</span>
+<span class="line" id="L21"></span>
+<span class="line" id="L22">    <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L23">        <span class="tok-kw">const</span> w = os.windows;</span>
+<span class="line" id="L24">        <span class="tok-kw">const</span> addr = w.VirtualAlloc(</span>
+<span class="line" id="L25">            <span class="tok-null">null</span>,</span>
+<span class="line" id="L26">            aligned_len,</span>
+<span class="line" id="L27">            w.MEM_COMMIT | w.MEM_RESERVE,</span>
+<span class="line" id="L28">            w.PAGE_READWRITE,</span>
+<span class="line" id="L29">        ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L30">        <span class="tok-kw">return</span> <span class="tok-builtin">@ptrCast</span>(addr);</span>
+<span class="line" id="L31">    }</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">    <span class="tok-kw">const</span> hint = <span class="tok-builtin">@atomicLoad</span>(<span class="tok-builtin">@TypeOf</span>(std.heap.next_mmap_addr_hint), &amp;std.heap.next_mmap_addr_hint, .Unordered);</span>
+<span class="line" id="L34">    <span class="tok-kw">const</span> slice = os.mmap(</span>
+<span class="line" id="L35">        hint,</span>
+<span class="line" id="L36">        aligned_len,</span>
+<span class="line" id="L37">        os.PROT.READ | os.PROT.WRITE,</span>
+<span class="line" id="L38">        os.MAP.PRIVATE | os.MAP.ANONYMOUS,</span>
+<span class="line" id="L39">        -<span class="tok-number">1</span>,</span>
+<span class="line" id="L40">        <span class="tok-number">0</span>,</span>
+<span class="line" id="L41">    ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L42">    assert(mem.isAligned(<span class="tok-builtin">@intFromPtr</span>(slice.ptr), mem.page_size));</span>
+<span class="line" id="L43">    <span class="tok-kw">const</span> new_hint: [*]<span class="tok-kw">align</span>(mem.page_size) <span class="tok-type">u8</span> = <span class="tok-builtin">@alignCast</span>(slice.ptr + aligned_len);</span>
+<span class="line" id="L44">    _ = <span class="tok-builtin">@cmpxchgStrong</span>(<span class="tok-builtin">@TypeOf</span>(std.heap.next_mmap_addr_hint), &amp;std.heap.next_mmap_addr_hint, hint, new_hint, .Monotonic, .Monotonic);</span>
+<span class="line" id="L45">    <span class="tok-kw">return</span> slice.ptr;</span>
+<span class="line" id="L46">}</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48"><span class="tok-kw">fn</span> <span class="tok-fn">resize</span>(</span>
+<span class="line" id="L49">    _: *<span class="tok-type">anyopaque</span>,</span>
+<span class="line" id="L50">    buf_unaligned: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L51">    log2_buf_align: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L52">    new_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L53">    return_address: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L54">) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L55">    _ = log2_buf_align;</span>
+<span class="line" id="L56">    _ = return_address;</span>
+<span class="line" id="L57">    <span class="tok-kw">const</span> new_size_aligned = mem.alignForward(<span class="tok-type">usize</span>, new_size, mem.page_size);</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">    <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L60">        <span class="tok-kw">const</span> w = os.windows;</span>
+<span class="line" id="L61">        <span class="tok-kw">if</span> (new_size &lt;= buf_unaligned.len) {</span>
+<span class="line" id="L62">            <span class="tok-kw">const</span> base_addr = <span class="tok-builtin">@intFromPtr</span>(buf_unaligned.ptr);</span>
+<span class="line" id="L63">            <span class="tok-kw">const</span> old_addr_end = base_addr + buf_unaligned.len;</span>
+<span class="line" id="L64">            <span class="tok-kw">const</span> new_addr_end = mem.alignForward(<span class="tok-type">usize</span>, base_addr + new_size, mem.page_size);</span>
+<span class="line" id="L65">            <span class="tok-kw">if</span> (old_addr_end &gt; new_addr_end) {</span>
+<span class="line" id="L66">                <span class="tok-comment">// For shrinking that is not releasing, we will only</span>
+</span>
+<span class="line" id="L67">                <span class="tok-comment">// decommit the pages not needed anymore.</span>
+</span>
+<span class="line" id="L68">                w.VirtualFree(</span>
+<span class="line" id="L69">                    <span class="tok-builtin">@as</span>(*<span class="tok-type">anyopaque</span>, <span class="tok-builtin">@ptrFromInt</span>(new_addr_end)),</span>
+<span class="line" id="L70">                    old_addr_end - new_addr_end,</span>
+<span class="line" id="L71">                    w.MEM_DECOMMIT,</span>
+<span class="line" id="L72">                );</span>
+<span class="line" id="L73">            }</span>
+<span class="line" id="L74">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L75">        }</span>
+<span class="line" id="L76">        <span class="tok-kw">const</span> old_size_aligned = mem.alignForward(<span class="tok-type">usize</span>, buf_unaligned.len, mem.page_size);</span>
+<span class="line" id="L77">        <span class="tok-kw">if</span> (new_size_aligned &lt;= old_size_aligned) {</span>
+<span class="line" id="L78">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L79">        }</span>
+<span class="line" id="L80">        <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    <span class="tok-kw">const</span> buf_aligned_len = mem.alignForward(<span class="tok-type">usize</span>, buf_unaligned.len, mem.page_size);</span>
+<span class="line" id="L84">    <span class="tok-kw">if</span> (new_size_aligned == buf_aligned_len)</span>
+<span class="line" id="L85">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    <span class="tok-kw">if</span> (new_size_aligned &lt; buf_aligned_len) {</span>
+<span class="line" id="L88">        <span class="tok-kw">const</span> ptr = buf_unaligned.ptr + new_size_aligned;</span>
+<span class="line" id="L89">        <span class="tok-comment">// TODO: if the next_mmap_addr_hint is within the unmapped range, update it</span>
+</span>
+<span class="line" id="L90">        os.munmap(<span class="tok-builtin">@alignCast</span>(ptr[<span class="tok-number">0</span> .. buf_aligned_len - new_size_aligned]));</span>
+<span class="line" id="L91">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L92">    }</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94">    <span class="tok-comment">// TODO: call mremap</span>
+</span>
+<span class="line" id="L95">    <span class="tok-comment">// TODO: if the next_mmap_addr_hint is within the remapped range, update it</span>
+</span>
+<span class="line" id="L96">    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L97">}</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99"><span class="tok-kw">fn</span> <span class="tok-fn">free</span>(_: *<span class="tok-type">anyopaque</span>, slice: []<span class="tok-type">u8</span>, log2_buf_align: <span class="tok-type">u8</span>, return_address: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L100">    _ = log2_buf_align;</span>
+<span class="line" id="L101">    _ = return_address;</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103">    <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L104">        os.windows.VirtualFree(slice.ptr, <span class="tok-number">0</span>, os.windows.MEM_RELEASE);</span>
+<span class="line" id="L105">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L106">        <span class="tok-kw">const</span> buf_aligned_len = mem.alignForward(<span class="tok-type">usize</span>, slice.len, mem.page_size);</span>
+<span class="line" id="L107">        os.munmap(<span class="tok-builtin">@alignCast</span>(slice.ptr[<span class="tok-number">0</span>..buf_aligned_len]));</span>
+<span class="line" id="L108">    }</span>
+<span class="line" id="L109">}</span>
+<span class="line" id="L110"></span>
+</code></pre></body>
+</html>
