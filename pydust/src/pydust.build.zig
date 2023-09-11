@@ -107,9 +107,9 @@ pub const PydustStep = struct {
                 const pyconf = b.addOptions();
                 pyconf.addOption([:0]const u8, "module_name", "debug");
                 pyconf.addOption(bool, "limited_api", false);
-                pyconf.addOption([:0]const u8, "hexversion", hexversion);
+                pyconf.addOption([]const u8, "hexversion", hexversion);
 
-                const testdebug = b.addTest(.{ .root_source_file = .{ .path = root }, .target = .{}, .optimize = .{} });
+                const testdebug = b.addTest(.{ .root_source_file = .{ .path = root }, .target = .{}, .optimize = .Debug });
                 testdebug.addOptions("pyconf", pyconf);
                 testdebug.addAnonymousModule("pydust", .{
                     .source_file = .{ .generated = &self.pydust_source_file },
@@ -140,7 +140,7 @@ pub const PydustStep = struct {
         const pyconf = b.addOptions();
         pyconf.addOption([:0]const u8, "module_name", options.name);
         pyconf.addOption(bool, "limited_api", options.limited_api);
-        pyconf.addOption([:0]const u8, "hexversion", self.hexversion);
+        pyconf.addOption([]const u8, "hexversion", self.hexversion);
 
         // Configure and install the Python module shared library
         const lib = b.addSharedLibrary(.{
@@ -248,8 +248,6 @@ pub const PydustStep = struct {
         const self = @fieldParentPtr(PydustStep, "step", step);
 
         self.python_include_dir.path = try self.pythonOutput(
-            self.allocator,
-            self.options.python_exe,
             "import sysconfig; print(sysconfig.get_path('include'), end='')",
         );
 
@@ -267,8 +265,8 @@ pub const PydustStep = struct {
     }
 };
 
-fn getLibpython(allocator: []const u8, python_exe: []const u8) ![]const u8 {
-    const ldlibrary = getPythonOutput(
+fn getLibpython(allocator: std.mem.Allocator, python_exe: []const u8) ![]const u8 {
+    const ldlibrary = try getPythonOutput(
         allocator,
         python_exe,
         "import sysconfig; print(sysconfig.get_config_var('LDLIBRARY'), end='')",
@@ -282,7 +280,7 @@ fn getLibpython(allocator: []const u8, python_exe: []const u8) ![]const u8 {
     }
 
     // Strip python3.11.a.so => python3.11.a
-    var lastIdx = 0;
+    var lastIdx: usize = 0;
     for (0..libname.len) |i| {
         if (libname[i] == '.') {
             lastIdx = i;
@@ -293,7 +291,7 @@ fn getLibpython(allocator: []const u8, python_exe: []const u8) ![]const u8 {
     return libname;
 }
 
-fn getPythonOutput(allocator: []const u8, python_exe: []const u8, code: []const u8) ![]const u8 {
+fn getPythonOutput(allocator: std.mem.Allocator, python_exe: []const u8, code: []const u8) ![]const u8 {
     const result = try std.process.Child.exec(.{
         .allocator = allocator,
         .argv = &.{ python_exe, "-c", code },
