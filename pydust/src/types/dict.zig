@@ -29,7 +29,7 @@ pub const PyDict = extern struct {
         const dict = try new();
         inline for (s.fields) |field| {
             // Recursively create the field values
-            try dict.setItem(field.name, try py.create(@field(value, field.name)));
+            try dict.setOwnedItem(field.name, try py.create(@field(value, field.name)));
         }
         return dict;
     }

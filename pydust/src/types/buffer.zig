@@ -52,7 +52,7 @@ pub const PyBuffer = extern struct {
     // have if it were copied to a contiguous representation.
     len: isize,
     itemsize: isize,
-    readonly: c_int,
+    readonly: bool,
 
     // If ndim == 0, the memory location pointed to by buf is interpreted as a scalar of size itemsize.
     // In that case, both shape and strides are NULL.
@@ -89,7 +89,7 @@ pub const PyBuffer = extern struct {
             .obj = ownerObj.py,
             .len = @intCast(values.len * @sizeOf(T)),
             .itemsize = @sizeOf(T),
-            .readonly = 1,
+            .readonly = true,
             .ndim = @intCast(shape.len),
             .format = getFormat(T).ptr,
             .shape = shape.ptr,
