@@ -63,7 +63,17 @@ pub const PydustStep = struct {
     pub fn add(b: *std.Build, options: PydustOptions) *PydustStep {
         const test_build_step = b.step("pydust-test-build", "Build Pydust test runners");
 
-        const python_exe = b.option([]const u8, "python-exe", "Python executable to use") orelse "python3";
+        const python_exe = blk: {
+            if (b.option([]const u8, "python-exe", "Python executable to use")) |exe| {
+                break :blk exe;
+            }
+            if (getStdOutput(b.allocator, &.{ "poetry", "env", "info", "--executable" })) |exe| {
+                // Strip off the trailing newline
+                break :blk exe[0 .. exe.len - 1];
+            } else |_| {
+                break :blk "python3";
+            }
+        };
 
         const libpython = getLibpython(
             b.allocator,
@@ -93,6 +103,17 @@ pub const PydustStep = struct {
             .python_include_dir = .{ .step = &self.step },
             .python_library_dir = .{ .step = &self.step },
         };
+
+        // Eagerly run path discovery to work around ZLS support.
+        self.python_include_dir.path = self.pythonOutput(
+            "import sysconfig; print(sysconfig.get_path('include'), end='')",
+        ) catch @panic("Failed to setup Python");
+        self.python_library_dir.path = self.pythonOutput(
+            "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')",
+        ) catch @panic("Failed to setup Python");
+        self.pydust_source_file.path = self.pythonOutput(
+            "import pydust; import os; print(os.path.join(os.path.dirname(pydust.__file__), 'src/pydust.zig'), end='')",
+        ) catch @panic("Failed to setup Python");
 
         // Option for emitting test binary based on the given root source. This can be helpful for debugging.
         const debugRoot = b.option(
@@ -234,22 +255,13 @@ pub const PydustStep = struct {
         return destPath;
     }
 
-    /// During this step we discover the locations of the Python include and lib directories
     fn make(step: *Step, progress: *std.Progress.Node) !void {
+        _ = step;
         _ = progress;
-        const self = @fieldParentPtr(PydustStep, "step", step);
+        // We use to run path discovery inside this step. Unfortunately the Zig Language Server would avoid
+        // running non-standard steps and so we ended up breaking language server support.
 
-        self.python_include_dir.path = try self.pythonOutput(
-            "import sysconfig; print(sysconfig.get_path('include'), end='')",
-        );
-
-        self.python_library_dir.path = try self.pythonOutput(
-            "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')",
-        );
-
-        self.pydust_source_file.path = try self.pythonOutput(
-            "import pydust; import os; print(os.path.join(os.path.dirname(pydust.__file__), 'src/pydust.zig'), end='')",
-        );
+        // Instead, we now run discovery eagerly in the setup.
     }
 
     fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
@@ -285,6 +297,16 @@ fn getPythonOutput(allocator: std.mem.Allocator, python_exe: []const u8, code: [
     });
     if (result.term.Exited != 0) {
         std.debug.print("Failed to execute {s}:\n{s}\n", .{ code, result.stderr });
+        std.process.exit(1);
+    }
+    allocator.free(result.stderr);
+    return result.stdout;
+}
+
+fn getStdOutput(allocator: std.mem.Allocator, argv: []const []const u8) ![]const u8 {
+    const result = try std.process.Child.exec(.{ .allocator = allocator, .argv = argv });
+    if (result.term.Exited != 0) {
+        std.debug.print("Failed to execute {any}:\n{s}\n", .{ argv, result.stderr });
         std.process.exit(1);
     }
     allocator.free(result.stderr);
