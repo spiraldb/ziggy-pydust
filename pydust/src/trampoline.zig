@@ -30,6 +30,22 @@ pub fn Trampoline(comptime T: type) type {
     }
 
     return struct {
+        /// Recursively decref an object-like. No-op for non-objects.
+        pub inline fn decref_objectlike(obj: T) void {
+            if (isObjectLike()) {
+                asObject(obj).decref();
+                return;
+            }
+            switch (@typeInfo(T)) {
+                .Struct => |s| {
+                    inline for (s.fields) |f| {
+                        Trampoline(f.type).decref_objectlike(@field(obj, f.name));
+                    }
+                },
+                else => {},
+            }
+        }
+
         /// Wraps an object that already represents an existing Python object.
         /// In other words, Zig primitive types are not supported.
         pub inline fn asObject(obj: T) py.PyObject {
@@ -168,7 +184,13 @@ pub fn Trampoline(comptime T: type) type {
                     // and we have no way of de-allocating the original slice.
                 },
                 .Struct => |s| {
-                    // If the struct is a tuple, return a Python tuple
+                    // When recursively converting to tuple or dict, Pydust will either create a new Python object
+                    // or use the existing one. To avoid double-counting existing objects when wrapping up in tuple or dict,
+                    // we decref each of the existing struct fields. The Trampoline.decref_objectlike function will
+                    // only decref objects that already look like Python objects.
+                    defer decref_objectlike(obj);
+
+                    // If the struct is a tuple, convert into a Python tuple
                     if (s.is_tuple) {
                         return (try py.PyTuple.create(obj)).obj;
                     }

@@ -36,7 +36,7 @@ pub const PyTuple = extern struct {
         const tuple = try new(s.fields.len);
         inline for (s.fields, 0..) |field, i| {
             // Recursively unwrap the field value
-            try tuple.setItem(@intCast(i), try py.create(@field(values, field.name)));
+            try tuple.setOwnedItem(@intCast(i), try py.create(@field(values, field.name)));
         }
         return tuple;
     }

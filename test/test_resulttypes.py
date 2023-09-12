@@ -12,13 +12,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import sys
+
 import pytest
 
 from example import result_types
 
 
 def test_pyobject():
-    assert result_types.pyobject() == "hello"
+    result = result_types.pyobject()
+    assert result == "hello"
+    assert sys.getrefcount(result) == 2
 
 
 def test_pystring():
@@ -71,5 +75,14 @@ def test_zigf64():
     assert result_types.zigf64() == 2.7100000000000003e39
 
 
+def test_zigtuple():
+    s, i = result_types.zigtuple()
+    assert s == "hello"
+    assert i == 128
+    assert sys.getrefcount(s) == 2
+
+
 def test_zigstruct():
-    assert result_types.zigstruct() == {"foo": 1234, "bar": True}
+    result = result_types.zigstruct()
+    assert result == {"foo": 1234, "bar": True}
+    assert sys.getrefcount(result) == 2
