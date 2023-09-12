@@ -57,7 +57,9 @@ pub const PyBuffer = extern struct {
     // If ndim == 0, the memory location pointed to by buf is interpreted as a scalar of size itemsize.
     // In that case, both shape and strides are NULL.
     ndim: c_int,
-    format: [*:0]const u8,
+    // A NULL terminated string in struct module style syntax describing the contents of a single item.
+    // If this is NULL, "B" (unsigned bytes) is assumed.
+    format: ?[*:0]const u8,
 
     shape: ?[*]const isize = null,
     // If strides is NULL, the array is interpreted as a standard n-dimensional C-array.
