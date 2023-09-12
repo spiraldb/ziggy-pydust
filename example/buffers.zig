@@ -51,7 +51,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 // A function that accepts an object implementing the buffer protocol.
 pub fn sum(args: struct { buf: py.PyObject }) !i64 {
     var view: py.PyBuffer = undefined;
-    // ND is required by asSlice.
+    // At least ND is required by asSlice.
     try args.buf.getBuffer(&view, py.PyBuffer.Flags.ND);
     defer view.release();
 
