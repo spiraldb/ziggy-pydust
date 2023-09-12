@@ -1,14 +1,14 @@
 # User Guide
 
 The user guide details every single feature Pydust offers. All code snippets are taken
-from our `example/` directory and are tested during CI. 
+from our `example/` directory and are tested during CI.
 
 If you do struggle or find any issues with the examples, please do [let us know!](https://github.com/fulcrum-so/ziggy-pydust/issues)
 
 ## Conventions
 
-Pydust maintains a consistent set of conventions around structs, function naming, and memory 
-management to assist with development. 
+Pydust maintains a consistent set of conventions around structs, function naming, and memory
+management to assist with development.
 
 ### Conversion Functions
 
@@ -43,7 +43,7 @@ or returned from functions and automatically converted into Python objects.
 
 !!! tip ""
 
-    Slices (e.g. `[]const u8` strings) cannot be returned from Pydust functions since Pydust has 
+    Slices (e.g. `[]const u8` strings) cannot be returned from Pydust functions since Pydust has
     no way to deallocate them after they're copied into Python.
 
     Slices _can_ be taken as arguments to a function, but the bytes underlying that slice are only
@@ -52,19 +52,19 @@ or returned from functions and automatically converted into Python objects.
 
 ### Pydust Objects
 
-Pointers to any Pydust Zig structs will convert to their corresponding Python instance. 
+Pointers to any Pydust Zig structs will convert to their corresponding Python instance.
 
 For example, given the class `Foo` below,
 if the class is initialized with `const foo: *Foo = py.init(Foo, .{})`,
 then a result of `foo` will be wrapped into the corresponding Python instance of
-`Foo`. 
+`Foo`.
 
 ```zig title="foo.zig"
 const Foo = py.class("Foo", struct { a: u32 = 0 });
 
 pub fn create_foo() *const Foo {
     return py.init(Foo, .{});
-} 
+}
 ```
 
 ### Pydust Type Wrappers
@@ -75,6 +75,7 @@ The Pydust Python type wrappers convert as expected.
 | :------------ | :----------- |
 | `py.PyObject` | `object`     |
 | `py.PyBool`   | `bool`       |
+| `py.PyBytes`  | `bytes`      |
 | `py.PyLong`   | `int`        |
 | `py.PyFloat`  | `float`      |
 | `py.PyTuple`  | `tuple`      |
