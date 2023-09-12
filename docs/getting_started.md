@@ -69,6 +69,26 @@ able to import your module from within `poetry shell` or `poetry run pytest`.
 --8<-- "test/test_hello.py:ex"
 ```
 
+## Zig Language Server
+
+!!! warning
+
+    Currently ZLS (at least when running in VSCode) requires a small amount of manual setup.
+
+In the root of your project, create a `zls.build.json` file containing the path to your python executable.
+This can be obtained by running `poetry env info -e`.
+
+```json title="zls.build.json"
+{
+    "build_options": [
+        {
+            "name": "python-exe",
+            "value": "/path/to/your/poetry/venv/bin/python",
+        }
+    ]
+}
+```
+
 ## Self-managed Mode
 
 Pydust makes it easy to get started building a Zig extension for Python. But when your use-case becomes sufficiently
