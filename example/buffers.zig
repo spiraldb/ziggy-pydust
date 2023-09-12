@@ -13,6 +13,7 @@
 const std = @import("std");
 const py = @import("pydust");
 
+// --8<-- [start:protocol]
 pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     pub const __doc__ = "A class implementing a buffer protocol";
     const Self = @This();
@@ -47,11 +48,11 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
         view.initFromSlice(i64, self.values, self.shape, self);
     }
 });
+// --8<-- [end:protocol]
 
-// A function that accepts an object implementing the buffer protocol.
+// --8<-- [start:sum]
 pub fn sum(args: struct { buf: py.PyObject }) !i64 {
     var view: py.PyBuffer = undefined;
-    // At least ND is required by asSlice.
     try args.buf.getBuffer(&view, py.PyBuffer.Flags.ND);
     defer view.release();
 
@@ -63,3 +64,4 @@ pub fn sum(args: struct { buf: py.PyObject }) !i64 {
 comptime {
     py.module(@This());
 }
+// --8<-- [end:sum]
