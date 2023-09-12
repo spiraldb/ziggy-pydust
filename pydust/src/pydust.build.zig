@@ -256,15 +256,12 @@ pub const PydustStep = struct {
     }
 
     fn make(step: *Step, progress: *std.Progress.Node) !void {
+        _ = step;
         _ = progress;
-        const self = @fieldParentPtr(PydustStep, "step", step);
-        _ = self;
-
         // We use to run path discovery inside this step. Unfortunately the Zig Language Server would avoid
         // running non-standard steps and so we ended up breaking language server support.
 
         // Instead, we now run discovery eagerly in the setup.
-
     }
 
     fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
