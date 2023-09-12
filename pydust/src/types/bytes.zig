@@ -64,6 +64,7 @@ test "PyBytes" {
 
     var ps_slice = try ps.asSlice();
     try testing.expectEqual(a.len, ps_slice.len);
+    try testing.expectEqual(a.len, try ps.length());
     try testing.expectEqual(@as(u8, 0), ps_slice[ps_slice.len]);
 
     try testing.expectEqualStrings("Hello", ps_slice);
