@@ -12,14 +12,12 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
-
 const ffi = py.ffi;
-const PyObject = @import("obj.zig").PyObject;
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const PyError = @import("../errors.zig").PyError;
 
 pub const PyBytes = extern struct {
-    obj: PyObject,
+    obj: py.PyObject,
 
     pub usingnamespace PyObjectMixin("bytes", "PyBytes", @This());
 
