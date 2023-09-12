@@ -176,7 +176,6 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             } else {
                 var callArgs = if (sig.selfParam) |_| .{self} else .{};
                 const result = @call(.always_inline, func, callArgs);
-
                 return py.createOwned(result);
             }
         }
