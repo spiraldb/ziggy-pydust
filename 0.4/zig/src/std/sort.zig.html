@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>sort.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> block = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;sort/block.zig&quot;</span>).block;</span>
+<span class="line" id="L8"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> pdq = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;sort/pdq.zig&quot;</span>).pdq;</span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> pdqContext = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;sort/pdq.zig&quot;</span>).pdqContext;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-comment">/// Stable in-place sort. O(n) best case, O(pow(n, 2)) worst case.</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// O(1) memory (no allocator required).</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// Sorts in ascending order with respect to the given `lessThan` function.</span></span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">insertion</span>(</span>
+<span class="line" id="L15">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L16">    items: []T,</span>
+<span class="line" id="L17">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L18">    <span class="tok-kw">comptime</span> lessThanFn: <span class="tok-kw">fn</span> (<span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L19">) <span class="tok-type">void</span> {</span>
+<span class="line" id="L20">    <span class="tok-kw">const</span> Context = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L21">        items: []T,</span>
+<span class="line" id="L22">        sub_ctx: <span class="tok-builtin">@TypeOf</span>(context),</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">lessThan</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L25">            <span class="tok-kw">return</span> lessThanFn(ctx.sub_ctx, ctx.items[a], ctx.items[b]);</span>
+<span class="line" id="L26">        }</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">swap</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L29">            <span class="tok-kw">return</span> mem.swap(T, &amp;ctx.items[a], &amp;ctx.items[b]);</span>
+<span class="line" id="L30">        }</span>
+<span class="line" id="L31">    };</span>
+<span class="line" id="L32">    insertionContext(<span class="tok-number">0</span>, items.len, Context{ .items = items, .sub_ctx = context });</span>
+<span class="line" id="L33">}</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35"><span class="tok-comment">/// Stable in-place sort. O(n) best case, O(pow(n, 2)) worst case.</span></span>
+<span class="line" id="L36"><span class="tok-comment">/// O(1) memory (no allocator required).</span></span>
+<span class="line" id="L37"><span class="tok-comment">/// `context` must have methods `swap` and `lessThan`,</span></span>
+<span class="line" id="L38"><span class="tok-comment">/// which each take 2 `usize` parameters indicating the index of an item.</span></span>
+<span class="line" id="L39"><span class="tok-comment">/// Sorts in ascending order with respect to `lessThan`.</span></span>
+<span class="line" id="L40"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">insertionContext</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L41">    assert(a &lt;= b);</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">    <span class="tok-kw">var</span> i = a + <span class="tok-number">1</span>;</span>
+<span class="line" id="L44">    <span class="tok-kw">while</span> (i &lt; b) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L45">        <span class="tok-kw">var</span> j = i;</span>
+<span class="line" id="L46">        <span class="tok-kw">while</span> (j &gt; a <span class="tok-kw">and</span> context.lessThan(j, j - <span class="tok-number">1</span>)) : (j -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L47">            context.swap(j, j - <span class="tok-number">1</span>);</span>
+<span class="line" id="L48">        }</span>
+<span class="line" id="L49">    }</span>
+<span class="line" id="L50">}</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52"><span class="tok-comment">/// Unstable in-place sort. O(n*log(n)) best case, worst case and average case.</span></span>
+<span class="line" id="L53"><span class="tok-comment">/// O(1) memory (no allocator required).</span></span>
+<span class="line" id="L54"><span class="tok-comment">/// Sorts in ascending order with respect to the given `lessThan` function.</span></span>
+<span class="line" id="L55"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">heap</span>(</span>
+<span class="line" id="L56">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L57">    items: []T,</span>
+<span class="line" id="L58">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L59">    <span class="tok-kw">comptime</span> lessThanFn: <span class="tok-kw">fn</span> (<span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L60">) <span class="tok-type">void</span> {</span>
+<span class="line" id="L61">    <span class="tok-kw">const</span> Context = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L62">        items: []T,</span>
+<span class="line" id="L63">        sub_ctx: <span class="tok-builtin">@TypeOf</span>(context),</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">lessThan</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L66">            <span class="tok-kw">return</span> lessThanFn(ctx.sub_ctx, ctx.items[a], ctx.items[b]);</span>
+<span class="line" id="L67">        }</span>
+<span class="line" id="L68"></span>
+<span class="line" id="L69">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">swap</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L70">            <span class="tok-kw">return</span> mem.swap(T, &amp;ctx.items[a], &amp;ctx.items[b]);</span>
+<span class="line" id="L71">        }</span>
+<span class="line" id="L72">    };</span>
+<span class="line" id="L73">    heapContext(<span class="tok-number">0</span>, items.len, Context{ .items = items, .sub_ctx = context });</span>
+<span class="line" id="L74">}</span>
+<span class="line" id="L75"></span>
+<span class="line" id="L76"><span class="tok-comment">/// Unstable in-place sort. O(n*log(n)) best case, worst case and average case.</span></span>
+<span class="line" id="L77"><span class="tok-comment">/// O(1) memory (no allocator required).</span></span>
+<span class="line" id="L78"><span class="tok-comment">/// `context` must have methods `swap` and `lessThan`,</span></span>
+<span class="line" id="L79"><span class="tok-comment">/// which each take 2 `usize` parameters indicating the index of an item.</span></span>
+<span class="line" id="L80"><span class="tok-comment">/// Sorts in ascending order with respect to `lessThan`.</span></span>
+<span class="line" id="L81"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">heapContext</span>(a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L82">    assert(a &lt;= b);</span>
+<span class="line" id="L83">    <span class="tok-comment">// build the heap in linear time.</span>
+</span>
+<span class="line" id="L84">    <span class="tok-kw">var</span> i = a + (b - a) / <span class="tok-number">2</span>;</span>
+<span class="line" id="L85">    <span class="tok-kw">while</span> (i &gt; a) {</span>
+<span class="line" id="L86">        i -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L87">        siftDown(a, i, b, context);</span>
+<span class="line" id="L88">    }</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">    <span class="tok-comment">// pop maximal elements from the heap.</span>
+</span>
+<span class="line" id="L91">    i = b;</span>
+<span class="line" id="L92">    <span class="tok-kw">while</span> (i &gt; a) {</span>
+<span class="line" id="L93">        i -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L94">        context.swap(a, i);</span>
+<span class="line" id="L95">        siftDown(a, a, i, context);</span>
+<span class="line" id="L96">    }</span>
+<span class="line" id="L97">}</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99"><span class="tok-kw">fn</span> <span class="tok-fn">siftDown</span>(a: <span class="tok-type">usize</span>, target: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>, context: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L100">    <span class="tok-kw">var</span> cur = target;</span>
+<span class="line" id="L101">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L102">        <span class="tok-comment">// When we don't overflow from the multiply below, the following expression equals (2*cur) - (2*a) + a + 1</span>
+</span>
+<span class="line" id="L103">        <span class="tok-comment">// The `+ a + 1` is safe because:</span>
+</span>
+<span class="line" id="L104">        <span class="tok-comment">//  for `a &gt; 0` then `2a &gt;= a + 1`.</span>
+</span>
+<span class="line" id="L105">        <span class="tok-comment">//  for `a = 0`, the expression equals `2*cur+1`. `2*cur` is an even number, therefore adding 1 is safe.</span>
+</span>
+<span class="line" id="L106">        <span class="tok-kw">var</span> child = (math.mul(<span class="tok-type">usize</span>, cur - a, <span class="tok-number">2</span>) <span class="tok-kw">catch</span> <span class="tok-kw">break</span>) + a + <span class="tok-number">1</span>;</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108">        <span class="tok-comment">// stop if we overshot the boundary</span>
+</span>
+<span class="line" id="L109">        <span class="tok-kw">if</span> (!(child &lt; b)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111">        <span class="tok-comment">// `next_child` is at most `b`, therefore no overflow is possible</span>
+</span>
+<span class="line" id="L112">        <span class="tok-kw">const</span> next_child = child + <span class="tok-number">1</span>;</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">        <span class="tok-comment">// store the greater child in `child`</span>
+</span>
+<span class="line" id="L115">        <span class="tok-kw">if</span> (next_child &lt; b <span class="tok-kw">and</span> context.lessThan(child, next_child)) {</span>
+<span class="line" id="L116">            child = next_child;</span>
+<span class="line" id="L117">        }</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">        <span class="tok-comment">// stop if the Heap invariant holds at `cur`.</span>
+</span>
+<span class="line" id="L120">        <span class="tok-kw">if</span> (context.lessThan(child, cur)) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">        <span class="tok-comment">// swap `cur` with the greater child,</span>
+</span>
+<span class="line" id="L123">        <span class="tok-comment">// move one step down, and continue sifting.</span>
+</span>
+<span class="line" id="L124">        context.swap(child, cur);</span>
+<span class="line" id="L125">        cur = child;</span>
+<span class="line" id="L126">    }</span>
+<span class="line" id="L127">}</span>
+<span class="line" id="L128"></span>
+<span class="line" id="L129"><span class="tok-comment">/// Use to generate a comparator function for a given type. e.g. `sort(u8, slice, {}, asc(u8))`.</span></span>
+<span class="line" id="L130"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">asc</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-kw">fn</span> (<span class="tok-type">void</span>, T, T) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L131">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L132">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">inner</span>(_: <span class="tok-type">void</span>, a: T, b: T) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L133">            <span class="tok-kw">return</span> a &lt; b;</span>
+<span class="line" id="L134">        }</span>
+<span class="line" id="L135">    }.inner;</span>
+<span class="line" id="L136">}</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138"><span class="tok-comment">/// Use to generate a comparator function for a given type. e.g. `sort(u8, slice, {}, desc(u8))`.</span></span>
+<span class="line" id="L139"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">desc</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-kw">fn</span> (<span class="tok-type">void</span>, T, T) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L140">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L141">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">inner</span>(_: <span class="tok-type">void</span>, a: T, b: T) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L142">            <span class="tok-kw">return</span> a &gt; b;</span>
+<span class="line" id="L143">        }</span>
+<span class="line" id="L144">    }.inner;</span>
+<span class="line" id="L145">}</span>
+<span class="line" id="L146"></span>
+<span class="line" id="L147"><span class="tok-kw">const</span> asc_u8 = asc(<span class="tok-type">u8</span>);</span>
+<span class="line" id="L148"><span class="tok-kw">const</span> asc_i32 = asc(<span class="tok-type">i32</span>);</span>
+<span class="line" id="L149"><span class="tok-kw">const</span> desc_u8 = desc(<span class="tok-type">u8</span>);</span>
+<span class="line" id="L150"><span class="tok-kw">const</span> desc_i32 = desc(<span class="tok-type">i32</span>);</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152"><span class="tok-kw">const</span> sort_funcs = &amp;[_]<span class="tok-kw">fn</span> (<span class="tok-kw">comptime</span> <span class="tok-type">type</span>, <span class="tok-kw">anytype</span>, <span class="tok-kw">anytype</span>, <span class="tok-kw">comptime</span> <span class="tok-kw">anytype</span>) <span class="tok-type">void</span>{</span>
+<span class="line" id="L153">    block,</span>
+<span class="line" id="L154">    pdq,</span>
+<span class="line" id="L155">    insertion,</span>
+<span class="line" id="L156">    heap,</span>
+<span class="line" id="L157">};</span>
+<span class="line" id="L158"></span>
+<span class="line" id="L159"><span class="tok-kw">const</span> context_sort_funcs = &amp;[_]<span class="tok-kw">fn</span> (<span class="tok-type">usize</span>, <span class="tok-type">usize</span>, <span class="tok-kw">anytype</span>) <span class="tok-type">void</span>{</span>
+<span class="line" id="L160">    <span class="tok-comment">// blockContext,</span>
+</span>
+<span class="line" id="L161">    pdqContext,</span>
+<span class="line" id="L162">    insertionContext,</span>
+<span class="line" id="L163">    heapContext,</span>
+<span class="line" id="L164">};</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166"><span class="tok-kw">const</span> IdAndValue = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L167">    id: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L168">    value: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170">    <span class="tok-kw">fn</span> <span class="tok-fn">lessThan</span>(context: <span class="tok-type">void</span>, a: IdAndValue, b: IdAndValue) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L171">        _ = context;</span>
+<span class="line" id="L172">        <span class="tok-kw">return</span> a.value &lt; b.value;</span>
+<span class="line" id="L173">    }</span>
+<span class="line" id="L174">};</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176"><span class="tok-kw">test</span> <span class="tok-str">&quot;stable sort&quot;</span> {</span>
+<span class="line" id="L177">    <span class="tok-kw">const</span> expected = [_]IdAndValue{</span>
+<span class="line" id="L178">        IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L179">        IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L180">        IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L181">        IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L182">        IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L183">        IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L184">        IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L185">        IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L186">        IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L187">    };</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189">    <span class="tok-kw">var</span> cases = [_][<span class="tok-number">9</span>]IdAndValue{</span>
+<span class="line" id="L190">        [_]IdAndValue{</span>
+<span class="line" id="L191">            IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L192">            IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L193">            IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L194">            IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L195">            IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L196">            IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L197">            IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L198">            IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L199">            IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L200">        },</span>
+<span class="line" id="L201">        [_]IdAndValue{</span>
+<span class="line" id="L202">            IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L203">            IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L204">            IdAndValue{ .id = <span class="tok-number">0</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L205">            IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L206">            IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L207">            IdAndValue{ .id = <span class="tok-number">1</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L208">            IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">2</span> },</span>
+<span class="line" id="L209">            IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">1</span> },</span>
+<span class="line" id="L210">            IdAndValue{ .id = <span class="tok-number">2</span>, .value = <span class="tok-number">0</span> },</span>
+<span class="line" id="L211">        },</span>
+<span class="line" id="L212">    };</span>
+<span class="line" id="L213"></span>
+<span class="line" id="L214">    <span class="tok-kw">for</span> (&amp;cases) |*case| {</span>
+<span class="line" id="L215">        block(IdAndValue, (case.*)[<span class="tok-number">0</span>..], {}, IdAndValue.lessThan);</span>
+<span class="line" id="L216">        <span class="tok-kw">for</span> (case.*, <span class="tok-number">0</span>..) |item, i| {</span>
+<span class="line" id="L217">            <span class="tok-kw">try</span> testing.expect(item.id == expected[i].id);</span>
+<span class="line" id="L218">            <span class="tok-kw">try</span> testing.expect(item.value == expected[i].value);</span>
+<span class="line" id="L219">        }</span>
+<span class="line" id="L220">    }</span>
+<span class="line" id="L221">}</span>
+<span class="line" id="L222"></span>
+<span class="line" id="L223"><span class="tok-kw">test</span> <span class="tok-str">&quot;sort&quot;</span> {</span>
+<span class="line" id="L224">    <span class="tok-kw">const</span> u8cases = [_][]<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L225">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L226">            <span class="tok-str">&quot;&quot;</span>,</span>
+<span class="line" id="L227">            <span class="tok-str">&quot;&quot;</span>,</span>
+<span class="line" id="L228">        },</span>
+<span class="line" id="L229">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L230">            <span class="tok-str">&quot;a&quot;</span>,</span>
+<span class="line" id="L231">            <span class="tok-str">&quot;a&quot;</span>,</span>
+<span class="line" id="L232">        },</span>
+<span class="line" id="L233">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L234">            <span class="tok-str">&quot;az&quot;</span>,</span>
+<span class="line" id="L235">            <span class="tok-str">&quot;az&quot;</span>,</span>
+<span class="line" id="L236">        },</span>
+<span class="line" id="L237">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L238">            <span class="tok-str">&quot;za&quot;</span>,</span>
+<span class="line" id="L239">            <span class="tok-str">&quot;az&quot;</span>,</span>
+<span class="line" id="L240">        },</span>
+<span class="line" id="L241">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L242">            <span class="tok-str">&quot;asdf&quot;</span>,</span>
+<span class="line" id="L243">            <span class="tok-str">&quot;adfs&quot;</span>,</span>
+<span class="line" id="L244">        },</span>
+<span class="line" id="L245">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L246">            <span class="tok-str">&quot;one&quot;</span>,</span>
+<span class="line" id="L247">            <span class="tok-str">&quot;eno&quot;</span>,</span>
+<span class="line" id="L248">        },</span>
+<span class="line" id="L249">    };</span>
+<span class="line" id="L250"></span>
+<span class="line" id="L251">    <span class="tok-kw">const</span> i32cases = [_][]<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L252">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L253">            &amp;[_]<span class="tok-type">i32</span>{},</span>
+<span class="line" id="L254">            &amp;[_]<span class="tok-type">i32</span>{},</span>
+<span class="line" id="L255">        },</span>
+<span class="line" id="L256">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L257">            &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>},</span>
+<span class="line" id="L258">            &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>},</span>
+<span class="line" id="L259">        },</span>
+<span class="line" id="L260">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L261">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">0</span>, <span class="tok-number">1</span> },</span>
+<span class="line" id="L262">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">0</span>, <span class="tok-number">1</span> },</span>
+<span class="line" id="L263">        },</span>
+<span class="line" id="L264">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L265">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">0</span> },</span>
+<span class="line" id="L266">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">0</span>, <span class="tok-number">1</span> },</span>
+<span class="line" id="L267">        },</span>
+<span class="line" id="L268">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L269">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, -<span class="tok-number">1</span>, <span class="tok-number">0</span> },</span>
+<span class="line" id="L270">            &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">1</span>, <span class="tok-number">0</span>, <span class="tok-number">1</span> },</span>
+<span class="line" id="L271">        },</span>
+<span class="line" id="L272">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L273">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">2</span>, <span class="tok-number">1</span>, <span class="tok-number">3</span> },</span>
+<span class="line" id="L274">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span> },</span>
+<span class="line" id="L275">        },</span>
+<span class="line" id="L276">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L277">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">10</span>, <span class="tok-number">55</span>, <span class="tok-number">32</span>, <span class="tok-number">39</span>, <span class="tok-number">58</span>, <span class="tok-number">21</span>, <span class="tok-number">88</span>, <span class="tok-number">43</span>, <span class="tok-number">22</span>, <span class="tok-number">59</span> },</span>
+<span class="line" id="L278">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">10</span>, <span class="tok-number">21</span>, <span class="tok-number">22</span>, <span class="tok-number">32</span>, <span class="tok-number">39</span>, <span class="tok-number">43</span>, <span class="tok-number">55</span>, <span class="tok-number">58</span>, <span class="tok-number">59</span>, <span class="tok-number">88</span> },</span>
+<span class="line" id="L279">        },</span>
+<span class="line" id="L280">    };</span>
+<span class="line" id="L281"></span>
+<span class="line" id="L282">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (sort_funcs) |sortFn| {</span>
+<span class="line" id="L283">        <span class="tok-kw">for</span> (u8cases) |case| {</span>
+<span class="line" id="L284">            <span class="tok-kw">var</span> buf: [<span class="tok-number">20</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L285">            <span class="tok-kw">const</span> slice = buf[<span class="tok-number">0</span>..case[<span class="tok-number">0</span>].len];</span>
+<span class="line" id="L286">            <span class="tok-builtin">@memcpy</span>(slice, case[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L287">            sortFn(<span class="tok-type">u8</span>, slice, {}, asc_u8);</span>
+<span class="line" id="L288">            <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, slice, case[<span class="tok-number">1</span>]));</span>
+<span class="line" id="L289">        }</span>
+<span class="line" id="L290"></span>
+<span class="line" id="L291">        <span class="tok-kw">for</span> (i32cases) |case| {</span>
+<span class="line" id="L292">            <span class="tok-kw">var</span> buf: [<span class="tok-number">20</span>]<span class="tok-type">i32</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L293">            <span class="tok-kw">const</span> slice = buf[<span class="tok-number">0</span>..case[<span class="tok-number">0</span>].len];</span>
+<span class="line" id="L294">            <span class="tok-builtin">@memcpy</span>(slice, case[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L295">            sortFn(<span class="tok-type">i32</span>, slice, {}, asc_i32);</span>
+<span class="line" id="L296">            <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">i32</span>, slice, case[<span class="tok-number">1</span>]));</span>
+<span class="line" id="L297">        }</span>
+<span class="line" id="L298">    }</span>
+<span class="line" id="L299">}</span>
+<span class="line" id="L300"></span>
+<span class="line" id="L301"><span class="tok-kw">test</span> <span class="tok-str">&quot;sort descending&quot;</span> {</span>
+<span class="line" id="L302">    <span class="tok-kw">const</span> rev_cases = [_][]<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L303">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L304">            &amp;[_]<span class="tok-type">i32</span>{},</span>
+<span class="line" id="L305">            &amp;[_]<span class="tok-type">i32</span>{},</span>
+<span class="line" id="L306">        },</span>
+<span class="line" id="L307">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L308">            &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>},</span>
+<span class="line" id="L309">            &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>},</span>
+<span class="line" id="L310">        },</span>
+<span class="line" id="L311">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L312">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">0</span>, <span class="tok-number">1</span> },</span>
+<span class="line" id="L313">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">0</span> },</span>
+<span class="line" id="L314">        },</span>
+<span class="line" id="L315">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L316">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">0</span> },</span>
+<span class="line" id="L317">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">0</span> },</span>
+<span class="line" id="L318">        },</span>
+<span class="line" id="L319">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L320">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, -<span class="tok-number">1</span>, <span class="tok-number">0</span> },</span>
+<span class="line" id="L321">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">0</span>, -<span class="tok-number">1</span> },</span>
+<span class="line" id="L322">        },</span>
+<span class="line" id="L323">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L324">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">2</span>, <span class="tok-number">1</span>, <span class="tok-number">3</span> },</span>
+<span class="line" id="L325">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">3</span>, <span class="tok-number">2</span>, <span class="tok-number">1</span> },</span>
+<span class="line" id="L326">        },</span>
+<span class="line" id="L327">    };</span>
+<span class="line" id="L328"></span>
+<span class="line" id="L329">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (sort_funcs) |sortFn| {</span>
+<span class="line" id="L330">        <span class="tok-kw">for</span> (rev_cases) |case| {</span>
+<span class="line" id="L331">            <span class="tok-kw">var</span> buf: [<span class="tok-number">8</span>]<span class="tok-type">i32</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L332">            <span class="tok-kw">const</span> slice = buf[<span class="tok-number">0</span>..case[<span class="tok-number">0</span>].len];</span>
+<span class="line" id="L333">            <span class="tok-builtin">@memcpy</span>(slice, case[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L334">            sortFn(<span class="tok-type">i32</span>, slice, {}, desc_i32);</span>
+<span class="line" id="L335">            <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">i32</span>, slice, case[<span class="tok-number">1</span>]));</span>
+<span class="line" id="L336">        }</span>
+<span class="line" id="L337">    }</span>
+<span class="line" id="L338">}</span>
+<span class="line" id="L339"></span>
+<span class="line" id="L340"><span class="tok-kw">test</span> <span class="tok-str">&quot;sort with context in the middle of a slice&quot;</span> {</span>
+<span class="line" id="L341">    <span class="tok-kw">const</span> Context = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L342">        items: []<span class="tok-type">i32</span>,</span>
+<span class="line" id="L343"></span>
+<span class="line" id="L344">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">lessThan</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L345">            <span class="tok-kw">return</span> ctx.items[a] &lt; ctx.items[b];</span>
+<span class="line" id="L346">        }</span>
+<span class="line" id="L347"></span>
+<span class="line" id="L348">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">swap</span>(ctx: <span class="tok-builtin">@This</span>(), a: <span class="tok-type">usize</span>, b: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L349">            <span class="tok-kw">return</span> mem.swap(<span class="tok-type">i32</span>, &amp;ctx.items[a], &amp;ctx.items[b]);</span>
+<span class="line" id="L350">        }</span>
+<span class="line" id="L351">    };</span>
+<span class="line" id="L352"></span>
+<span class="line" id="L353">    <span class="tok-kw">const</span> i32cases = [_][]<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L354">        &amp;[_][]<span class="tok-kw">const</span> <span class="tok-type">i32</span>{</span>
+<span class="line" id="L355">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">8</span>, <span class="tok-number">3</span>, <span class="tok-number">6</span>, <span class="tok-number">5</span>, <span class="tok-number">4</span>, <span class="tok-number">2</span>, <span class="tok-number">9</span>, <span class="tok-number">7</span>, <span class="tok-number">10</span>, <span class="tok-number">55</span>, <span class="tok-number">32</span>, <span class="tok-number">39</span>, <span class="tok-number">58</span>, <span class="tok-number">21</span>, <span class="tok-number">88</span>, <span class="tok-number">43</span>, <span class="tok-number">22</span>, <span class="tok-number">59</span> },</span>
+<span class="line" id="L356">            &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">50</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">8</span>, <span class="tok-number">9</span>, <span class="tok-number">10</span>, <span class="tok-number">21</span>, <span class="tok-number">22</span>, <span class="tok-number">32</span>, <span class="tok-number">39</span>, <span class="tok-number">43</span>, <span class="tok-number">55</span>, <span class="tok-number">58</span>, <span class="tok-number">59</span>, <span class="tok-number">88</span> },</span>
+<span class="line" id="L357">        },</span>
+<span class="line" id="L358">    };</span>
+<span class="line" id="L359"></span>
+<span class="line" id="L360">    <span class="tok-kw">const</span> ranges = [_]<span class="tok-kw">struct</span> { start: <span class="tok-type">usize</span>, end: <span class="tok-type">usize</span> }{</span>
+<span class="line" id="L361">        .{ .start = <span class="tok-number">10</span>, .end = <span class="tok-number">20</span> },</span>
+<span class="line" id="L362">        .{ .start = <span class="tok-number">1</span>, .end = <span class="tok-number">11</span> },</span>
+<span class="line" id="L363">        .{ .start = <span class="tok-number">3</span>, .end = <span class="tok-number">7</span> },</span>
+<span class="line" id="L364">    };</span>
+<span class="line" id="L365"></span>
+<span class="line" id="L366">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (context_sort_funcs) |sortFn| {</span>
+<span class="line" id="L367">        <span class="tok-kw">for</span> (i32cases) |case| {</span>
+<span class="line" id="L368">            <span class="tok-kw">for</span> (ranges) |range| {</span>
+<span class="line" id="L369">                <span class="tok-kw">var</span> buf: [<span class="tok-number">20</span>]<span class="tok-type">i32</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L370">                <span class="tok-kw">const</span> slice = buf[<span class="tok-number">0</span>..case[<span class="tok-number">0</span>].len];</span>
+<span class="line" id="L371">                <span class="tok-builtin">@memcpy</span>(slice, case[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L372">                sortFn(range.start, range.end, Context{ .items = slice });</span>
+<span class="line" id="L373">                <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">i32</span>, case[<span class="tok-number">1</span>][range.start..range.end], slice[range.start..range.end]);</span>
+<span class="line" id="L374">            }</span>
+<span class="line" id="L375">        }</span>
+<span class="line" id="L376">    }</span>
+<span class="line" id="L377">}</span>
+<span class="line" id="L378"></span>
+<span class="line" id="L379"><span class="tok-kw">test</span> <span class="tok-str">&quot;sort fuzz testing&quot;</span> {</span>
+<span class="line" id="L380">    <span class="tok-kw">var</span> prng = std.rand.DefaultPrng.init(<span class="tok-number">0x12345678</span>);</span>
+<span class="line" id="L381">    <span class="tok-kw">const</span> random = prng.random();</span>
+<span class="line" id="L382">    <span class="tok-kw">const</span> test_case_count = <span class="tok-number">10</span>;</span>
+<span class="line" id="L383"></span>
+<span class="line" id="L384">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (sort_funcs) |sortFn| {</span>
+<span class="line" id="L385">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L386">        <span class="tok-kw">while</span> (i &lt; test_case_count) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L387">            <span class="tok-kw">const</span> array_size = random.intRangeLessThan(<span class="tok-type">usize</span>, <span class="tok-number">0</span>, <span class="tok-number">1000</span>);</span>
+<span class="line" id="L388">            <span class="tok-kw">var</span> array = <span class="tok-kw">try</span> testing.allocator.alloc(<span class="tok-type">i32</span>, array_size);</span>
+<span class="line" id="L389">            <span class="tok-kw">defer</span> testing.allocator.free(array);</span>
+<span class="line" id="L390">            <span class="tok-comment">// populate with random data</span>
+</span>
+<span class="line" id="L391">            <span class="tok-kw">for</span> (array) |*item| {</span>
+<span class="line" id="L392">                item.* = random.intRangeLessThan(<span class="tok-type">i32</span>, <span class="tok-number">0</span>, <span class="tok-number">100</span>);</span>
+<span class="line" id="L393">            }</span>
+<span class="line" id="L394">            sortFn(<span class="tok-type">i32</span>, array, {}, asc_i32);</span>
+<span class="line" id="L395">            <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, array, {}, asc_i32));</span>
+<span class="line" id="L396">        }</span>
+<span class="line" id="L397">    }</span>
+<span class="line" id="L398">}</span>
+<span class="line" id="L399"></span>
+<span class="line" id="L400"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">binarySearch</span>(</span>
+<span class="line" id="L401">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L402">    key: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L403">    items: []<span class="tok-kw">const</span> T,</span>
+<span class="line" id="L404">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L405">    <span class="tok-kw">comptime</span> compareFn: <span class="tok-kw">fn</span> (context: <span class="tok-builtin">@TypeOf</span>(context), key: <span class="tok-builtin">@TypeOf</span>(key), mid_item: T) math.Order,</span>
+<span class="line" id="L406">) ?<span class="tok-type">usize</span> {</span>
+<span class="line" id="L407">    <span class="tok-kw">var</span> left: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L408">    <span class="tok-kw">var</span> right: <span class="tok-type">usize</span> = items.len;</span>
+<span class="line" id="L409"></span>
+<span class="line" id="L410">    <span class="tok-kw">while</span> (left &lt; right) {</span>
+<span class="line" id="L411">        <span class="tok-comment">// Avoid overflowing in the midpoint calculation</span>
+</span>
+<span class="line" id="L412">        <span class="tok-kw">const</span> mid = left + (right - left) / <span class="tok-number">2</span>;</span>
+<span class="line" id="L413">        <span class="tok-comment">// Compare the key with the midpoint element</span>
+</span>
+<span class="line" id="L414">        <span class="tok-kw">switch</span> (compareFn(context, key, items[mid])) {</span>
+<span class="line" id="L415">            .eq =&gt; <span class="tok-kw">return</span> mid,</span>
+<span class="line" id="L416">            .gt =&gt; left = mid + <span class="tok-number">1</span>,</span>
+<span class="line" id="L417">            .lt =&gt; right = mid,</span>
+<span class="line" id="L418">        }</span>
+<span class="line" id="L419">    }</span>
+<span class="line" id="L420"></span>
+<span class="line" id="L421">    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L422">}</span>
+<span class="line" id="L423"></span>
+<span class="line" id="L424"><span class="tok-kw">test</span> <span class="tok-str">&quot;binarySearch&quot;</span> {</span>
+<span class="line" id="L425">    <span class="tok-kw">const</span> S = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L426">        <span class="tok-kw">fn</span> <span class="tok-fn">order_u32</span>(context: <span class="tok-type">void</span>, lhs: <span class="tok-type">u32</span>, rhs: <span class="tok-type">u32</span>) math.Order {</span>
+<span class="line" id="L427">            _ = context;</span>
+<span class="line" id="L428">            <span class="tok-kw">return</span> math.order(lhs, rhs);</span>
+<span class="line" id="L429">        }</span>
+<span class="line" id="L430">        <span class="tok-kw">fn</span> <span class="tok-fn">order_i32</span>(context: <span class="tok-type">void</span>, lhs: <span class="tok-type">i32</span>, rhs: <span class="tok-type">i32</span>) math.Order {</span>
+<span class="line" id="L431">            _ = context;</span>
+<span class="line" id="L432">            <span class="tok-kw">return</span> math.order(lhs, rhs);</span>
+<span class="line" id="L433">        }</span>
+<span class="line" id="L434">    };</span>
+<span class="line" id="L435">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L436">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-null">null</span>),</span>
+<span class="line" id="L437">        binarySearch(<span class="tok-type">u32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">1</span>), &amp;[_]<span class="tok-type">u32</span>{}, {}, S.order_u32),</span>
+<span class="line" id="L438">    );</span>
+<span class="line" id="L439">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L440">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>),</span>
+<span class="line" id="L441">        binarySearch(<span class="tok-type">u32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">1</span>), &amp;[_]<span class="tok-type">u32</span>{<span class="tok-number">1</span>}, {}, S.order_u32),</span>
+<span class="line" id="L442">    );</span>
+<span class="line" id="L443">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L444">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-null">null</span>),</span>
+<span class="line" id="L445">        binarySearch(<span class="tok-type">u32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">1</span>), &amp;[_]<span class="tok-type">u32</span>{<span class="tok-number">0</span>}, {}, S.order_u32),</span>
+<span class="line" id="L446">    );</span>
+<span class="line" id="L447">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L448">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-null">null</span>),</span>
+<span class="line" id="L449">        binarySearch(<span class="tok-type">u32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">0</span>), &amp;[_]<span class="tok-type">u32</span>{<span class="tok-number">1</span>}, {}, S.order_u32),</span>
+<span class="line" id="L450">    );</span>
+<span class="line" id="L451">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L452">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">4</span>),</span>
+<span class="line" id="L453">        binarySearch(<span class="tok-type">u32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">5</span>), &amp;[_]<span class="tok-type">u32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span> }, {}, S.order_u32),</span>
+<span class="line" id="L454">    );</span>
+<span class="line" id="L455">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L456">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>),</span>
+<span class="line" id="L457">        binarySearch(<span class="tok-type">u32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-number">2</span>), &amp;[_]<span class="tok-type">u32</span>{ <span class="tok-number">2</span>, <span class="tok-number">4</span>, <span class="tok-number">8</span>, <span class="tok-number">16</span>, <span class="tok-number">32</span>, <span class="tok-number">64</span> }, {}, S.order_u32),</span>
+<span class="line" id="L458">    );</span>
+<span class="line" id="L459">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L460">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">1</span>),</span>
+<span class="line" id="L461">        binarySearch(<span class="tok-type">i32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, -<span class="tok-number">4</span>), &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">7</span>, -<span class="tok-number">4</span>, <span class="tok-number">0</span>, <span class="tok-number">9</span>, <span class="tok-number">10</span> }, {}, S.order_i32),</span>
+<span class="line" id="L462">    );</span>
+<span class="line" id="L463">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L464">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">3</span>),</span>
+<span class="line" id="L465">        binarySearch(<span class="tok-type">i32</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, <span class="tok-number">98</span>), &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">100</span>, -<span class="tok-number">25</span>, <span class="tok-number">2</span>, <span class="tok-number">98</span>, <span class="tok-number">99</span>, <span class="tok-number">100</span> }, {}, S.order_i32),</span>
+<span class="line" id="L466">    );</span>
+<span class="line" id="L467">    <span class="tok-kw">const</span> R = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L468">        b: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L469">        e: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L470"></span>
+<span class="line" id="L471">        <span class="tok-kw">fn</span> <span class="tok-fn">r</span>(b: <span class="tok-type">i32</span>, e: <span class="tok-type">i32</span>) <span class="tok-builtin">@This</span>() {</span>
+<span class="line" id="L472">            <span class="tok-kw">return</span> <span class="tok-builtin">@This</span>(){ .b = b, .e = e };</span>
+<span class="line" id="L473">        }</span>
+<span class="line" id="L474"></span>
+<span class="line" id="L475">        <span class="tok-kw">fn</span> <span class="tok-fn">order</span>(context: <span class="tok-type">void</span>, key: <span class="tok-type">i32</span>, mid_item: <span class="tok-builtin">@This</span>()) math.Order {</span>
+<span class="line" id="L476">            _ = context;</span>
+<span class="line" id="L477"></span>
+<span class="line" id="L478">            <span class="tok-kw">if</span> (key &lt; mid_item.b) {</span>
+<span class="line" id="L479">                <span class="tok-kw">return</span> .lt;</span>
+<span class="line" id="L480">            }</span>
+<span class="line" id="L481"></span>
+<span class="line" id="L482">            <span class="tok-kw">if</span> (key &gt; mid_item.e) {</span>
+<span class="line" id="L483">                <span class="tok-kw">return</span> .gt;</span>
+<span class="line" id="L484">            }</span>
+<span class="line" id="L485"></span>
+<span class="line" id="L486">            <span class="tok-kw">return</span> .eq;</span>
+<span class="line" id="L487">        }</span>
+<span class="line" id="L488">    };</span>
+<span class="line" id="L489">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L490">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-null">null</span>),</span>
+<span class="line" id="L491">        binarySearch(R, <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, -<span class="tok-number">45</span>), &amp;[_]R{ R.r(-<span class="tok-number">100</span>, -<span class="tok-number">50</span>), R.r(-<span class="tok-number">40</span>, -<span class="tok-number">20</span>), R.r(-<span class="tok-number">10</span>, <span class="tok-number">20</span>), R.r(<span class="tok-number">30</span>, <span class="tok-number">40</span>) }, {}, R.order),</span>
+<span class="line" id="L492">    );</span>
+<span class="line" id="L493">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L494">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">2</span>),</span>
+<span class="line" id="L495">        binarySearch(R, <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, <span class="tok-number">10</span>), &amp;[_]R{ R.r(-<span class="tok-number">100</span>, -<span class="tok-number">50</span>), R.r(-<span class="tok-number">40</span>, -<span class="tok-number">20</span>), R.r(-<span class="tok-number">10</span>, <span class="tok-number">20</span>), R.r(<span class="tok-number">30</span>, <span class="tok-number">40</span>) }, {}, R.order),</span>
+<span class="line" id="L496">    );</span>
+<span class="line" id="L497">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L498">        <span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">1</span>),</span>
+<span class="line" id="L499">        binarySearch(R, <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, -<span class="tok-number">20</span>), &amp;[_]R{ R.r(-<span class="tok-number">100</span>, -<span class="tok-number">50</span>), R.r(-<span class="tok-number">40</span>, -<span class="tok-number">20</span>), R.r(-<span class="tok-number">10</span>, <span class="tok-number">20</span>), R.r(<span class="tok-number">30</span>, <span class="tok-number">40</span>) }, {}, R.order),</span>
+<span class="line" id="L500">    );</span>
+<span class="line" id="L501">}</span>
+<span class="line" id="L502"></span>
+<span class="line" id="L503"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">argMin</span>(</span>
+<span class="line" id="L504">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L505">    items: []<span class="tok-kw">const</span> T,</span>
+<span class="line" id="L506">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L507">    <span class="tok-kw">comptime</span> lessThan: <span class="tok-kw">fn</span> (<span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L508">) ?<span class="tok-type">usize</span> {</span>
+<span class="line" id="L509">    <span class="tok-kw">if</span> (items.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L510">        <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L511">    }</span>
+<span class="line" id="L512"></span>
+<span class="line" id="L513">    <span class="tok-kw">var</span> smallest = items[<span class="tok-number">0</span>];</span>
+<span class="line" id="L514">    <span class="tok-kw">var</span> smallest_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L515">    <span class="tok-kw">for</span> (items[<span class="tok-number">1</span>..], <span class="tok-number">0</span>..) |item, i| {</span>
+<span class="line" id="L516">        <span class="tok-kw">if</span> (lessThan(context, item, smallest)) {</span>
+<span class="line" id="L517">            smallest = item;</span>
+<span class="line" id="L518">            smallest_index = i + <span class="tok-number">1</span>;</span>
+<span class="line" id="L519">        }</span>
+<span class="line" id="L520">    }</span>
+<span class="line" id="L521"></span>
+<span class="line" id="L522">    <span class="tok-kw">return</span> smallest_index;</span>
+<span class="line" id="L523">}</span>
+<span class="line" id="L524"></span>
+<span class="line" id="L525"><span class="tok-kw">test</span> <span class="tok-str">&quot;argMin&quot;</span> {</span>
+<span class="line" id="L526">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-null">null</span>), argMin(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{}, {}, asc_i32));</span>
+<span class="line" id="L527">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>), argMin(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>}, {}, asc_i32));</span>
+<span class="line" id="L528">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>), argMin(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L529">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">3</span>), argMin(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">9</span>, <span class="tok-number">3</span>, <span class="tok-number">8</span>, <span class="tok-number">2</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L530">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>), argMin(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span> }, {}, asc_i32));</span>
+<span class="line" id="L531">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>), argMin(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">10</span>, <span class="tok-number">1</span>, <span class="tok-number">10</span> }, {}, asc_i32));</span>
+<span class="line" id="L532">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">3</span>), argMin(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">6</span>, <span class="tok-number">3</span>, <span class="tok-number">5</span>, <span class="tok-number">7</span>, <span class="tok-number">6</span> }, {}, desc_i32));</span>
+<span class="line" id="L533">}</span>
+<span class="line" id="L534"></span>
+<span class="line" id="L535"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">min</span>(</span>
+<span class="line" id="L536">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L537">    items: []<span class="tok-kw">const</span> T,</span>
+<span class="line" id="L538">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L539">    <span class="tok-kw">comptime</span> lessThan: <span class="tok-kw">fn</span> (context: <span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L540">) ?T {</span>
+<span class="line" id="L541">    <span class="tok-kw">const</span> i = argMin(T, items, context, lessThan) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L542">    <span class="tok-kw">return</span> items[i];</span>
+<span class="line" id="L543">}</span>
+<span class="line" id="L544"></span>
+<span class="line" id="L545"><span class="tok-kw">test</span> <span class="tok-str">&quot;min&quot;</span> {</span>
+<span class="line" id="L546">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-null">null</span>), min(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{}, {}, asc_i32));</span>
+<span class="line" id="L547">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">1</span>), min(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>}, {}, asc_i32));</span>
+<span class="line" id="L548">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">1</span>), min(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L549">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">2</span>), min(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">9</span>, <span class="tok-number">3</span>, <span class="tok-number">8</span>, <span class="tok-number">2</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L550">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">1</span>), min(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span> }, {}, asc_i32));</span>
+<span class="line" id="L551">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, -<span class="tok-number">10</span>), min(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">10</span>, <span class="tok-number">1</span>, <span class="tok-number">10</span> }, {}, asc_i32));</span>
+<span class="line" id="L552">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">7</span>), min(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">6</span>, <span class="tok-number">3</span>, <span class="tok-number">5</span>, <span class="tok-number">7</span>, <span class="tok-number">6</span> }, {}, desc_i32));</span>
+<span class="line" id="L553">}</span>
+<span class="line" id="L554"></span>
+<span class="line" id="L555"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">argMax</span>(</span>
+<span class="line" id="L556">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L557">    items: []<span class="tok-kw">const</span> T,</span>
+<span class="line" id="L558">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L559">    <span class="tok-kw">comptime</span> lessThan: <span class="tok-kw">fn</span> (context: <span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L560">) ?<span class="tok-type">usize</span> {</span>
+<span class="line" id="L561">    <span class="tok-kw">if</span> (items.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L562">        <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L563">    }</span>
+<span class="line" id="L564"></span>
+<span class="line" id="L565">    <span class="tok-kw">var</span> biggest = items[<span class="tok-number">0</span>];</span>
+<span class="line" id="L566">    <span class="tok-kw">var</span> biggest_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L567">    <span class="tok-kw">for</span> (items[<span class="tok-number">1</span>..], <span class="tok-number">0</span>..) |item, i| {</span>
+<span class="line" id="L568">        <span class="tok-kw">if</span> (lessThan(context, biggest, item)) {</span>
+<span class="line" id="L569">            biggest = item;</span>
+<span class="line" id="L570">            biggest_index = i + <span class="tok-number">1</span>;</span>
+<span class="line" id="L571">        }</span>
+<span class="line" id="L572">    }</span>
+<span class="line" id="L573"></span>
+<span class="line" id="L574">    <span class="tok-kw">return</span> biggest_index;</span>
+<span class="line" id="L575">}</span>
+<span class="line" id="L576"></span>
+<span class="line" id="L577"><span class="tok-kw">test</span> <span class="tok-str">&quot;argMax&quot;</span> {</span>
+<span class="line" id="L578">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-null">null</span>), argMax(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{}, {}, asc_i32));</span>
+<span class="line" id="L579">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>), argMax(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>}, {}, asc_i32));</span>
+<span class="line" id="L580">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">4</span>), argMax(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L581">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>), argMax(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">9</span>, <span class="tok-number">3</span>, <span class="tok-number">8</span>, <span class="tok-number">2</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L582">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">0</span>), argMax(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span> }, {}, asc_i32));</span>
+<span class="line" id="L583">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">2</span>), argMax(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">10</span>, <span class="tok-number">1</span>, <span class="tok-number">10</span> }, {}, asc_i32));</span>
+<span class="line" id="L584">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">usize</span>, <span class="tok-number">1</span>), argMax(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">6</span>, <span class="tok-number">3</span>, <span class="tok-number">5</span>, <span class="tok-number">7</span>, <span class="tok-number">6</span> }, {}, desc_i32));</span>
+<span class="line" id="L585">}</span>
+<span class="line" id="L586"></span>
+<span class="line" id="L587"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">max</span>(</span>
+<span class="line" id="L588">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L589">    items: []<span class="tok-kw">const</span> T,</span>
+<span class="line" id="L590">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L591">    <span class="tok-kw">comptime</span> lessThan: <span class="tok-kw">fn</span> (context: <span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L592">) ?T {</span>
+<span class="line" id="L593">    <span class="tok-kw">const</span> i = argMax(T, items, context, lessThan) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L594">    <span class="tok-kw">return</span> items[i];</span>
+<span class="line" id="L595">}</span>
+<span class="line" id="L596"></span>
+<span class="line" id="L597"><span class="tok-kw">test</span> <span class="tok-str">&quot;max&quot;</span> {</span>
+<span class="line" id="L598">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-null">null</span>), max(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{}, {}, asc_i32));</span>
+<span class="line" id="L599">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">1</span>), max(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">1</span>}, {}, asc_i32));</span>
+<span class="line" id="L600">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">5</span>), max(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L601">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">9</span>), max(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">9</span>, <span class="tok-number">3</span>, <span class="tok-number">8</span>, <span class="tok-number">2</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L602">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">1</span>), max(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span> }, {}, asc_i32));</span>
+<span class="line" id="L603">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">10</span>), max(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">10</span>, <span class="tok-number">1</span>, <span class="tok-number">10</span> }, {}, asc_i32));</span>
+<span class="line" id="L604">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(?<span class="tok-type">i32</span>, <span class="tok-number">3</span>), max(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">6</span>, <span class="tok-number">3</span>, <span class="tok-number">5</span>, <span class="tok-number">7</span>, <span class="tok-number">6</span> }, {}, desc_i32));</span>
+<span class="line" id="L605">}</span>
+<span class="line" id="L606"></span>
+<span class="line" id="L607"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isSorted</span>(</span>
+<span class="line" id="L608">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L609">    items: []<span class="tok-kw">const</span> T,</span>
+<span class="line" id="L610">    context: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L611">    <span class="tok-kw">comptime</span> lessThan: <span class="tok-kw">fn</span> (context: <span class="tok-builtin">@TypeOf</span>(context), lhs: T, rhs: T) <span class="tok-type">bool</span>,</span>
+<span class="line" id="L612">) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L613">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L614">    <span class="tok-kw">while</span> (i &lt; items.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L615">        <span class="tok-kw">if</span> (lessThan(context, items[i], items[i - <span class="tok-number">1</span>])) {</span>
+<span class="line" id="L616">            <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L617">        }</span>
+<span class="line" id="L618">    }</span>
+<span class="line" id="L619"></span>
+<span class="line" id="L620">    <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L621">}</span>
+<span class="line" id="L622"></span>
+<span class="line" id="L623"><span class="tok-kw">test</span> <span class="tok-str">&quot;isSorted&quot;</span> {</span>
+<span class="line" id="L624">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{}, {}, asc_i32));</span>
+<span class="line" id="L625">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{<span class="tok-number">10</span>}, {}, asc_i32));</span>
+<span class="line" id="L626">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span> }, {}, asc_i32));</span>
+<span class="line" id="L627">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ -<span class="tok-number">10</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">10</span> }, {}, asc_i32));</span>
+<span class="line" id="L628"></span>
+<span class="line" id="L629">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{}, {}, desc_i32));</span>
+<span class="line" id="L630">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{-<span class="tok-number">20</span>}, {}, desc_i32));</span>
+<span class="line" id="L631">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">3</span>, <span class="tok-number">2</span>, <span class="tok-number">1</span>, <span class="tok-number">0</span>, -<span class="tok-number">1</span> }, {}, desc_i32));</span>
+<span class="line" id="L632">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">10</span>, -<span class="tok-number">10</span> }, {}, desc_i32));</span>
+<span class="line" id="L633"></span>
+<span class="line" id="L634">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span> }, {}, asc_i32));</span>
+<span class="line" id="L635">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span> }, {}, desc_i32));</span>
+<span class="line" id="L636"></span>
+<span class="line" id="L637">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">5</span>, <span class="tok-number">4</span>, <span class="tok-number">3</span>, <span class="tok-number">2</span>, <span class="tok-number">1</span> }, {}, asc_i32));</span>
+<span class="line" id="L638">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, isSorted(<span class="tok-type">i32</span>, &amp;[_]<span class="tok-type">i32</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span> }, {}, desc_i32));</span>
+<span class="line" id="L639"></span>
+<span class="line" id="L640">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">u8</span>, <span class="tok-str">&quot;abcd&quot;</span>, {}, asc_u8));</span>
+<span class="line" id="L641">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">u8</span>, <span class="tok-str">&quot;zyxw&quot;</span>, {}, desc_u8));</span>
+<span class="line" id="L642"></span>
+<span class="line" id="L643">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, isSorted(<span class="tok-type">u8</span>, <span class="tok-str">&quot;abcd&quot;</span>, {}, desc_u8));</span>
+<span class="line" id="L644">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, isSorted(<span class="tok-type">u8</span>, <span class="tok-str">&quot;zyxw&quot;</span>, {}, asc_u8));</span>
+<span class="line" id="L645"></span>
+<span class="line" id="L646">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">u8</span>, <span class="tok-str">&quot;ffff&quot;</span>, {}, asc_u8));</span>
+<span class="line" id="L647">    <span class="tok-kw">try</span> testing.expect(isSorted(<span class="tok-type">u8</span>, <span class="tok-str">&quot;ffff&quot;</span>, {}, desc_u8));</span>
+<span class="line" id="L648">}</span>
+<span class="line" id="L649"></span>
+</code></pre></body>
+</html>

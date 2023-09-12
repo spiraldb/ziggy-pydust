@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Build/Step.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1">id: Id,</span>
+<span class="line" id="L2">name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L3">owner: *Build,</span>
+<span class="line" id="L4">makeFn: MakeFn,</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6">dependencies: std.ArrayList(*Step),</span>
+<span class="line" id="L7"><span class="tok-comment">/// This field is empty during execution of the user's build script, and</span></span>
+<span class="line" id="L8"><span class="tok-comment">/// then populated during dependency loop checking in the build runner.</span></span>
+<span class="line" id="L9">dependants: std.ArrayListUnmanaged(*Step),</span>
+<span class="line" id="L10">state: State,</span>
+<span class="line" id="L11"><span class="tok-comment">/// Set this field to declare an upper bound on the amount of bytes of memory it will</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// take to run the step. Zero means no limit.</span></span>
+<span class="line" id="L13"><span class="tok-comment">///</span></span>
+<span class="line" id="L14"><span class="tok-comment">/// The idea to annotate steps that might use a high amount of RAM with an</span></span>
+<span class="line" id="L15"><span class="tok-comment">/// upper bound. For example, perhaps a particular set of unit tests require 4</span></span>
+<span class="line" id="L16"><span class="tok-comment">/// GiB of RAM, and those tests will be run under 4 different build</span></span>
+<span class="line" id="L17"><span class="tok-comment">/// configurations at once. This would potentially require 16 GiB of memory on</span></span>
+<span class="line" id="L18"><span class="tok-comment">/// the system if all 4 steps executed simultaneously, which could easily be</span></span>
+<span class="line" id="L19"><span class="tok-comment">/// greater than what is actually available, potentially causing the system to</span></span>
+<span class="line" id="L20"><span class="tok-comment">/// crash when using `zig build` at the default concurrency level.</span></span>
+<span class="line" id="L21"><span class="tok-comment">///</span></span>
+<span class="line" id="L22"><span class="tok-comment">/// This field causes the build runner to do two things:</span></span>
+<span class="line" id="L23"><span class="tok-comment">/// 1. ulimit child processes, so that they will fail if it would exceed this</span></span>
+<span class="line" id="L24"><span class="tok-comment">/// memory limit. This serves to enforce that this upper bound value is</span></span>
+<span class="line" id="L25"><span class="tok-comment">/// correct.</span></span>
+<span class="line" id="L26"><span class="tok-comment">/// 2. Ensure that the set of concurrent steps at any given time have a total</span></span>
+<span class="line" id="L27"><span class="tok-comment">/// max_rss value that does not exceed the `max_total_rss` value of the build</span></span>
+<span class="line" id="L28"><span class="tok-comment">/// runner. This value is configurable on the command line, and defaults to the</span></span>
+<span class="line" id="L29"><span class="tok-comment">/// total system memory available.</span></span>
+<span class="line" id="L30">max_rss: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">result_error_msgs: std.ArrayListUnmanaged([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>),</span>
+<span class="line" id="L33">result_error_bundle: std.zig.ErrorBundle,</span>
+<span class="line" id="L34">result_cached: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L35">result_duration_ns: ?<span class="tok-type">u64</span>,</span>
+<span class="line" id="L36"><span class="tok-comment">/// 0 means unavailable or not reported.</span></span>
+<span class="line" id="L37">result_peak_rss: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L38">test_results: TestResults,</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40"><span class="tok-comment">/// The return address associated with creation of this step that can be useful</span></span>
+<span class="line" id="L41"><span class="tok-comment">/// to print along with debugging messages.</span></span>
+<span class="line" id="L42">debug_stack_trace: [n_debug_stack_frames]<span class="tok-type">usize</span>,</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> TestResults = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L45">    fail_count: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L46">    skip_count: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L47">    leak_count: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L48">    test_count: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isSuccess</span>(tr: TestResults) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L51">        <span class="tok-kw">return</span> tr.fail_count == <span class="tok-number">0</span> <span class="tok-kw">and</span> tr.leak_count == <span class="tok-number">0</span>;</span>
+<span class="line" id="L52">    }</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">passCount</span>(tr: TestResults) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L55">        <span class="tok-kw">return</span> tr.test_count - tr.fail_count - tr.skip_count;</span>
+<span class="line" id="L56">    }</span>
+<span class="line" id="L57">};</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MakeFn = *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (self: *Step, prog_node: *std.Progress.Node) <span class="tok-type">anyerror</span>!<span class="tok-type">void</span>;</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61"><span class="tok-kw">const</span> n_debug_stack_frames = <span class="tok-number">4</span>;</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> State = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L64">    precheck_unstarted,</span>
+<span class="line" id="L65">    precheck_started,</span>
+<span class="line" id="L66">    precheck_done,</span>
+<span class="line" id="L67">    running,</span>
+<span class="line" id="L68">    dependency_failure,</span>
+<span class="line" id="L69">    success,</span>
+<span class="line" id="L70">    failure,</span>
+<span class="line" id="L71">    <span class="tok-comment">/// This state indicates that the step did not complete, however, it also did not fail,</span></span>
+<span class="line" id="L72">    <span class="tok-comment">/// and it is safe to continue executing its dependencies.</span></span>
+<span class="line" id="L73">    skipped,</span>
+<span class="line" id="L74">};</span>
+<span class="line" id="L75"></span>
+<span class="line" id="L76"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Id = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L77">    top_level,</span>
+<span class="line" id="L78">    compile,</span>
+<span class="line" id="L79">    install_artifact,</span>
+<span class="line" id="L80">    install_file,</span>
+<span class="line" id="L81">    install_dir,</span>
+<span class="line" id="L82">    remove_dir,</span>
+<span class="line" id="L83">    fmt,</span>
+<span class="line" id="L84">    translate_c,</span>
+<span class="line" id="L85">    write_file,</span>
+<span class="line" id="L86">    run,</span>
+<span class="line" id="L87">    check_file,</span>
+<span class="line" id="L88">    check_object,</span>
+<span class="line" id="L89">    config_header,</span>
+<span class="line" id="L90">    objcopy,</span>
+<span class="line" id="L91">    options,</span>
+<span class="line" id="L92">    custom,</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Type</span>(<span class="tok-kw">comptime</span> id: Id) <span class="tok-type">type</span> {</span>
+<span class="line" id="L95">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (id) {</span>
+<span class="line" id="L96">            .top_level =&gt; Build.TopLevelStep,</span>
+<span class="line" id="L97">            .compile =&gt; Compile,</span>
+<span class="line" id="L98">            .install_artifact =&gt; InstallArtifact,</span>
+<span class="line" id="L99">            .install_file =&gt; InstallFile,</span>
+<span class="line" id="L100">            .install_dir =&gt; InstallDir,</span>
+<span class="line" id="L101">            .remove_dir =&gt; RemoveDir,</span>
+<span class="line" id="L102">            .fmt =&gt; Fmt,</span>
+<span class="line" id="L103">            .translate_c =&gt; TranslateC,</span>
+<span class="line" id="L104">            .write_file =&gt; WriteFile,</span>
+<span class="line" id="L105">            .run =&gt; Run,</span>
+<span class="line" id="L106">            .check_file =&gt; CheckFile,</span>
+<span class="line" id="L107">            .check_object =&gt; CheckObject,</span>
+<span class="line" id="L108">            .config_header =&gt; ConfigHeader,</span>
+<span class="line" id="L109">            .objcopy =&gt; ObjCopy,</span>
+<span class="line" id="L110">            .options =&gt; Options,</span>
+<span class="line" id="L111">            .custom =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;no type available for custom step&quot;</span>),</span>
+<span class="line" id="L112">        };</span>
+<span class="line" id="L113">    }</span>
+<span class="line" id="L114">};</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> CheckFile = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/CheckFile.zig&quot;</span>);</span>
+<span class="line" id="L117"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> CheckObject = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/CheckObject.zig&quot;</span>);</span>
+<span class="line" id="L118"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ConfigHeader = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/ConfigHeader.zig&quot;</span>);</span>
+<span class="line" id="L119"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Fmt = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/Fmt.zig&quot;</span>);</span>
+<span class="line" id="L120"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> InstallArtifact = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/InstallArtifact.zig&quot;</span>);</span>
+<span class="line" id="L121"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> InstallDir = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/InstallDir.zig&quot;</span>);</span>
+<span class="line" id="L122"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> InstallFile = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/InstallFile.zig&quot;</span>);</span>
+<span class="line" id="L123"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ObjCopy = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/ObjCopy.zig&quot;</span>);</span>
+<span class="line" id="L124"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Compile = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/Compile.zig&quot;</span>);</span>
+<span class="line" id="L125"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/Options.zig&quot;</span>);</span>
+<span class="line" id="L126"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RemoveDir = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/RemoveDir.zig&quot;</span>);</span>
+<span class="line" id="L127"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Run = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/Run.zig&quot;</span>);</span>
+<span class="line" id="L128"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> TranslateC = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/TranslateC.zig&quot;</span>);</span>
+<span class="line" id="L129"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> WriteFile = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;Step/WriteFile.zig&quot;</span>);</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> StepOptions = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L132">    id: Id,</span>
+<span class="line" id="L133">    name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L134">    owner: *Build,</span>
+<span class="line" id="L135">    makeFn: MakeFn = makeNoOp,</span>
+<span class="line" id="L136">    first_ret_addr: ?<span class="tok-type">usize</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L137">    max_rss: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L138">};</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(options: StepOptions) Step {</span>
+<span class="line" id="L141">    <span class="tok-kw">const</span> arena = options.owner.allocator;</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-kw">var</span> addresses = [<span class="tok-number">1</span>]<span class="tok-type">usize</span>{<span class="tok-number">0</span>} ** n_debug_stack_frames;</span>
+<span class="line" id="L144">    <span class="tok-kw">const</span> first_ret_addr = options.first_ret_addr <span class="tok-kw">orelse</span> <span class="tok-builtin">@returnAddress</span>();</span>
+<span class="line" id="L145">    <span class="tok-kw">var</span> stack_trace = std.builtin.StackTrace{</span>
+<span class="line" id="L146">        .instruction_addresses = &amp;addresses,</span>
+<span class="line" id="L147">        .index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L148">    };</span>
+<span class="line" id="L149">    std.debug.captureStackTrace(first_ret_addr, &amp;stack_trace);</span>
+<span class="line" id="L150"></span>
+<span class="line" id="L151">    <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L152">        .id = options.id,</span>
+<span class="line" id="L153">        .name = arena.dupe(<span class="tok-type">u8</span>, options.name) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>),</span>
+<span class="line" id="L154">        .owner = options.owner,</span>
+<span class="line" id="L155">        .makeFn = options.makeFn,</span>
+<span class="line" id="L156">        .dependencies = std.ArrayList(*Step).init(arena),</span>
+<span class="line" id="L157">        .dependants = .{},</span>
+<span class="line" id="L158">        .state = .precheck_unstarted,</span>
+<span class="line" id="L159">        .max_rss = options.max_rss,</span>
+<span class="line" id="L160">        .debug_stack_trace = addresses,</span>
+<span class="line" id="L161">        .result_error_msgs = .{},</span>
+<span class="line" id="L162">        .result_error_bundle = std.zig.ErrorBundle.empty,</span>
+<span class="line" id="L163">        .result_cached = <span class="tok-null">false</span>,</span>
+<span class="line" id="L164">        .result_duration_ns = <span class="tok-null">null</span>,</span>
+<span class="line" id="L165">        .result_peak_rss = <span class="tok-number">0</span>,</span>
+<span class="line" id="L166">        .test_results = .{},</span>
+<span class="line" id="L167">    };</span>
+<span class="line" id="L168">}</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170"><span class="tok-comment">/// If the Step's `make` function reports `error.MakeFailed`, it indicates they</span></span>
+<span class="line" id="L171"><span class="tok-comment">/// have already reported the error. Otherwise, we add a simple error report</span></span>
+<span class="line" id="L172"><span class="tok-comment">/// here.</span></span>
+<span class="line" id="L173"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">make</span>(s: *Step, prog_node: *std.Progress.Node) <span class="tok-kw">error</span>{ MakeFailed, MakeSkipped }!<span class="tok-type">void</span> {</span>
+<span class="line" id="L174">    <span class="tok-kw">const</span> arena = s.owner.allocator;</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176">    s.makeFn(s, prog_node) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L177">        <span class="tok-kw">error</span>.MakeFailed =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MakeFailed,</span>
+<span class="line" id="L178">        <span class="tok-kw">error</span>.MakeSkipped =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MakeSkipped,</span>
+<span class="line" id="L179">        <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L180">            s.result_error_msgs.append(arena, <span class="tok-builtin">@errorName</span>(err)) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L181">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MakeFailed;</span>
+<span class="line" id="L182">        },</span>
+<span class="line" id="L183">    };</span>
+<span class="line" id="L184"></span>
+<span class="line" id="L185">    <span class="tok-kw">if</span> (!s.test_results.isSuccess()) {</span>
+<span class="line" id="L186">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MakeFailed;</span>
+<span class="line" id="L187">    }</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189">    <span class="tok-kw">if</span> (s.max_rss != <span class="tok-number">0</span> <span class="tok-kw">and</span> s.result_peak_rss &gt; s.max_rss) {</span>
+<span class="line" id="L190">        <span class="tok-kw">const</span> msg = std.fmt.allocPrint(arena, <span class="tok-str">&quot;memory usage peaked at {d} bytes, exceeding the declared upper bound of {d}&quot;</span>, .{</span>
+<span class="line" id="L191">            s.result_peak_rss, s.max_rss,</span>
+<span class="line" id="L192">        }) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L193">        s.result_error_msgs.append(arena, msg) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L194">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MakeFailed;</span>
+<span class="line" id="L195">    }</span>
+<span class="line" id="L196">}</span>
+<span class="line" id="L197"></span>
+<span class="line" id="L198"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">dependOn</span>(self: *Step, other: *Step) <span class="tok-type">void</span> {</span>
+<span class="line" id="L199">    self.dependencies.append(other) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L200">}</span>
+<span class="line" id="L201"></span>
+<span class="line" id="L202"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getStackTrace</span>(s: *Step) std.builtin.StackTrace {</span>
+<span class="line" id="L203">    <span class="tok-kw">const</span> stack_addresses = &amp;s.debug_stack_trace;</span>
+<span class="line" id="L204">    <span class="tok-kw">var</span> len: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L205">    <span class="tok-kw">while</span> (len &lt; n_debug_stack_frames <span class="tok-kw">and</span> stack_addresses[len] != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L206">        len += <span class="tok-number">1</span>;</span>
+<span class="line" id="L207">    }</span>
+<span class="line" id="L208">    <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L209">        .instruction_addresses = stack_addresses,</span>
+<span class="line" id="L210">        .index = len,</span>
+<span class="line" id="L211">    };</span>
+<span class="line" id="L212">}</span>
+<span class="line" id="L213"></span>
+<span class="line" id="L214"><span class="tok-kw">fn</span> <span class="tok-fn">makeNoOp</span>(step: *Step, prog_node: *std.Progress.Node) <span class="tok-type">anyerror</span>!<span class="tok-type">void</span> {</span>
+<span class="line" id="L215">    _ = prog_node;</span>
+<span class="line" id="L216"></span>
+<span class="line" id="L217">    <span class="tok-kw">var</span> all_cached = <span class="tok-null">true</span>;</span>
+<span class="line" id="L218"></span>
+<span class="line" id="L219">    <span class="tok-kw">for</span> (step.dependencies.items) |dep| {</span>
+<span class="line" id="L220">        all_cached = all_cached <span class="tok-kw">and</span> dep.result_cached;</span>
+<span class="line" id="L221">    }</span>
+<span class="line" id="L222"></span>
+<span class="line" id="L223">    step.result_cached = all_cached;</span>
+<span class="line" id="L224">}</span>
+<span class="line" id="L225"></span>
+<span class="line" id="L226"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">cast</span>(step: *Step, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) ?*T {</span>
+<span class="line" id="L227">    <span class="tok-kw">if</span> (step.id == T.base_id) {</span>
+<span class="line" id="L228">        <span class="tok-kw">return</span> <span class="tok-builtin">@fieldParentPtr</span>(T, <span class="tok-str">&quot;step&quot;</span>, step);</span>
+<span class="line" id="L229">    }</span>
+<span class="line" id="L230">    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L231">}</span>
+<span class="line" id="L232"></span>
+<span class="line" id="L233"><span class="tok-comment">/// For debugging purposes, prints identifying information about this Step.</span></span>
+<span class="line" id="L234"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">dump</span>(step: *Step) <span class="tok-type">void</span> {</span>
+<span class="line" id="L235">    std.debug.getStderrMutex().lock();</span>
+<span class="line" id="L236">    <span class="tok-kw">defer</span> std.debug.getStderrMutex().unlock();</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">    <span class="tok-kw">const</span> stderr = std.io.getStdErr();</span>
+<span class="line" id="L239">    <span class="tok-kw">const</span> w = stderr.writer();</span>
+<span class="line" id="L240">    <span class="tok-kw">const</span> tty_config = std.io.tty.detectConfig(stderr);</span>
+<span class="line" id="L241">    <span class="tok-kw">const</span> debug_info = std.debug.getSelfDebugInfo() <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L242">        w.print(<span class="tok-str">&quot;Unable to dump stack trace: Unable to open debug info: {s}\n&quot;</span>, .{</span>
+<span class="line" id="L243">            <span class="tok-builtin">@errorName</span>(err),</span>
+<span class="line" id="L244">        }) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L245">        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L246">    };</span>
+<span class="line" id="L247">    <span class="tok-kw">const</span> ally = debug_info.allocator;</span>
+<span class="line" id="L248">    w.print(<span class="tok-str">&quot;name: '{s}'. creation stack trace:\n&quot;</span>, .{step.name}) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L249">    std.debug.writeStackTrace(step.getStackTrace(), w, ally, debug_info, tty_config) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L250">        stderr.writer().print(<span class="tok-str">&quot;Unable to dump stack trace: {s}\n&quot;</span>, .{<span class="tok-builtin">@errorName</span>(err)}) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L251">        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L252">    };</span>
+<span class="line" id="L253">}</span>
+<span class="line" id="L254"></span>
+<span class="line" id="L255"><span class="tok-kw">const</span> Step = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L256"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L257"><span class="tok-kw">const</span> Build = std.Build;</span>
+<span class="line" id="L258"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L259"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L260"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L261"></span>
+<span class="line" id="L262"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">evalChildProcess</span>(s: *Step, argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L263">    <span class="tok-kw">const</span> arena = s.owner.allocator;</span>
+<span class="line" id="L264"></span>
+<span class="line" id="L265">    <span class="tok-kw">try</span> handleChildProcUnsupported(s, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L266">    <span class="tok-kw">try</span> handleVerbose(s.owner, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L267"></span>
+<span class="line" id="L268">    <span class="tok-kw">const</span> result = std.ChildProcess.exec(.{</span>
+<span class="line" id="L269">        .allocator = arena,</span>
+<span class="line" id="L270">        .argv = argv,</span>
+<span class="line" id="L271">    }) <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> s.fail(<span class="tok-str">&quot;unable to spawn {s}: {s}&quot;</span>, .{ argv[<span class="tok-number">0</span>], <span class="tok-builtin">@errorName</span>(err) });</span>
+<span class="line" id="L272"></span>
+<span class="line" id="L273">    <span class="tok-kw">if</span> (result.stderr.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L274">        <span class="tok-kw">try</span> s.result_error_msgs.append(arena, result.stderr);</span>
+<span class="line" id="L275">    }</span>
+<span class="line" id="L276"></span>
+<span class="line" id="L277">    <span class="tok-kw">try</span> handleChildProcessTerm(s, result.term, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L278">}</span>
+<span class="line" id="L279"></span>
+<span class="line" id="L280"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fail</span>(step: *Step, <span class="tok-kw">comptime</span> fmt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, args: <span class="tok-kw">anytype</span>) <span class="tok-kw">error</span>{ OutOfMemory, MakeFailed } {</span>
+<span class="line" id="L281">    <span class="tok-kw">try</span> step.addError(fmt, args);</span>
+<span class="line" id="L282">    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MakeFailed;</span>
+<span class="line" id="L283">}</span>
+<span class="line" id="L284"></span>
+<span class="line" id="L285"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addError</span>(step: *Step, <span class="tok-kw">comptime</span> fmt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, args: <span class="tok-kw">anytype</span>) <span class="tok-kw">error</span>{OutOfMemory}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L286">    <span class="tok-kw">const</span> arena = step.owner.allocator;</span>
+<span class="line" id="L287">    <span class="tok-kw">const</span> msg = <span class="tok-kw">try</span> std.fmt.allocPrint(arena, fmt, args);</span>
+<span class="line" id="L288">    <span class="tok-kw">try</span> step.result_error_msgs.append(arena, msg);</span>
+<span class="line" id="L289">}</span>
+<span class="line" id="L290"></span>
+<span class="line" id="L291"><span class="tok-comment">/// Assumes that argv contains `--listen=-` and that the process being spawned</span></span>
+<span class="line" id="L292"><span class="tok-comment">/// is the zig compiler - the same version that compiled the build runner.</span></span>
+<span class="line" id="L293"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">evalZigProcess</span>(</span>
+<span class="line" id="L294">    s: *Step,</span>
+<span class="line" id="L295">    argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L296">    prog_node: *std.Progress.Node,</span>
+<span class="line" id="L297">) !?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L298">    assert(argv.len != <span class="tok-number">0</span>);</span>
+<span class="line" id="L299">    <span class="tok-kw">const</span> b = s.owner;</span>
+<span class="line" id="L300">    <span class="tok-kw">const</span> arena = b.allocator;</span>
+<span class="line" id="L301">    <span class="tok-kw">const</span> gpa = arena;</span>
+<span class="line" id="L302"></span>
+<span class="line" id="L303">    <span class="tok-kw">try</span> handleChildProcUnsupported(s, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L304">    <span class="tok-kw">try</span> handleVerbose(s.owner, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L305"></span>
+<span class="line" id="L306">    <span class="tok-kw">var</span> child = std.ChildProcess.init(argv, arena);</span>
+<span class="line" id="L307">    child.env_map = b.env_map;</span>
+<span class="line" id="L308">    child.stdin_behavior = .Pipe;</span>
+<span class="line" id="L309">    child.stdout_behavior = .Pipe;</span>
+<span class="line" id="L310">    child.stderr_behavior = .Pipe;</span>
+<span class="line" id="L311">    child.request_resource_usage_statistics = <span class="tok-null">true</span>;</span>
+<span class="line" id="L312"></span>
+<span class="line" id="L313">    child.spawn() <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> s.fail(<span class="tok-str">&quot;unable to spawn {s}: {s}&quot;</span>, .{</span>
+<span class="line" id="L314">        argv[<span class="tok-number">0</span>], <span class="tok-builtin">@errorName</span>(err),</span>
+<span class="line" id="L315">    });</span>
+<span class="line" id="L316">    <span class="tok-kw">var</span> timer = <span class="tok-kw">try</span> std.time.Timer.start();</span>
+<span class="line" id="L317"></span>
+<span class="line" id="L318">    <span class="tok-kw">var</span> poller = std.io.poll(gpa, <span class="tok-kw">enum</span> { stdout, stderr }, .{</span>
+<span class="line" id="L319">        .stdout = child.stdout.?,</span>
+<span class="line" id="L320">        .stderr = child.stderr.?,</span>
+<span class="line" id="L321">    });</span>
+<span class="line" id="L322">    <span class="tok-kw">defer</span> poller.deinit();</span>
+<span class="line" id="L323"></span>
+<span class="line" id="L324">    <span class="tok-kw">try</span> sendMessage(child.stdin.?, .update);</span>
+<span class="line" id="L325">    <span class="tok-kw">try</span> sendMessage(child.stdin.?, .exit);</span>
+<span class="line" id="L326"></span>
+<span class="line" id="L327">    <span class="tok-kw">const</span> Header = std.zig.Server.Message.Header;</span>
+<span class="line" id="L328">    <span class="tok-kw">var</span> result: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> = <span class="tok-null">null</span>;</span>
+<span class="line" id="L329"></span>
+<span class="line" id="L330">    <span class="tok-kw">var</span> node_name: std.ArrayListUnmanaged(<span class="tok-type">u8</span>) = .{};</span>
+<span class="line" id="L331">    <span class="tok-kw">defer</span> node_name.deinit(gpa);</span>
+<span class="line" id="L332">    <span class="tok-kw">var</span> sub_prog_node = prog_node.start(<span class="tok-str">&quot;&quot;</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L333">    <span class="tok-kw">defer</span> sub_prog_node.end();</span>
+<span class="line" id="L334"></span>
+<span class="line" id="L335">    <span class="tok-kw">const</span> stdout = poller.fifo(.stdout);</span>
+<span class="line" id="L336"></span>
+<span class="line" id="L337">    poll: <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L338">        <span class="tok-kw">while</span> (stdout.readableLength() &lt; <span class="tok-builtin">@sizeOf</span>(Header)) {</span>
+<span class="line" id="L339">            <span class="tok-kw">if</span> (!(<span class="tok-kw">try</span> poller.poll())) <span class="tok-kw">break</span> :poll;</span>
+<span class="line" id="L340">        }</span>
+<span class="line" id="L341">        <span class="tok-kw">const</span> header = stdout.reader().readStruct(Header) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L342">        <span class="tok-kw">while</span> (stdout.readableLength() &lt; header.bytes_len) {</span>
+<span class="line" id="L343">            <span class="tok-kw">if</span> (!(<span class="tok-kw">try</span> poller.poll())) <span class="tok-kw">break</span> :poll;</span>
+<span class="line" id="L344">        }</span>
+<span class="line" id="L345">        <span class="tok-kw">const</span> body = stdout.readableSliceOfLen(header.bytes_len);</span>
+<span class="line" id="L346"></span>
+<span class="line" id="L347">        <span class="tok-kw">switch</span> (header.tag) {</span>
+<span class="line" id="L348">            .zig_version =&gt; {</span>
+<span class="line" id="L349">                <span class="tok-kw">if</span> (!std.mem.eql(<span class="tok-type">u8</span>, builtin.zig_version_string, body)) {</span>
+<span class="line" id="L350">                    <span class="tok-kw">return</span> s.fail(</span>
+<span class="line" id="L351">                        <span class="tok-str">&quot;zig version mismatch build runner vs compiler: '{s}' vs '{s}'&quot;</span>,</span>
+<span class="line" id="L352">                        .{ builtin.zig_version_string, body },</span>
+<span class="line" id="L353">                    );</span>
+<span class="line" id="L354">                }</span>
+<span class="line" id="L355">            },</span>
+<span class="line" id="L356">            .error_bundle =&gt; {</span>
+<span class="line" id="L357">                <span class="tok-kw">const</span> EbHdr = std.zig.Server.Message.ErrorBundle;</span>
+<span class="line" id="L358">                <span class="tok-kw">const</span> eb_hdr = <span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> EbHdr, <span class="tok-builtin">@ptrCast</span>(body));</span>
+<span class="line" id="L359">                <span class="tok-kw">const</span> extra_bytes =</span>
+<span class="line" id="L360">                    body[<span class="tok-builtin">@sizeOf</span>(EbHdr)..][<span class="tok-number">0</span> .. <span class="tok-builtin">@sizeOf</span>(<span class="tok-type">u32</span>) * eb_hdr.extra_len];</span>
+<span class="line" id="L361">                <span class="tok-kw">const</span> string_bytes =</span>
+<span class="line" id="L362">                    body[<span class="tok-builtin">@sizeOf</span>(EbHdr) + extra_bytes.len ..][<span class="tok-number">0</span>..eb_hdr.string_bytes_len];</span>
+<span class="line" id="L363">                <span class="tok-comment">// TODO: use @ptrCast when the compiler supports it</span>
+</span>
+<span class="line" id="L364">                <span class="tok-kw">const</span> unaligned_extra = std.mem.bytesAsSlice(<span class="tok-type">u32</span>, extra_bytes);</span>
+<span class="line" id="L365">                <span class="tok-kw">const</span> extra_array = <span class="tok-kw">try</span> arena.alloc(<span class="tok-type">u32</span>, unaligned_extra.len);</span>
+<span class="line" id="L366">                <span class="tok-comment">// TODO: use @memcpy when it supports slices</span>
+</span>
+<span class="line" id="L367">                <span class="tok-kw">for</span> (extra_array, unaligned_extra) |*dst, src| dst.* = src;</span>
+<span class="line" id="L368">                s.result_error_bundle = .{</span>
+<span class="line" id="L369">                    .string_bytes = <span class="tok-kw">try</span> arena.dupe(<span class="tok-type">u8</span>, string_bytes),</span>
+<span class="line" id="L370">                    .extra = extra_array,</span>
+<span class="line" id="L371">                };</span>
+<span class="line" id="L372">            },</span>
+<span class="line" id="L373">            .progress =&gt; {</span>
+<span class="line" id="L374">                node_name.clearRetainingCapacity();</span>
+<span class="line" id="L375">                <span class="tok-kw">try</span> node_name.appendSlice(gpa, body);</span>
+<span class="line" id="L376">                sub_prog_node.setName(node_name.items);</span>
+<span class="line" id="L377">            },</span>
+<span class="line" id="L378">            .emit_bin_path =&gt; {</span>
+<span class="line" id="L379">                <span class="tok-kw">const</span> EbpHdr = std.zig.Server.Message.EmitBinPath;</span>
+<span class="line" id="L380">                <span class="tok-kw">const</span> ebp_hdr = <span class="tok-builtin">@as</span>(*<span class="tok-kw">align</span>(<span class="tok-number">1</span>) <span class="tok-kw">const</span> EbpHdr, <span class="tok-builtin">@ptrCast</span>(body));</span>
+<span class="line" id="L381">                s.result_cached = ebp_hdr.flags.cache_hit;</span>
+<span class="line" id="L382">                result = <span class="tok-kw">try</span> arena.dupe(<span class="tok-type">u8</span>, body[<span class="tok-builtin">@sizeOf</span>(EbpHdr)..]);</span>
+<span class="line" id="L383">            },</span>
+<span class="line" id="L384">            <span class="tok-kw">else</span> =&gt; {}, <span class="tok-comment">// ignore other messages</span>
+</span>
+<span class="line" id="L385">        }</span>
+<span class="line" id="L386"></span>
+<span class="line" id="L387">        stdout.discard(body.len);</span>
+<span class="line" id="L388">    }</span>
+<span class="line" id="L389"></span>
+<span class="line" id="L390">    <span class="tok-kw">const</span> stderr = poller.fifo(.stderr);</span>
+<span class="line" id="L391">    <span class="tok-kw">if</span> (stderr.readableLength() &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L392">        <span class="tok-kw">try</span> s.result_error_msgs.append(arena, <span class="tok-kw">try</span> stderr.toOwnedSlice());</span>
+<span class="line" id="L393">    }</span>
+<span class="line" id="L394"></span>
+<span class="line" id="L395">    <span class="tok-comment">// Send EOF to stdin.</span>
+</span>
+<span class="line" id="L396">    child.stdin.?.close();</span>
+<span class="line" id="L397">    child.stdin = <span class="tok-null">null</span>;</span>
+<span class="line" id="L398"></span>
+<span class="line" id="L399">    <span class="tok-kw">const</span> term = child.wait() <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L400">        <span class="tok-kw">return</span> s.fail(<span class="tok-str">&quot;unable to wait for {s}: {s}&quot;</span>, .{ argv[<span class="tok-number">0</span>], <span class="tok-builtin">@errorName</span>(err) });</span>
+<span class="line" id="L401">    };</span>
+<span class="line" id="L402">    s.result_duration_ns = timer.read();</span>
+<span class="line" id="L403">    s.result_peak_rss = child.resource_usage_statistics.getMaxRss() <span class="tok-kw">orelse</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L404"></span>
+<span class="line" id="L405">    <span class="tok-comment">// Special handling for Compile step that is expecting compile errors.</span>
+</span>
+<span class="line" id="L406">    <span class="tok-kw">if</span> (s.cast(Compile)) |compile| <span class="tok-kw">switch</span> (term) {</span>
+<span class="line" id="L407">        .Exited =&gt; {</span>
+<span class="line" id="L408">            <span class="tok-comment">// Note that the exit code may be 0 in this case due to the</span>
+</span>
+<span class="line" id="L409">            <span class="tok-comment">// compiler server protocol.</span>
+</span>
+<span class="line" id="L410">            <span class="tok-kw">if</span> (compile.expect_errors.len != <span class="tok-number">0</span> <span class="tok-kw">and</span> s.result_error_bundle.errorMessageCount() &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L411">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NeedCompileErrorCheck;</span>
+<span class="line" id="L412">            }</span>
+<span class="line" id="L413">        },</span>
+<span class="line" id="L414">        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L415">    };</span>
+<span class="line" id="L416"></span>
+<span class="line" id="L417">    <span class="tok-kw">try</span> handleChildProcessTerm(s, term, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L418"></span>
+<span class="line" id="L419">    <span class="tok-kw">if</span> (s.result_error_bundle.errorMessageCount() &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L420">        <span class="tok-kw">return</span> s.fail(<span class="tok-str">&quot;the following command failed with {d} compilation errors:\n{s}&quot;</span>, .{</span>
+<span class="line" id="L421">            s.result_error_bundle.errorMessageCount(),</span>
+<span class="line" id="L422">            <span class="tok-kw">try</span> allocPrintCmd(arena, <span class="tok-null">null</span>, argv),</span>
+<span class="line" id="L423">        });</span>
+<span class="line" id="L424">    }</span>
+<span class="line" id="L425"></span>
+<span class="line" id="L426">    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L427">}</span>
+<span class="line" id="L428"></span>
+<span class="line" id="L429"><span class="tok-kw">fn</span> <span class="tok-fn">sendMessage</span>(file: std.fs.File, tag: std.zig.Client.Message.Tag) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L430">    <span class="tok-kw">const</span> header: std.zig.Client.Message.Header = .{</span>
+<span class="line" id="L431">        .tag = tag,</span>
+<span class="line" id="L432">        .bytes_len = <span class="tok-number">0</span>,</span>
+<span class="line" id="L433">    };</span>
+<span class="line" id="L434">    <span class="tok-kw">try</span> file.writeAll(std.mem.asBytes(&amp;header));</span>
+<span class="line" id="L435">}</span>
+<span class="line" id="L436"></span>
+<span class="line" id="L437"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">handleVerbose</span>(</span>
+<span class="line" id="L438">    b: *Build,</span>
+<span class="line" id="L439">    opt_cwd: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L440">    argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L441">) <span class="tok-kw">error</span>{OutOfMemory}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L442">    <span class="tok-kw">return</span> handleVerbose2(b, opt_cwd, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L443">}</span>
+<span class="line" id="L444"></span>
+<span class="line" id="L445"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">handleVerbose2</span>(</span>
+<span class="line" id="L446">    b: *Build,</span>
+<span class="line" id="L447">    opt_cwd: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L448">    opt_env: ?*<span class="tok-kw">const</span> std.process.EnvMap,</span>
+<span class="line" id="L449">    argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L450">) <span class="tok-kw">error</span>{OutOfMemory}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L451">    <span class="tok-kw">if</span> (b.verbose) {</span>
+<span class="line" id="L452">        <span class="tok-comment">// Intention of verbose is to print all sub-process command lines to</span>
+</span>
+<span class="line" id="L453">        <span class="tok-comment">// stderr before spawning them.</span>
+</span>
+<span class="line" id="L454">        <span class="tok-kw">const</span> text = <span class="tok-kw">try</span> allocPrintCmd2(b.allocator, opt_cwd, opt_env, argv);</span>
+<span class="line" id="L455">        std.debug.print(<span class="tok-str">&quot;{s}\n&quot;</span>, .{text});</span>
+<span class="line" id="L456">    }</span>
+<span class="line" id="L457">}</span>
+<span class="line" id="L458"></span>
+<span class="line" id="L459"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">handleChildProcUnsupported</span>(</span>
+<span class="line" id="L460">    s: *Step,</span>
+<span class="line" id="L461">    opt_cwd: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L462">    argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L463">) <span class="tok-kw">error</span>{ OutOfMemory, MakeFailed }!<span class="tok-type">void</span> {</span>
+<span class="line" id="L464">    <span class="tok-kw">if</span> (!std.process.can_spawn) {</span>
+<span class="line" id="L465">        <span class="tok-kw">return</span> s.fail(</span>
+<span class="line" id="L466">            <span class="tok-str">&quot;unable to execute the following command: host cannot spawn child processes\n{s}&quot;</span>,</span>
+<span class="line" id="L467">            .{<span class="tok-kw">try</span> allocPrintCmd(s.owner.allocator, opt_cwd, argv)},</span>
+<span class="line" id="L468">        );</span>
+<span class="line" id="L469">    }</span>
+<span class="line" id="L470">}</span>
+<span class="line" id="L471"></span>
+<span class="line" id="L472"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">handleChildProcessTerm</span>(</span>
+<span class="line" id="L473">    s: *Step,</span>
+<span class="line" id="L474">    term: std.ChildProcess.Term,</span>
+<span class="line" id="L475">    opt_cwd: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L476">    argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L477">) <span class="tok-kw">error</span>{ MakeFailed, OutOfMemory }!<span class="tok-type">void</span> {</span>
+<span class="line" id="L478">    <span class="tok-kw">const</span> arena = s.owner.allocator;</span>
+<span class="line" id="L479">    <span class="tok-kw">switch</span> (term) {</span>
+<span class="line" id="L480">        .Exited =&gt; |code| {</span>
+<span class="line" id="L481">            <span class="tok-kw">if</span> (code != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L482">                <span class="tok-kw">return</span> s.fail(</span>
+<span class="line" id="L483">                    <span class="tok-str">&quot;the following command exited with error code {d}:\n{s}&quot;</span>,</span>
+<span class="line" id="L484">                    .{ code, <span class="tok-kw">try</span> allocPrintCmd(arena, opt_cwd, argv) },</span>
+<span class="line" id="L485">                );</span>
+<span class="line" id="L486">            }</span>
+<span class="line" id="L487">        },</span>
+<span class="line" id="L488">        .Signal, .Stopped, .Unknown =&gt; {</span>
+<span class="line" id="L489">            <span class="tok-kw">return</span> s.fail(</span>
+<span class="line" id="L490">                <span class="tok-str">&quot;the following command terminated unexpectedly:\n{s}&quot;</span>,</span>
+<span class="line" id="L491">                .{<span class="tok-kw">try</span> allocPrintCmd(arena, opt_cwd, argv)},</span>
+<span class="line" id="L492">            );</span>
+<span class="line" id="L493">        },</span>
+<span class="line" id="L494">    }</span>
+<span class="line" id="L495">}</span>
+<span class="line" id="L496"></span>
+<span class="line" id="L497"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">allocPrintCmd</span>(</span>
+<span class="line" id="L498">    arena: Allocator,</span>
+<span class="line" id="L499">    opt_cwd: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L500">    argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L501">) Allocator.Error![]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L502">    <span class="tok-kw">return</span> allocPrintCmd2(arena, opt_cwd, <span class="tok-null">null</span>, argv);</span>
+<span class="line" id="L503">}</span>
+<span class="line" id="L504"></span>
+<span class="line" id="L505"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">allocPrintCmd2</span>(</span>
+<span class="line" id="L506">    arena: Allocator,</span>
+<span class="line" id="L507">    opt_cwd: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L508">    opt_env: ?*<span class="tok-kw">const</span> std.process.EnvMap,</span>
+<span class="line" id="L509">    argv: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L510">) Allocator.Error![]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L511">    <span class="tok-kw">var</span> buf: std.ArrayListUnmanaged(<span class="tok-type">u8</span>) = .{};</span>
+<span class="line" id="L512">    <span class="tok-kw">if</span> (opt_cwd) |cwd| <span class="tok-kw">try</span> buf.writer(arena).print(<span class="tok-str">&quot;cd {s} &amp;&amp; &quot;</span>, .{cwd});</span>
+<span class="line" id="L513">    <span class="tok-kw">if</span> (opt_env) |env| {</span>
+<span class="line" id="L514">        <span class="tok-kw">const</span> process_env_map = std.process.getEnvMap(arena) <span class="tok-kw">catch</span> std.process.EnvMap.init(arena);</span>
+<span class="line" id="L515">        <span class="tok-kw">var</span> it = env.iterator();</span>
+<span class="line" id="L516">        <span class="tok-kw">while</span> (it.next()) |entry| {</span>
+<span class="line" id="L517">            <span class="tok-kw">const</span> key = entry.key_ptr.*;</span>
+<span class="line" id="L518">            <span class="tok-kw">const</span> value = entry.value_ptr.*;</span>
+<span class="line" id="L519">            <span class="tok-kw">if</span> (process_env_map.get(key)) |process_value| {</span>
+<span class="line" id="L520">                <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, value, process_value)) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L521">            }</span>
+<span class="line" id="L522">            <span class="tok-kw">try</span> buf.writer(arena).print(<span class="tok-str">&quot;{s}={s} &quot;</span>, .{ key, value });</span>
+<span class="line" id="L523">        }</span>
+<span class="line" id="L524">    }</span>
+<span class="line" id="L525">    <span class="tok-kw">for</span> (argv) |arg| {</span>
+<span class="line" id="L526">        <span class="tok-kw">try</span> buf.writer(arena).print(<span class="tok-str">&quot;{s} &quot;</span>, .{arg});</span>
+<span class="line" id="L527">    }</span>
+<span class="line" id="L528">    <span class="tok-kw">return</span> buf.toOwnedSlice(arena);</span>
+<span class="line" id="L529">}</span>
+<span class="line" id="L530"></span>
+<span class="line" id="L531"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">cacheHit</span>(s: *Step, man: *std.Build.Cache.Manifest) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L532">    s.result_cached = man.hit() <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> failWithCacheError(s, man, err);</span>
+<span class="line" id="L533">    <span class="tok-kw">return</span> s.result_cached;</span>
+<span class="line" id="L534">}</span>
+<span class="line" id="L535"></span>
+<span class="line" id="L536"><span class="tok-kw">fn</span> <span class="tok-fn">failWithCacheError</span>(s: *Step, man: *<span class="tok-kw">const</span> std.Build.Cache.Manifest, err: <span class="tok-type">anyerror</span>) <span class="tok-type">anyerror</span> {</span>
+<span class="line" id="L537">    <span class="tok-kw">const</span> i = man.failed_file_index <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L538">    <span class="tok-kw">const</span> pp = man.files.items[i].prefixed_path <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L539">    <span class="tok-kw">const</span> prefix = man.cache.prefixes()[pp.prefix].path <span class="tok-kw">orelse</span> <span class="tok-str">&quot;&quot;</span>;</span>
+<span class="line" id="L540">    <span class="tok-kw">return</span> s.fail(<span class="tok-str">&quot;{s}: {s}/{s}&quot;</span>, .{ <span class="tok-builtin">@errorName</span>(err), prefix, pp.sub_path });</span>
+<span class="line" id="L541">}</span>
+<span class="line" id="L542"></span>
+<span class="line" id="L543"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeManifest</span>(s: *Step, man: *std.Build.Cache.Manifest) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L544">    <span class="tok-kw">if</span> (s.test_results.isSuccess()) {</span>
+<span class="line" id="L545">        man.writeManifest() <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L546">            <span class="tok-kw">try</span> s.addError(<span class="tok-str">&quot;unable to write cache manifest: {s}&quot;</span>, .{<span class="tok-builtin">@errorName</span>(err)});</span>
+<span class="line" id="L547">        };</span>
+<span class="line" id="L548">    }</span>
+<span class="line" id="L549">}</span>
+<span class="line" id="L550"></span>
+<span class="line" id="L551"><span class="tok-kw">test</span> {</span>
+<span class="line" id="L552">    _ = CheckFile;</span>
+<span class="line" id="L553">    _ = CheckObject;</span>
+<span class="line" id="L554">    _ = Fmt;</span>
+<span class="line" id="L555">    _ = InstallArtifact;</span>
+<span class="line" id="L556">    _ = InstallDir;</span>
+<span class="line" id="L557">    _ = InstallFile;</span>
+<span class="line" id="L558">    _ = ObjCopy;</span>
+<span class="line" id="L559">    _ = Compile;</span>
+<span class="line" id="L560">    _ = Options;</span>
+<span class="line" id="L561">    _ = RemoveDir;</span>
+<span class="line" id="L562">    _ = Run;</span>
+<span class="line" id="L563">    _ = TranslateC;</span>
+<span class="line" id="L564">    _ = WriteFile;</span>
+<span class="line" id="L565">}</span>
+<span class="line" id="L566"></span>
+</code></pre></body>
+</html>
