@@ -9,10 +9,7 @@ Python objects implementing the [Buffer Protocol](https://docs.python.org/3/c-ap
 This function accepts Python [arrays](https://docs.python.org/3/library/array.html#module-array), Numpy arrays, or any other buffer protocol implementation.
 
 ```python
-import numpy as np
-
-arr = np.array([1, 2, 3, 4, 5], dtype=np.int64)
-assert example.buffers.sum(arr) == 15
+--8<-- "test/test_buffers.py:sum"
 ```
 
 !!! Note

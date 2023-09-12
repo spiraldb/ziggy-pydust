@@ -12,8 +12,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from array import array
-
 from example import buffers
 
 
@@ -25,7 +23,12 @@ def test_view():
     view.release()
 
 
+# --8<-- [start:sum]
 def test_sum():
-    # array implements a buffer protocol
-    arr = array("l", [1, 2, 3, 4, 5])
+    import numpy as np
+
+    arr = np.array([1, 2, 3, 4, 5], dtype=np.int64)
     assert buffers.sum(arr) == 15
+
+
+# --8<-- [end:sum]
