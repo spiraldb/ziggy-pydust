@@ -270,7 +270,7 @@ pub fn Trampoline(comptime T: type) type {
                     // Otherwise, extract from a Python dictionary
                     return (try py.PyDict.checked(obj)).as(T);
                 },
-                .Void => if (py.is_none(obj)) return else return py.TypeError.raise(@src(), "expected None"),
+                .Void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
                 else => {},
             }
 
@@ -290,7 +290,7 @@ pub fn Trampoline(comptime T: type) type {
             }
 
             pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
-                const args = self.args orelse return py.TypeError.raise(@src(), "missing args");
+                const args = self.args orelse return py.TypeError.raise("missing args");
                 return try args.getItem(R, idx);
             }
 
@@ -365,7 +365,7 @@ pub fn Trampoline(comptime T: type) type {
                     }
 
                     if (!exists) {
-                        return py.TypeError.raiseFmt(@src(), "unexpected kwarg '{s}'", .{itemName});
+                        return py.TypeError.raiseFmt("unexpected kwarg '{s}'", .{itemName});
                     }
                 }
             }

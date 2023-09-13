@@ -93,40 +93,27 @@ const PyExc = struct {
 
     const Self = @This();
 
-    pub fn raise(comptime self: Self, src: SourceLocation, message: [:0]const u8) PyError {
-        if (builtin.mode == std.builtin.Mode.Debug) {
-            // In debug mode, we include @src() information.
-            if (py.PyTuple.create(.{ message, src })) |obj| {
-                ffi.PyErr_SetObject(self.asPyObject().py, obj.obj.py);
-                return PyError.Raised;
-            } else |_| {
-                // If we fail to create a PyTuple then let's just fallback to setting a message.
-                // There are probably enough things going wrong already in that case....
-            }
-        }
-
+    pub fn raise(comptime self: Self, message: [:0]const u8) PyError {
         ffi.PyErr_SetString(self.asPyObject().py, message.ptr);
         return PyError.Raised;
     }
 
     pub fn raiseFmt(
         comptime self: Self,
-        src: SourceLocation,
         comptime fmt: [:0]const u8,
         args: anytype,
     ) PyError {
         const message = try std.fmt.allocPrintZ(py.allocator, fmt, args);
-        return self.raise(src, message);
+        return self.raise(message);
     }
 
     pub fn raiseComptimeFmt(
         comptime self: Self,
-        src: SourceLocation,
         comptime fmt: [:0]const u8,
         comptime args: anytype,
     ) PyError {
         const message = std.fmt.comptimePrint(fmt, args);
-        return self.raise(src, message);
+        return self.raise(message);
     }
 
     inline fn asPyObject(comptime self: Self) py.PyObject {

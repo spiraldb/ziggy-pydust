@@ -78,7 +78,7 @@ pub const PyObject = extern struct {
     // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
     pub fn getBuffer(self: py.PyObject, out: *py.PyBuffer, flags: c_int) !void {
         if (ffi.PyObject_CheckBuffer(self.py) != 1) {
-            return py.BufferError.raise(@src(), "object does not support buffer interface");
+            return py.BufferError.raise("object does not support buffer interface");
         }
         if (ffi.PyObject_GetBuffer(self.py, @ptrCast(out), flags) != 0) {
             // Error is already raised.
@@ -112,7 +112,7 @@ pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, com
         /// Checked conversion from a PyObject.
         pub fn checked(obj: py.PyObject) !Self {
             if (PyCheck(obj.py) == 0) {
-                return py.TypeError.raise(@src(), "expected " ++ name);
+                return py.TypeError.raise("expected " ++ name);
             }
             return .{ .obj = obj };
         }

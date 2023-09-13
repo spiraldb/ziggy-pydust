@@ -9,6 +9,6 @@ Pydust provides utilities for raising builtin exception types as provided by the
 
 Exceptions can be raise with any of the following:
 
-* `#!zig .raise(@src(), message: [:0]const u8)`
-* `#!zig .raiseFmt(@src(), comptime fmt: [:0]const u8, args: anytype)`
-* `#!zig .raiseComptimeFmt(@src(), comptime fmt: [:0]const u8, comptime args: anytype)`
+* `#!zig .raise(message: [:0]const u8)`
+* `#!zig .raiseFmt(comptime fmt: [:0]const u8, args: anytype)`
+* `#!zig .raiseComptimeFmt(comptime fmt: [:0]const u8, comptime args: anytype)`
