@@ -247,101 +247,113 @@
 <span class="line" id="L121">    <span class="tok-kw">const</span> imported = <span class="tok-kw">try</span> types.PyModule.import(moduleName);</span>
 <span class="line" id="L122">    <span class="tok-kw">const</span> pytype = <span class="tok-kw">try</span> imported.obj.get(getClassName(Cls));</span>
 <span class="line" id="L123"></span>
-<span class="line" id="L124">    <span class="tok-kw">const</span> callArgs = <span class="tok-kw">try</span> tramp.Trampoline(NewArgs(Cls)).wrapCallArgs(args);</span>
-<span class="line" id="L125">    <span class="tok-kw">defer</span> callArgs.decref();</span>
-<span class="line" id="L126"></span>
-<span class="line" id="L127">    <span class="tok-kw">const</span> result = <span class="tok-kw">try</span> pytype.call(callArgs.args, callArgs.kwargs);</span>
-<span class="line" id="L128">    <span class="tok-kw">return</span> conversions.as(*Cls, result);</span>
-<span class="line" id="L129">}</span>
-<span class="line" id="L130"></span>
-<span class="line" id="L131"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decref</span>(value: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L132">    conversions.object(value).decref();</span>
-<span class="line" id="L133">}</span>
+<span class="line" id="L124">    <span class="tok-comment">// Alloc the class</span>
+</span>
+<span class="line" id="L125">    <span class="tok-comment">// NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut</span>
+</span>
+<span class="line" id="L126">    <span class="tok-comment">// using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc</span>
+</span>
+<span class="line" id="L127">    <span class="tok-kw">const</span> pyobj: *pytypes.State(Cls) = <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(ffi.PyType_GenericAlloc(<span class="tok-builtin">@ptrCast</span>(pytype.py), <span class="tok-number">0</span>) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate));</span>
+<span class="line" id="L128"></span>
+<span class="line" id="L129">    <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
+<span class="line" id="L130">        pyobj.state = <span class="tok-kw">try</span> Cls.__new__(args);</span>
+<span class="line" id="L131">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(Cls).Struct.fields.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L132">        pyobj.state = args;</span>
+<span class="line" id="L133">    }</span>
 <span class="line" id="L134"></span>
-<span class="line" id="L135"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">incref</span>(value: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L136">    conversions.object(value).incref();</span>
-<span class="line" id="L137">}</span>
-<span class="line" id="L138"></span>
-<span class="line" id="L139"><span class="tok-comment">/// Find the type of the positional args for a class</span></span>
-<span class="line" id="L140"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">NewArgs</span>(<span class="tok-kw">comptime</span> Cls: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L141">    <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
-<span class="line" id="L142">        <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {};</span>
-<span class="line" id="L143">    }</span>
-<span class="line" id="L144"></span>
-<span class="line" id="L145">    <span class="tok-kw">const</span> func = <span class="tok-builtin">@field</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>);</span>
-<span class="line" id="L146">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func));</span>
-<span class="line" id="L147">    <span class="tok-kw">const</span> sig = funcs.parseSignature(<span class="tok-str">&quot;__new__&quot;</span>, typeInfo.Fn, &amp;.{});</span>
-<span class="line" id="L148">    <span class="tok-kw">return</span> sig.argsParam <span class="tok-kw">orelse</span> <span class="tok-kw">struct</span> {};</span>
-<span class="line" id="L149">}</span>
-<span class="line" id="L150"></span>
-<span class="line" id="L151"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getClassName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L152">    <span class="tok-kw">return</span> findClassName(definition) <span class="tok-kw">orelse</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unrecognized class definition&quot;</span>);</span>
-<span class="line" id="L153">}</span>
-<span class="line" id="L154"></span>
-<span class="line" id="L155"><span class="tok-comment">/// Find the class name of the given state definition.</span></span>
-<span class="line" id="L156"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">findClassName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) ?[:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L157">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.classes()) |classDef| {</span>
-<span class="line" id="L158">        <span class="tok-kw">if</span> (classDef.definition == definition) {</span>
-<span class="line" id="L159">            <span class="tok-kw">return</span> classDef.name;</span>
-<span class="line" id="L160">        }</span>
-<span class="line" id="L161">    }</span>
-<span class="line" id="L162">    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L163">}</span>
-<span class="line" id="L164"></span>
-<span class="line" id="L165"><span class="tok-comment">/// Get the module name of the given state definition.</span></span>
-<span class="line" id="L166"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getModuleName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) ?[:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L167">    <span class="tok-kw">return</span> findModuleName(definition) <span class="tok-kw">orelse</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unrecognized module definition&quot;</span>);</span>
-<span class="line" id="L168">}</span>
-<span class="line" id="L169"></span>
-<span class="line" id="L170"><span class="tok-comment">/// Find the module name of the given state definition.</span></span>
-<span class="line" id="L171"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">findModuleName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) ?[:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L172">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.modules()) |modDef| {</span>
-<span class="line" id="L173">        <span class="tok-kw">if</span> (modDef.definition == definition) {</span>
-<span class="line" id="L174">            <span class="tok-kw">return</span> modDef.name;</span>
-<span class="line" id="L175">        }</span>
-<span class="line" id="L176">    }</span>
-<span class="line" id="L177">    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L178">}</span>
-<span class="line" id="L179"></span>
-<span class="line" id="L180"><span class="tok-comment">/// Find the name of the module that contains the given definition.</span></span>
-<span class="line" id="L181"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">findContainingModule</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L182">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.modules()) |mod| {</span>
-<span class="line" id="L183">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(mod.definition).Struct.decls) |decl| {</span>
-<span class="line" id="L184">            <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(mod.definition, decl.name);</span>
-<span class="line" id="L185">            <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(value) != <span class="tok-builtin">@TypeOf</span>(definition)) {</span>
-<span class="line" id="L186">                <span class="tok-kw">continue</span>;</span>
-<span class="line" id="L187">            }</span>
-<span class="line" id="L188">            <span class="tok-kw">if</span> (value == definition) {</span>
-<span class="line" id="L189">                <span class="tok-kw">return</span> mod.fullname;</span>
-<span class="line" id="L190">            }</span>
-<span class="line" id="L191">        }</span>
-<span class="line" id="L192">    }</span>
-<span class="line" id="L193">    <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Class has no associated module&quot;</span>);</span>
-<span class="line" id="L194">}</span>
-<span class="line" id="L195"></span>
-<span class="line" id="L196"><span class="tok-comment">/// Find the class definitions belonging to this module.</span></span>
-<span class="line" id="L197"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">findClasses</span>(<span class="tok-kw">comptime</span> mod: ModuleDef) []<span class="tok-kw">const</span> ClassDef {</span>
-<span class="line" id="L198">    <span class="tok-kw">var</span> moduleClasses: []<span class="tok-kw">const</span> ClassDef = &amp;.{};</span>
-<span class="line" id="L199">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.classes()) |classDef| {</span>
-<span class="line" id="L200">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(mod.definition).Struct.decls) |decl| {</span>
-<span class="line" id="L201">            <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(mod.definition, decl.name);</span>
-<span class="line" id="L202">            <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(value)) != .Type) {</span>
-<span class="line" id="L203">                <span class="tok-kw">continue</span>;</span>
-<span class="line" id="L204">            }</span>
-<span class="line" id="L205">            <span class="tok-kw">if</span> (value == classDef.definition) {</span>
-<span class="line" id="L206">                moduleClasses = moduleClasses ++ .{classDef};</span>
-<span class="line" id="L207">            }</span>
-<span class="line" id="L208">        }</span>
-<span class="line" id="L209">    }</span>
-<span class="line" id="L210">    <span class="tok-kw">return</span> moduleClasses;</span>
-<span class="line" id="L211">}</span>
-<span class="line" id="L212"></span>
-<span class="line" id="L213"><span class="tok-comment">/// Force the eager evaluation of the public declarations of the module</span></span>
-<span class="line" id="L214"><span class="tok-kw">fn</span> <span class="tok-fn">evaluateDeclarations</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L215">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |decl| {</span>
-<span class="line" id="L216">        _ = <span class="tok-builtin">@field</span>(definition, decl.name);</span>
+<span class="line" id="L135">    <span class="tok-kw">return</span> &amp;pyobj.state;</span>
+<span class="line" id="L136">}</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decref</span>(value: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L139">    conversions.object(value).decref();</span>
+<span class="line" id="L140">}</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">incref</span>(value: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L143">    conversions.object(value).incref();</span>
+<span class="line" id="L144">}</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146"><span class="tok-comment">/// Find the type of the positional args for a class</span></span>
+<span class="line" id="L147"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">NewArgs</span>(<span class="tok-kw">comptime</span> Cls: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L148">    <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
+<span class="line" id="L149">        <span class="tok-comment">// Default construct args are the struct fields themselves.</span>
+</span>
+<span class="line" id="L150">        <span class="tok-kw">return</span> Cls;</span>
+<span class="line" id="L151">    }</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153">    <span class="tok-kw">const</span> func = <span class="tok-builtin">@field</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>);</span>
+<span class="line" id="L154">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func));</span>
+<span class="line" id="L155">    <span class="tok-kw">const</span> sig = funcs.parseSignature(<span class="tok-str">&quot;__new__&quot;</span>, typeInfo.Fn, &amp;.{});</span>
+<span class="line" id="L156">    <span class="tok-kw">return</span> sig.argsParam <span class="tok-kw">orelse</span> <span class="tok-kw">struct</span> {};</span>
+<span class="line" id="L157">}</span>
+<span class="line" id="L158"></span>
+<span class="line" id="L159"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getClassName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L160">    <span class="tok-kw">return</span> findClassName(definition) <span class="tok-kw">orelse</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unrecognized class definition&quot;</span>);</span>
+<span class="line" id="L161">}</span>
+<span class="line" id="L162"></span>
+<span class="line" id="L163"><span class="tok-comment">/// Find the class name of the given state definition.</span></span>
+<span class="line" id="L164"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">findClassName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) ?[:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L165">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.classes()) |classDef| {</span>
+<span class="line" id="L166">        <span class="tok-kw">if</span> (classDef.definition == definition) {</span>
+<span class="line" id="L167">            <span class="tok-kw">return</span> classDef.name;</span>
+<span class="line" id="L168">        }</span>
+<span class="line" id="L169">    }</span>
+<span class="line" id="L170">    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L171">}</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173"><span class="tok-comment">/// Get the module name of the given state definition.</span></span>
+<span class="line" id="L174"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getModuleName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) ?[:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L175">    <span class="tok-kw">return</span> findModuleName(definition) <span class="tok-kw">orelse</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unrecognized module definition&quot;</span>);</span>
+<span class="line" id="L176">}</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178"><span class="tok-comment">/// Find the module name of the given state definition.</span></span>
+<span class="line" id="L179"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">findModuleName</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) ?[:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L180">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.modules()) |modDef| {</span>
+<span class="line" id="L181">        <span class="tok-kw">if</span> (modDef.definition == definition) {</span>
+<span class="line" id="L182">            <span class="tok-kw">return</span> modDef.name;</span>
+<span class="line" id="L183">        }</span>
+<span class="line" id="L184">    }</span>
+<span class="line" id="L185">    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L186">}</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188"><span class="tok-comment">/// Find the name of the module that contains the given definition.</span></span>
+<span class="line" id="L189"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">findContainingModule</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L190">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.modules()) |mod| {</span>
+<span class="line" id="L191">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(mod.definition).Struct.decls) |decl| {</span>
+<span class="line" id="L192">            <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(mod.definition, decl.name);</span>
+<span class="line" id="L193">            <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(value) != <span class="tok-builtin">@TypeOf</span>(definition)) {</span>
+<span class="line" id="L194">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L195">            }</span>
+<span class="line" id="L196">            <span class="tok-kw">if</span> (value == definition) {</span>
+<span class="line" id="L197">                <span class="tok-kw">return</span> mod.fullname;</span>
+<span class="line" id="L198">            }</span>
+<span class="line" id="L199">        }</span>
+<span class="line" id="L200">    }</span>
+<span class="line" id="L201">    <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Class has no associated module&quot;</span>);</span>
+<span class="line" id="L202">}</span>
+<span class="line" id="L203"></span>
+<span class="line" id="L204"><span class="tok-comment">/// Find the class definitions belonging to this module.</span></span>
+<span class="line" id="L205"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">findClasses</span>(<span class="tok-kw">comptime</span> mod: ModuleDef) []<span class="tok-kw">const</span> ClassDef {</span>
+<span class="line" id="L206">    <span class="tok-kw">var</span> moduleClasses: []<span class="tok-kw">const</span> ClassDef = &amp;.{};</span>
+<span class="line" id="L207">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (State.classes()) |classDef| {</span>
+<span class="line" id="L208">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(mod.definition).Struct.decls) |decl| {</span>
+<span class="line" id="L209">            <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(mod.definition, decl.name);</span>
+<span class="line" id="L210">            <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(value)) != .Type) {</span>
+<span class="line" id="L211">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L212">            }</span>
+<span class="line" id="L213">            <span class="tok-kw">if</span> (value == classDef.definition) {</span>
+<span class="line" id="L214">                moduleClasses = moduleClasses ++ .{classDef};</span>
+<span class="line" id="L215">            }</span>
+<span class="line" id="L216">        }</span>
 <span class="line" id="L217">    }</span>
-<span class="line" id="L218">}</span>
-<span class="line" id="L219"></span>
+<span class="line" id="L218">    <span class="tok-kw">return</span> moduleClasses;</span>
+<span class="line" id="L219">}</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221"><span class="tok-comment">/// Force the eager evaluation of the public declarations of the module</span></span>
+<span class="line" id="L222"><span class="tok-kw">fn</span> <span class="tok-fn">evaluateDeclarations</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L223">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |decl| {</span>
+<span class="line" id="L224">        _ = <span class="tok-builtin">@field</span>(definition, decl.name);</span>
+<span class="line" id="L225">    }</span>
+<span class="line" id="L226">}</span>
+<span class="line" id="L227"></span>
 </code></pre></body>
 </html>
