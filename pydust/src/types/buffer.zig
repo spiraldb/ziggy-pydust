@@ -40,8 +40,6 @@ pub const PyBuffer = extern struct {
         pub const FULL_RO: c_int = STRIDES | FORMAT | ND;
     };
 
-    pub const Format = enum {};
-
     buf: ?[*]u8,
 
     // Use pyObj to get the PyObject.
