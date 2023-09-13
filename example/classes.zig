@@ -34,7 +34,7 @@ pub const Animal = py.class("Animal", struct {
             1 => py.PyString.create("Dog"),
             2 => py.PyString.create("Cat"),
             3 => py.PyString.create("Parrot"),
-            else => py.RuntimeError.raise("Unknown animal kind"),
+            else => py.RuntimeError.raise(@src(), "Unknown animal kind"),
         };
     }
 });

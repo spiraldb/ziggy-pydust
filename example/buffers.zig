@@ -43,7 +43,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
     pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {
         // For more details on request types, see https://docs.python.org/3/c-api/buffer.html#buffer-request-types
         if (flags & py.PyBuffer.Flags.WRITABLE != 0) {
-            return py.BufferError.raise("request for writable buffer is rejected");
+            return py.BufferError.raise(@src(), "request for writable buffer is rejected");
         }
         view.initFromSlice(i64, self.values, self.shape, self);
     }

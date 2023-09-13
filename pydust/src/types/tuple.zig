@@ -52,7 +52,7 @@ pub const PyTuple = extern struct {
             } else if (field.default_value) |default| {
                 @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(default))).*;
             } else {
-                return py.TypeError.raise("tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+                return py.TypeError.raise(@src(), "tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
             }
         }
         return result;

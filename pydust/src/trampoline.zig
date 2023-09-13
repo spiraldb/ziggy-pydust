@@ -270,7 +270,7 @@ pub fn Trampoline(comptime T: type) type {
                     // Otherwise, extract from a Python dictionary
                     return (try py.PyDict.checked(obj)).as(T);
                 },
-                .Void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
+                .Void => if (py.is_none(obj)) return else return py.TypeError.raise(@src(), "expected None"),
                 else => {},
             }
 
@@ -290,7 +290,7 @@ pub fn Trampoline(comptime T: type) type {
             }
 
             pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
-                const args = self.args orelse return py.TypeError.raise("missing args");
+                const args = self.args orelse return py.TypeError.raise(@src(), "missing args");
                 return try args.getItem(R, idx);
             }
 
@@ -306,13 +306,13 @@ pub fn Trampoline(comptime T: type) type {
         };
 
         /// Wrap a Zig Pydust argument struct into Python CallArgs.
-        /// The caller is responsible for decref'ing the returned args and kwargs.
+        /// Creates new references.
         pub inline fn wrapCallArgs(obj: T) !CallArgs {
             const args = try py.PyTuple.new(funcs.argCount(T));
             const kwargs = try py.PyDict.new();
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
-                const arg = try Trampoline(field.type).wrap(@field(obj, field.name));
+                const arg = try Trampoline(field.type).wrapNew(@field(obj, field.name));
                 if (field.default_value == null) {
                     // It's an arg
                     try args.setOwnedItem(i, arg);
@@ -328,6 +328,7 @@ pub fn Trampoline(comptime T: type) type {
         pub inline fn unwrapCallArgs(callArgs: CallArgs) !T {
             if (funcs.argCount(T) != callArgs.nargs()) {
                 return py.TypeError.raiseComptimeFmt(
+                    @src(),
                     "expected {d} argument{s}",
                     .{ funcs.argCount(T), if (funcs.argCount(T) > 1) "s" else "" },
                 );
@@ -364,7 +365,7 @@ pub fn Trampoline(comptime T: type) type {
                     }
 
                     if (!exists) {
-                        return py.TypeError.raiseFmt("unexpected kwarg '{s}'", .{itemName});
+                        return py.TypeError.raiseFmt(@src(), "unexpected kwarg '{s}'", .{itemName});
                     }
                 }
             }

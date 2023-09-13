@@ -10,7 +10,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+const builtin = @import("builtin");
 const std = @import("std");
+const SourceLocation = std.builtin.SourceLocation;
 const ffi = @import("../ffi.zig");
 const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
@@ -91,19 +93,40 @@ const PyExc = struct {
 
     const Self = @This();
 
-    pub fn raise(comptime self: Self, message: [:0]const u8) PyError {
+    pub fn raise(comptime self: Self, src: SourceLocation, message: [:0]const u8) PyError {
+        if (builtin.mode == std.builtin.Mode.Debug) {
+            // In debug mode, we include @src() information.
+            if (py.PyTuple.create(.{ message, src })) |obj| {
+                ffi.PyErr_SetObject(self.asPyObject().py, obj.obj.py);
+                return PyError.Raised;
+            } else |_| {
+                // If we fail to create a PyTuple then let's just fallback to setting a message.
+                // There are probably enough things going wrong already in that case....
+            }
+        }
+
         ffi.PyErr_SetString(self.asPyObject().py, message.ptr);
         return PyError.Raised;
     }
 
-    pub fn raiseFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError {
+    pub fn raiseFmt(
+        comptime self: Self,
+        src: SourceLocation,
+        comptime fmt: [:0]const u8,
+        args: anytype,
+    ) PyError {
         const message = try std.fmt.allocPrintZ(py.allocator, fmt, args);
-        return self.raise(message);
+        return self.raise(src, message);
     }
 
-    pub fn raiseComptimeFmt(comptime self: Self, comptime fmt: [:0]const u8, comptime args: anytype) PyError {
+    pub fn raiseComptimeFmt(
+        comptime self: Self,
+        src: SourceLocation,
+        comptime fmt: [:0]const u8,
+        comptime args: anytype,
+    ) PyError {
         const message = std.fmt.comptimePrint(fmt, args);
-        return self.raise(message);
+        return self.raise(src, message);
     }
 
     inline fn asPyObject(comptime self: Self) py.PyObject {
