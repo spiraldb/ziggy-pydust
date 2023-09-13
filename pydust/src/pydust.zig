@@ -121,11 +121,18 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     const imported = try types.PyModule.import(moduleName);
     const pytype = try imported.obj.get(getClassName(Cls));
 
-    const callArgs = try tramp.Trampoline(NewArgs(Cls)).wrapCallArgs(args);
-    defer callArgs.decref();
+    // Alloc the class
+    // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
+    // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
+    const pyobj: *pytypes.State(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.Propagate));
 
-    const result = try pytype.call(callArgs.args, callArgs.kwargs);
-    return conversions.as(*Cls, result);
+    if (@hasDecl(Cls, "__new__")) {
+        pyobj.state = try Cls.__new__(args);
+    } else if (@typeInfo(Cls).Struct.fields.len > 0) {
+        pyobj.state = args;
+    }
+
+    return &pyobj.state;
 }
 
 pub fn decref(value: anytype) void {
@@ -139,7 +146,8 @@ pub fn incref(value: anytype) void {
 /// Find the type of the positional args for a class
 inline fn NewArgs(comptime Cls: type) type {
     if (!@hasDecl(Cls, "__new__")) {
-        return struct {};
+        // Default construct args are the struct fields themselves.
+        return Cls;
     }
 
     const func = @field(Cls, "__new__");
