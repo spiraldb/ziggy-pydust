@@ -103,7 +103,7 @@ In self-managed mode, Pydust will only generate the `pydust.build.zig` file and 
 To enable this mode, set the flag in your `pyproject.toml` and remove any `ext_module` entries.
 
 ```diff title="pyproject.toml"
-[tools.pydust]
+[tool.pydust]
 + self_managed = true
 
 - [[tool.pydust.ext_module]]
