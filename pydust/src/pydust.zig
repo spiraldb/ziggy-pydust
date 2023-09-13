@@ -122,8 +122,8 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     const pytype = try imported.obj.get(getClassName(Cls));
 
     // Alloc the class
-    // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore
-    // there's no point us using ffi.PyType_GetSlot and instead just use ffi.PyType_GenericAlloc
+    // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
+    // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
     const pyobj: *pytypes.State(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.Propagate));
 
     if (@hasDecl(Cls, "__new__")) {
