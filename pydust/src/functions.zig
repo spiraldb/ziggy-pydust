@@ -163,10 +163,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                 // Create an args struct and populate it with pyargs.
                 var args: Args = undefined;
                 if (argCount(Args) != pyargs.len) {
-                    return py.TypeError.raiseComptimeFmt(
-                        "expected {d} arg{s}",
-                        .{ argCount(Args), if (argCount(Args) > 1) "s" else "" },
-                    );
+                    return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
                 }
                 inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
                     @field(args, field.name) = try py.as(field.type, pyargs[i]);

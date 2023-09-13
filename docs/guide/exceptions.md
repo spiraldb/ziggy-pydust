@@ -1,6 +1,6 @@
 # Python Exceptions
 
-Pydust provides utilities for raising builtin exception types as provided by the
+Pydust provides utilities for raising builtin exception types as provided by the 
 [Stable API](https://docs.python.org/3/c-api/stable.html) under `PyExc_<name>`.
 
 ``` zig
