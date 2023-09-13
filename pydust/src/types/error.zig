@@ -10,9 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-const builtin = @import("builtin");
 const std = @import("std");
-const SourceLocation = std.builtin.SourceLocation;
 const ffi = @import("../ffi.zig");
 const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
