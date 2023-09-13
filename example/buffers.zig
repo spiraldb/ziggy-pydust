@@ -52,8 +52,7 @@ pub const ConstantBuffer = py.class("ConstantBuffer", struct {
 
 // --8<-- [start:sum]
 pub fn sum(args: struct { buf: py.PyObject }) !i64 {
-    var view: py.PyBuffer = undefined;
-    try args.buf.getBuffer(&view, py.PyBuffer.Flags.ND);
+    const view = try args.buf.getBuffer(py.PyBuffer.Flags.ND);
     defer view.release();
 
     var bufferSum: i64 = 0;

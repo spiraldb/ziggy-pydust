@@ -16,8 +16,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const pythonInc = getPythonIncludePath(b.allocator) catch @panic("Missing python");
-    const pythonLib = getPythonLibraryPath(b.allocator) catch @panic("Missing python");
+    const python_exe = b.option([]const u8, "python-exe", "Python executable to use") orelse "python";
+
+    const pythonInc = getPythonIncludePath(python_exe, b.allocator) catch @panic("Missing python");
+    const pythonLib = getPythonLibraryPath(python_exe, b.allocator) catch @panic("Missing python");
 
     const test_step = b.step("test", "Run library tests");
     const docs_step = b.step("docs", "Generate docs");
@@ -82,20 +84,21 @@ pub fn build(b: *std.Build) void {
 }
 
 fn getPythonIncludePath(
+    python_exe: []const u8,
     allocator: std.mem.Allocator,
 ) ![]const u8 {
     const includeResult = try std.process.Child.exec(.{
         .allocator = allocator,
-        .argv = &.{ "python", "-c", "import sysconfig; print(sysconfig.get_path('include'), end='')" },
+        .argv = &.{ python_exe, "-c", "import sysconfig; print(sysconfig.get_path('include'), end='')" },
     });
     defer allocator.free(includeResult.stderr);
     return includeResult.stdout;
 }
 
-fn getPythonLibraryPath(allocator: std.mem.Allocator) ![]const u8 {
+fn getPythonLibraryPath(python_exe: []const u8, allocator: std.mem.Allocator) ![]const u8 {
     const includeResult = try std.process.Child.exec(.{
         .allocator = allocator,
-        .argv = &.{ "python", "-c", "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')" },
+        .argv = &.{ python_exe, "-c", "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')" },
     });
     defer allocator.free(includeResult.stderr);
     return includeResult.stdout;
