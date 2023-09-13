@@ -328,7 +328,6 @@ pub fn Trampoline(comptime T: type) type {
         pub inline fn unwrapCallArgs(callArgs: CallArgs) !T {
             if (funcs.argCount(T) != callArgs.nargs()) {
                 return py.TypeError.raiseComptimeFmt(
-                    @src(),
                     "expected {d} argument{s}",
                     .{ funcs.argCount(T), if (funcs.argCount(T) > 1) "s" else "" },
                 );

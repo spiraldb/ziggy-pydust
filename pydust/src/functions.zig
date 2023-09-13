@@ -164,7 +164,6 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                 var args: Args = undefined;
                 if (argCount(Args) != pyargs.len) {
                     return py.TypeError.raiseComptimeFmt(
-                        @src(),
                         "expected {d} arg{s}",
                         .{ argCount(Args), if (argCount(Args) > 1) "s" else "" },
                     );
