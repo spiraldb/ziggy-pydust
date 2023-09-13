@@ -21,10 +21,6 @@ pub const Animal = py.class("Animal", struct {
 
     kind: u64,
 
-    pub fn __new__(args: struct { kind: u64 }) !Self {
-        return .{ .kind = args.kind };
-    }
-
     pub fn get_kind(self: *Self) !u64 {
         return self.kind;
     }
@@ -52,7 +48,7 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
     pub fn __new__(args: struct { name: py.PyString }) !Self {
         args.name.incref();
         return .{
-            .animal = try Animal.__new__(.{ .kind = 1 }),
+            .animal = .{ .kind = 1 },
             .name = args.name,
         };
     }

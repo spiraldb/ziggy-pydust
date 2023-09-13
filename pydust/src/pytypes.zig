@@ -98,6 +98,15 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                     .slot = ffi.Py_tp_new,
                     .pfunc = @ptrCast(@constCast(&tp_new)),
                 }};
+            } else {
+                // Otherwise, we generate a default __new__ method.
+                // If the class definition has internal fields, we take that as
+                // an arg/kwarg struct. Otherwise, we enforce that no args/kwargs
+                // were passed (to avoid silently dropping them).
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = @ptrCast(@constCast(&tp_new_default)),
+                }};
             }
 
             if (@hasDecl(definition, "__del__")) {
@@ -175,6 +184,23 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
 
             return try definition.__new__(args);
+        }
+
+        fn tp_new_default(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            // Allocate the subtype object.
+            const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 0) orelse return null;
+
+            // TODO(ngates): we could locate the subtype's definition struct? For now, we just
+            // assume that we're being called from the parent class? Let's add tests...
+            const self: *Instance = @ptrCast(pyself);
+
+            // Allow the definition to initialize the state field.
+            self.state = tramp.Trampoline(definition).unwrapCallArgs(.{
+                .args = py.PyTuple.unchecked(.{ .py = pyargs }),
+                .kwargs = if (pykwargs) |kw| py.PyDict.unchecked(.{ .py = kw }) else null,
+            }) catch return null;
+
+            return pyself;
         }
 
         /// Wrapper for the user's __del__ function.

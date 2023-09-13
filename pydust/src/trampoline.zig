@@ -306,13 +306,13 @@ pub fn Trampoline(comptime T: type) type {
         };
 
         /// Wrap a Zig Pydust argument struct into Python CallArgs.
-        /// The caller is responsible for decref'ing the returned args and kwargs.
+        /// Creates new references.
         pub inline fn wrapCallArgs(obj: T) !CallArgs {
             const args = try py.PyTuple.new(funcs.argCount(T));
             const kwargs = try py.PyDict.new();
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
-                const arg = try Trampoline(field.type).wrap(@field(obj, field.name));
+                const arg = try Trampoline(field.type).wrapNew(@field(obj, field.name));
                 if (field.default_value == null) {
                     // It's an arg
                     try args.setOwnedItem(i, arg);
