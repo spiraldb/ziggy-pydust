@@ -21,10 +21,6 @@ pub const Animal = py.class("Animal", struct {
 
     kind: u64,
 
-    pub fn __new__(args: struct { kind: u64 }) !Self {
-        return .{ .kind = args.kind };
-    }
-
     pub fn get_kind(self: *Self) !u64 {
         return self.kind;
     }
