@@ -24,38 +24,11 @@ pub const PyMemoryView = extern struct {
     pub usingnamespace PyObjectMixin("memoryview", "PyMemoryView", @This());
 
     pub fn create(value: anytype) !PyMemoryView {
-        // TODO(ngates): we default []const u8 to PyUnicode, so intercept that.
-        // TODO(ngates): should we wrap []const u8 in a basic Zig struct so we can type-check it?
-        // e.g. py.unicode == struct {str: []const u8};
-        if (@TypeOf(value) == comptime_int) {
-            return create(@as(i64, @intCast(value)));
-        }
+        // TODO(ngates): discuss constructors, see https://github.com/fulcrum-so/ziggy-pydust/issues/94
 
-        const typeInfo = @typeInfo(@TypeOf(value)).Int;
-
-        const pylong = switch (typeInfo.signedness) {
-            .signed => ffi.PyLong_FromLongLong(@intCast(value)),
-            .unsigned => ffi.PyLong_FromUnsignedLongLong(@intCast(value)),
-        } orelse return PyError.Propagate;
-
-        return .{ .obj = .{ .py = pylong } };
-    }
-
-    pub fn as(self: PyMemoryView, comptime T: type) !T {
-        // TODO(ngates): support non-int conversions
-        const typeInfo = @typeInfo(T).Int;
-        return switch (typeInfo.signedness) {
-            .signed => {
-                const ll = ffi.PyLong_AsLongLong(self.obj.py);
-                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
-                return @intCast(ll);
-            },
-            .unsigned => {
-                const ull = ffi.PyLong_AsUnsignedLongLong(self.obj.py);
-                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
-                return @intCast(ull);
-            },
-        };
+        // Extract a simple buffer from the object
+        const obj = py.object(value);
+        return .{ .obj = .{ .py = ffi.PyMemoryView_FromObject(obj.py) orelse return PyError.Propagate } };
     }
 };
 
