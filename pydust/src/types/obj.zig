@@ -112,6 +112,11 @@ pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, com
     const PyCheck = @field(ffi, prefix ++ "_Check");
 
     return struct {
+        /// Check whether the given object is of this type.
+        pub fn check(obj: py.PyObject) !bool {
+            return PyCheck(obj.py) == 1;
+        }
+
         /// Checked conversion from a PyObject.
         pub fn checked(obj: py.PyObject) !Self {
             if (PyCheck(obj.py) == 0) {

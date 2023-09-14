@@ -30,6 +30,14 @@ pub const PyMemoryView = extern struct {
         const obj = py.object(value);
         return .{ .obj = .{ .py = ffi.PyMemoryView_FromObject(obj.py) orelse return PyError.Propagate } };
     }
+
+    /// Create a memory view from a Zig slice. The allocator will be used to free the slice when the memory view is destroyed.
+    pub fn fromSlice(comptime T: type, values: []const T, allocator: std.mem.Allocator) void {
+        _ = allocator;
+        _ = values;
+
+        ffi.PyMemoryView_FromBuffer(info: [*c]const Py_buffer)
+    }
 };
 
 test "PyMemoryView" {
