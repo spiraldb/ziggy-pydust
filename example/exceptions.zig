@@ -15,9 +15,13 @@ const py = @import("pydust");
 
 // --8<-- [start:valueerror]
 pub fn raise_value_error(args: struct { message: py.PyString }) !void {
-    return py.ValueError.raise(try args.message.asSlice());
+    try bar(args.message);
 }
 // --8<-- [end:valueerror]
+
+fn bar(foo: py.PyString) !void {
+    return py.ValueError.raise(try foo.asSlice());
+}
 
 comptime {
     py.module(@This());
