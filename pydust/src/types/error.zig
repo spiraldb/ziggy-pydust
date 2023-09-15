@@ -126,37 +126,41 @@ const PyExc = struct {
             std.debug.captureStackTrace(@returnAddress(), &st);
 
             const debugInfo = std.debug.getSelfDebugInfo() catch return;
-
-            // Let's assume the error was raised within user code, we truncate the traceback at the first
-            // frame that lives in a different file, e.g. when we move from user code to libpython.
-            var modName: ?[]const u8 = null;
-            var frameIdx: usize = 0;
-            for (st.instruction_addresses, 0..) |addr, idx| {
-                if (debugInfo.getModuleNameForAddress(addr)) |addrModName| {
-                    if (modName == null) {
-                        modName = addrModName;
-                    } else if (!std.mem.eql(u8, modName.?, addrModName)) {
-                        frameIdx = idx;
-                        break;
-                    }
-                }
-            }
-
-            // Strip off the top frame (augmentTraceback())
-            // And strip off the bottom frame since it's the trampoline "fastcall" method.
-            //st.instruction_addresses = st.instruction_addresses[1..frameIdx];
-            //st.index = frameIdx - 2;
+            //defer debugInfo.deinit();
 
             // We could now dump the Zig stack trace to stderr
-            // std.debug.dumpStackTrace(st);
+            std.debug.dumpStackTrace(st);
 
-            // Or... we can walk it, compile it into Python code we know to fail
-            // Grab the Python frame objects this produces, and tack them onto our traceback!
-            for (st.instruction_addresses[1 .. st.index - 1]) |addr| {
-                // TODO(ngates): handle breaking out of this loop with failure
-                const module = debugInfo.getModuleForAddress(addr) catch break;
-                const symbol_info: std.debug.SymbolInfo = module.getSymbolAtAddress(debugInfo.allocator, addr) catch break;
-                const line_info = symbol_info.line_info orelse break;
+            // Skip the first frame (this function) and the last frame (the trampoline entrypoint)
+            for (0..st.index) |idx| {
+                // std.debug.writeStackTrace subtracts 1 from the address - not sure why, but it gives accurate frames.
+                const address = st.instruction_addresses[idx] - 1;
+
+                // If we can't find info for the stack frame, then we skip this frame..
+                const module = debugInfo.getModuleForAddress(address) catch continue;
+                const symbol_info: std.debug.SymbolInfo = module.getSymbolAtAddress(debugInfo.allocator, address) catch continue;
+                defer symbol_info.deinit(debugInfo.allocator);
+                const line_info = symbol_info.line_info orelse continue;
+
+                // We also want to skip any Pydust internal frames, e.g. the function trampoline and also this current function!
+                if (std.mem.indexOf(u8, line_info.file_name, "/pydust/src/")) |_| {
+                    continue;
+                }
+
+                std.debug.print("SI: {}/{}/{} name: {s} unit: {s}\n", .{
+                    idx,
+                    st.index,
+                    st.instruction_addresses.len,
+                    // Symbol name is the function name?
+                    symbol_info.symbol_name,
+                    // Unit is like the .so library name
+                    symbol_info.compile_unit_name,
+                });
+                std.debug.print("LI: line: {} col: {} file: {s}\n\n", .{
+                    line_info.line,
+                    line_info.column,
+                    line_info.file_name,
+                });
 
                 // Grab the current Python exception
                 var ptype: ?*ffi.PyObject = undefined;
@@ -170,13 +174,13 @@ const PyExc = struct {
                 //      1/0
                 // So lineno + len("def ") + len(symbol_name) + "():\n    " + "1/0\n"
                 // So... lineno + len(symbol_name) + 4 + 8 + 4
-                const newlines = try py.allocator.alloc(u8, line_info.line);
+                const newlines = try py.allocator.alloc(u8, line_info.line - 2);
                 @memset(newlines, '\n');
 
                 const code = try std.fmt.allocPrintZ(
                     py.allocator,
-                    "{s}def {s}():\n    1/0\n\n{s}()\n",
-                    .{ newlines, symbol_info.symbol_name, symbol_info.symbol_name },
+                    "{s}def {s}():\n    1/0\n",
+                    .{ newlines, symbol_info.symbol_name },
                 );
                 //std.debug.print("CODE ${s}$\n", .{code});
 
@@ -185,10 +189,14 @@ const PyExc = struct {
                 const filename = try py.allocator.dupeZ(u8, line_info.file_name);
                 const compiled = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse @panic("Failed to compile");
 
-                // Execute the failing code and grab its traceback
-                const globals = ffi.PyEval_GetGlobals();
-                const result = ffi.PyEval_EvalCode(compiled, globals, null);
-                std.debug.assert(result == 0); // It should fail with DivideByZero error.
+                // Eval the fake module code to get a module object
+                // Then invoke the function to force a failure
+                const module_name = try py.allocator.dupeZ(u8, symbol_info.compile_unit_name);
+                const fake_module: py.PyObject = .{ .py = ffi.PyImport_ExecCodeModule(module_name.ptr, compiled) orelse break };
+
+                const func_name = try py.allocator.dupeZ(u8, symbol_info.symbol_name);
+                const fake_function = try fake_module.get(func_name);
+                _ = fake_function.call(.{}, .{}) catch null;
 
                 // We can ignore qtype and qvalue, we just want to get the traceback object.
                 var qtype: ?*ffi.PyObject = undefined;
