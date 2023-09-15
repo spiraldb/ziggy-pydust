@@ -80,21 +80,16 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
     return struct {
         const methods = funcs.Methods(definition);
-        const binaryOperators: [funcs.NBinaryOperators]?type = blk: {
+        const binaryOperators = blk: {
             var binaryOperators_: [funcs.NBinaryOperators]?type = undefined;
-            for (0..funcs.NBinaryOperators) |i| {
-                if (@hasDecl(definition, funcs.BinaryOperators[i])) {
-                    binaryOperators_[i] = BinaryOperator(
-                        definition,
-                        Instance,
-                        funcs.BinaryOperators[i],
-                        funcs.BinaryOperatorsSlots[i],
-                    );
-                } else {
-                    binaryOperators_[i] = null;
-                }
+            for (funcs.BinaryOperators.kvs, 0..) |kv, i| {
+                binaryOperators_[i] = if (@hasDecl(definition, kv.key)) BinaryOperator(
+                    definition,
+                    Instance,
+                    kv.key,
+                    kv.value,
+                ) else null;
             }
-
             break :blk binaryOperators_;
         };
 
@@ -322,11 +317,17 @@ fn BinaryOperator(
         const slot: c_int = op_slot;
 
         fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
-            // TODO(marko): Get the type of the argument and trampoline it here.
-            const other: *Instance = @ptrCast(pyother);
             const func = @field(definition, op);
-            const result = func(&self.state, &other.state) catch return null;
+            const typeInfo = @typeInfo(@TypeOf(func));
+            const sig = funcs.parseSignature(op, typeInfo.Fn, &.{});
+
+            if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
+            if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
+
+            const self: *Instance = @ptrCast(pyself);
+            const other = try tramp.Trampoline(sig.argsParam orelse unreachable).unwrap(.{ .py = pyother });
+
+            const result = func(&self.state, other) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };

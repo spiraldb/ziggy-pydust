@@ -27,6 +27,25 @@ pub const Signature = struct {
     nkwargs: usize = 0,
 };
 
+pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
+    .{ "__add__", ffi.Py_nb_add },
+    .{ "__sub__", ffi.Py_nb_subtract },
+    .{ "__mul__", ffi.Py_nb_multiply },
+    .{ "__mod__", ffi.Py_nb_remainder },
+    .{ "__divmod__", ffi.Py_nb_divmod },
+    .{ "__pow__", ffi.Py_nb_power },
+    .{ "__lshift__", ffi.Py_nb_lshift },
+    .{ "__rshift__", ffi.Py_nb_rshift },
+    .{ "__and__", ffi.Py_nb_and },
+    .{ "__xor__", ffi.Py_nb_xor },
+    .{ "__or__", ffi.Py_nb_or },
+    .{ "__truediv__", ffi.Py_nb_true_divide },
+    .{ "__floordiv__", ffi.Py_nb_floor_divide },
+    .{ "__matmul__", ffi.Py_nb_matrix_multiply },
+    .{ "__getitem__", ffi.Py_sq_item },
+});
+pub const NBinaryOperators = BinaryOperators.kvs.len;
+
 const reservedNames = .{
     "__new__",
     "__init__",
@@ -36,46 +55,13 @@ const reservedNames = .{
     "__release_buffer__",
     "__iter__",
     "__next__",
-} ++ BinaryOperators;
-
-pub const BinaryOperators = .{
-    "__add__",
-    "__sub__",
-    "__mul__",
-    "__mod__",
-    "__divmod__",
-    "__pow__",
-    "__lshift__",
-    "__rshift__",
-    "__and__",
-    "__xor__",
-    "__or__",
-    "__truediv__",
-    "__floordiv__",
-    "__matmul__",
-    "__getitem__",
+} ++ blk: {
+    var keys_: [NBinaryOperators][]const u8 = undefined;
+    for (BinaryOperators.kvs, 0..) |kv, i| {
+        keys_[i] = kv.key;
+    }
+    break :blk keys_;
 };
-
-// TODO(marko): comptime string map
-pub const BinaryOperatorsSlots = .{
-    ffi.Py_nb_add,
-    ffi.Py_nb_subtract,
-    ffi.Py_nb_multiply,
-    ffi.Py_nb_remainder,
-    ffi.Py_nb_divmod,
-    ffi.Py_nb_power,
-    ffi.Py_nb_lshift,
-    ffi.Py_nb_rshift,
-    ffi.Py_nb_and,
-    ffi.Py_nb_xor,
-    ffi.Py_nb_or,
-    ffi.Py_nb_true_divide,
-    ffi.Py_nb_floor_divide,
-    ffi.Py_nb_matrix_multiply,
-    ffi.Py_sq_item,
-};
-
-pub const NBinaryOperators = BinaryOperators.len;
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
@@ -113,20 +99,38 @@ pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptim
 
 pub fn argCount(comptime argsParam: type) usize {
     var n: usize = 0;
-    inline for (@typeInfo(argsParam).Struct.fields) |field| {
-        if (field.default_value == null) {
-            n += 1;
-        }
+    switch (@typeInfo(argsParam)) {
+        .Struct => {
+            inline for (@typeInfo(argsParam).Struct.fields) |field| {
+                if (field.default_value == null) {
+                    n += 1;
+                }
+            }
+        },
+        else => {
+            // Because we can only have 0, 1, 2 parameters, if we're here
+            // and we don't have an args struct, we must have a single param.
+            n = 1;
+        },
     }
     return n;
 }
 
 pub fn kwargCount(comptime argsParam: type) usize {
     var n: usize = 0;
-    inline for (@typeInfo(argsParam).Struct.fields) |field| {
-        if (field.default_value != null) {
-            n += 1;
-        }
+    switch (@typeInfo(argsParam)) {
+        .Struct => {
+            inline for (@typeInfo(argsParam).Struct.fields) |field| {
+                if (field.default_value != null) {
+                    n += 1;
+                }
+            }
+        },
+        else => {
+            // Because we can only have 0, 1, 2 parameters, if we're here
+            // and we don't have an args struct, we must have zero kwargs.
+            n = 0;
+        },
     }
     return n;
 }
