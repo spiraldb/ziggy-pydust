@@ -104,8 +104,8 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
+    // Allows this class to be instantiated from Python
     pub fn __new__() !@This() {
-        // Empty __new__ allows this class to be instantiated from Python
         return .{};
     }
 
