@@ -36,7 +36,22 @@ const reservedNames = .{
     "__release_buffer__",
     "__iter__",
     "__next__",
+} ++ BinaryOperators;
+
+pub const BinaryOperators = .{
+    "__add__",
+    "__sub__",
+    "__mul__",
 };
+
+// TODO(marko): comptime string map
+pub const BinaryOperatorsSlots = .{
+    ffi.Py_nb_add,
+    ffi.Py_nb_subtract,
+    ffi.Py_nb_multiply,
+};
+
+pub const NBinaryOperators = BinaryOperators.len;
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
@@ -99,6 +114,15 @@ fn isReserved(comptime name: []const u8) bool {
         }
     }
     return false;
+}
+
+fn isBinaryOperator(comptime name: []const u8) ?usize {
+    for (BinaryOperators, 0..) |operator, i| {
+        if (std.mem.eql(u8, name, operator)) {
+            return i;
+        }
+    }
+    return null;
 }
 
 /// Check whether the first parameter of the function is one of the valid "self" types.

@@ -80,6 +80,23 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
     return struct {
         const methods = funcs.Methods(definition);
+        const binaryOperators: [funcs.NBinaryOperators]?type = blk: {
+            var binaryOperators_: [funcs.NBinaryOperators]?type = undefined;
+            for (0..funcs.NBinaryOperators) |i| {
+                if (@hasDecl(definition, funcs.BinaryOperators[i])) {
+                    binaryOperators_[i] = BinaryOperator(
+                        definition,
+                        Instance,
+                        funcs.BinaryOperators[i],
+                        funcs.BinaryOperatorsSlots[i],
+                    );
+                } else {
+                    binaryOperators_[i] = null;
+                }
+            }
+
+            break :blk binaryOperators_;
+        };
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -163,6 +180,16 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                     .slot = ffi.Py_tp_repr,
                     .pfunc = @ptrCast(@constCast(&tp_repr)),
                 }};
+            }
+
+            // Binary operators
+            for (binaryOperators) |maybeOp| {
+                if (maybeOp) |op| {
+                    slots_ = slots_ ++ .{ffi.PyType_Slot{
+                        .slot = op.slot,
+                        .pfunc = @ptrCast(@constCast(&op.call)),
+                    }};
+                }
             }
 
             slots_ = slots_ ++ .{ffi.PyType_Slot{
@@ -280,6 +307,26 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *Instance = @ptrCast(pyself);
             const result = definition.__repr__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+    };
+}
+
+fn BinaryOperator(
+    comptime definition: type,
+    comptime Instance: type,
+    comptime op: []const u8,
+    comptime op_slot: c_int,
+) type {
+    return struct {
+        const slot: c_int = op_slot;
+
+        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            // TODO(marko): Get the type of the argument and trampoline it here.
+            const other: *Instance = @ptrCast(pyother);
+            const func = @field(definition, op);
+            const result = func(&self.state, &other.state) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };
