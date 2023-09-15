@@ -152,7 +152,7 @@ const PyExc = struct {
 
             // Or... we can walk it, compile it into Python code we know to fail
             // Grab the Python frame objects this produces, and tack them onto our traceback!
-            for (st.instruction_addresses) |addr| {
+            for (st.instruction_addresses[1 .. st.index - 1]) |addr| {
                 // TODO(ngates): handle breaking out of this loop with failure
                 const module = debugInfo.getModuleForAddress(addr) catch break;
                 const symbol_info: std.debug.SymbolInfo = module.getSymbolAtAddress(debugInfo.allocator, addr) catch break;
