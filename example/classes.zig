@@ -62,6 +62,14 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return 4;
     }
 
+    pub fn __str__(self: *const Self) !py.PyString {
+        return (try py.PyString.create("Dog named ")).append(self.name);
+    }
+
+    pub fn __repr__(self: *const Self) !py.PyString {
+        return (try (try py.PyString.create("Dog(")).append(self.name)).appendSlice(")");
+    }
+
     pub fn get_name(self: *const Self) !py.PyString {
         return self.name;
     }
