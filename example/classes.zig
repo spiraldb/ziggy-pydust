@@ -21,6 +21,10 @@ pub const Animal = py.class("Animal", struct {
 
     kind: u64,
 
+    pub fn __new__(args: struct { kind: u64 }) !Self {
+        return .{ .kind = args.kind };
+    }
+
     pub fn get_kind(self: *Self) !u64 {
         return self.kind;
     }
@@ -99,6 +103,10 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 // --8<-- [start:init]
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
+
+    pub fn __new__() !@This() {
+        return .{};
+    }
 
     pub fn name_puppy(args: struct { name: py.PyString }) !*Dog {
         return try py.init(Dog, .{ .name = args.name });

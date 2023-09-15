@@ -191,10 +191,12 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{});
             if (sig.selfParam) |_| @compileError("__new__ must not take a self parameter");
 
-            const Args = sig.argsParam orelse @compileError("__new__ must take an args struct");
-            const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
-
-            return try definition.__new__(args);
+            if (sig.argsParam) |Args| {
+                const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
+                return try definition.__new__(args);
+            } else {
+                return try definition.__new__();
+            }
         }
 
         fn tp_new_default(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
