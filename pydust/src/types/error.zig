@@ -206,11 +206,3 @@ const PyExc = struct {
         }
     }
 };
-
-const PyTraceback = extern struct {
-    ob_base: ffi.PyVarObject,
-    tb_next: ?*anyopaque,
-    tb_frame: ?*ffi.PyFrameObject,
-    tb_lasti: c_int,
-    tb_lineno: c_int,
-};
