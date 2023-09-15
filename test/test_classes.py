@@ -48,3 +48,9 @@ def test_super():
 
 def test_length():
     assert len(classes.Dog("foo")) == 4
+
+
+def test_str_and_repr():
+    dog = classes.Dog("foo")
+    assert str(dog) == "Dog named foo"
+    assert repr(dog) == "Dog(foo)"

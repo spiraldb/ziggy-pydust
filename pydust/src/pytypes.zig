@@ -151,6 +151,20 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 }};
             }
 
+            if (@hasDecl(definition, "__str__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_str,
+                    .pfunc = @ptrCast(@constCast(&tp_str)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__repr__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_repr,
+                    .pfunc = @ptrCast(@constCast(&tp_repr)),
+                }};
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -255,6 +269,18 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 return (py.createOwned(next) catch return null).py;
             }
             return null;
+        }
+
+        fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const result = definition.__str__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+
+        fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const result = definition.__repr__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
         }
     };
 }
