@@ -101,7 +101,7 @@ pub const PyBuffer = extern struct {
         return @alignCast(std.mem.bytesAsSlice(value_type, self.buf.?[0..@intCast(self.len)]));
     }
 
-    pub fn getFormat(comptime value_type: type) [:0]const u8 {
+    fn getFormat(comptime value_type: type) [:0]const u8 {
         switch (@typeInfo(value_type)) {
             .Int => |i| {
                 switch (i.signedness) {
