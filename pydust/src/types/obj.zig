@@ -80,7 +80,6 @@ pub const PyObject = extern struct {
         if (ffi.PyObject_CheckBuffer(self.py) != 1) {
             return py.BufferError.raise("object does not support buffer interface");
         }
-
         var buffer: py.PyBuffer = undefined;
         if (ffi.PyObject_GetBuffer(self.py, @ptrCast(&buffer), flags) != 0) {
             // Error is already raised.
