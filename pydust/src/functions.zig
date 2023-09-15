@@ -144,15 +144,6 @@ fn isReserved(comptime name: []const u8) bool {
     return false;
 }
 
-fn isBinaryOperator(comptime name: []const u8) ?usize {
-    for (BinaryOperators, 0..) |operator, i| {
-        if (std.mem.eql(u8, name, operator)) {
-            return i;
-        }
-    }
-    return null;
-}
-
 /// Check whether the first parameter of the function is one of the valid "self" types.
 fn isSelfArg(comptime param: Type.Fn.Param, comptime SelfTypes: []const type) bool {
     for (SelfTypes) |SelfType| {
