@@ -14,7 +14,6 @@ const builtin = @import("builtin");
 const std = @import("std");
 const ffi = @import("../ffi.zig");
 const py = @import("../pydust.zig");
-const pyconf = @import("pyconf");
 const PyError = @import("../errors.zig").PyError;
 
 pub const ArithmeticError = PyExc{ .name = "ArithmeticError" };
