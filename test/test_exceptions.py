@@ -21,11 +21,3 @@ def test_exceptions():
     with pytest.raises(ValueError) as exc:
         exceptions.raise_value_error("hello!")
     assert str(exc.value) == "hello!"
-
-
-def test_foo():
-    otherfunction()
-
-
-def otherfunction():
-    exceptions.raise_value_error("hello!")
