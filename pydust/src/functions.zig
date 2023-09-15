@@ -98,41 +98,37 @@ pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptim
 }
 
 pub fn argCount(comptime argsParam: type) usize {
-    var n: usize = 0;
-    switch (@typeInfo(argsParam)) {
-        .Struct => {
+    return switch (@typeInfo(argsParam)) {
+        .Struct => s: {
+            var n: usize = 0;
             inline for (@typeInfo(argsParam).Struct.fields) |field| {
                 if (field.default_value == null) {
                     n += 1;
                 }
             }
+            break :s n;
         },
-        else => {
-            // Because we can only have 0, 1, 2 parameters, if we're here
-            // and we don't have an args struct, we must have a single param.
-            n = 1;
-        },
-    }
-    return n;
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have a single param.
+        else => 1,
+    };
 }
 
 pub fn kwargCount(comptime argsParam: type) usize {
-    var n: usize = 0;
-    switch (@typeInfo(argsParam)) {
-        .Struct => {
+    return switch (@typeInfo(argsParam)) {
+        .Struct => s: {
+            var n: usize = 0;
             inline for (@typeInfo(argsParam).Struct.fields) |field| {
                 if (field.default_value != null) {
                     n += 1;
                 }
             }
+            break :s n;
         },
-        else => {
-            // Because we can only have 0, 1, 2 parameters, if we're here
-            // and we don't have an args struct, we must have zero kwargs.
-            n = 0;
-        },
-    }
-    return n;
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have zero kwargs.
+        else => 0,
+    };
 }
 
 fn isReserved(comptime name: []const u8) bool {
