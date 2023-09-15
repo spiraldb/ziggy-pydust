@@ -99,39 +99,35 @@ pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptim
 
 pub fn argCount(comptime argsParam: type) usize {
     return switch (@typeInfo(argsParam)) {
-        .Struct => {
+        .Struct => s: {
             var n: usize = 0;
             inline for (@typeInfo(argsParam).Struct.fields) |field| {
                 if (field.default_value == null) {
                     n += 1;
                 }
             }
-            return n;
+            break :s n;
         },
-        else => {
-            // Because we can only have 0, 1, 2 parameters, if we're here
-            // and we don't have an args struct, we must have a single param.
-            return 1;
-        },
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have a single param.
+        else => 1,
     };
 }
 
 pub fn kwargCount(comptime argsParam: type) usize {
     return switch (@typeInfo(argsParam)) {
-        .Struct => {
+        .Struct => s: {
             var n: usize = 0;
             inline for (@typeInfo(argsParam).Struct.fields) |field| {
                 if (field.default_value != null) {
                     n += 1;
                 }
             }
-            return n;
+            break :s n;
         },
-        else => {
-            // Because we can only have 0, 1, 2 parameters, if we're here
-            // and we don't have an args struct, we must have zero kwargs.
-            return 0;
-        },
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have zero kwargs.
+        else => 0,
     };
 }
 
