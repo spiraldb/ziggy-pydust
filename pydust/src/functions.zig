@@ -98,41 +98,41 @@ pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptim
 }
 
 pub fn argCount(comptime argsParam: type) usize {
-    var n: usize = 0;
-    switch (@typeInfo(argsParam)) {
+    return switch (@typeInfo(argsParam)) {
         .Struct => {
+            var n: usize = 0;
             inline for (@typeInfo(argsParam).Struct.fields) |field| {
                 if (field.default_value == null) {
                     n += 1;
                 }
             }
+            return n;
         },
         else => {
             // Because we can only have 0, 1, 2 parameters, if we're here
             // and we don't have an args struct, we must have a single param.
-            n = 1;
+            return 1;
         },
-    }
-    return n;
+    };
 }
 
 pub fn kwargCount(comptime argsParam: type) usize {
-    var n: usize = 0;
-    switch (@typeInfo(argsParam)) {
+    return switch (@typeInfo(argsParam)) {
         .Struct => {
+            var n: usize = 0;
             inline for (@typeInfo(argsParam).Struct.fields) |field| {
                 if (field.default_value != null) {
                     n += 1;
                 }
             }
+            return n;
         },
         else => {
             // Because we can only have 0, 1, 2 parameters, if we're here
             // and we don't have an args struct, we must have zero kwargs.
-            n = 0;
+            return 0;
         },
-    }
-    return n;
+    };
 }
 
 fn isReserved(comptime name: []const u8) bool {
