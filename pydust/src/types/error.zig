@@ -113,8 +113,8 @@ const PyExc = struct {
         return .{ .py = @field(ffi, "PyExc_" ++ self.name) };
     }
 
-    /// Try to augment the Python traceback with Zig stack frames.
-    /// This will only work if we're in debug mode.
+    /// In debug mode, augment the Python traceback to include Zig stack frames.
+    /// Warning: hackery ahead!
     fn augmentTraceback() PyError!void {
         if (builtin.mode == .Debug) {
             // First of all, grab the current Python exception
@@ -132,10 +132,6 @@ const PyExc = struct {
             std.debug.captureStackTrace(@returnAddress(), &st);
 
             const debugInfo = std.debug.getSelfDebugInfo() catch return;
-            //defer debugInfo.deinit();
-
-            // We could now dump the Zig stack trace to stderr
-            std.debug.dumpStackTrace(st);
 
             // Skip the first frame (this function) and the last frame (the trampoline entrypoint)
             for (0..st.index) |idx| {
