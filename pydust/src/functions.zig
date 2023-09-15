@@ -42,6 +42,18 @@ pub const BinaryOperators = .{
     "__add__",
     "__sub__",
     "__mul__",
+    "__mod__",
+    "__divmod__",
+    "__pow__",
+    "__lshift__",
+    "__rshift__",
+    "__and__",
+    "__xor__",
+    "__or__",
+    "__truediv__",
+    "__floordiv__",
+    "__matmul__",
+    "__getitem__",
 };
 
 // TODO(marko): comptime string map
@@ -49,6 +61,18 @@ pub const BinaryOperatorsSlots = .{
     ffi.Py_nb_add,
     ffi.Py_nb_subtract,
     ffi.Py_nb_multiply,
+    ffi.Py_nb_remainder,
+    ffi.Py_nb_divmod,
+    ffi.Py_nb_power,
+    ffi.Py_nb_lshift,
+    ffi.Py_nb_rshift,
+    ffi.Py_nb_and,
+    ffi.Py_nb_xor,
+    ffi.Py_nb_or,
+    ffi.Py_nb_true_divide,
+    ffi.Py_nb_floor_divide,
+    ffi.Py_nb_matrix_multiply,
+    ffi.Py_sq_item,
 };
 
 pub const NBinaryOperators = BinaryOperators.len;
