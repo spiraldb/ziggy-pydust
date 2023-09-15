@@ -325,7 +325,9 @@ fn BinaryOperator(
             if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
 
             const self: *Instance = @ptrCast(pyself);
-            const other = try tramp.Trampoline(sig.argsParam orelse unreachable).unwrap(.{ .py = pyother });
+            const other = tramp.Trampoline(
+                sig.argsParam orelse unreachable,
+            ).unwrap(.{ .py = pyother }) catch return null;
 
             const result = func(&self.state, other) catch return null;
             return (py.createOwned(result) catch return null).py;
