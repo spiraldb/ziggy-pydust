@@ -34,3 +34,17 @@ then call methods on that object as usual which will avoid dispatching the metho
 ```zig
 --8<-- "example/classes.zig:init"
 ```
+
+## Binary Operators
+
+Pydust supports classes implementing binary operators (e.g. `__add__` or bitwise operators).
+
+```zig
+--8<-- "example/classes.zig:operator"
+```
+
+The self parameter must be a pointer to the class type. The other parameter can be of any Pydust supported type.
+
+Supported binary operators are: `__add__`, `__sub__`, `__mul__`, `__mod__`, `__divmod__`, `__pow__`,
+`__lshift__`, `__rshift__`, `__and__`, `__xor__`, `__or__`, `__truediv__`, `__floordiv__`,
+`__matmul__`, `__getitem__`.

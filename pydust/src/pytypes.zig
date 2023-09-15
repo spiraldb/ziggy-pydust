@@ -80,18 +80,6 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
     return struct {
         const methods = funcs.Methods(definition);
-        const binaryOperators = blk: {
-            var binaryOperators_: [funcs.NBinaryOperators]?type = undefined;
-            for (funcs.BinaryOperators.kvs, 0..) |kv, i| {
-                binaryOperators_[i] = if (@hasDecl(definition, kv.key)) BinaryOperator(
-                    definition,
-                    Instance,
-                    kv.key,
-                    kv.value,
-                ) else null;
-            }
-            break :blk binaryOperators_;
-        };
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -177,11 +165,11 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 }};
             }
 
-            // Binary operators
-            for (binaryOperators) |maybeOp| {
-                if (maybeOp) |op| {
+            for (funcs.BinaryOperators.kvs) |kv| {
+                if (@hasDecl(definition, kv.key)) {
+                    const op = BinaryOperator(definition, Instance, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
-                        .slot = op.slot,
+                        .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
                     }};
                 }
@@ -311,11 +299,8 @@ fn BinaryOperator(
     comptime definition: type,
     comptime Instance: type,
     comptime op: []const u8,
-    comptime op_slot: c_int,
 ) type {
     return struct {
-        const slot: c_int = op_slot;
-
         fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const func = @field(definition, op);
             const typeInfo = @typeInfo(@TypeOf(func));

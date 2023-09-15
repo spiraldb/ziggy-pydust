@@ -46,6 +46,14 @@ pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
 });
 pub const NBinaryOperators = BinaryOperators.kvs.len;
 
+fn keys(comptime stringMap: type) [stringMap.kvs.len][]const u8 {
+    var keys_: [stringMap.kvs.len][]const u8 = undefined;
+    for (stringMap.kvs, 0..) |kv, i| {
+        keys_[i] = kv.key;
+    }
+    return keys_;
+}
+
 const reservedNames = .{
     "__new__",
     "__init__",
@@ -55,13 +63,7 @@ const reservedNames = .{
     "__release_buffer__",
     "__iter__",
     "__next__",
-} ++ blk: {
-    var keys_: [NBinaryOperators][]const u8 = undefined;
-    for (BinaryOperators.kvs, 0..) |kv, i| {
-        keys_[i] = kv.key;
-    }
-    break :blk keys_;
-};
+} ++ keys(BinaryOperators);
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
