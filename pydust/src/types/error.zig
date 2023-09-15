@@ -117,6 +117,12 @@ const PyExc = struct {
     /// This will only work if we're in debug mode.
     fn augmentTraceback() PyError!void {
         if (builtin.mode == .Debug) {
+            // First of all, grab the current Python exception
+            var ptype: ?*ffi.PyObject = undefined;
+            var pvalue: ?*ffi.PyObject = undefined;
+            var ptraceback: ?*ffi.PyObject = undefined;
+            ffi.PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+
             // Capture at most 32 stack frames above us.
             var addresses: [32]usize = undefined;
             var st: std.builtin.StackTrace = .{
@@ -147,57 +153,39 @@ const PyExc = struct {
                     continue;
                 }
 
-                std.debug.print("SI: {}/{}/{} name: {s} unit: {s}\n", .{
-                    idx,
-                    st.index,
-                    st.instruction_addresses.len,
-                    // Symbol name is the function name?
-                    symbol_info.symbol_name,
-                    // Unit is like the .so library name
-                    symbol_info.compile_unit_name,
-                });
-                std.debug.print("LI: line: {} col: {} file: {s}\n\n", .{
-                    line_info.line,
-                    line_info.column,
-                    line_info.file_name,
-                });
-
-                // Grab the current Python exception
-                var ptype: ?*ffi.PyObject = undefined;
-                var pvalue: ?*ffi.PyObject = undefined;
-                var ptraceback: ?*ffi.PyObject = undefined;
-                ffi.PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-                // We allocate a string that looks roughly like:
-                //  <N blank lines to create correct lineno>
-                //  def <func name>():
-                //      1/0
-                // So lineno + len("def ") + len(symbol_name) + "():\n    " + "1/0\n"
-                // So... lineno + len(symbol_name) + 4 + 8 + 4
-                const newlines = try py.allocator.alloc(u8, line_info.line - 2);
+                // Allocate a string of newlines.
+                // Since we wrap the error in a function, we have an addition "def foo()" line.
+                // In addition to lineno being zero-based, we have to subtract 2.
+                // This means that exceptions on line 1 will be off... but that's quite rare.
+                const nnewlines = if (line_info.line < 2) 0 else line_info.line - 2;
+                const newlines = try py.allocator.alloc(u8, nnewlines);
                 @memset(newlines, '\n');
 
+                // Setup a function we know will fail (with DivideByZero error)
                 const code = try std.fmt.allocPrintZ(
                     py.allocator,
                     "{s}def {s}():\n    1/0\n",
                     .{ newlines, symbol_info.symbol_name },
                 );
-                //std.debug.print("CODE ${s}$\n", .{code});
 
-                // Compilation should succeed, but execution should fail.
-                // TODO(ngates): can we do something with strings so we can include the actual line of Zig code in the frame?
+                // Compilation should succeed, but execution will fail.
                 const filename = try py.allocator.dupeZ(u8, line_info.file_name);
-                const compiled = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse @panic("Failed to compile");
+                defer py.allocator.free(filename);
+                const compiled = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse continue;
 
-                // Eval the fake module code to get a module object
-                // Then invoke the function to force a failure
+                // Import the compiled code as a module and invoke the failing function
                 const module_name = try py.allocator.dupeZ(u8, symbol_info.compile_unit_name);
-                const fake_module: py.PyObject = .{ .py = ffi.PyImport_ExecCodeModule(module_name.ptr, compiled) orelse break };
+                defer py.allocator.free(module_name);
+                const fake_module: py.PyObject = .{
+                    .py = ffi.PyImport_ExecCodeModule(module_name.ptr, compiled) orelse continue,
+                };
 
                 const func_name = try py.allocator.dupeZ(u8, symbol_info.symbol_name);
+                defer py.allocator.free(func_name);
                 const fake_function = try fake_module.get(func_name);
                 _ = fake_function.call(.{}, .{}) catch null;
 
+                // Grab our forced exception info.
                 // We can ignore qtype and qvalue, we just want to get the traceback object.
                 var qtype: ?*ffi.PyObject = undefined;
                 var qvalue: ?*ffi.PyObject = undefined;
@@ -207,28 +195,18 @@ const PyExc = struct {
                 if (qvalue) |q| py.decref(q);
                 std.debug.assert(qtraceback != null);
 
-                // Append the traceback frame
+                // Extract the traceback frame by calling into Python (Pytraceback isn't part of the Stable API)
                 const pytb = py.PyObject{ .py = qtraceback.? };
-                // tb_frame is not part of the stable C API
                 const frame = (try pytb.get("tb_frame")).py;
 
-                // Restore the original exception just before augmenting it with a new frame.
+                // Restore the original exception, augment it with the new frame, then fetch the new exception.
                 ffi.PyErr_Restore(ptype, pvalue, ptraceback);
-                if (ffi.PyTraceBack_Here(@alignCast(@ptrCast(frame))) == -1) {
-                    break;
-                }
+                _ = ffi.PyTraceBack_Here(@alignCast(@ptrCast(frame)));
+                ffi.PyErr_Fetch(&ptype, &pvalue, &ptraceback);
             }
 
-            // Reset the exception info
-            //ffi.PyErr_Restore(ptype, pvalue, ptraceback);
-
-            // if (ptraceback != null) {
-            //     if (ffi.PyException_SetTraceback(pvalue, ptraceback) == -1) {
-            //         return PyError.Propagate;
-            //     }
-            // }
-
-            // Reset the exception info
+            // Restore the latest the exception info
+            ffi.PyErr_Restore(ptype, pvalue, ptraceback);
         }
     }
 };
