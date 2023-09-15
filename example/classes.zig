@@ -105,6 +105,7 @@ pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
 
     pub fn __new__() !@This() {
+        // Empty __new__ allows this class to be instantiated from Python
         return .{};
     }
 
