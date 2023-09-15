@@ -99,10 +99,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                     .pfunc = @ptrCast(@constCast(&tp_new)),
                 }};
             } else {
-                // Otherwise, we generate a default __new__ method.
-                // If the class definition has internal fields, we take that as
-                // an arg/kwarg struct. Otherwise, we enforce that no args/kwargs
-                // were passed (to avoid silently dropping them).
+                // Otherwise, we set tp_new to a default that throws a type error.
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_new,
                     .pfunc = @ptrCast(@constCast(&tp_new_default)),
@@ -151,6 +148,20 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 }};
             }
 
+            if (@hasDecl(definition, "__str__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_str,
+                    .pfunc = @ptrCast(@constCast(&tp_str)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__repr__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_repr,
+                    .pfunc = @ptrCast(@constCast(&tp_repr)),
+                }};
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -180,27 +191,20 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{});
             if (sig.selfParam) |_| @compileError("__new__ must not take a self parameter");
 
-            const Args = sig.argsParam orelse @compileError("__new__ must take an args struct");
-            const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
-
-            return try definition.__new__(args);
+            if (sig.argsParam) |Args| {
+                const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
+                return try definition.__new__(args);
+            } else {
+                return try definition.__new__();
+            }
         }
 
         fn tp_new_default(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            // Allocate the subtype object.
-            const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 0) orelse return null;
-
-            // TODO(ngates): we could locate the subtype's definition struct? For now, we just
-            // assume that we're being called from the parent class? Let's add tests...
-            const self: *Instance = @ptrCast(pyself);
-
-            // Allow the definition to initialize the state field.
-            self.state = tramp.Trampoline(definition).unwrapCallArgs(.{
-                .args = py.PyTuple.unchecked(.{ .py = pyargs }),
-                .kwargs = if (pykwargs) |kw| py.PyDict.unchecked(.{ .py = kw }) else null,
-            }) catch return null;
-
-            return pyself;
+            _ = pykwargs;
+            _ = pyargs;
+            _ = subtype;
+            py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
+            return null;
         }
 
         /// Wrapper for the user's __del__ function.
@@ -255,6 +259,18 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 return (py.createOwned(next) catch return null).py;
             }
             return null;
+        }
+
+        fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const result = definition.__str__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+
+        fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const result = definition.__repr__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
         }
     };
 }

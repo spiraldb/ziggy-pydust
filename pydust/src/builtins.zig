@@ -74,10 +74,16 @@ pub fn refcnt(object: anytype) isize {
     return pyobj.py.ob_refcnt;
 }
 
-/// Compute a string representation of object o.
+/// Compute a string representation of object o - using str(o).
 pub fn str(object: anytype) !py.PyString {
     const pyobj = py.object(object);
     return py.PyString.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) orelse return PyError.Propagate });
+}
+
+/// COmpute a string representation of object o - using repr(o).
+pub fn repr(object: anytype) !py.PyString {
+    const pyobj = py.object(object);
+    return py.PyString.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.Propagate });
 }
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.

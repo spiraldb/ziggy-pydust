@@ -21,6 +21,10 @@ pub const Animal = py.class("Animal", struct {
 
     kind: u64,
 
+    pub fn __new__(args: struct { kind: u64 }) !Self {
+        return .{ .kind = args.kind };
+    }
+
     pub fn get_kind(self: *Self) !u64 {
         return self.kind;
     }
@@ -62,6 +66,17 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return 4;
     }
 
+    pub fn __str__(self: *const Self) !py.PyString {
+        var pystr = try py.PyString.create("Dog named ");
+        return pystr.append(self.name);
+    }
+
+    pub fn __repr__(self: *const Self) !py.PyString {
+        var pyrepr = try py.PyString.create("Dog(");
+        pyrepr = try pyrepr.append(self.name);
+        return pyrepr.appendSlice(")");
+    }
+
     pub fn get_name(self: *const Self) !py.PyString {
         return self.name;
     }
@@ -88,6 +103,11 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
 // --8<-- [start:init]
 pub const Owner = py.class("Owner", struct {
     pub const __doc__ = "Takes care of an animal";
+
+    // Allows this class to be instantiated from Python
+    pub fn __new__() !@This() {
+        return .{};
+    }
 
     pub fn name_puppy(args: struct { name: py.PyString }) !*Dog {
         return try py.init(Dog, .{ .name = args.name });

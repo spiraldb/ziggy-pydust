@@ -169,13 +169,11 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
                     @field(args, field.name) = try py.as(field.type, pyargs[i]);
                 }
 
-                var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
-                const result = @call(.always_inline, func, callArgs);
+                const result = if (sig.selfParam) |_| func(self, args) else func(args);
 
                 return py.createOwned(result);
             } else {
-                var callArgs = if (sig.selfParam) |_| .{self} else .{};
-                const result = @call(.always_inline, func, callArgs);
+                const result = if (sig.selfParam) |_| func(self) else func();
                 return py.createOwned(result);
             }
         }
@@ -256,8 +254,7 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             }
 
             const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
-            var callArgs = if (sig.selfParam) |_| .{ self, args } else .{args};
-            const result = @call(.always_inline, func, callArgs);
+            const result = if (sig.selfParam) |_| func(self, args) else func(args);
             return py.createOwned(result);
         }
     };
