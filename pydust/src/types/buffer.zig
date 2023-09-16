@@ -99,7 +99,7 @@ pub const PyBuffer = extern struct {
 
     // asSlice returns buf property as Zig slice. The view must have been created with ND flag.
     pub fn asSlice(self: Self, comptime value_type: type) []value_type {
-        return @alignCast(std.mem.bytesAsSlice(value_type, self.buf.?[0..@intCast(self.len)]));
+        return @alignCast(std.mem.bytesAsSlice(value_type, self.buf[0..@intCast(self.len)]));
     }
 
     pub fn getFormat(comptime value_type: type) [:0]const u8 {
