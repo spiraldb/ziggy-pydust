@@ -435,7 +435,7 @@ fn valueToStr(comptime T: type, value: *const anyopaque) []const u8 {
         },
         inline .Bool => if (@as(*const bool, @ptrCast(value)).*) "True" else "False",
         inline .Struct => "...",
-        inline .Optional => if (value == null) "None" else "...",
+        inline .Optional => |o| if (@as(*const ?o.child, @alignCast(@ptrCast(value))).* == null) "None" else "...",
         inline else => std.fmt.comptimePrint("{any}", .{@as(*const T, @alignCast(@ptrCast(value))).*}),
     };
 }

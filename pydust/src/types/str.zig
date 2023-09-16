@@ -28,6 +28,13 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
+    pub fn fmt(comptime format: []const u8, args: anytype) !py.PyString {
+        const str = try std.fmt.allocPrint(py.allocator, format, args);
+        defer py.allocator.free(str);
+
+        return create(str);
+    }
+
     /// Append other to self.
     ///
     /// Warning: a reference to self is stolen. Use concat, or self.incref(), if you don't own a reference to self.

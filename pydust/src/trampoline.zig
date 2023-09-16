@@ -207,20 +207,20 @@ pub fn Trampoline(comptime T: type) type {
 
         /// Unwrap a Python object into a Zig object. Does not steal a reference.
         /// The Python object must be the correct corresponding type (vs a cast which coerces values).
-        pub inline fn unwrap(object: ?py.PyObject) !T {
+        pub inline fn unwrap(object: ?py.PyObject) py.PyError!T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
                 const value = object catch |err| return err;
-                return Trampoline(typeInfo.ErrorUnion.payload).unwrap(value);
+                return @as(T, Trampoline(typeInfo.ErrorUnion.payload).unwrap(value));
             }
 
             // Early return to handle optionals
             if (typeInfo == .Optional) {
                 const value = object orelse return null;
-                return Trampoline(typeInfo.Optional.child).unwrap(value);
+                return @as(T, try Trampoline(typeInfo.Optional.child).unwrap(value));
             }
 
             // Otherwise we can unwrap the object.

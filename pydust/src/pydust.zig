@@ -21,13 +21,13 @@ const pytypes = @import("pytypes.zig");
 const ClassDef = pytypes.ClassDef;
 const funcs = @import("functions.zig");
 const tramp = @import("trampoline.zig");
-const PyError = @import("errors.zig").PyError;
 
 // Export some useful things for users
 pub usingnamespace builtins;
 pub usingnamespace conversions;
 pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
+pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
 const Self = @This();
