@@ -54,3 +54,8 @@ def test_str_and_repr():
     dog = classes.Dog("foo")
     assert str(dog) == "Dog named foo"
     assert repr(dog) == "Dog(foo)"
+
+
+def test_add():
+    foo = classes.Dog("foo")
+    assert str(foo + "bar") == "Dog named foobar"

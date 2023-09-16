@@ -77,6 +77,13 @@ pub const Dog = py.subclass("Dog", &.{Animal}, struct {
         return pyrepr.appendSlice(")");
     }
 
+    // --8<-- [start:operator]
+    pub fn __add__(self: *const Self, other: py.PyString) !*Self {
+        const name = try self.name.append(other);
+        return py.init(Self, .{ .name = name });
+    }
+    // --8<-- [end:operator]
+
     pub fn get_name(self: *const Self) !py.PyString {
         return self.name;
     }

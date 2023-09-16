@@ -162,6 +162,16 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 }};
             }
 
+            for (funcs.BinaryOperators.kvs) |kv| {
+                if (@hasDecl(definition, kv.key)) {
+                    const op = BinaryOperator(definition, Instance, kv.key);
+                    slots_ = slots_ ++ .{ffi.PyType_Slot{
+                        .slot = kv.value,
+                        .pfunc = @ptrCast(@constCast(&op.call)),
+                    }};
+                }
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -270,6 +280,31 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *Instance = @ptrCast(pyself);
             const result = definition.__repr__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+    };
+}
+
+fn BinaryOperator(
+    comptime definition: type,
+    comptime Instance: type,
+    comptime op: []const u8,
+) type {
+    return struct {
+        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const func = @field(definition, op);
+            const typeInfo = @typeInfo(@TypeOf(func));
+            const sig = funcs.parseSignature(op, typeInfo.Fn, &.{});
+
+            if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
+            if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
+
+            const self: *Instance = @ptrCast(pyself);
+            const other = tramp.Trampoline(
+                sig.argsParam orelse unreachable,
+            ).unwrap(.{ .py = pyother }) catch return null;
+
+            const result = func(&self.state, other) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };

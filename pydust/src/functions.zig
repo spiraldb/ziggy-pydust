@@ -27,6 +27,34 @@ pub const Signature = struct {
     nkwargs: usize = 0,
 };
 
+pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
+    .{ "__add__", ffi.Py_nb_add },
+    .{ "__sub__", ffi.Py_nb_subtract },
+    .{ "__mul__", ffi.Py_nb_multiply },
+    .{ "__mod__", ffi.Py_nb_remainder },
+    .{ "__divmod__", ffi.Py_nb_divmod },
+    .{ "__pow__", ffi.Py_nb_power },
+    .{ "__lshift__", ffi.Py_nb_lshift },
+    .{ "__rshift__", ffi.Py_nb_rshift },
+    .{ "__and__", ffi.Py_nb_and },
+    .{ "__xor__", ffi.Py_nb_xor },
+    .{ "__or__", ffi.Py_nb_or },
+    .{ "__truediv__", ffi.Py_nb_true_divide },
+    .{ "__floordiv__", ffi.Py_nb_floor_divide },
+    .{ "__matmul__", ffi.Py_nb_matrix_multiply },
+    .{ "__getitem__", ffi.Py_sq_item },
+});
+pub const NBinaryOperators = BinaryOperators.kvs.len;
+
+// TODO(marko): Move this somewhere.
+fn keys(comptime stringMap: type) [stringMap.kvs.len][]const u8 {
+    var keys_: [stringMap.kvs.len][]const u8 = undefined;
+    for (stringMap.kvs, 0..) |kv, i| {
+        keys_[i] = kv.key;
+    }
+    return keys_;
+}
+
 const reservedNames = .{
     "__new__",
     "__init__",
@@ -36,7 +64,7 @@ const reservedNames = .{
     "__release_buffer__",
     "__iter__",
     "__next__",
-};
+} ++ keys(BinaryOperators);
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
@@ -73,23 +101,37 @@ pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptim
 }
 
 pub fn argCount(comptime argsParam: type) usize {
-    var n: usize = 0;
-    inline for (@typeInfo(argsParam).Struct.fields) |field| {
-        if (field.default_value == null) {
-            n += 1;
-        }
-    }
-    return n;
+    return switch (@typeInfo(argsParam)) {
+        .Struct => s: {
+            var n: usize = 0;
+            inline for (@typeInfo(argsParam).Struct.fields) |field| {
+                if (field.default_value == null) {
+                    n += 1;
+                }
+            }
+            break :s n;
+        },
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have a single param.
+        else => 1,
+    };
 }
 
 pub fn kwargCount(comptime argsParam: type) usize {
-    var n: usize = 0;
-    inline for (@typeInfo(argsParam).Struct.fields) |field| {
-        if (field.default_value != null) {
-            n += 1;
-        }
-    }
-    return n;
+    return switch (@typeInfo(argsParam)) {
+        .Struct => s: {
+            var n: usize = 0;
+            inline for (@typeInfo(argsParam).Struct.fields) |field| {
+                if (field.default_value != null) {
+                    n += 1;
+                }
+            }
+            break :s n;
+        },
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have zero kwargs.
+        else => 0,
+    };
 }
 
 fn isReserved(comptime name: []const u8) bool {

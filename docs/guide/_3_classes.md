@@ -38,3 +38,17 @@ to your base classes.
 Subclasses can then use builtins like [super](https://docs.python.org/3/library/functions.html#super)
 to invoke methods on their parent types. Bear in mind that Python superclasses aren't actually fields
 on the subtype. Thus it is only possible to refer to supertype methods from that supertype.
+
+## Binary Operators
+
+Pydust supports classes implementing binary operators (e.g. `__add__` or bitwise operators).
+
+```zig
+--8<-- "example/classes.zig:operator"
+```
+
+The self parameter must be a pointer to the class type. The other parameter can be of any Pydust supported type.
+
+Supported binary operators are: `__add__`, `__sub__`, `__mul__`, `__mod__`, `__divmod__`, `__pow__`,
+`__lshift__`, `__rshift__`, `__and__`, `__xor__`, `__or__`, `__truediv__`, `__floordiv__`,
+`__matmul__`, `__getitem__`.
