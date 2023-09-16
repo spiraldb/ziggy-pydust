@@ -6,11 +6,25 @@ Classes are defined using `py.class` method.
 --8<-- "example/classes.zig:class"
 ```
 
-The returned type of `py.class` will be a struct that has been used to define the class.
+The returned type of `py.class` is the same struct that has been used to define the class.
 
 You can refer to your own state by taking pointer to self `self: *@This()`. Classes' internal
 state is only accessible from the extension code. Currently pydust doesn't support declaring
 Python class attributes.
+
+## Instantiation and constructors
+
+Pydust provides convenience function `py.init` that creates an instance of pydust defined class. This
+will still create a PyObject internally and return the internal state tied to that object. You can
+then call methods on that object as usual which will avoid dispatching the method through Python.
+
+If your class defines a `pub fn __new__(args: struct{}) !Self` function, then it is possible to instantiate
+it from Python. Otherwise, it is only possible to instantiate the class from Zig using `py.init`.
+
+```zig
+--8<-- "example/classes.zig:init"
+```
+
 
 ## Subclasses
 
@@ -24,16 +38,6 @@ to your base classes.
 Subclasses can then use builtins like [super](https://docs.python.org/3/library/functions.html#super)
 to invoke methods on their parent types. Bear in mind that Python superclasses aren't actually fields
 on the subtype. Thus it is only possible to refer to supertype methods from that supertype.
-
-## Instantiation
-
-Pydust provides convenience function `py.init` that creates an instance of pydust defined class. This
-will still create a PyObject internally and return the internal state tied to that object. You can
-then call methods on that object as usual which will avoid dispatching the method through Python.
-
-```zig
---8<-- "example/classes.zig:init"
-```
 
 ## Binary Operators
 
