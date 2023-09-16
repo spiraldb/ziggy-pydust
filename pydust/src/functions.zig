@@ -46,6 +46,7 @@ pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
 });
 pub const NBinaryOperators = BinaryOperators.kvs.len;
 
+// TODO(marko): Move this somewhere.
 fn keys(comptime stringMap: type) [stringMap.kvs.len][]const u8 {
     var keys_: [stringMap.kvs.len][]const u8 = undefined;
     for (stringMap.kvs, 0..) |kv, i| {
