@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/25519/x25519.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> fmt = std.fmt;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">const</span> Sha512 = crypto.hash.sha2.Sha512;</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-kw">const</span> EncodingError = crypto.errors.EncodingError;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> IdentityElementError = crypto.errors.IdentityElementError;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> WeakPublicKeyError = crypto.errors.WeakPublicKeyError;</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-comment">/// X25519 DH function.</span></span>
+<span class="line" id="L13"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> X25519 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L14">    <span class="tok-comment">/// The underlying elliptic curve.</span></span>
+<span class="line" id="L15">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Curve = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;curve25519.zig&quot;</span>).Curve25519;</span>
+<span class="line" id="L16">    <span class="tok-comment">/// Length (in bytes) of a secret key.</span></span>
+<span class="line" id="L17">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> secret_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L18">    <span class="tok-comment">/// Length (in bytes) of a public key.</span></span>
+<span class="line" id="L19">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> public_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L20">    <span class="tok-comment">/// Length (in bytes) of the output of the DH function.</span></span>
+<span class="line" id="L21">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> shared_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L22">    <span class="tok-comment">/// Seed (for key pair creation) length in bytes.</span></span>
+<span class="line" id="L23">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> seed_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">    <span class="tok-comment">/// An X25519 key pair.</span></span>
+<span class="line" id="L26">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> KeyPair = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L27">        <span class="tok-comment">/// Public part.</span></span>
+<span class="line" id="L28">        public_key: [public_length]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L29">        <span class="tok-comment">/// Secret part.</span></span>
+<span class="line" id="L30">        secret_key: [secret_length]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">        <span class="tok-comment">/// Create a new key pair using an optional seed.</span></span>
+<span class="line" id="L33">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(seed: ?[seed_length]<span class="tok-type">u8</span>) IdentityElementError!KeyPair {</span>
+<span class="line" id="L34">            <span class="tok-kw">const</span> sk = seed <span class="tok-kw">orelse</span> sk: {</span>
+<span class="line" id="L35">                <span class="tok-kw">var</span> random_seed: [seed_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L36">                crypto.random.bytes(&amp;random_seed);</span>
+<span class="line" id="L37">                <span class="tok-kw">break</span> :sk random_seed;</span>
+<span class="line" id="L38">            };</span>
+<span class="line" id="L39">            <span class="tok-kw">var</span> kp: KeyPair = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L40">            kp.secret_key = sk;</span>
+<span class="line" id="L41">            kp.public_key = <span class="tok-kw">try</span> X25519.recoverPublicKey(sk);</span>
+<span class="line" id="L42">            <span class="tok-kw">return</span> kp;</span>
+<span class="line" id="L43">        }</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45">        <span class="tok-comment">/// Create a key pair from an Ed25519 key pair</span></span>
+<span class="line" id="L46">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromEd25519</span>(ed25519_key_pair: crypto.sign.Ed25519.KeyPair) (IdentityElementError || EncodingError)!KeyPair {</span>
+<span class="line" id="L47">            <span class="tok-kw">const</span> seed = ed25519_key_pair.secret_key.seed();</span>
+<span class="line" id="L48">            <span class="tok-kw">var</span> az: [Sha512.digest_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L49">            Sha512.hash(&amp;seed, &amp;az, .{});</span>
+<span class="line" id="L50">            <span class="tok-kw">var</span> sk = az[<span class="tok-number">0</span>..<span class="tok-number">32</span>].*;</span>
+<span class="line" id="L51">            Curve.scalar.clamp(&amp;sk);</span>
+<span class="line" id="L52">            <span class="tok-kw">const</span> pk = <span class="tok-kw">try</span> publicKeyFromEd25519(ed25519_key_pair.public_key);</span>
+<span class="line" id="L53">            <span class="tok-kw">return</span> KeyPair{</span>
+<span class="line" id="L54">                .public_key = pk,</span>
+<span class="line" id="L55">                .secret_key = sk,</span>
+<span class="line" id="L56">            };</span>
+<span class="line" id="L57">        }</span>
+<span class="line" id="L58">    };</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60">    <span class="tok-comment">/// Compute the public key for a given private key.</span></span>
+<span class="line" id="L61">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">recoverPublicKey</span>(secret_key: [secret_length]<span class="tok-type">u8</span>) IdentityElementError![public_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L62">        <span class="tok-kw">const</span> q = <span class="tok-kw">try</span> Curve.basePoint.clampedMul(secret_key);</span>
+<span class="line" id="L63">        <span class="tok-kw">return</span> q.toBytes();</span>
+<span class="line" id="L64">    }</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66">    <span class="tok-comment">/// Compute the X25519 equivalent to an Ed25519 public eky.</span></span>
+<span class="line" id="L67">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">publicKeyFromEd25519</span>(ed25519_public_key: crypto.sign.Ed25519.PublicKey) (IdentityElementError || EncodingError)![public_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L68">        <span class="tok-kw">const</span> pk_ed = <span class="tok-kw">try</span> crypto.ecc.Edwards25519.fromBytes(ed25519_public_key.bytes);</span>
+<span class="line" id="L69">        <span class="tok-kw">const</span> pk = <span class="tok-kw">try</span> Curve.fromEdwards25519(pk_ed);</span>
+<span class="line" id="L70">        <span class="tok-kw">return</span> pk.toBytes();</span>
+<span class="line" id="L71">    }</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-comment">/// Compute the scalar product of a public key and a secret scalar.</span></span>
+<span class="line" id="L74">    <span class="tok-comment">/// Note that the output should not be used as a shared secret without</span></span>
+<span class="line" id="L75">    <span class="tok-comment">/// hashing it first.</span></span>
+<span class="line" id="L76">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">scalarmult</span>(secret_key: [secret_length]<span class="tok-type">u8</span>, public_key: [public_length]<span class="tok-type">u8</span>) IdentityElementError![shared_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L77">        <span class="tok-kw">const</span> q = <span class="tok-kw">try</span> Curve.fromBytes(public_key).clampedMul(secret_key);</span>
+<span class="line" id="L78">        <span class="tok-kw">return</span> q.toBytes();</span>
+<span class="line" id="L79">    }</span>
+<span class="line" id="L80">};</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82"><span class="tok-kw">const</span> htest = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../test.zig&quot;</span>);</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84"><span class="tok-kw">test</span> <span class="tok-str">&quot;x25519 public key calculation from secret key&quot;</span> {</span>
+<span class="line" id="L85">    <span class="tok-kw">var</span> sk: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L86">    <span class="tok-kw">var</span> pk_expected: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L87">    _ = <span class="tok-kw">try</span> fmt.hexToBytes(sk[<span class="tok-number">0</span>..], <span class="tok-str">&quot;8052030376d47112be7f73ed7a019293dd12ad910b654455798b4667d73de166&quot;</span>);</span>
+<span class="line" id="L88">    _ = <span class="tok-kw">try</span> fmt.hexToBytes(pk_expected[<span class="tok-number">0</span>..], <span class="tok-str">&quot;f1814f0e8ff1043d8a44d25babff3cedcae6c22c3edaa48f857ae70de2baae50&quot;</span>);</span>
+<span class="line" id="L89">    <span class="tok-kw">const</span> pk_calculated = <span class="tok-kw">try</span> X25519.recoverPublicKey(sk);</span>
+<span class="line" id="L90">    <span class="tok-kw">try</span> std.testing.expectEqual(pk_calculated, pk_expected);</span>
+<span class="line" id="L91">}</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93"><span class="tok-kw">test</span> <span class="tok-str">&quot;x25519 rfc7748 vector1&quot;</span> {</span>
+<span class="line" id="L94">    <span class="tok-kw">const</span> secret_key = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0xa5</span>, <span class="tok-number">0x46</span>, <span class="tok-number">0xe3</span>, <span class="tok-number">0x6b</span>, <span class="tok-number">0xf0</span>, <span class="tok-number">0x52</span>, <span class="tok-number">0x7c</span>, <span class="tok-number">0x9d</span>, <span class="tok-number">0x3b</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x4b</span>, <span class="tok-number">0x82</span>, <span class="tok-number">0x46</span>, <span class="tok-number">0x5e</span>, <span class="tok-number">0xdd</span>, <span class="tok-number">0x62</span>, <span class="tok-number">0x14</span>, <span class="tok-number">0x4c</span>, <span class="tok-number">0x0a</span>, <span class="tok-number">0xc1</span>, <span class="tok-number">0xfc</span>, <span class="tok-number">0x5a</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x50</span>, <span class="tok-number">0x6a</span>, <span class="tok-number">0x22</span>, <span class="tok-number">0x44</span>, <span class="tok-number">0xba</span>, <span class="tok-number">0x44</span>, <span class="tok-number">0x9a</span>, <span class="tok-number">0xc4</span> };</span>
+<span class="line" id="L95">    <span class="tok-kw">const</span> public_key = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0xe6</span>, <span class="tok-number">0xdb</span>, <span class="tok-number">0x68</span>, <span class="tok-number">0x67</span>, <span class="tok-number">0x58</span>, <span class="tok-number">0x30</span>, <span class="tok-number">0x30</span>, <span class="tok-number">0xdb</span>, <span class="tok-number">0x35</span>, <span class="tok-number">0x94</span>, <span class="tok-number">0xc1</span>, <span class="tok-number">0xa4</span>, <span class="tok-number">0x24</span>, <span class="tok-number">0xb1</span>, <span class="tok-number">0x5f</span>, <span class="tok-number">0x7c</span>, <span class="tok-number">0x72</span>, <span class="tok-number">0x66</span>, <span class="tok-number">0x24</span>, <span class="tok-number">0xec</span>, <span class="tok-number">0x26</span>, <span class="tok-number">0xb3</span>, <span class="tok-number">0x35</span>, <span class="tok-number">0x3b</span>, <span class="tok-number">0x10</span>, <span class="tok-number">0xa9</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0xa6</span>, <span class="tok-number">0xd0</span>, <span class="tok-number">0xab</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x4c</span> };</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">    <span class="tok-kw">const</span> expected_output = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0xc3</span>, <span class="tok-number">0xda</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x37</span>, <span class="tok-number">0x9d</span>, <span class="tok-number">0xe9</span>, <span class="tok-number">0xc6</span>, <span class="tok-number">0x90</span>, <span class="tok-number">0x8e</span>, <span class="tok-number">0x94</span>, <span class="tok-number">0xea</span>, <span class="tok-number">0x4d</span>, <span class="tok-number">0xf2</span>, <span class="tok-number">0x8d</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x32</span>, <span class="tok-number">0xec</span>, <span class="tok-number">0xcf</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x49</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x71</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0x54</span>, <span class="tok-number">0xb4</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x77</span>, <span class="tok-number">0xa2</span>, <span class="tok-number">0x85</span>, <span class="tok-number">0x52</span> };</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">    <span class="tok-kw">const</span> output = <span class="tok-kw">try</span> X25519.scalarmult(secret_key, public_key);</span>
+<span class="line" id="L100">    <span class="tok-kw">try</span> std.testing.expectEqual(output, expected_output);</span>
+<span class="line" id="L101">}</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103"><span class="tok-kw">test</span> <span class="tok-str">&quot;x25519 rfc7748 vector2&quot;</span> {</span>
+<span class="line" id="L104">    <span class="tok-kw">const</span> secret_key = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x4b</span>, <span class="tok-number">0x66</span>, <span class="tok-number">0xe9</span>, <span class="tok-number">0xd4</span>, <span class="tok-number">0xd1</span>, <span class="tok-number">0xb4</span>, <span class="tok-number">0x67</span>, <span class="tok-number">0x3c</span>, <span class="tok-number">0x5a</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0x26</span>, <span class="tok-number">0x91</span>, <span class="tok-number">0x95</span>, <span class="tok-number">0x7d</span>, <span class="tok-number">0x6a</span>, <span class="tok-number">0xf5</span>, <span class="tok-number">0xc1</span>, <span class="tok-number">0x1b</span>, <span class="tok-number">0x64</span>, <span class="tok-number">0x21</span>, <span class="tok-number">0xe0</span>, <span class="tok-number">0xea</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0xd4</span>, <span class="tok-number">0x2c</span>, <span class="tok-number">0xa4</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x9e</span>, <span class="tok-number">0x79</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0xba</span>, <span class="tok-number">0x0d</span> };</span>
+<span class="line" id="L105">    <span class="tok-kw">const</span> public_key = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0xe5</span>, <span class="tok-number">0x21</span>, <span class="tok-number">0x0f</span>, <span class="tok-number">0x12</span>, <span class="tok-number">0x78</span>, <span class="tok-number">0x68</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0xd3</span>, <span class="tok-number">0xf4</span>, <span class="tok-number">0xb7</span>, <span class="tok-number">0x95</span>, <span class="tok-number">0x9d</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x38</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0x2c</span>, <span class="tok-number">0x31</span>, <span class="tok-number">0xdb</span>, <span class="tok-number">0xe7</span>, <span class="tok-number">0x10</span>, <span class="tok-number">0x6f</span>, <span class="tok-number">0xc0</span>, <span class="tok-number">0x3c</span>, <span class="tok-number">0x3e</span>, <span class="tok-number">0xfc</span>, <span class="tok-number">0x4c</span>, <span class="tok-number">0xd5</span>, <span class="tok-number">0x49</span>, <span class="tok-number">0xc7</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0xa4</span>, <span class="tok-number">0x93</span> };</span>
+<span class="line" id="L106"></span>
+<span class="line" id="L107">    <span class="tok-kw">const</span> expected_output = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x95</span>, <span class="tok-number">0xcb</span>, <span class="tok-number">0xde</span>, <span class="tok-number">0x94</span>, <span class="tok-number">0x76</span>, <span class="tok-number">0xe8</span>, <span class="tok-number">0x90</span>, <span class="tok-number">0x7d</span>, <span class="tok-number">0x7a</span>, <span class="tok-number">0xad</span>, <span class="tok-number">0xe4</span>, <span class="tok-number">0x5c</span>, <span class="tok-number">0xb4</span>, <span class="tok-number">0xb8</span>, <span class="tok-number">0x73</span>, <span class="tok-number">0xf8</span>, <span class="tok-number">0x8b</span>, <span class="tok-number">0x59</span>, <span class="tok-number">0x5a</span>, <span class="tok-number">0x68</span>, <span class="tok-number">0x79</span>, <span class="tok-number">0x9f</span>, <span class="tok-number">0xa1</span>, <span class="tok-number">0x52</span>, <span class="tok-number">0xe6</span>, <span class="tok-number">0xf8</span>, <span class="tok-number">0xf7</span>, <span class="tok-number">0x64</span>, <span class="tok-number">0x7a</span>, <span class="tok-number">0xac</span>, <span class="tok-number">0x79</span>, <span class="tok-number">0x57</span> };</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">    <span class="tok-kw">const</span> output = <span class="tok-kw">try</span> X25519.scalarmult(secret_key, public_key);</span>
+<span class="line" id="L110">    <span class="tok-kw">try</span> std.testing.expectEqual(output, expected_output);</span>
+<span class="line" id="L111">}</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113"><span class="tok-kw">test</span> <span class="tok-str">&quot;x25519 rfc7748 one iteration&quot;</span> {</span>
+<span class="line" id="L114">    <span class="tok-kw">const</span> initial_value = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x09</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span> };</span>
+<span class="line" id="L115">    <span class="tok-kw">const</span> expected_output = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x42</span>, <span class="tok-number">0x2c</span>, <span class="tok-number">0x8e</span>, <span class="tok-number">0x7a</span>, <span class="tok-number">0x62</span>, <span class="tok-number">0x27</span>, <span class="tok-number">0xd7</span>, <span class="tok-number">0xbc</span>, <span class="tok-number">0xa1</span>, <span class="tok-number">0x35</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x3e</span>, <span class="tok-number">0x2b</span>, <span class="tok-number">0xb7</span>, <span class="tok-number">0x27</span>, <span class="tok-number">0x9f</span>, <span class="tok-number">0x78</span>, <span class="tok-number">0x97</span>, <span class="tok-number">0xb8</span>, <span class="tok-number">0x7b</span>, <span class="tok-number">0xb6</span>, <span class="tok-number">0x85</span>, <span class="tok-number">0x4b</span>, <span class="tok-number">0x78</span>, <span class="tok-number">0x3c</span>, <span class="tok-number">0x60</span>, <span class="tok-number">0xe8</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0x30</span>, <span class="tok-number">0x79</span> };</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">    <span class="tok-kw">var</span> k: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = initial_value;</span>
+<span class="line" id="L118">    <span class="tok-kw">var</span> u: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = initial_value;</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L121">    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">1</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L122">        <span class="tok-kw">const</span> output = <span class="tok-kw">try</span> X25519.scalarmult(k, u);</span>
+<span class="line" id="L123">        u = k;</span>
+<span class="line" id="L124">        k = output;</span>
+<span class="line" id="L125">    }</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127">    <span class="tok-kw">try</span> std.testing.expectEqual(k, expected_output);</span>
+<span class="line" id="L128">}</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130"><span class="tok-kw">test</span> <span class="tok-str">&quot;x25519 rfc7748 1,000 iterations&quot;</span> {</span>
+<span class="line" id="L131">    <span class="tok-comment">// These iteration tests are slow so we always skip them. Results have been verified.</span>
+</span>
+<span class="line" id="L132">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L133">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L134">    }</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">    <span class="tok-kw">const</span> initial_value = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x09</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span> };</span>
+<span class="line" id="L137">    <span class="tok-kw">const</span> expected_output = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x68</span>, <span class="tok-number">0x4c</span>, <span class="tok-number">0xf5</span>, <span class="tok-number">0x9b</span>, <span class="tok-number">0xa8</span>, <span class="tok-number">0x33</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x28</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0xef</span>, <span class="tok-number">0x56</span>, <span class="tok-number">0x6f</span>, <span class="tok-number">0x2f</span>, <span class="tok-number">0x4d</span>, <span class="tok-number">0x3c</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x38</span>, <span class="tok-number">0x87</span>, <span class="tok-number">0xc4</span>, <span class="tok-number">0x93</span>, <span class="tok-number">0x60</span>, <span class="tok-number">0xe3</span>, <span class="tok-number">0x87</span>, <span class="tok-number">0x5f</span>, <span class="tok-number">0x2e</span>, <span class="tok-number">0xb9</span>, <span class="tok-number">0x4d</span>, <span class="tok-number">0x99</span>, <span class="tok-number">0x53</span>, <span class="tok-number">0x2c</span>, <span class="tok-number">0x51</span> };</span>
+<span class="line" id="L138"></span>
+<span class="line" id="L139">    <span class="tok-kw">var</span> k: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = initial_value.*;</span>
+<span class="line" id="L140">    <span class="tok-kw">var</span> u: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = initial_value.*;</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L143">    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">1000</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L144">        <span class="tok-kw">const</span> output = <span class="tok-kw">try</span> X25519.scalarmult(&amp;k, &amp;u);</span>
+<span class="line" id="L145">        u = k;</span>
+<span class="line" id="L146">        k = output;</span>
+<span class="line" id="L147">    }</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">    <span class="tok-kw">try</span> std.testing.expectEqual(k, expected_output);</span>
+<span class="line" id="L150">}</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152"><span class="tok-kw">test</span> <span class="tok-str">&quot;x25519 rfc7748 1,000,000 iterations&quot;</span> {</span>
+<span class="line" id="L153">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L154">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L155">    }</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157">    <span class="tok-kw">const</span> initial_value = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x09</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span> };</span>
+<span class="line" id="L158">    <span class="tok-kw">const</span> expected_output = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x7c</span>, <span class="tok-number">0x39</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0xe0</span>, <span class="tok-number">0xab</span>, <span class="tok-number">0x25</span>, <span class="tok-number">0x86</span>, <span class="tok-number">0xfd</span>, <span class="tok-number">0x86</span>, <span class="tok-number">0x44</span>, <span class="tok-number">0x97</span>, <span class="tok-number">0x29</span>, <span class="tok-number">0x7e</span>, <span class="tok-number">0x57</span>, <span class="tok-number">0x5e</span>, <span class="tok-number">0x6f</span>, <span class="tok-number">0x3b</span>, <span class="tok-number">0xc6</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0xc0</span>, <span class="tok-number">0x88</span>, <span class="tok-number">0x3c</span>, <span class="tok-number">0x30</span>, <span class="tok-number">0xdf</span>, <span class="tok-number">0x5f</span>, <span class="tok-number">0x4d</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0x4f</span>, <span class="tok-number">0x66</span>, <span class="tok-number">0x54</span>, <span class="tok-number">0x24</span> };</span>
+<span class="line" id="L159"></span>
+<span class="line" id="L160">    <span class="tok-kw">var</span> k: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = initial_value.*;</span>
+<span class="line" id="L161">    <span class="tok-kw">var</span> u: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = initial_value.*;</span>
+<span class="line" id="L162"></span>
+<span class="line" id="L163">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L164">    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">1000000</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L165">        <span class="tok-kw">const</span> output = <span class="tok-kw">try</span> X25519.scalarmult(&amp;k, &amp;u);</span>
+<span class="line" id="L166">        u = k;</span>
+<span class="line" id="L167">        k = output;</span>
+<span class="line" id="L168">    }</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170">    <span class="tok-kw">try</span> std.testing.expectEqual(k[<span class="tok-number">0</span>..], expected_output);</span>
+<span class="line" id="L171">}</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173"><span class="tok-kw">test</span> <span class="tok-str">&quot;edwards25519 -&gt; curve25519 map&quot;</span> {</span>
+<span class="line" id="L174">    <span class="tok-kw">const</span> ed_kp = <span class="tok-kw">try</span> crypto.sign.Ed25519.KeyPair.create([_]<span class="tok-type">u8</span>{<span class="tok-number">0x42</span>} ** <span class="tok-number">32</span>);</span>
+<span class="line" id="L175">    <span class="tok-kw">const</span> mont_kp = <span class="tok-kw">try</span> X25519.KeyPair.fromEd25519(ed_kp);</span>
+<span class="line" id="L176">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;90e7595fc89e52fdfddce9c6a43d74dbf6047025ee0462d2d172e8b6a2841d6e&quot;</span>, &amp;mont_kp.secret_key);</span>
+<span class="line" id="L177">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;cc4f2cdb695dd766f34118eb67b98652fed1d8bc49c330b119bbfa8a64989378&quot;</span>, &amp;mont_kp.public_key);</span>
+<span class="line" id="L178">}</span>
+<span class="line" id="L179"></span>
+</code></pre></body>
+</html>

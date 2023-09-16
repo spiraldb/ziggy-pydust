@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Thread/ResetEvent.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! ResetEvent is a thread-safe bool which can be set to true/false (&quot;set&quot;/&quot;unset&quot;).</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! It can also block threads until the &quot;bool&quot; is set with cancellation via timed waits.</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! ResetEvent can be statically initialized and is at most `@sizeOf(u64)` large.</span></span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> ResetEvent = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-kw">const</span> os = std.os;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> Atomic = std.atomic.Atomic;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> Futex = std.Thread.Futex;</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15">impl: Impl = .{},</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17"><span class="tok-comment">/// Returns if the ResetEvent was set().</span></span>
+<span class="line" id="L18"><span class="tok-comment">/// Once reset() is called, this returns false until the next set().</span></span>
+<span class="line" id="L19"><span class="tok-comment">/// The memory accesses before the set() can be said to happen before isSet() returns true.</span></span>
+<span class="line" id="L20"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isSet</span>(self: *<span class="tok-kw">const</span> ResetEvent) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L21">    <span class="tok-kw">return</span> self.impl.isSet();</span>
+<span class="line" id="L22">}</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24"><span class="tok-comment">/// Block's the callers thread until the ResetEvent is set().</span></span>
+<span class="line" id="L25"><span class="tok-comment">/// This is effectively a more efficient version of `while (!isSet()) {}`.</span></span>
+<span class="line" id="L26"><span class="tok-comment">/// The memory accesses before the set() can be said to happen before wait() returns.</span></span>
+<span class="line" id="L27"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *ResetEvent) <span class="tok-type">void</span> {</span>
+<span class="line" id="L28">    self.impl.wait(<span class="tok-null">null</span>) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L29">        <span class="tok-kw">error</span>.Timeout =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// no timeout provided so we shouldn't have timed-out</span>
+</span>
+<span class="line" id="L30">    };</span>
+<span class="line" id="L31">}</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33"><span class="tok-comment">/// Block's the callers thread until the ResetEvent is set(), or until the corresponding timeout expires.</span></span>
+<span class="line" id="L34"><span class="tok-comment">/// If the timeout expires before the ResetEvent is set, `error.Timeout` is returned.</span></span>
+<span class="line" id="L35"><span class="tok-comment">/// This is effectively a more efficient version of `while (!isSet()) {}`.</span></span>
+<span class="line" id="L36"><span class="tok-comment">/// The memory accesses before the set() can be said to happen before timedWait() returns without error.</span></span>
+<span class="line" id="L37"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">timedWait</span>(self: *ResetEvent, timeout_ns: <span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L38">    <span class="tok-kw">return</span> self.impl.wait(timeout_ns);</span>
+<span class="line" id="L39">}</span>
+<span class="line" id="L40"></span>
+<span class="line" id="L41"><span class="tok-comment">/// Marks the ResetEvent as &quot;set&quot; and unblocks any threads in `wait()` or `timedWait()` to observe the new state.</span></span>
+<span class="line" id="L42"><span class="tok-comment">/// The ResetEvent says &quot;set&quot; until reset() is called, making future set() calls do nothing semantically.</span></span>
+<span class="line" id="L43"><span class="tok-comment">/// The memory accesses before set() can be said to happen before isSet() returns true or wait()/timedWait() return successfully.</span></span>
+<span class="line" id="L44"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">set</span>(self: *ResetEvent) <span class="tok-type">void</span> {</span>
+<span class="line" id="L45">    self.impl.set();</span>
+<span class="line" id="L46">}</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48"><span class="tok-comment">/// Unmarks the ResetEvent from its &quot;set&quot; state if set() was called previously.</span></span>
+<span class="line" id="L49"><span class="tok-comment">/// It is undefined behavior is reset() is called while threads are blocked in wait() or timedWait().</span></span>
+<span class="line" id="L50"><span class="tok-comment">/// Concurrent calls to set(), isSet() and reset() are allowed.</span></span>
+<span class="line" id="L51"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reset</span>(self: *ResetEvent) <span class="tok-type">void</span> {</span>
+<span class="line" id="L52">    self.impl.reset();</span>
+<span class="line" id="L53">}</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55"><span class="tok-kw">const</span> Impl = <span class="tok-kw">if</span> (builtin.single_threaded)</span>
+<span class="line" id="L56">    SingleThreadedImpl</span>
+<span class="line" id="L57"><span class="tok-kw">else</span></span>
+<span class="line" id="L58">    FutexImpl;</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60"><span class="tok-kw">const</span> SingleThreadedImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L61">    is_set: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">    <span class="tok-kw">fn</span> <span class="tok-fn">isSet</span>(self: *<span class="tok-kw">const</span> Impl) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L64">        <span class="tok-kw">return</span> self.is_set;</span>
+<span class="line" id="L65">    }</span>
+<span class="line" id="L66"></span>
+<span class="line" id="L67">    <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *Impl, timeout: ?<span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L68">        <span class="tok-kw">if</span> (self.isSet()) {</span>
+<span class="line" id="L69">            <span class="tok-kw">return</span>;</span>
+<span class="line" id="L70">        }</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72">        <span class="tok-comment">// There are no other threads to wake us up.</span>
+</span>
+<span class="line" id="L73">        <span class="tok-comment">// So if we wait without a timeout we would never wake up.</span>
+</span>
+<span class="line" id="L74">        <span class="tok-kw">const</span> timeout_ns = timeout <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L75">            <span class="tok-kw">unreachable</span>; <span class="tok-comment">// deadlock detected</span>
+</span>
+<span class="line" id="L76">        };</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">        std.time.sleep(timeout_ns);</span>
+<span class="line" id="L79">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Timeout;</span>
+<span class="line" id="L80">    }</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">    <span class="tok-kw">fn</span> <span class="tok-fn">set</span>(self: *Impl) <span class="tok-type">void</span> {</span>
+<span class="line" id="L83">        self.is_set = <span class="tok-null">true</span>;</span>
+<span class="line" id="L84">    }</span>
+<span class="line" id="L85"></span>
+<span class="line" id="L86">    <span class="tok-kw">fn</span> <span class="tok-fn">reset</span>(self: *Impl) <span class="tok-type">void</span> {</span>
+<span class="line" id="L87">        self.is_set = <span class="tok-null">false</span>;</span>
+<span class="line" id="L88">    }</span>
+<span class="line" id="L89">};</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91"><span class="tok-kw">const</span> FutexImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L92">    state: Atomic(<span class="tok-type">u32</span>) = Atomic(<span class="tok-type">u32</span>).init(unset),</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94">    <span class="tok-kw">const</span> unset = <span class="tok-number">0</span>;</span>
+<span class="line" id="L95">    <span class="tok-kw">const</span> waiting = <span class="tok-number">1</span>;</span>
+<span class="line" id="L96">    <span class="tok-kw">const</span> is_set = <span class="tok-number">2</span>;</span>
+<span class="line" id="L97"></span>
+<span class="line" id="L98">    <span class="tok-kw">fn</span> <span class="tok-fn">isSet</span>(self: *<span class="tok-kw">const</span> Impl) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L99">        <span class="tok-comment">// Acquire barrier ensures memory accesses before set() happen before we return true.</span>
+</span>
+<span class="line" id="L100">        <span class="tok-kw">return</span> self.state.load(.Acquire) == is_set;</span>
+<span class="line" id="L101">    }</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103">    <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *Impl, timeout: ?<span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L104">        <span class="tok-comment">// Outline the slow path to allow isSet() to be inlined</span>
+</span>
+<span class="line" id="L105">        <span class="tok-kw">if</span> (!self.isSet()) {</span>
+<span class="line" id="L106">            <span class="tok-kw">return</span> self.waitUntilSet(timeout);</span>
+<span class="line" id="L107">        }</span>
+<span class="line" id="L108">    }</span>
+<span class="line" id="L109"></span>
+<span class="line" id="L110">    <span class="tok-kw">fn</span> <span class="tok-fn">waitUntilSet</span>(self: *Impl, timeout: ?<span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L111">        <span class="tok-builtin">@setCold</span>(<span class="tok-null">true</span>);</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113">        <span class="tok-comment">// Try to set the state from `unset` to `waiting` to indicate</span>
+</span>
+<span class="line" id="L114">        <span class="tok-comment">// to the set() thread that others are blocked on the ResetEvent.</span>
+</span>
+<span class="line" id="L115">        <span class="tok-comment">// We avoid using any strict barriers until the end when we know the ResetEvent is set.</span>
+</span>
+<span class="line" id="L116">        <span class="tok-kw">var</span> state = self.state.load(.Monotonic);</span>
+<span class="line" id="L117">        <span class="tok-kw">if</span> (state == unset) {</span>
+<span class="line" id="L118">            state = self.state.compareAndSwap(state, waiting, .Monotonic, .Monotonic) <span class="tok-kw">orelse</span> waiting;</span>
+<span class="line" id="L119">        }</span>
+<span class="line" id="L120"></span>
+<span class="line" id="L121">        <span class="tok-comment">// Wait until the ResetEvent is set since the state is waiting.</span>
+</span>
+<span class="line" id="L122">        <span class="tok-kw">if</span> (state == waiting) {</span>
+<span class="line" id="L123">            <span class="tok-kw">var</span> futex_deadline = Futex.Deadline.init(timeout);</span>
+<span class="line" id="L124">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L125">                <span class="tok-kw">const</span> wait_result = futex_deadline.wait(&amp;self.state, waiting);</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127">                <span class="tok-comment">// Check if the ResetEvent was set before possibly reporting error.Timeout below.</span>
+</span>
+<span class="line" id="L128">                state = self.state.load(.Monotonic);</span>
+<span class="line" id="L129">                <span class="tok-kw">if</span> (state != waiting) {</span>
+<span class="line" id="L130">                    <span class="tok-kw">break</span>;</span>
+<span class="line" id="L131">                }</span>
+<span class="line" id="L132"></span>
+<span class="line" id="L133">                <span class="tok-kw">try</span> wait_result;</span>
+<span class="line" id="L134">            }</span>
+<span class="line" id="L135">        }</span>
+<span class="line" id="L136"></span>
+<span class="line" id="L137">        <span class="tok-comment">// Acquire barrier ensures memory accesses before set() happen before we return.</span>
+</span>
+<span class="line" id="L138">        assert(state == is_set);</span>
+<span class="line" id="L139">        self.state.fence(.Acquire);</span>
+<span class="line" id="L140">    }</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">    <span class="tok-kw">fn</span> <span class="tok-fn">set</span>(self: *Impl) <span class="tok-type">void</span> {</span>
+<span class="line" id="L143">        <span class="tok-comment">// Quick check if the ResetEvent is already set before doing the atomic swap below.</span>
+</span>
+<span class="line" id="L144">        <span class="tok-comment">// set() could be getting called quite often and multiple threads calling swap() increases contention unnecessarily.</span>
+</span>
+<span class="line" id="L145">        <span class="tok-kw">if</span> (self.state.load(.Monotonic) == is_set) {</span>
+<span class="line" id="L146">            <span class="tok-kw">return</span>;</span>
+<span class="line" id="L147">        }</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">        <span class="tok-comment">// Mark the ResetEvent as set and unblock all waiters waiting on it if any.</span>
+</span>
+<span class="line" id="L150">        <span class="tok-comment">// Release barrier ensures memory accesses before set() happen before the ResetEvent is observed to be &quot;set&quot;.</span>
+</span>
+<span class="line" id="L151">        <span class="tok-kw">if</span> (self.state.swap(is_set, .Release) == waiting) {</span>
+<span class="line" id="L152">            Futex.wake(&amp;self.state, std.math.maxInt(<span class="tok-type">u32</span>));</span>
+<span class="line" id="L153">        }</span>
+<span class="line" id="L154">    }</span>
+<span class="line" id="L155"></span>
+<span class="line" id="L156">    <span class="tok-kw">fn</span> <span class="tok-fn">reset</span>(self: *Impl) <span class="tok-type">void</span> {</span>
+<span class="line" id="L157">        self.state.store(unset, .Monotonic);</span>
+<span class="line" id="L158">    }</span>
+<span class="line" id="L159">};</span>
+<span class="line" id="L160"></span>
+<span class="line" id="L161"><span class="tok-kw">test</span> <span class="tok-str">&quot;ResetEvent - smoke test&quot;</span> {</span>
+<span class="line" id="L162">    <span class="tok-comment">// make sure the event is unset</span>
+</span>
+<span class="line" id="L163">    <span class="tok-kw">var</span> event = ResetEvent{};</span>
+<span class="line" id="L164">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, event.isSet());</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">    <span class="tok-comment">// make sure the event gets set</span>
+</span>
+<span class="line" id="L167">    event.set();</span>
+<span class="line" id="L168">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">true</span>, event.isSet());</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170">    <span class="tok-comment">// make sure the event gets unset again</span>
+</span>
+<span class="line" id="L171">    event.reset();</span>
+<span class="line" id="L172">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, event.isSet());</span>
+<span class="line" id="L173"></span>
+<span class="line" id="L174">    <span class="tok-comment">// waits should timeout as there's no other thread to set the event</span>
+</span>
+<span class="line" id="L175">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Timeout, event.timedWait(<span class="tok-number">0</span>));</span>
+<span class="line" id="L176">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Timeout, event.timedWait(std.time.ns_per_ms));</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178">    <span class="tok-comment">// set the event again and make sure waits complete</span>
+</span>
+<span class="line" id="L179">    event.set();</span>
+<span class="line" id="L180">    event.wait();</span>
+<span class="line" id="L181">    <span class="tok-kw">try</span> event.timedWait(std.time.ns_per_ms);</span>
+<span class="line" id="L182">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">true</span>, event.isSet());</span>
+<span class="line" id="L183">}</span>
+<span class="line" id="L184"></span>
+<span class="line" id="L185"><span class="tok-kw">test</span> <span class="tok-str">&quot;ResetEvent - signaling&quot;</span> {</span>
+<span class="line" id="L186">    <span class="tok-comment">// This test requires spawning threads</span>
+</span>
+<span class="line" id="L187">    <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L188">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L189">    }</span>
+<span class="line" id="L190"></span>
+<span class="line" id="L191">    <span class="tok-kw">const</span> Context = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L192">        in: ResetEvent = .{},</span>
+<span class="line" id="L193">        out: ResetEvent = .{},</span>
+<span class="line" id="L194">        value: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L195"></span>
+<span class="line" id="L196">        <span class="tok-kw">fn</span> <span class="tok-fn">input</span>(self: *<span class="tok-builtin">@This</span>()) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L197">            <span class="tok-comment">// wait for the value to become 1</span>
+</span>
+<span class="line" id="L198">            self.in.wait();</span>
+<span class="line" id="L199">            self.in.reset();</span>
+<span class="line" id="L200">            <span class="tok-kw">try</span> testing.expectEqual(self.value, <span class="tok-number">1</span>);</span>
+<span class="line" id="L201"></span>
+<span class="line" id="L202">            <span class="tok-comment">// bump the value and wake up output()</span>
+</span>
+<span class="line" id="L203">            self.value = <span class="tok-number">2</span>;</span>
+<span class="line" id="L204">            self.out.set();</span>
+<span class="line" id="L205"></span>
+<span class="line" id="L206">            <span class="tok-comment">// wait for output to receive 2, bump the value and wake us up with 3</span>
+</span>
+<span class="line" id="L207">            self.in.wait();</span>
+<span class="line" id="L208">            self.in.reset();</span>
+<span class="line" id="L209">            <span class="tok-kw">try</span> testing.expectEqual(self.value, <span class="tok-number">3</span>);</span>
+<span class="line" id="L210"></span>
+<span class="line" id="L211">            <span class="tok-comment">// bump the value and wake up output() for it to see 4</span>
+</span>
+<span class="line" id="L212">            self.value = <span class="tok-number">4</span>;</span>
+<span class="line" id="L213">            self.out.set();</span>
+<span class="line" id="L214">        }</span>
+<span class="line" id="L215"></span>
+<span class="line" id="L216">        <span class="tok-kw">fn</span> <span class="tok-fn">output</span>(self: *<span class="tok-builtin">@This</span>()) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L217">            <span class="tok-comment">// start with 0 and bump the value for input to see 1</span>
+</span>
+<span class="line" id="L218">            <span class="tok-kw">try</span> testing.expectEqual(self.value, <span class="tok-number">0</span>);</span>
+<span class="line" id="L219">            self.value = <span class="tok-number">1</span>;</span>
+<span class="line" id="L220">            self.in.set();</span>
+<span class="line" id="L221"></span>
+<span class="line" id="L222">            <span class="tok-comment">// wait for input to receive 1, bump the value to 2 and wake us up</span>
+</span>
+<span class="line" id="L223">            self.out.wait();</span>
+<span class="line" id="L224">            self.out.reset();</span>
+<span class="line" id="L225">            <span class="tok-kw">try</span> testing.expectEqual(self.value, <span class="tok-number">2</span>);</span>
+<span class="line" id="L226"></span>
+<span class="line" id="L227">            <span class="tok-comment">// bump the value to 3 for input to see (rhymes)</span>
+</span>
+<span class="line" id="L228">            self.value = <span class="tok-number">3</span>;</span>
+<span class="line" id="L229">            self.in.set();</span>
+<span class="line" id="L230"></span>
+<span class="line" id="L231">            <span class="tok-comment">// wait for input to bump the value to 4 and receive no more (rhymes)</span>
+</span>
+<span class="line" id="L232">            self.out.wait();</span>
+<span class="line" id="L233">            self.out.reset();</span>
+<span class="line" id="L234">            <span class="tok-kw">try</span> testing.expectEqual(self.value, <span class="tok-number">4</span>);</span>
+<span class="line" id="L235">        }</span>
+<span class="line" id="L236">    };</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">    <span class="tok-kw">var</span> ctx = Context{};</span>
+<span class="line" id="L239"></span>
+<span class="line" id="L240">    <span class="tok-kw">const</span> thread = <span class="tok-kw">try</span> std.Thread.spawn(.{}, Context.output, .{&amp;ctx});</span>
+<span class="line" id="L241">    <span class="tok-kw">defer</span> thread.join();</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">    <span class="tok-kw">try</span> ctx.input();</span>
+<span class="line" id="L244">}</span>
+<span class="line" id="L245"></span>
+<span class="line" id="L246"><span class="tok-kw">test</span> <span class="tok-str">&quot;ResetEvent - broadcast&quot;</span> {</span>
+<span class="line" id="L247">    <span class="tok-comment">// This test requires spawning threads</span>
+</span>
+<span class="line" id="L248">    <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L249">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L250">    }</span>
+<span class="line" id="L251"></span>
+<span class="line" id="L252">    <span class="tok-kw">const</span> num_threads = <span class="tok-number">10</span>;</span>
+<span class="line" id="L253">    <span class="tok-kw">const</span> Barrier = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L254">        event: ResetEvent = .{},</span>
+<span class="line" id="L255">        counter: Atomic(<span class="tok-type">usize</span>) = Atomic(<span class="tok-type">usize</span>).init(num_threads),</span>
+<span class="line" id="L256"></span>
+<span class="line" id="L257">        <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *<span class="tok-builtin">@This</span>()) <span class="tok-type">void</span> {</span>
+<span class="line" id="L258">            <span class="tok-kw">if</span> (self.counter.fetchSub(<span class="tok-number">1</span>, .AcqRel) == <span class="tok-number">1</span>) {</span>
+<span class="line" id="L259">                self.event.set();</span>
+<span class="line" id="L260">            }</span>
+<span class="line" id="L261">        }</span>
+<span class="line" id="L262">    };</span>
+<span class="line" id="L263"></span>
+<span class="line" id="L264">    <span class="tok-kw">const</span> Context = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L265">        start_barrier: Barrier = .{},</span>
+<span class="line" id="L266">        finish_barrier: Barrier = .{},</span>
+<span class="line" id="L267"></span>
+<span class="line" id="L268">        <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *<span class="tok-builtin">@This</span>()) <span class="tok-type">void</span> {</span>
+<span class="line" id="L269">            self.start_barrier.wait();</span>
+<span class="line" id="L270">            self.finish_barrier.wait();</span>
+<span class="line" id="L271">        }</span>
+<span class="line" id="L272">    };</span>
+<span class="line" id="L273"></span>
+<span class="line" id="L274">    <span class="tok-kw">var</span> ctx = Context{};</span>
+<span class="line" id="L275">    <span class="tok-kw">var</span> threads: [num_threads - <span class="tok-number">1</span>]std.Thread = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L276"></span>
+<span class="line" id="L277">    <span class="tok-kw">for</span> (&amp;threads) |*t| t.* = <span class="tok-kw">try</span> std.Thread.spawn(.{}, Context.run, .{&amp;ctx});</span>
+<span class="line" id="L278">    <span class="tok-kw">defer</span> <span class="tok-kw">for</span> (threads) |t| t.join();</span>
+<span class="line" id="L279"></span>
+<span class="line" id="L280">    ctx.run();</span>
+<span class="line" id="L281">}</span>
+<span class="line" id="L282"></span>
+</code></pre></body>
+</html>

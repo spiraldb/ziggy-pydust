@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>dwarf/call_frame.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> debug = std.debug;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> leb = std.leb;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> dwarf = std.dwarf;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> abi = dwarf.abi;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> expressions = dwarf.expressions;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-kw">const</span> Opcode = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L12">    advance_loc = <span class="tok-number">0x1</span> &lt;&lt; <span class="tok-number">6</span>,</span>
+<span class="line" id="L13">    offset = <span class="tok-number">0x2</span> &lt;&lt; <span class="tok-number">6</span>,</span>
+<span class="line" id="L14">    restore = <span class="tok-number">0x3</span> &lt;&lt; <span class="tok-number">6</span>,</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16">    nop = <span class="tok-number">0x00</span>,</span>
+<span class="line" id="L17">    set_loc = <span class="tok-number">0x01</span>,</span>
+<span class="line" id="L18">    advance_loc1 = <span class="tok-number">0x02</span>,</span>
+<span class="line" id="L19">    advance_loc2 = <span class="tok-number">0x03</span>,</span>
+<span class="line" id="L20">    advance_loc4 = <span class="tok-number">0x04</span>,</span>
+<span class="line" id="L21">    offset_extended = <span class="tok-number">0x05</span>,</span>
+<span class="line" id="L22">    restore_extended = <span class="tok-number">0x06</span>,</span>
+<span class="line" id="L23">    <span class="tok-null">undefined</span> = <span class="tok-number">0x07</span>,</span>
+<span class="line" id="L24">    same_value = <span class="tok-number">0x08</span>,</span>
+<span class="line" id="L25">    register = <span class="tok-number">0x09</span>,</span>
+<span class="line" id="L26">    remember_state = <span class="tok-number">0x0a</span>,</span>
+<span class="line" id="L27">    restore_state = <span class="tok-number">0x0b</span>,</span>
+<span class="line" id="L28">    def_cfa = <span class="tok-number">0x0c</span>,</span>
+<span class="line" id="L29">    def_cfa_register = <span class="tok-number">0x0d</span>,</span>
+<span class="line" id="L30">    def_cfa_offset = <span class="tok-number">0x0e</span>,</span>
+<span class="line" id="L31">    def_cfa_expression = <span class="tok-number">0x0f</span>,</span>
+<span class="line" id="L32">    expression = <span class="tok-number">0x10</span>,</span>
+<span class="line" id="L33">    offset_extended_sf = <span class="tok-number">0x11</span>,</span>
+<span class="line" id="L34">    def_cfa_sf = <span class="tok-number">0x12</span>,</span>
+<span class="line" id="L35">    def_cfa_offset_sf = <span class="tok-number">0x13</span>,</span>
+<span class="line" id="L36">    val_offset = <span class="tok-number">0x14</span>,</span>
+<span class="line" id="L37">    val_offset_sf = <span class="tok-number">0x15</span>,</span>
+<span class="line" id="L38">    val_expression = <span class="tok-number">0x16</span>,</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40">    <span class="tok-comment">// These opcodes encode an operand in the lower 6 bits of the opcode itself</span>
+</span>
+<span class="line" id="L41">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> lo_inline = <span class="tok-builtin">@intFromEnum</span>(Opcode.advance_loc);</span>
+<span class="line" id="L42">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> hi_inline = <span class="tok-builtin">@intFromEnum</span>(Opcode.restore) | <span class="tok-number">0b111111</span>;</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44">    <span class="tok-comment">// These opcodes are trailed by zero or more operands</span>
+</span>
+<span class="line" id="L45">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> lo_reserved = <span class="tok-builtin">@intFromEnum</span>(Opcode.nop);</span>
+<span class="line" id="L46">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> hi_reserved = <span class="tok-builtin">@intFromEnum</span>(Opcode.val_expression);</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">    <span class="tok-comment">// Vendor-specific opcodes</span>
+</span>
+<span class="line" id="L49">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> lo_user = <span class="tok-number">0x1c</span>;</span>
+<span class="line" id="L50">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> hi_user = <span class="tok-number">0x3f</span>;</span>
+<span class="line" id="L51">};</span>
+<span class="line" id="L52"></span>
+<span class="line" id="L53"><span class="tok-kw">fn</span> <span class="tok-fn">readBlock</span>(stream: *std.io.FixedBufferStream([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>)) ![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L54">    <span class="tok-kw">const</span> reader = stream.reader();</span>
+<span class="line" id="L55">    <span class="tok-kw">const</span> block_len = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">usize</span>, reader);</span>
+<span class="line" id="L56">    <span class="tok-kw">if</span> (stream.pos + block_len &gt; stream.buffer.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOperand;</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58">    <span class="tok-kw">const</span> block = stream.buffer[stream.pos..][<span class="tok-number">0</span>..block_len];</span>
+<span class="line" id="L59">    reader.context.pos += block_len;</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61">    <span class="tok-kw">return</span> block;</span>
+<span class="line" id="L62">}</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Instruction = <span class="tok-kw">union</span>(Opcode) {</span>
+<span class="line" id="L65">    advance_loc: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L66">        delta: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L67">    },</span>
+<span class="line" id="L68">    offset: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L69">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L70">        offset: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L71">    },</span>
+<span class="line" id="L72">    offset_extended: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L73">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L74">        offset: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L75">    },</span>
+<span class="line" id="L76">    restore: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L77">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L78">    },</span>
+<span class="line" id="L79">    restore_extended: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L80">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L81">    },</span>
+<span class="line" id="L82">    nop: <span class="tok-type">void</span>,</span>
+<span class="line" id="L83">    set_loc: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L84">        address: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L85">    },</span>
+<span class="line" id="L86">    advance_loc1: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L87">        delta: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L88">    },</span>
+<span class="line" id="L89">    advance_loc2: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L90">        delta: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L91">    },</span>
+<span class="line" id="L92">    advance_loc4: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L93">        delta: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L94">    },</span>
+<span class="line" id="L95">    <span class="tok-null">undefined</span>: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L96">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L97">    },</span>
+<span class="line" id="L98">    same_value: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L99">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L100">    },</span>
+<span class="line" id="L101">    register: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L102">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L103">        target_register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L104">    },</span>
+<span class="line" id="L105">    remember_state: <span class="tok-type">void</span>,</span>
+<span class="line" id="L106">    restore_state: <span class="tok-type">void</span>,</span>
+<span class="line" id="L107">    def_cfa: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L108">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L109">        offset: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L110">    },</span>
+<span class="line" id="L111">    def_cfa_register: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L112">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L113">    },</span>
+<span class="line" id="L114">    def_cfa_offset: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L115">        offset: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L116">    },</span>
+<span class="line" id="L117">    def_cfa_expression: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L118">        block: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L119">    },</span>
+<span class="line" id="L120">    expression: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L121">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L122">        block: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L123">    },</span>
+<span class="line" id="L124">    offset_extended_sf: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L125">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L126">        offset: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L127">    },</span>
+<span class="line" id="L128">    def_cfa_sf: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L129">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L130">        offset: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L131">    },</span>
+<span class="line" id="L132">    def_cfa_offset_sf: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L133">        offset: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L134">    },</span>
+<span class="line" id="L135">    val_offset: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L136">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L137">        offset: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L138">    },</span>
+<span class="line" id="L139">    val_offset_sf: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L140">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L141">        offset: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L142">    },</span>
+<span class="line" id="L143">    val_expression: <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L144">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L145">        block: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L146">    },</span>
+<span class="line" id="L147"></span>
+<span class="line" id="L148">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(</span>
+<span class="line" id="L149">        stream: *std.io.FixedBufferStream([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>),</span>
+<span class="line" id="L150">        addr_size_bytes: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L151">        endian: std.builtin.Endian,</span>
+<span class="line" id="L152">    ) !Instruction {</span>
+<span class="line" id="L153">        <span class="tok-kw">const</span> reader = stream.reader();</span>
+<span class="line" id="L154">        <span class="tok-kw">switch</span> (<span class="tok-kw">try</span> reader.readByte()) {</span>
+<span class="line" id="L155">            Opcode.lo_inline...Opcode.hi_inline =&gt; |opcode| {</span>
+<span class="line" id="L156">                <span class="tok-kw">const</span> e: Opcode = <span class="tok-builtin">@enumFromInt</span>(opcode &amp; <span class="tok-number">0b11000000</span>);</span>
+<span class="line" id="L157">                <span class="tok-kw">const</span> value: <span class="tok-type">u6</span> = <span class="tok-builtin">@intCast</span>(opcode &amp; <span class="tok-number">0b111111</span>);</span>
+<span class="line" id="L158">                <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (e) {</span>
+<span class="line" id="L159">                    .advance_loc =&gt; .{</span>
+<span class="line" id="L160">                        .advance_loc = .{ .delta = value },</span>
+<span class="line" id="L161">                    },</span>
+<span class="line" id="L162">                    .offset =&gt; .{</span>
+<span class="line" id="L163">                        .offset = .{</span>
+<span class="line" id="L164">                            .register = value,</span>
+<span class="line" id="L165">                            .offset = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u64</span>, reader),</span>
+<span class="line" id="L166">                        },</span>
+<span class="line" id="L167">                    },</span>
+<span class="line" id="L168">                    .restore =&gt; .{</span>
+<span class="line" id="L169">                        .restore = .{ .register = value },</span>
+<span class="line" id="L170">                    },</span>
+<span class="line" id="L171">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L172">                };</span>
+<span class="line" id="L173">            },</span>
+<span class="line" id="L174">            Opcode.lo_reserved...Opcode.hi_reserved =&gt; |opcode| {</span>
+<span class="line" id="L175">                <span class="tok-kw">const</span> e: Opcode = <span class="tok-builtin">@enumFromInt</span>(opcode);</span>
+<span class="line" id="L176">                <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (e) {</span>
+<span class="line" id="L177">                    .advance_loc,</span>
+<span class="line" id="L178">                    .offset,</span>
+<span class="line" id="L179">                    .restore,</span>
+<span class="line" id="L180">                    =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L181">                    .nop =&gt; .{ .nop = {} },</span>
+<span class="line" id="L182">                    .set_loc =&gt; .{</span>
+<span class="line" id="L183">                        .set_loc = .{</span>
+<span class="line" id="L184">                            .address = <span class="tok-kw">switch</span> (addr_size_bytes) {</span>
+<span class="line" id="L185">                                <span class="tok-number">2</span> =&gt; <span class="tok-kw">try</span> reader.readInt(<span class="tok-type">u16</span>, endian),</span>
+<span class="line" id="L186">                                <span class="tok-number">4</span> =&gt; <span class="tok-kw">try</span> reader.readInt(<span class="tok-type">u32</span>, endian),</span>
+<span class="line" id="L187">                                <span class="tok-number">8</span> =&gt; <span class="tok-kw">try</span> reader.readInt(<span class="tok-type">u64</span>, endian),</span>
+<span class="line" id="L188">                                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidAddrSize,</span>
+<span class="line" id="L189">                            },</span>
+<span class="line" id="L190">                        },</span>
+<span class="line" id="L191">                    },</span>
+<span class="line" id="L192">                    .advance_loc1 =&gt; .{</span>
+<span class="line" id="L193">                        .advance_loc1 = .{ .delta = <span class="tok-kw">try</span> reader.readByte() },</span>
+<span class="line" id="L194">                    },</span>
+<span class="line" id="L195">                    .advance_loc2 =&gt; .{</span>
+<span class="line" id="L196">                        .advance_loc2 = .{ .delta = <span class="tok-kw">try</span> reader.readInt(<span class="tok-type">u16</span>, endian) },</span>
+<span class="line" id="L197">                    },</span>
+<span class="line" id="L198">                    .advance_loc4 =&gt; .{</span>
+<span class="line" id="L199">                        .advance_loc4 = .{ .delta = <span class="tok-kw">try</span> reader.readInt(<span class="tok-type">u32</span>, endian) },</span>
+<span class="line" id="L200">                    },</span>
+<span class="line" id="L201">                    .offset_extended =&gt; .{</span>
+<span class="line" id="L202">                        .offset_extended = .{</span>
+<span class="line" id="L203">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L204">                            .offset = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u64</span>, reader),</span>
+<span class="line" id="L205">                        },</span>
+<span class="line" id="L206">                    },</span>
+<span class="line" id="L207">                    .restore_extended =&gt; .{</span>
+<span class="line" id="L208">                        .restore_extended = .{</span>
+<span class="line" id="L209">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L210">                        },</span>
+<span class="line" id="L211">                    },</span>
+<span class="line" id="L212">                    .<span class="tok-null">undefined</span> =&gt; .{</span>
+<span class="line" id="L213">                        .<span class="tok-null">undefined</span> = .{</span>
+<span class="line" id="L214">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L215">                        },</span>
+<span class="line" id="L216">                    },</span>
+<span class="line" id="L217">                    .same_value =&gt; .{</span>
+<span class="line" id="L218">                        .same_value = .{</span>
+<span class="line" id="L219">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L220">                        },</span>
+<span class="line" id="L221">                    },</span>
+<span class="line" id="L222">                    .register =&gt; .{</span>
+<span class="line" id="L223">                        .register = .{</span>
+<span class="line" id="L224">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L225">                            .target_register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L226">                        },</span>
+<span class="line" id="L227">                    },</span>
+<span class="line" id="L228">                    .remember_state =&gt; .{ .remember_state = {} },</span>
+<span class="line" id="L229">                    .restore_state =&gt; .{ .restore_state = {} },</span>
+<span class="line" id="L230">                    .def_cfa =&gt; .{</span>
+<span class="line" id="L231">                        .def_cfa = .{</span>
+<span class="line" id="L232">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L233">                            .offset = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u64</span>, reader),</span>
+<span class="line" id="L234">                        },</span>
+<span class="line" id="L235">                    },</span>
+<span class="line" id="L236">                    .def_cfa_register =&gt; .{</span>
+<span class="line" id="L237">                        .def_cfa_register = .{</span>
+<span class="line" id="L238">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L239">                        },</span>
+<span class="line" id="L240">                    },</span>
+<span class="line" id="L241">                    .def_cfa_offset =&gt; .{</span>
+<span class="line" id="L242">                        .def_cfa_offset = .{</span>
+<span class="line" id="L243">                            .offset = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u64</span>, reader),</span>
+<span class="line" id="L244">                        },</span>
+<span class="line" id="L245">                    },</span>
+<span class="line" id="L246">                    .def_cfa_expression =&gt; .{</span>
+<span class="line" id="L247">                        .def_cfa_expression = .{</span>
+<span class="line" id="L248">                            .block = <span class="tok-kw">try</span> readBlock(stream),</span>
+<span class="line" id="L249">                        },</span>
+<span class="line" id="L250">                    },</span>
+<span class="line" id="L251">                    .expression =&gt; .{</span>
+<span class="line" id="L252">                        .expression = .{</span>
+<span class="line" id="L253">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L254">                            .block = <span class="tok-kw">try</span> readBlock(stream),</span>
+<span class="line" id="L255">                        },</span>
+<span class="line" id="L256">                    },</span>
+<span class="line" id="L257">                    .offset_extended_sf =&gt; .{</span>
+<span class="line" id="L258">                        .offset_extended_sf = .{</span>
+<span class="line" id="L259">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L260">                            .offset = <span class="tok-kw">try</span> leb.readILEB128(<span class="tok-type">i64</span>, reader),</span>
+<span class="line" id="L261">                        },</span>
+<span class="line" id="L262">                    },</span>
+<span class="line" id="L263">                    .def_cfa_sf =&gt; .{</span>
+<span class="line" id="L264">                        .def_cfa_sf = .{</span>
+<span class="line" id="L265">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L266">                            .offset = <span class="tok-kw">try</span> leb.readILEB128(<span class="tok-type">i64</span>, reader),</span>
+<span class="line" id="L267">                        },</span>
+<span class="line" id="L268">                    },</span>
+<span class="line" id="L269">                    .def_cfa_offset_sf =&gt; .{</span>
+<span class="line" id="L270">                        .def_cfa_offset_sf = .{</span>
+<span class="line" id="L271">                            .offset = <span class="tok-kw">try</span> leb.readILEB128(<span class="tok-type">i64</span>, reader),</span>
+<span class="line" id="L272">                        },</span>
+<span class="line" id="L273">                    },</span>
+<span class="line" id="L274">                    .val_offset =&gt; .{</span>
+<span class="line" id="L275">                        .val_offset = .{</span>
+<span class="line" id="L276">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L277">                            .offset = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u64</span>, reader),</span>
+<span class="line" id="L278">                        },</span>
+<span class="line" id="L279">                    },</span>
+<span class="line" id="L280">                    .val_offset_sf =&gt; .{</span>
+<span class="line" id="L281">                        .val_offset_sf = .{</span>
+<span class="line" id="L282">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L283">                            .offset = <span class="tok-kw">try</span> leb.readILEB128(<span class="tok-type">i64</span>, reader),</span>
+<span class="line" id="L284">                        },</span>
+<span class="line" id="L285">                    },</span>
+<span class="line" id="L286">                    .val_expression =&gt; .{</span>
+<span class="line" id="L287">                        .val_expression = .{</span>
+<span class="line" id="L288">                            .register = <span class="tok-kw">try</span> leb.readULEB128(<span class="tok-type">u8</span>, reader),</span>
+<span class="line" id="L289">                            .block = <span class="tok-kw">try</span> readBlock(stream),</span>
+<span class="line" id="L290">                        },</span>
+<span class="line" id="L291">                    },</span>
+<span class="line" id="L292">                };</span>
+<span class="line" id="L293">            },</span>
+<span class="line" id="L294">            Opcode.lo_user...Opcode.hi_user =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnimplementedUserOpcode,</span>
+<span class="line" id="L295">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOpcode,</span>
+<span class="line" id="L296">        }</span>
+<span class="line" id="L297">    }</span>
+<span class="line" id="L298">};</span>
+<span class="line" id="L299"></span>
+<span class="line" id="L300"><span class="tok-comment">/// Since register rules are applied (usually) during a panic,</span></span>
+<span class="line" id="L301"><span class="tok-comment">/// checked addition / subtraction is used so that we can return</span></span>
+<span class="line" id="L302"><span class="tok-comment">/// an error and fall back to FP-based unwinding.</span></span>
+<span class="line" id="L303"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">applyOffset</span>(base: <span class="tok-type">usize</span>, offset: <span class="tok-type">i64</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L304">    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (offset &gt;= <span class="tok-number">0</span>)</span>
+<span class="line" id="L305">        <span class="tok-kw">try</span> std.math.add(<span class="tok-type">usize</span>, base, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(offset)))</span>
+<span class="line" id="L306">    <span class="tok-kw">else</span></span>
+<span class="line" id="L307">        <span class="tok-kw">try</span> std.math.sub(<span class="tok-type">usize</span>, base, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(-offset)));</span>
+<span class="line" id="L308">}</span>
+<span class="line" id="L309"></span>
+<span class="line" id="L310"><span class="tok-comment">/// This is a virtual machine that runs DWARF call frame instructions.</span></span>
+<span class="line" id="L311"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> VirtualMachine = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L312">    <span class="tok-comment">/// See section 6.4.1 of the DWARF5 specification for details on each</span></span>
+<span class="line" id="L313">    <span class="tok-kw">const</span> RegisterRule = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L314">        <span class="tok-comment">// The spec says that the default rule for each column is the undefined rule.</span>
+</span>
+<span class="line" id="L315">        <span class="tok-comment">// However, it also allows ABI / compiler authors to specify alternate defaults, so</span>
+</span>
+<span class="line" id="L316">        <span class="tok-comment">// there is a distinction made here.</span>
+</span>
+<span class="line" id="L317">        default: <span class="tok-type">void</span>,</span>
+<span class="line" id="L318"></span>
+<span class="line" id="L319">        <span class="tok-null">undefined</span>: <span class="tok-type">void</span>,</span>
+<span class="line" id="L320">        same_value: <span class="tok-type">void</span>,</span>
+<span class="line" id="L321"></span>
+<span class="line" id="L322">        <span class="tok-comment">// offset(N)</span>
+</span>
+<span class="line" id="L323">        offset: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L324"></span>
+<span class="line" id="L325">        <span class="tok-comment">// val_offset(N)</span>
+</span>
+<span class="line" id="L326">        val_offset: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L327"></span>
+<span class="line" id="L328">        <span class="tok-comment">// register(R)</span>
+</span>
+<span class="line" id="L329">        register: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L330"></span>
+<span class="line" id="L331">        <span class="tok-comment">// expression(E)</span>
+</span>
+<span class="line" id="L332">        expression: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L333"></span>
+<span class="line" id="L334">        <span class="tok-comment">// val_expression(E)</span>
+</span>
+<span class="line" id="L335">        val_expression: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L336"></span>
+<span class="line" id="L337">        <span class="tok-comment">// Augmenter-defined rule</span>
+</span>
+<span class="line" id="L338">        architectural: <span class="tok-type">void</span>,</span>
+<span class="line" id="L339">    };</span>
+<span class="line" id="L340"></span>
+<span class="line" id="L341">    <span class="tok-comment">/// Each row contains unwinding rules for a set of registers.</span></span>
+<span class="line" id="L342">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Row = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L343">        <span class="tok-comment">/// Offset from `FrameDescriptionEntry.pc_begin`</span></span>
+<span class="line" id="L344">        offset: <span class="tok-type">u64</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L345"></span>
+<span class="line" id="L346">        <span class="tok-comment">/// Special-case column that defines the CFA (Canonical Frame Address) rule.</span></span>
+<span class="line" id="L347">        <span class="tok-comment">/// The register field of this column defines the register that CFA is derived from.</span></span>
+<span class="line" id="L348">        cfa: Column = .{},</span>
+<span class="line" id="L349"></span>
+<span class="line" id="L350">        <span class="tok-comment">/// The register fields in these columns define the register the rule applies to.</span></span>
+<span class="line" id="L351">        columns: ColumnRange = .{},</span>
+<span class="line" id="L352"></span>
+<span class="line" id="L353">        <span class="tok-comment">/// Indicates that the next write to any column in this row needs to copy</span></span>
+<span class="line" id="L354">        <span class="tok-comment">/// the backing column storage first, as it may be referenced by previous rows.</span></span>
+<span class="line" id="L355">        copy_on_write: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L356">    };</span>
+<span class="line" id="L357"></span>
+<span class="line" id="L358">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Column = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L359">        register: ?<span class="tok-type">u8</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L360">        rule: RegisterRule = .{ .default = {} },</span>
+<span class="line" id="L361"></span>
+<span class="line" id="L362">        <span class="tok-comment">/// Resolves the register rule and places the result into `out` (see dwarf.abi.regBytes)</span></span>
+<span class="line" id="L363">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">resolveValue</span>(</span>
+<span class="line" id="L364">            self: Column,</span>
+<span class="line" id="L365">            context: *dwarf.UnwindContext,</span>
+<span class="line" id="L366">            expression_context: dwarf.expressions.ExpressionContext,</span>
+<span class="line" id="L367">            out: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L368">        ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L369">            <span class="tok-kw">switch</span> (self.rule) {</span>
+<span class="line" id="L370">                .default =&gt; {</span>
+<span class="line" id="L371">                    <span class="tok-kw">const</span> register = self.register <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidRegister;</span>
+<span class="line" id="L372">                    <span class="tok-kw">try</span> abi.getRegDefaultValue(register, context, out);</span>
+<span class="line" id="L373">                },</span>
+<span class="line" id="L374">                .<span class="tok-null">undefined</span> =&gt; {</span>
+<span class="line" id="L375">                    <span class="tok-builtin">@memset</span>(out, <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L376">                },</span>
+<span class="line" id="L377">                .same_value =&gt; {</span>
+<span class="line" id="L378">                    <span class="tok-comment">// TODO: This copy could be eliminated if callers always copy the state then call this function to update it</span>
+</span>
+<span class="line" id="L379">                    <span class="tok-kw">const</span> register = self.register <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidRegister;</span>
+<span class="line" id="L380">                    <span class="tok-kw">const</span> src = <span class="tok-kw">try</span> abi.regBytes(context.thread_context, register, context.reg_context);</span>
+<span class="line" id="L381">                    <span class="tok-kw">if</span> (src.len != out.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.RegisterSizeMismatch;</span>
+<span class="line" id="L382">                    <span class="tok-builtin">@memcpy</span>(out, src);</span>
+<span class="line" id="L383">                },</span>
+<span class="line" id="L384">                .offset =&gt; |offset| {</span>
+<span class="line" id="L385">                    <span class="tok-kw">if</span> (context.cfa) |cfa| {</span>
+<span class="line" id="L386">                        <span class="tok-kw">const</span> addr = <span class="tok-kw">try</span> applyOffset(cfa, offset);</span>
+<span class="line" id="L387">                        <span class="tok-kw">if</span> (expression_context.isValidMemory) |isValidMemory| <span class="tok-kw">if</span> (!isValidMemory(addr)) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidAddress;</span>
+<span class="line" id="L388">                        <span class="tok-kw">const</span> ptr: *<span class="tok-kw">const</span> <span class="tok-type">usize</span> = <span class="tok-builtin">@ptrFromInt</span>(addr);</span>
+<span class="line" id="L389">                        mem.writeIntSliceNative(<span class="tok-type">usize</span>, out, ptr.*);</span>
+<span class="line" id="L390">                    } <span class="tok-kw">else</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidCFA;</span>
+<span class="line" id="L391">                },</span>
+<span class="line" id="L392">                .val_offset =&gt; |offset| {</span>
+<span class="line" id="L393">                    <span class="tok-kw">if</span> (context.cfa) |cfa| {</span>
+<span class="line" id="L394">                        mem.writeIntSliceNative(<span class="tok-type">usize</span>, out, <span class="tok-kw">try</span> applyOffset(cfa, offset));</span>
+<span class="line" id="L395">                    } <span class="tok-kw">else</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidCFA;</span>
+<span class="line" id="L396">                },</span>
+<span class="line" id="L397">                .register =&gt; |register| {</span>
+<span class="line" id="L398">                    <span class="tok-kw">const</span> src = <span class="tok-kw">try</span> abi.regBytes(context.thread_context, register, context.reg_context);</span>
+<span class="line" id="L399">                    <span class="tok-kw">if</span> (src.len != out.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.RegisterSizeMismatch;</span>
+<span class="line" id="L400">                    <span class="tok-builtin">@memcpy</span>(out, <span class="tok-kw">try</span> abi.regBytes(context.thread_context, register, context.reg_context));</span>
+<span class="line" id="L401">                },</span>
+<span class="line" id="L402">                .expression =&gt; |expression| {</span>
+<span class="line" id="L403">                    context.stack_machine.reset();</span>
+<span class="line" id="L404">                    <span class="tok-kw">const</span> value = <span class="tok-kw">try</span> context.stack_machine.run(expression, context.allocator, expression_context, context.cfa.?);</span>
+<span class="line" id="L405">                    <span class="tok-kw">const</span> addr = <span class="tok-kw">if</span> (value) |v| blk: {</span>
+<span class="line" id="L406">                        <span class="tok-kw">if</span> (v != .generic) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidExpressionValue;</span>
+<span class="line" id="L407">                        <span class="tok-kw">break</span> :blk v.generic;</span>
+<span class="line" id="L408">                    } <span class="tok-kw">else</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NoExpressionValue;</span>
+<span class="line" id="L409"></span>
+<span class="line" id="L410">                    <span class="tok-kw">if</span> (!context.isValidMemory(addr)) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidExpressionAddress;</span>
+<span class="line" id="L411">                    <span class="tok-kw">const</span> ptr: *<span class="tok-type">usize</span> = <span class="tok-builtin">@ptrFromInt</span>(addr);</span>
+<span class="line" id="L412">                    mem.writeIntSliceNative(<span class="tok-type">usize</span>, out, ptr.*);</span>
+<span class="line" id="L413">                },</span>
+<span class="line" id="L414">                .val_expression =&gt; |expression| {</span>
+<span class="line" id="L415">                    context.stack_machine.reset();</span>
+<span class="line" id="L416">                    <span class="tok-kw">const</span> value = <span class="tok-kw">try</span> context.stack_machine.run(expression, context.allocator, expression_context, context.cfa.?);</span>
+<span class="line" id="L417">                    <span class="tok-kw">if</span> (value) |v| {</span>
+<span class="line" id="L418">                        <span class="tok-kw">if</span> (v != .generic) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidExpressionValue;</span>
+<span class="line" id="L419">                        mem.writeIntSliceNative(<span class="tok-type">usize</span>, out, v.generic);</span>
+<span class="line" id="L420">                    } <span class="tok-kw">else</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NoExpressionValue;</span>
+<span class="line" id="L421">                },</span>
+<span class="line" id="L422">                .architectural =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnimplementedRegisterRule,</span>
+<span class="line" id="L423">            }</span>
+<span class="line" id="L424">        }</span>
+<span class="line" id="L425">    };</span>
+<span class="line" id="L426"></span>
+<span class="line" id="L427">    <span class="tok-kw">const</span> ColumnRange = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L428">        <span class="tok-comment">/// Index into `columns` of the first column in this row.</span></span>
+<span class="line" id="L429">        start: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L430">        len: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L431">    };</span>
+<span class="line" id="L432"></span>
+<span class="line" id="L433">    columns: std.ArrayListUnmanaged(Column) = .{},</span>
+<span class="line" id="L434">    stack: std.ArrayListUnmanaged(ColumnRange) = .{},</span>
+<span class="line" id="L435">    current_row: Row = .{},</span>
+<span class="line" id="L436"></span>
+<span class="line" id="L437">    <span class="tok-comment">/// The result of executing the CIE's initial_instructions</span></span>
+<span class="line" id="L438">    cie_row: ?Row = <span class="tok-null">null</span>,</span>
+<span class="line" id="L439"></span>
+<span class="line" id="L440">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *VirtualMachine, allocator: std.mem.Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L441">        self.stack.deinit(allocator);</span>
+<span class="line" id="L442">        self.columns.deinit(allocator);</span>
+<span class="line" id="L443">        self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L444">    }</span>
+<span class="line" id="L445"></span>
+<span class="line" id="L446">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reset</span>(self: *VirtualMachine) <span class="tok-type">void</span> {</span>
+<span class="line" id="L447">        self.stack.clearRetainingCapacity();</span>
+<span class="line" id="L448">        self.columns.clearRetainingCapacity();</span>
+<span class="line" id="L449">        self.current_row = .{};</span>
+<span class="line" id="L450">        self.cie_row = <span class="tok-null">null</span>;</span>
+<span class="line" id="L451">    }</span>
+<span class="line" id="L452"></span>
+<span class="line" id="L453">    <span class="tok-comment">/// Return a slice backed by the row's non-CFA columns</span></span>
+<span class="line" id="L454">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rowColumns</span>(self: VirtualMachine, row: Row) []Column {</span>
+<span class="line" id="L455">        <span class="tok-kw">return</span> self.columns.items[row.columns.start..][<span class="tok-number">0</span>..row.columns.len];</span>
+<span class="line" id="L456">    }</span>
+<span class="line" id="L457"></span>
+<span class="line" id="L458">    <span class="tok-comment">/// Either retrieves or adds a column for `register` (non-CFA) in the current row.</span></span>
+<span class="line" id="L459">    <span class="tok-kw">fn</span> <span class="tok-fn">getOrAddColumn</span>(self: *VirtualMachine, allocator: std.mem.Allocator, register: <span class="tok-type">u8</span>) !*Column {</span>
+<span class="line" id="L460">        <span class="tok-kw">for</span> (self.rowColumns(self.current_row)) |*c| {</span>
+<span class="line" id="L461">            <span class="tok-kw">if</span> (c.register == register) <span class="tok-kw">return</span> c;</span>
+<span class="line" id="L462">        }</span>
+<span class="line" id="L463"></span>
+<span class="line" id="L464">        <span class="tok-kw">if</span> (self.current_row.columns.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L465">            self.current_row.columns.start = self.columns.items.len;</span>
+<span class="line" id="L466">        }</span>
+<span class="line" id="L467">        self.current_row.columns.len += <span class="tok-number">1</span>;</span>
+<span class="line" id="L468"></span>
+<span class="line" id="L469">        <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.columns.addOne(allocator);</span>
+<span class="line" id="L470">        column.* = .{</span>
+<span class="line" id="L471">            .register = register,</span>
+<span class="line" id="L472">        };</span>
+<span class="line" id="L473"></span>
+<span class="line" id="L474">        <span class="tok-kw">return</span> column;</span>
+<span class="line" id="L475">    }</span>
+<span class="line" id="L476"></span>
+<span class="line" id="L477">    <span class="tok-comment">/// Runs the CIE instructions, then the FDE instructions. Execution halts</span></span>
+<span class="line" id="L478">    <span class="tok-comment">/// once the row that corresponds to `pc` is known, and the row is returned.</span></span>
+<span class="line" id="L479">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">runTo</span>(</span>
+<span class="line" id="L480">        self: *VirtualMachine,</span>
+<span class="line" id="L481">        allocator: std.mem.Allocator,</span>
+<span class="line" id="L482">        pc: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L483">        cie: dwarf.CommonInformationEntry,</span>
+<span class="line" id="L484">        fde: dwarf.FrameDescriptionEntry,</span>
+<span class="line" id="L485">        addr_size_bytes: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L486">        endian: std.builtin.Endian,</span>
+<span class="line" id="L487">    ) !Row {</span>
+<span class="line" id="L488">        assert(self.cie_row == <span class="tok-null">null</span>);</span>
+<span class="line" id="L489">        <span class="tok-kw">if</span> (pc &lt; fde.pc_begin <span class="tok-kw">or</span> pc &gt;= fde.pc_begin + fde.pc_range) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.AddressOutOfRange;</span>
+<span class="line" id="L490"></span>
+<span class="line" id="L491">        <span class="tok-kw">var</span> prev_row: Row = self.current_row;</span>
+<span class="line" id="L492"></span>
+<span class="line" id="L493">        <span class="tok-kw">var</span> cie_stream = std.io.fixedBufferStream(cie.initial_instructions);</span>
+<span class="line" id="L494">        <span class="tok-kw">var</span> fde_stream = std.io.fixedBufferStream(fde.instructions);</span>
+<span class="line" id="L495">        <span class="tok-kw">var</span> streams = [_]*std.io.FixedBufferStream([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>){</span>
+<span class="line" id="L496">            &amp;cie_stream,</span>
+<span class="line" id="L497">            &amp;fde_stream,</span>
+<span class="line" id="L498">        };</span>
+<span class="line" id="L499"></span>
+<span class="line" id="L500">        <span class="tok-kw">for</span> (&amp;streams, <span class="tok-number">0</span>..) |stream, i| {</span>
+<span class="line" id="L501">            <span class="tok-kw">while</span> (stream.pos &lt; stream.buffer.len) {</span>
+<span class="line" id="L502">                <span class="tok-kw">const</span> instruction = <span class="tok-kw">try</span> dwarf.call_frame.Instruction.read(stream, addr_size_bytes, endian);</span>
+<span class="line" id="L503">                prev_row = <span class="tok-kw">try</span> self.step(allocator, cie, i == <span class="tok-number">0</span>, instruction);</span>
+<span class="line" id="L504">                <span class="tok-kw">if</span> (pc &lt; fde.pc_begin + self.current_row.offset) <span class="tok-kw">return</span> prev_row;</span>
+<span class="line" id="L505">            }</span>
+<span class="line" id="L506">        }</span>
+<span class="line" id="L507"></span>
+<span class="line" id="L508">        <span class="tok-kw">return</span> self.current_row;</span>
+<span class="line" id="L509">    }</span>
+<span class="line" id="L510"></span>
+<span class="line" id="L511">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">runToNative</span>(</span>
+<span class="line" id="L512">        self: *VirtualMachine,</span>
+<span class="line" id="L513">        allocator: std.mem.Allocator,</span>
+<span class="line" id="L514">        pc: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L515">        cie: dwarf.CommonInformationEntry,</span>
+<span class="line" id="L516">        fde: dwarf.FrameDescriptionEntry,</span>
+<span class="line" id="L517">    ) !Row {</span>
+<span class="line" id="L518">        <span class="tok-kw">return</span> self.runTo(allocator, pc, cie, fde, <span class="tok-builtin">@sizeOf</span>(<span class="tok-type">usize</span>), builtin.target.cpu.arch.endian());</span>
+<span class="line" id="L519">    }</span>
+<span class="line" id="L520"></span>
+<span class="line" id="L521">    <span class="tok-kw">fn</span> <span class="tok-fn">resolveCopyOnWrite</span>(self: *VirtualMachine, allocator: std.mem.Allocator) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L522">        <span class="tok-kw">if</span> (!self.current_row.copy_on_write) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L523"></span>
+<span class="line" id="L524">        <span class="tok-kw">const</span> new_start = self.columns.items.len;</span>
+<span class="line" id="L525">        <span class="tok-kw">if</span> (self.current_row.columns.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L526">            <span class="tok-kw">try</span> self.columns.ensureUnusedCapacity(allocator, self.current_row.columns.len);</span>
+<span class="line" id="L527">            self.columns.appendSliceAssumeCapacity(self.rowColumns(self.current_row));</span>
+<span class="line" id="L528">            self.current_row.columns.start = new_start;</span>
+<span class="line" id="L529">        }</span>
+<span class="line" id="L530">    }</span>
+<span class="line" id="L531"></span>
+<span class="line" id="L532">    <span class="tok-comment">/// Executes a single instruction.</span></span>
+<span class="line" id="L533">    <span class="tok-comment">/// If this instruction is from the CIE, `is_initial` should be set.</span></span>
+<span class="line" id="L534">    <span class="tok-comment">/// Returns the value of `current_row` before executing this instruction.</span></span>
+<span class="line" id="L535">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">step</span>(</span>
+<span class="line" id="L536">        self: *VirtualMachine,</span>
+<span class="line" id="L537">        allocator: std.mem.Allocator,</span>
+<span class="line" id="L538">        cie: dwarf.CommonInformationEntry,</span>
+<span class="line" id="L539">        is_initial: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L540">        instruction: Instruction,</span>
+<span class="line" id="L541">    ) !Row {</span>
+<span class="line" id="L542">        <span class="tok-comment">// CIE instructions must be run before FDE instructions</span>
+</span>
+<span class="line" id="L543">        assert(!is_initial <span class="tok-kw">or</span> self.cie_row == <span class="tok-null">null</span>);</span>
+<span class="line" id="L544">        <span class="tok-kw">if</span> (!is_initial <span class="tok-kw">and</span> self.cie_row == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L545">            self.cie_row = self.current_row;</span>
+<span class="line" id="L546">            self.current_row.copy_on_write = <span class="tok-null">true</span>;</span>
+<span class="line" id="L547">        }</span>
+<span class="line" id="L548"></span>
+<span class="line" id="L549">        <span class="tok-kw">const</span> prev_row = self.current_row;</span>
+<span class="line" id="L550">        <span class="tok-kw">switch</span> (instruction) {</span>
+<span class="line" id="L551">            .set_loc =&gt; |i| {</span>
+<span class="line" id="L552">                <span class="tok-kw">if</span> (i.address &lt;= self.current_row.offset) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOperation;</span>
+<span class="line" id="L553">                <span class="tok-comment">// TODO: Check cie.segment_selector_size != 0 for DWARFV4</span>
+</span>
+<span class="line" id="L554">                self.current_row.offset = i.address;</span>
+<span class="line" id="L555">            },</span>
+<span class="line" id="L556">            <span class="tok-kw">inline</span> .advance_loc,</span>
+<span class="line" id="L557">            .advance_loc1,</span>
+<span class="line" id="L558">            .advance_loc2,</span>
+<span class="line" id="L559">            .advance_loc4,</span>
+<span class="line" id="L560">            =&gt; |i| {</span>
+<span class="line" id="L561">                self.current_row.offset += i.delta * cie.code_alignment_factor;</span>
+<span class="line" id="L562">                self.current_row.copy_on_write = <span class="tok-null">true</span>;</span>
+<span class="line" id="L563">            },</span>
+<span class="line" id="L564">            <span class="tok-kw">inline</span> .offset,</span>
+<span class="line" id="L565">            .offset_extended,</span>
+<span class="line" id="L566">            .offset_extended_sf,</span>
+<span class="line" id="L567">            =&gt; |i| {</span>
+<span class="line" id="L568">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L569">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L570">                column.rule = .{ .offset = <span class="tok-builtin">@as</span>(<span class="tok-type">i64</span>, <span class="tok-builtin">@intCast</span>(i.offset)) * cie.data_alignment_factor };</span>
+<span class="line" id="L571">            },</span>
+<span class="line" id="L572">            <span class="tok-kw">inline</span> .restore,</span>
+<span class="line" id="L573">            .restore_extended,</span>
+<span class="line" id="L574">            =&gt; |i| {</span>
+<span class="line" id="L575">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L576">                <span class="tok-kw">if</span> (self.cie_row) |cie_row| {</span>
+<span class="line" id="L577">                    <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L578">                    column.rule = <span class="tok-kw">for</span> (self.rowColumns(cie_row)) |cie_column| {</span>
+<span class="line" id="L579">                        <span class="tok-kw">if</span> (cie_column.register == i.register) <span class="tok-kw">break</span> cie_column.rule;</span>
+<span class="line" id="L580">                    } <span class="tok-kw">else</span> .{ .default = {} };</span>
+<span class="line" id="L581">                } <span class="tok-kw">else</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOperation;</span>
+<span class="line" id="L582">            },</span>
+<span class="line" id="L583">            .nop =&gt; {},</span>
+<span class="line" id="L584">            .<span class="tok-null">undefined</span> =&gt; |i| {</span>
+<span class="line" id="L585">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L586">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L587">                column.rule = .{ .<span class="tok-null">undefined</span> = {} };</span>
+<span class="line" id="L588">            },</span>
+<span class="line" id="L589">            .same_value =&gt; |i| {</span>
+<span class="line" id="L590">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L591">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L592">                column.rule = .{ .same_value = {} };</span>
+<span class="line" id="L593">            },</span>
+<span class="line" id="L594">            .register =&gt; |i| {</span>
+<span class="line" id="L595">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L596">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L597">                column.rule = .{ .register = i.target_register };</span>
+<span class="line" id="L598">            },</span>
+<span class="line" id="L599">            .remember_state =&gt; {</span>
+<span class="line" id="L600">                <span class="tok-kw">try</span> self.stack.append(allocator, self.current_row.columns);</span>
+<span class="line" id="L601">                self.current_row.copy_on_write = <span class="tok-null">true</span>;</span>
+<span class="line" id="L602">            },</span>
+<span class="line" id="L603">            .restore_state =&gt; {</span>
+<span class="line" id="L604">                <span class="tok-kw">const</span> restored_columns = self.stack.popOrNull() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOperation;</span>
+<span class="line" id="L605">                self.columns.shrinkRetainingCapacity(self.columns.items.len - self.current_row.columns.len);</span>
+<span class="line" id="L606">                <span class="tok-kw">try</span> self.columns.ensureUnusedCapacity(allocator, restored_columns.len);</span>
+<span class="line" id="L607"></span>
+<span class="line" id="L608">                self.current_row.columns.start = self.columns.items.len;</span>
+<span class="line" id="L609">                self.current_row.columns.len = restored_columns.len;</span>
+<span class="line" id="L610">                self.columns.appendSliceAssumeCapacity(self.columns.items[restored_columns.start..][<span class="tok-number">0</span>..restored_columns.len]);</span>
+<span class="line" id="L611">            },</span>
+<span class="line" id="L612">            .def_cfa =&gt; |i| {</span>
+<span class="line" id="L613">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L614">                self.current_row.cfa = .{</span>
+<span class="line" id="L615">                    .register = i.register,</span>
+<span class="line" id="L616">                    .rule = .{ .val_offset = <span class="tok-builtin">@intCast</span>(i.offset) },</span>
+<span class="line" id="L617">                };</span>
+<span class="line" id="L618">            },</span>
+<span class="line" id="L619">            .def_cfa_sf =&gt; |i| {</span>
+<span class="line" id="L620">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L621">                self.current_row.cfa = .{</span>
+<span class="line" id="L622">                    .register = i.register,</span>
+<span class="line" id="L623">                    .rule = .{ .val_offset = i.offset * cie.data_alignment_factor },</span>
+<span class="line" id="L624">                };</span>
+<span class="line" id="L625">            },</span>
+<span class="line" id="L626">            .def_cfa_register =&gt; |i| {</span>
+<span class="line" id="L627">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L628">                <span class="tok-kw">if</span> (self.current_row.cfa.register == <span class="tok-null">null</span> <span class="tok-kw">or</span> self.current_row.cfa.rule != .val_offset) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOperation;</span>
+<span class="line" id="L629">                self.current_row.cfa.register = i.register;</span>
+<span class="line" id="L630">            },</span>
+<span class="line" id="L631">            .def_cfa_offset =&gt; |i| {</span>
+<span class="line" id="L632">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L633">                <span class="tok-kw">if</span> (self.current_row.cfa.register == <span class="tok-null">null</span> <span class="tok-kw">or</span> self.current_row.cfa.rule != .val_offset) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOperation;</span>
+<span class="line" id="L634">                self.current_row.cfa.rule = .{</span>
+<span class="line" id="L635">                    .val_offset = <span class="tok-builtin">@intCast</span>(i.offset),</span>
+<span class="line" id="L636">                };</span>
+<span class="line" id="L637">            },</span>
+<span class="line" id="L638">            .def_cfa_offset_sf =&gt; |i| {</span>
+<span class="line" id="L639">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L640">                <span class="tok-kw">if</span> (self.current_row.cfa.register == <span class="tok-null">null</span> <span class="tok-kw">or</span> self.current_row.cfa.rule != .val_offset) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidOperation;</span>
+<span class="line" id="L641">                self.current_row.cfa.rule = .{</span>
+<span class="line" id="L642">                    .val_offset = i.offset * cie.data_alignment_factor,</span>
+<span class="line" id="L643">                };</span>
+<span class="line" id="L644">            },</span>
+<span class="line" id="L645">            .def_cfa_expression =&gt; |i| {</span>
+<span class="line" id="L646">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L647">                self.current_row.cfa.register = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L648">                self.current_row.cfa.rule = .{</span>
+<span class="line" id="L649">                    .expression = i.block,</span>
+<span class="line" id="L650">                };</span>
+<span class="line" id="L651">            },</span>
+<span class="line" id="L652">            .expression =&gt; |i| {</span>
+<span class="line" id="L653">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L654">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L655">                column.rule = .{</span>
+<span class="line" id="L656">                    .expression = i.block,</span>
+<span class="line" id="L657">                };</span>
+<span class="line" id="L658">            },</span>
+<span class="line" id="L659">            .val_offset =&gt; |i| {</span>
+<span class="line" id="L660">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L661">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L662">                column.rule = .{</span>
+<span class="line" id="L663">                    .val_offset = <span class="tok-builtin">@as</span>(<span class="tok-type">i64</span>, <span class="tok-builtin">@intCast</span>(i.offset)) * cie.data_alignment_factor,</span>
+<span class="line" id="L664">                };</span>
+<span class="line" id="L665">            },</span>
+<span class="line" id="L666">            .val_offset_sf =&gt; |i| {</span>
+<span class="line" id="L667">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L668">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L669">                column.rule = .{</span>
+<span class="line" id="L670">                    .val_offset = i.offset * cie.data_alignment_factor,</span>
+<span class="line" id="L671">                };</span>
+<span class="line" id="L672">            },</span>
+<span class="line" id="L673">            .val_expression =&gt; |i| {</span>
+<span class="line" id="L674">                <span class="tok-kw">try</span> self.resolveCopyOnWrite(allocator);</span>
+<span class="line" id="L675">                <span class="tok-kw">const</span> column = <span class="tok-kw">try</span> self.getOrAddColumn(allocator, i.register);</span>
+<span class="line" id="L676">                column.rule = .{</span>
+<span class="line" id="L677">                    .val_expression = i.block,</span>
+<span class="line" id="L678">                };</span>
+<span class="line" id="L679">            },</span>
+<span class="line" id="L680">        }</span>
+<span class="line" id="L681"></span>
+<span class="line" id="L682">        <span class="tok-kw">return</span> prev_row;</span>
+<span class="line" id="L683">    }</span>
+<span class="line" id="L684">};</span>
+<span class="line" id="L685"></span>
+</code></pre></body>
+</html>
