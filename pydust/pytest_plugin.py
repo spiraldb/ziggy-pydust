@@ -1,8 +1,23 @@
+"""
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 import enum
 import io
 import pathlib
 import struct
 import subprocess
+import sys
 import tempfile
 
 import pytest
@@ -14,14 +29,13 @@ pydust_conf = config.load()
 
 
 def pytest_collection(session):
-    """Invoke a `zig build test-build` once for all of our modules at the start of the session.
+    """Setup the testing environment for Pydust.
 
-    This is our own build target that generates the test runners but doesn't invoke them.
-
-    This is fine due to zig build's caching. We then run test collection for each of the Pydust
-    entrypoints in the pyproject.toml.
+    * Invoke a `zig build install` to generate the Python extension modules (used by Python tests)
+    * Invoke a `zig build pydust-test-build` to generate the Zig test runners (used by Zig tests)
     """
-    buildzig.zig_build(["test-build"])
+    buildzig.zig_build(["install", f"-Dpython-exe={sys.executable}"])
+    buildzig.zig_build(["pydust-test-build", f"-Dpython-exe={sys.executable}"])
 
 
 def pytest_collect_file(file_path, path, parent):

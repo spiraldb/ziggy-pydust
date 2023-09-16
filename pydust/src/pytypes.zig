@@ -1,3 +1,15 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // https://docs.python.org/3/extending/newtypes_tutorial.html
 
 const std = @import("std");
@@ -9,6 +21,12 @@ const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 const tramp = @import("trampoline.zig");
 const Type = std.builtin.Type;
 
+pub const ClassDef = struct {
+    name: [:0]const u8,
+    definition: type,
+    bases: []const type,
+};
+
 pub fn State(comptime definition: type) type {
     return struct {
         obj: ffi.PyObject,
@@ -17,7 +35,7 @@ pub fn State(comptime definition: type) type {
 }
 
 /// Wrap a user-defined class struct into a unique struct that itself wraps the trampolined functions.
-pub fn define(comptime class: py.ClassDef) type {
+pub fn define(comptime class: ClassDef) type {
     return struct {
         const Self = @This();
         pub const name: [:0]const u8 = class.name;
@@ -30,7 +48,7 @@ pub fn define(comptime class: py.ClassDef) type {
         // Declare a struct representing an instance of the object.
         const Instance = State(class.definition);
 
-        const slots = Slots(name, class.definition, Instance);
+        const slots = Slots(class.definition, Instance);
 
         const spec = ffi.PyType_Spec{
             .name = pyName.ptr,
@@ -45,7 +63,6 @@ pub fn define(comptime class: py.ClassDef) type {
             if (class.bases.len > 0) {
                 const basesTuple = try py.PyTuple.new(class.bases.len);
                 inline for (class.bases, 0..) |base, i| {
-                    // TODO(ngates): find the correct parent module
                     const baseType = try module.obj.get(py.getClassName(base));
                     try basesTuple.setItem(i, baseType);
                 }
@@ -58,12 +75,11 @@ pub fn define(comptime class: py.ClassDef) type {
     };
 }
 
-fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instance: type) type {
+fn Slots(comptime definition: type, comptime Instance: type) type {
     const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
     return struct {
-        const methods = Methods(definition, Instance);
-        const init = Init(name, definition, Instance);
+        const methods = funcs.Methods(definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -77,10 +93,16 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
-            if (@hasDecl(definition, "__init__")) {
+            if (@hasDecl(definition, "__new__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_tp_init,
-                    .pfunc = @ptrCast(@constCast(&init.init)),
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = @ptrCast(@constCast(&tp_new)),
+                }};
+            } else {
+                // Otherwise, we set tp_new to a default that throws a type error.
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = @ptrCast(@constCast(&tp_new_default)),
                 }};
             }
 
@@ -88,13 +110,6 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_finalize,
                     .pfunc = @ptrCast(@constCast(&tp_finalize)),
-                }};
-            }
-
-            if (@hasDecl(definition, "__len__")) {
-                slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_mp_length,
-                    .pfunc = @ptrCast(@constCast(&mp_length)),
                 }};
             }
 
@@ -112,6 +127,51 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
                 }};
             }
 
+            if (@hasDecl(definition, "__len__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_mp_length,
+                    .pfunc = @ptrCast(@constCast(&mp_length)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__iter__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_iter,
+                    .pfunc = @ptrCast(@constCast(&tp_iter)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__next__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_iternext,
+                    .pfunc = @ptrCast(@constCast(&tp_iternext)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__str__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_str,
+                    .pfunc = @ptrCast(@constCast(&tp_str)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__repr__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_repr,
+                    .pfunc = @ptrCast(@constCast(&tp_repr)),
+                }};
+            }
+
+            for (funcs.BinaryOperators.kvs) |kv| {
+                if (@hasDecl(definition, kv.key)) {
+                    const op = BinaryOperator(definition, Instance, kv.key);
+                    slots_ = slots_ ++ .{ffi.PyType_Slot{
+                        .slot = kv.value,
+                        .pfunc = @ptrCast(@constCast(&op.call)),
+                    }};
+                }
+            }
+
             slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_methods,
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
@@ -122,14 +182,39 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             break :blk slots_;
         };
 
-        fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
-            const lenFunc = @field(definition, "__len__");
-            const self: *const Instance = @ptrCast(pyself);
-            const result = @as(isize, @intCast(lenFunc(&self.state)));
-            if (@typeInfo(@typeInfo(@TypeOf(lenFunc)).Fn.return_type.?) == .ErrorUnion) {
-                return result catch return -1;
+        fn tp_new(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 0) orelse return null;
+            // Cast it into a supertype instance. Note: we check at comptime that subclasses of this class
+            // include our own state object as the first field in their struct.
+            const self: *Instance = @ptrCast(pyself);
+
+            // Allow the definition to initialize the state field.
+            self.state = tp_new_internal(
+                if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null,
+                if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null,
+            ) catch return null;
+
+            return pyself;
+        }
+
+        fn tp_new_internal(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) !definition {
+            const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{});
+            if (sig.selfParam) |_| @compileError("__new__ must not take a self parameter");
+
+            if (sig.argsParam) |Args| {
+                const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
+                return try definition.__new__(args);
+            } else {
+                return try definition.__new__();
             }
-            return result;
+        }
+
+        fn tp_new_default(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            _ = pykwargs;
+            _ = pyargs;
+            _ = subtype;
+            py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
+            return null;
         }
 
         /// Wrapper for the user's __del__ function.
@@ -139,7 +224,7 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
         fn tp_finalize(pyself: *ffi.PyObject) void {
             // The finalize slot shouldn't alter any exception that is currently set.
             // So it's recommended we save the existing one (if any) and restore it afterwards.
-            // TODO(ngates): we may want to move this logic to PyErr if it happens more?
+            // NOTE(ngates): we may want to move this logic to PyErr if it happens more?
             var error_type: ?*ffi.PyObject = undefined;
             var error_value: ?*ffi.PyObject = undefined;
             var error_tb: ?*ffi.PyObject = undefined;
@@ -151,121 +236,76 @@ fn Slots(comptime name: [:0]const u8, comptime definition: type, comptime Instan
             ffi.PyErr_Restore(error_type, error_value, error_tb);
         }
 
-        fn bf_getbuffer(self: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
+        fn bf_getbuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
             // In case of any error, the view.obj field must be set to NULL.
             view.obj = null;
 
-            const instance: *Instance = @ptrCast(self);
-            return tramp.errVoid(definition.__buffer__(&instance.state, @ptrCast(view), flags));
+            const self: *Instance = @ptrCast(pyself);
+            definition.__buffer__(&self.state, @ptrCast(view), flags) catch return -1;
+            return 0;
         }
 
-        fn bf_releasebuffer(self: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
-            const instance: *Instance = @ptrCast(self);
-            return definition.__release_buffer__(&instance.state, @ptrCast(view));
+        fn bf_releasebuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
+            const self: *Instance = @ptrCast(pyself);
+            return definition.__release_buffer__(&self.state, @ptrCast(view));
+        }
+
+        fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
+            const self: *const Instance = @ptrCast(pyself);
+            const result = definition.__len__(&self.state) catch return -1;
+            return @as(isize, @intCast(result));
+        }
+
+        fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const iterator = definition.__iter__(&self.state) catch return null;
+            return (py.createOwned(iterator) catch return null).py;
+        }
+
+        fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const optionalNext = definition.__next__(&self.state) catch return null;
+            if (optionalNext) |next| {
+                return (py.createOwned(next) catch return null).py;
+            }
+            return null;
+        }
+
+        fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const result = definition.__str__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+
+        fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const self: *Instance = @ptrCast(pyself);
+            const result = definition.__repr__(&self.state) catch return null;
+            return (py.createOwned(result) catch return null).py;
         }
     };
 }
 
-fn Methods(comptime definition: type, comptime Instance: type) type {
-    const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
-
+fn BinaryOperator(
+    comptime definition: type,
+    comptime Instance: type,
+    comptime op: []const u8,
+) type {
     return struct {
-        const defs: []const type = blk: {
-            var defs_: []const type = &.{};
-
-            for (@typeInfo(definition).Struct.decls) |decl| {
-                const value = @field(definition, decl.name);
-                const typeInfo = @typeInfo(@TypeOf(value));
-
-                // For now, we skip non-function declarations.
-                if (typeInfo != .Fn or funcs.isReserved(decl.name)) {
-                    continue;
-                }
-
-                // The valid types for a "self" parameter are either the module state struct (definition), or a py.PyModule.
-                const sig = funcs.parseSignature(decl.name, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
-                const def = funcs.wrap(value, sig, funcs.getSelfParamFn(definition, Instance, sig), 0);
-                defs_ = defs_ ++ .{def};
-            }
-
-            break :blk defs_;
-        };
-
-        pub const pydefs: [defs.len:empty]ffi.PyMethodDef = blk: {
-            var pydefs_: [defs.len:empty]ffi.PyMethodDef = undefined;
-            for (0..defs.len) |i| {
-                pydefs_[i] = defs[i].aspy();
-            }
-            break :blk pydefs_;
-        };
-    };
-}
-
-fn Init(comptime name: [:0]const u8, comptime definition: type, comptime Instance: type) type {
-    const initName = "__init__";
-
-    return struct {
-        const initSig = blk: {
-            const func = @field(definition, initName);
+        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const func = @field(definition, op);
             const typeInfo = @typeInfo(@TypeOf(func));
-            break :blk funcs.parseSignature(initName, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
-        };
+            const sig = funcs.parseSignature(op, typeInfo.Fn, &.{});
 
-        const initFn = blk: {
-            const func = @field(definition, initName);
-            if (initSig.argsParam) |parg| {
-                const initFunction = struct {
-                    pub inline fn dispatch(self: *definition, args: []*ffi.PyObject) !void {
-                        const castArgs: parg.type.? = @ptrCast(args);
-                        try func(self, castArgs);
-                    }
-                };
-                break :blk initFunction.dispatch;
-            }
+            if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
+            if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
 
-            const initFunction = struct {
-                pub inline fn invoke(self: *definition) !void {
-                    try func(self);
-                }
-            };
-            break :blk initFunction.invoke;
-        };
+            const self: *Instance = @ptrCast(pyself);
+            const other = tramp.Trampoline(
+                sig.argsParam orelse unreachable,
+            ).unwrap(.{ .py = pyother }) catch return null;
 
-        pub fn init(self: *ffi.PyObject, args: [*c]ffi.PyObject, kwargs: [*c]ffi.PyObject) callconv(.C) c_int {
-            if (kwargs != null and ffi.PyDict_Size(kwargs) > 0) {
-                py.TypeError.raise(std.fmt.comptimePrint("Kwargs in __init__ functions are not supported for type: {s}", .{name})) catch return -1;
-            }
-
-            const instance: *Instance = @ptrCast(self);
-            if (initSig.argsParam) |_| {
-                const pyArgs: []*ffi.PyObject = unpackTuple(args) orelse return -1;
-                defer py.allocator.free(pyArgs);
-                return tramp.errVoid(initFn(&instance.state, pyArgs));
-            }
-
-            return tramp.errVoid(initFn(&instance.state));
-        }
-
-        fn unpackTuple(args: [*c]ffi.PyObject) ?[]*ffi.PyObject {
-            if (args == null) {
-                return null;
-            }
-
-            const tuple: py.PyTuple = .{ .obj = .{ .py = args } };
-            const argsSize = tuple.getSize() catch return null;
-            const argLen = @typeInfo(@typeInfo(initSig.argsParam.?.type.?).Pointer.child).Struct.fields.len;
-            if (argsSize != argLen) {
-                const argsNeedsS = if (argLen > 1) "s" else "";
-                py.TypeError.raiseComptimeFmt("{s} takes {d} argument" ++ argsNeedsS, .{ name, argLen }) catch return null;
-            }
-
-            var pyArgs: []*ffi.PyObject = py.allocator.alloc(*ffi.PyObject, argLen) catch return null;
-            for (0..argLen) |i| {
-                const item = tuple.getItem(@intCast(i)) catch return null;
-                pyArgs[i] = item.py;
-            }
-
-            return pyArgs;
+            const result = func(&self.state, other) catch return null;
+            return (py.createOwned(result) catch return null).py;
         }
     };
 }

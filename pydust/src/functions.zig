@@ -1,6 +1,17 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 const std = @import("std");
 const ffi = @import("ffi.zig");
-const tramp = @import("trampoline.zig");
 const py = @import("pydust.zig");
 const PyError = @import("errors.zig").PyError;
 const Type = std.builtin.Type;
@@ -9,11 +20,40 @@ const MethodType = enum { STATIC, CLASS, INSTANCE };
 
 pub const Signature = struct {
     name: []const u8,
-    selfParam: ?Type.Fn.Param = null,
-    argsParam: ?Type.Fn.Param = null,
-    kwargsParam: ?Type.Fn.Param = null,
+    selfParam: ?type = null,
+    argsParam: ?type = null,
     returnType: type,
+    nargs: usize = 0,
+    nkwargs: usize = 0,
 };
+
+pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
+    .{ "__add__", ffi.Py_nb_add },
+    .{ "__sub__", ffi.Py_nb_subtract },
+    .{ "__mul__", ffi.Py_nb_multiply },
+    .{ "__mod__", ffi.Py_nb_remainder },
+    .{ "__divmod__", ffi.Py_nb_divmod },
+    .{ "__pow__", ffi.Py_nb_power },
+    .{ "__lshift__", ffi.Py_nb_lshift },
+    .{ "__rshift__", ffi.Py_nb_rshift },
+    .{ "__and__", ffi.Py_nb_and },
+    .{ "__xor__", ffi.Py_nb_xor },
+    .{ "__or__", ffi.Py_nb_or },
+    .{ "__truediv__", ffi.Py_nb_true_divide },
+    .{ "__floordiv__", ffi.Py_nb_floor_divide },
+    .{ "__matmul__", ffi.Py_nb_matrix_multiply },
+    .{ "__getitem__", ffi.Py_sq_item },
+});
+pub const NBinaryOperators = BinaryOperators.kvs.len;
+
+// TODO(marko): Move this somewhere.
+fn keys(comptime stringMap: type) [stringMap.kvs.len][]const u8 {
+    var keys_: [stringMap.kvs.len][]const u8 = undefined;
+    for (stringMap.kvs, 0..) |kv, i| {
+        keys_[i] = kv.key;
+    }
+    return keys_;
+}
 
 const reservedNames = .{
     "__new__",
@@ -22,62 +62,85 @@ const reservedNames = .{
     "__del__",
     "__buffer__",
     "__release_buffer__",
-};
+    "__iter__",
+    "__next__",
+} ++ keys(BinaryOperators);
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {
-    if (func.params.len > 3) {
-        @compileError("Pydust function can have at most 3 parameters. A self ptr, and args and kwargs structs.");
-    }
-
     var sig = Signature{
-        // TODO(ngates): is this true?
         .returnType = func.return_type orelse @compileError("Pydust functions must always return or error."),
         .name = name,
     };
 
-    for (func.params, 0..) |param, i| {
-        if (i == 0) {
+    switch (func.params.len) {
+        2 => {
+            sig.selfParam = func.params[0].type.?;
+            sig.argsParam = func.params[1].type.?;
+        },
+        1 => {
+            const param = func.params[0];
             if (isSelfArg(param, SelfTypes)) {
-                sig.selfParam = param;
-                continue;
+                sig.selfParam = param.type.?;
+            } else {
+                sig.argsParam = param.type.?;
+                checkArgsParam(sig.argsParam.?);
             }
-        }
+        },
+        0 => {},
+        else => @compileError("Pydust function can have at most 2 parameters. A self ptr and a parameters struct."),
+    }
 
-        checkIsValidStructPtr(name, param.type.?);
-        if (sig.argsParam != null) {
-            sig.kwargsParam = param;
-        } else {
-            sig.argsParam = param;
-        }
+    // Count up the parameters
+    if (sig.argsParam) |p| {
+        sig.nargs = argCount(p);
+        sig.nkwargs = kwargCount(p);
     }
 
     return sig;
 }
 
-pub fn isReserved(comptime name: []const u8) bool {
+pub fn argCount(comptime argsParam: type) usize {
+    return switch (@typeInfo(argsParam)) {
+        .Struct => s: {
+            var n: usize = 0;
+            inline for (@typeInfo(argsParam).Struct.fields) |field| {
+                if (field.default_value == null) {
+                    n += 1;
+                }
+            }
+            break :s n;
+        },
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have a single param.
+        else => 1,
+    };
+}
+
+pub fn kwargCount(comptime argsParam: type) usize {
+    return switch (@typeInfo(argsParam)) {
+        .Struct => s: {
+            var n: usize = 0;
+            inline for (@typeInfo(argsParam).Struct.fields) |field| {
+                if (field.default_value != null) {
+                    n += 1;
+                }
+            }
+            break :s n;
+        },
+        // Because we can only have 0, 1, 2 parameters, if we're here
+        // and we don't have an args struct, we must have zero kwargs.
+        else => 0,
+    };
+}
+
+fn isReserved(comptime name: []const u8) bool {
     for (reservedNames) |reserved| {
         if (std.mem.eql(u8, name, reserved)) {
             return true;
         }
     }
     return false;
-}
-
-pub fn getSelfParamFn(comptime Cls: type, comptime Self: type, comptime sig: Signature) type {
-    return struct {
-        pub fn unwrap(pyself: *ffi.PyObject) !sig.selfParam.?.type.? {
-            if (sig.selfParam) |param| {
-                return switch (param.type.?) {
-                    py.PyObject => py.PyObject{ .py = pyself },
-                    *Cls => &@fieldParentPtr(Self, "obj", pyself).state,
-                    *const Cls => &@fieldParentPtr(Self, "obj", pyself).state,
-                    else => @compileError("Unsupported self param type: " ++ @typeName(param.type.?)),
-                };
-            }
-            @compileError("Tried to get pass self param to a function that doesn't expect it");
-        }
-    };
 }
 
 /// Check whether the first parameter of the function is one of the valid "self" types.
@@ -90,28 +153,36 @@ fn isSelfArg(comptime param: Type.Fn.Param, comptime SelfTypes: []const type) bo
     return false;
 }
 
-fn checkIsValidStructPtr(comptime funcName: []const u8, comptime paramType: type) void {
-    const typeInfo = @typeInfo(paramType);
-    if (typeInfo != .Pointer or !typeInfo.Pointer.is_const or @typeInfo(typeInfo.Pointer.child) != .Struct) {
-        @compileError("Args and Kwargs must be passed as const struct pointers in function " ++ funcName);
+fn checkArgsParam(comptime Args: type) void {
+    const typeInfo = @typeInfo(Args);
+    if (typeInfo != .Struct) {
+        @compileError("Pydust args must be defined as a struct");
+    }
+
+    const fields = typeInfo.Struct.fields;
+    var kwargs = false;
+    for (fields) |field| {
+        if (field.default_value != null) {
+            kwargs = true;
+        } else {
+            if (kwargs) {
+                @compileError("Args struct cannot have positional fields after keyword (defaulted) fields");
+            }
+        }
     }
 }
 
-pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamFn: type, comptime flags: c_int) type {
+pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_int) type {
     return struct {
-        const Self = @This();
+        const doc = docTextSignature(sig);
 
-        //const argWrapper = tramp.fromPyObjects(name, sig.argsStruct);
-        const resultWrapper = tramp.toPyObject(sig.returnType);
-
-        pub const Doc = docTextSignature(sig);
-
+        /// Return a PyMethodDef for this wrapped function.
         pub fn aspy() ffi.PyMethodDef {
             return .{
                 .ml_name = sig.name.ptr ++ "",
-                .ml_meth = @ptrCast(&fastcall),
-                .ml_flags = ffi.METH_FASTCALL | flags,
-                .ml_doc = &Doc,
+                .ml_meth = if (sig.nkwargs > 0) @ptrCast(&fastcallKwargs) else @ptrCast(&fastcall),
+                .ml_flags = ffi.METH_FASTCALL | flags | if (sig.nkwargs > 0) ffi.METH_KEYWORDS else 0,
+                .ml_doc = &doc,
             };
         }
 
@@ -120,53 +191,155 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime selfParamF
             pyargs: [*]ffi.PyObject,
             nargs: ffi.Py_ssize_t,
         ) callconv(.C) ?*ffi.PyObject {
-            return fastcallInternal(pyself, pyargs, nargs) catch |err| tramp.setErrObj(err);
+            const resultObject = internal(
+                .{ .py = pyself },
+                @as([*]py.PyObject, @ptrCast(pyargs))[0..@intCast(nargs)],
+            ) catch return null;
+            return resultObject.py;
         }
 
-        inline fn fastcallInternal(
+        inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) PyError!py.PyObject {
+            const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
+
+            if (sig.argsParam) |Args| {
+                // Create an args struct and populate it with pyargs.
+                var args: Args = undefined;
+                if (argCount(Args) != pyargs.len) {
+                    return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
+                }
+                inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
+                    @field(args, field.name) = try py.as(field.type, pyargs[i]);
+                }
+
+                const result = if (sig.selfParam) |_| func(self, args) else func(args);
+
+                return py.createOwned(result);
+            } else {
+                const result = if (sig.selfParam) |_| func(self) else func();
+                return py.createOwned(result);
+            }
+        }
+
+        fn fastcallKwargs(
             pyself: *ffi.PyObject,
             pyargs: [*]ffi.PyObject,
             nargs: ffi.Py_ssize_t,
-        ) !?*ffi.PyObject {
-            if (sig.selfParam == null) {
-                // fn()
-                if (sig.argsParam == null) {
-                    // TODO(ngates): mark other function calls as always_inline?
-                    return resultWrapper.unwrap(@call(.always_inline, func, .{}));
-                }
+            kwnames: ?*ffi.PyObject,
+        ) callconv(.C) ?*ffi.PyObject {
+            const allArgs: [*]py.PyObject = @ptrCast(pyargs);
+            const args = allArgs[0..@intCast(nargs)];
 
-                // fn(args)
-                if (sig.kwargsParam == null) {
-                    return resultWrapper.unwrap(func(try getArgs(pyargs, nargs)));
-                }
+            const nkwargs = if (kwnames) |names| py.len(names) catch return null else 0;
+            const kwargs = allArgs[args.len .. args.len + nkwargs];
 
-                // fn(args, kwargs)
-                @compileError("Kwargs are unsupported");
-            } else {
-                const selfParam = selfParamFn.unwrap(pyself) catch |err| return tramp.setErrObj(err);
-
-                // fn(self)
-                if (sig.argsParam == null) {
-                    return resultWrapper.unwrap(func(selfParam));
-                }
-
-                // fn(self, args)
-                if (sig.kwargsParam == null) {
-                    return resultWrapper.unwrap(func(selfParam, try getArgs(pyargs, nargs)));
-                }
-
-                // fn(self, args, kwargs)
-                @compileError("Kwargs are unsupported");
-            }
+            const resultObject = internalKwargs(
+                .{ .py = pyself },
+                args,
+                kwargs,
+                if (kwnames) |names| py.PyTuple.unchecked(.{ .py = names }) else null,
+            ) catch return null;
+            return resultObject.py;
         }
 
-        // Cast the Python arguments into the requested argument struct.
-        fn getArgs(pyargs: [*]ffi.PyObject, nargs: ffi.Py_ssize_t) !sig.argsParam.?.type.? {
-            if (@typeInfo(@typeInfo(sig.argsParam.?.type.?).Pointer.child).Struct.fields.len != nargs) {
-                return py.TypeError.raise("Incorrect number of arguments");
+        inline fn internalKwargs(pyself: py.PyObject, pyargs: []py.PyObject, pykwargs: []py.PyObject, kwnames: ?py.PyTuple) PyError!py.PyObject {
+            const Args = sig.argsParam.?; // We must have args if we know we have kwargs
+            var args: Args = undefined;
+
+            if (pyargs.len != argCount(Args)) {
+                return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
             }
-            return @ptrCast(pyargs[0..@intCast(nargs)]);
+
+            inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
+                if (field.default_value) |def_value| {
+                    // We have a kwarg.
+                    const fieldName = try py.PyString.create(field.name);
+                    defer fieldName.decref();
+
+                    const defaultValue: *field.type = @alignCast(@ptrCast(@constCast(def_value)));
+
+                    if (kwnames) |names| {
+                        if (try names.contains(fieldName)) {
+                            const idx = try names.index(fieldName);
+                            const arg = try py.as(field.type, pykwargs[idx]);
+                            @field(args, field.name) = arg;
+                        } else {
+                            @field(args, field.name) = defaultValue.*;
+                        }
+                    } else {
+                        @field(args, field.name) = defaultValue.*;
+                    }
+                } else {
+                    // We have an arg
+                    const arg = try py.as(field.type, pyargs[i]);
+                    @field(args, field.name) = arg;
+                }
+            }
+
+            // Now we loop over the kwnames at runtime and check they all exist in the fieldNames
+            const fieldNames = std.meta.fieldNames(Args);
+            // TODO(ngates): use PySeq iterator when we support it
+            for (0..pykwargs.len) |i| {
+                const names = kwnames orelse @panic("Expected kwnames with non-empty kwargs slice");
+
+                const kwname = try names.getItem([]const u8, i);
+                var exists = false;
+                for (fieldNames) |name| {
+                    if (std.mem.eql(u8, name, kwname)) {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (!exists) {
+                    return py.TypeError.raiseFmt("unexpected kwarg '{s}'", .{kwname});
+                }
+            }
+
+            const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
+            const result = if (sig.selfParam) |_| func(self, args) else func(args);
+            return py.createOwned(result);
         }
+    };
+}
+
+pub fn Methods(comptime definition: type) type {
+    const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
+
+    return struct {
+        const methodCount = b: {
+            var mc: u32 = 0;
+            for (@typeInfo(definition).Struct.decls) |decl| {
+                const value = @field(definition, decl.name);
+                const typeInfo = @typeInfo(@TypeOf(value));
+
+                if (typeInfo != .Fn or isReserved(decl.name)) {
+                    continue;
+                }
+                mc += 1;
+            }
+            break :b mc;
+        };
+
+        pub const pydefs: [methodCount:empty]ffi.PyMethodDef = blk: {
+            var defs: [methodCount:empty]ffi.PyMethodDef = undefined;
+
+            var idx: u32 = 0;
+            for (@typeInfo(definition).Struct.decls) |decl| {
+                const value = @field(definition, decl.name);
+                const typeInfo = @typeInfo(@TypeOf(value));
+
+                // For now, we skip non-function declarations.
+                if (typeInfo != .Fn or isReserved(decl.name)) {
+                    continue;
+                }
+
+                const sig = parseSignature(decl.name, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
+                defs[idx] = wrap(value, sig, 0).aspy();
+                idx += 1;
+            }
+
+            break :blk defs;
+        };
     };
 }
 
@@ -215,26 +388,54 @@ fn sigSize(comptime sig: Signature) usize {
 }
 
 fn sigArgs(comptime sig: Signature) ![]const []const u8 {
-    var sigargs: std.BoundedArray([]const u8, 100) = std.BoundedArray([]const u8, 100).init(0) catch @compileError("OOM");
+    const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs * 2 + 3);
+    var sigargs = ArgBuf.init(0) catch @compileError("OOM");
     if (sig.selfParam) |_| {
         try sigargs.append("$self");
     }
-    if (sig.argsParam) |argParam| {
-        // Insert marker for positional only args
-        try sigargs.append("/");
-        // Assume struct pointer
-        if (!std.meta.trait.is(.Pointer)(argParam.type.?) and !std.meta.trait.is(.Struct)(@typeInfo(@typeInfo(argParam.type.?).Pointer.child))) {
-            @compileError("ArgParam can only be a struct pointer");
+
+    if (sig.argsParam) |Args| {
+        const fields = @typeInfo(Args).Struct.fields;
+
+        var inKwargs = false;
+        for (fields) |field| {
+            if (field.default_value) |def| {
+                // We have a kwarg
+                if (!inKwargs) {
+                    inKwargs = true;
+                    // Marker for end of positional only args
+                    try sigargs.append("/");
+                    // Marker for start of keyword only args
+                    try sigargs.append("*");
+                }
+
+                try sigargs.append(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, def) }));
+            } else {
+                // We have an arg
+                try sigargs.append(field.name);
+            }
         }
-        for (@typeInfo(@typeInfo(argParam.type.?).Pointer.child).Struct.fields) |field| {
-            try sigargs.append(field.name);
+
+        if (!inKwargs) {
+            // Always mark end of positional only args
+            try sigargs.append("/");
         }
-    }
-    if (sig.kwargsParam) |_| {
-        // Insert marker for keywords only args
-        try sigargs.append("*");
-        @compileError("Kwargs are not supported");
     }
 
     return sigargs.constSlice();
+}
+
+fn valueToStr(comptime T: type, value: *const anyopaque) []const u8 {
+    return switch (@typeInfo(T)) {
+        inline .Pointer => |p| p: {
+            break :p switch (p.child) {
+                inline u8 => std.fmt.comptimePrint("\"{s}\"", .{@as(*const T, @alignCast(@ptrCast(value))).*}),
+                inline else => "...",
+            };
+        },
+        inline .Bool => if (@as(*const bool, @ptrCast(value)).*) "True" else "False",
+        inline .Struct => "...",
+        inline .Optional => if (value == null) "None" else "...",
+        inline else => std.fmt.comptimePrint("{any}", .{@as(*const T, @alignCast(@ptrCast(value))).*}),
+    };
 }

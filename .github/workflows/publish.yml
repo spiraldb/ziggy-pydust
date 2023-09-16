@@ -19,7 +19,10 @@ jobs:
       url: https://pypi.org/p/ziggy-pydust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          # Needed for docs to discover gh-pages branch
+          fetch-depth: 0
       - uses: actions/setup-python@v4
         id: setup-python
         with:
@@ -35,6 +38,7 @@ jobs:
         id: install-poetry
         if: steps.cached-poetry.outputs.cache-hit != 'true'
         uses: snok/install-poetry@v1
+        # If changing any of these, you must comment out the if statement above.
         with:
           version: ${{ env.POETRY_VERSION }}
           virtualenvs-create: true
@@ -53,17 +57,21 @@ jobs:
       - name: Poetry Build
         run: poetry build -v
 
+      - name: Poetry Install
+        run: poetry install -v --only=docs
+      - name: Zig Docs Build
+        run: poetry run python -m ziglang build docs
+      - name: Setup doc deploy
+        run: |
+          git config --global user.name Docs Deploy
+          git config --global user.email docs@dummy.bot.com
+      - name: Get Version
+        id: get_version
+        uses: battila7/get-version-action@v2
       - name: MKDocs Build
-        run: poetry run mkdocs build
+        run: poetry run mike deploy ${{ steps.get_version.outputs.major }}.${{ steps.get_version.outputs.minor }} latest --push --update-aliases
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
-      - uses: actions/cache@v3
-        with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: .cache
-          restore-keys: |
-            mkdocs-material-
-      - run: poetry run mkdocs gh-deploy --force
+

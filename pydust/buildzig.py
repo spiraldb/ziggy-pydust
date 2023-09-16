@@ -1,4 +1,20 @@
+"""
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 import contextlib
+import os
+import shutil
 import subprocess
 import sys
 import sysconfig
@@ -9,13 +25,23 @@ from pydust import config
 
 PYVER_MINOR = ".".join(str(v) for v in sys.version_info[:2])
 PYVER_HEX = f"{sys.hexversion:#010x}"
-PYINC = sysconfig.get_path("include")
-PYLIB = sysconfig.get_config_var("LIBDIR")
+PYLDLIB = sysconfig.get_config_var("LDLIBRARY")
+
+# Strip libpython3.11.a.so => python3.11.a
+PYLDLIB = PYLDLIB[3:] if PYLDLIB.startswith("lib") else PYLDLIB
+PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
 def zig_build(argv: list[str]):
     conf = config.load()
-    generate_build_zig(conf.build_zig)
+
+    # Always generate the supporting pydist.build.zig
+    generate_pydust_build_zig(conf.pydust_build_zig)
+
+    if not conf.self_managed:
+        # Generate the build.zig if we're managing the ext_modules ourselves
+        generate_build_zig(conf.build_zig)
+
     subprocess.run(
         [sys.executable, "-m", "ziglang", "build", "--build-file", conf.build_zig] + argv,
         check=True,
@@ -38,37 +64,7 @@ def generate_build_zig(build_zig_file):
         b = Writer(f)
 
         b.writeln('const std = @import("std");')
-        b.writeln()
-
-        # We choose to ship Pydust source code inside our PyPi package. This means the that once the PyPi package has
-        # been downloaded there are no further requests out to the internet.
-        #
-        # As a result of this though, we need some way to locate the source code. We can't use a reference to the
-        # currently running pydust, since that could be inside a temporary build env which won't exist later when the
-        # user is developing locally. Therefore, we defer resolving the path until the build.zig is invoked by shelling
-        # out to Python.
-        #
-        # We also want to avoid creating a pydust module (and instead prefer anonymous modules) so that we can populate
-        # a separate pyconf options object for each Python extension module.
-        b.write(
-            """
-            fn getPydustRootPath(allocator: std.mem.Allocator) ![]const u8 {
-                const includeResult = try std.process.Child.exec(.{
-                    .allocator = allocator,
-                    .argv = &.{
-                        "python",
-                        "-c",
-                        \\\\import os
-                        \\\\import pydust
-                        \\\\print(os.path.join(os.path.dirname(pydust.__file__), 'src', 'pydust.zig'), end='')
-                        \\\\
-                    },
-                });
-                allocator.free(includeResult.stderr);
-                return includeResult.stdout;
-            }
-            """
-        )
+        b.writeln('const py = @import("./pydust.build.zig");')
         b.writeln()
 
         with b.block("pub fn build(b: *std.Build) void"):
@@ -78,9 +74,10 @@ def generate_build_zig(build_zig_file):
                 const optimize = b.standardOptimizeOption(.{});
 
                 const test_step = b.step("test", "Run library tests");
-                const test_build_step = b.step("test-build", "Build test runners");
 
-                const pydust = getPydustRootPath(b.allocator) catch @panic("Failed to locate Pydust source code");
+                const pydust = py.addPydust(b, .{
+                    .test_step = test_step,
+                });
                 """
             )
 
@@ -88,105 +85,25 @@ def generate_build_zig(build_zig_file):
                 # TODO(ngates): fix the out filename for non-limited modules
                 assert ext_module.limited_api, "Only limited_api is supported for now"
 
-                # For each module, we generate some options, a library, as well as a test runner.
-                with b.block():
-                    b.write(
-                        f"""
-                        // For each Python ext_module, generate a shared library and test runner.
-                        const pyconf = b.addOptions();
-                        pyconf.addOption([:0]const u8, "module_name", "{ext_module.name}");
-                        pyconf.addOption(bool, "limited_api", {str(ext_module.limited_api).lower()});
-                        pyconf.addOption([:0]const u8, "hexversion", "{PYVER_HEX}");
-
-                        const lib{ext_module.libname} = b.addSharedLibrary(.{{
-                            .name = "{ext_module.libname}",
-                            .root_source_file = .{{ .path = "{ext_module.root}" }},
-                            .main_pkg_path = .{{ .path = "{conf.root}" }},
-                            .target = target,
-                            .optimize = optimize,
-                        }});
-                        configurePythonInclude(pydust, lib{ext_module.libname}, pyconf);
-
-                        // Install the shared library within the source tree
-                        const install{ext_module.libname} = b.addInstallFileWithDir(
-                            lib{ext_module.libname}.getEmittedBin(),
-                            .{{ .custom = ".." }},  // Relative to project root: zig-out/../
-                            "{ext_module.install_path}",
-                        );
-                        b.getInstallStep().dependOn(&install{ext_module.libname}.step);
-
-                        const test{ext_module.libname} = b.addTest(.{{
-                            .root_source_file = .{{ .path = "{ext_module.root}" }},
-                            .main_pkg_path = .{{ .path = "{conf.root}" }},
-                            .target = target,
-                            .optimize = optimize,
-                        }});
-                        configurePythonRuntime(pydust, test{ext_module.libname}, pyconf);
-
-                        // Install the test binary
-                        const installtest{ext_module.libname} = b.addInstallBinFile(
-                            test{ext_module.libname}.getEmittedBin(),
-                            "{ext_module.libname}.test.bin",
-                        );
-                        test_build_step.dependOn(&installtest{ext_module.libname}.step);
-
-                        // Run the tests as part of zig build test.
-                        const run_test{ext_module.libname} = b.addRunArtifact(test{ext_module.libname});
-                        test_step.dependOn(&run_test{ext_module.libname}.step);
-                        """
-                    )
-
-            b.write(
-                f"""
-                // Option for emitting test binary based on the given root source. This can be helpful for debugging.
-                const debugRoot = b.option(
-                    []const u8,
-                    "debug-root",
-                    "The root path of a file emitted as a binary for use with the debugger",
-                );
-                if (debugRoot) |root| {{
-                    const pyconf = b.addOptions();
-                    pyconf.addOption([:0]const u8, "module_name", "debug");
-                    pyconf.addOption(bool, "limited_api", false);
-                    pyconf.addOption([:0]const u8, "hexversion", "{PYVER_HEX}");
-
-                    const testdebug = b.addTest(.{{
-                        .root_source_file = .{{ .path = root }},
-                        .main_pkg_path = .{{ .path = "{conf.root}" }},
+                b.write(
+                    f"""
+                    _ = pydust.addPythonModule(.{{
+                        .name = "{ext_module.name}",
+                        .root_source_file = .{{ .path = "{ext_module.root}" }},
+                        .limited_api = {str(ext_module.limited_api).lower()},
                         .target = target,
                         .optimize = optimize,
                     }});
-                    configurePythonRuntime(pydust, testdebug, pyconf);
+                    """
+                )
 
-                    const debugBin = b.addInstallBinFile(testdebug.getEmittedBin(), "debug.bin");
-                    b.getInstallStep().dependOn(&debugBin.step);
-                }}
-                """
-            )
 
-        b.write(
-            f"""
-            fn configurePythonInclude(
-                pydust: []const u8, compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options,
-            ) void {{
-                compile.addAnonymousModule("pydust", .{{
-                    .source_file = .{{ .path = pydust }},
-                    .dependencies = &.{{.{{ .name = "pyconf", .module = pyconf.createModule() }}}},
-                }});
-                compile.addIncludePath(.{{ .path = "{PYINC}" }});
-                compile.linkLibC();
-                compile.linker_allow_shlib_undefined = true;
-            }}
+def generate_pydust_build_zig(pydust_build_zig_file):
+    """Copy the supporting pydust.build.zig into the project directory."""
+    import pydust
 
-            fn configurePythonRuntime(
-                pydust: []const u8, compile: *std.Build.CompileStep, pyconf: *std.Build.Step.Options
-            ) void {{
-                configurePythonInclude(pydust, compile, pyconf);
-                compile.linkSystemLibrary("python{PYVER_MINOR}");
-                compile.addLibraryPath(.{{ .path =  "{PYLIB}" }});
-            }}
-            """
-        )
+    src = os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig")
+    shutil.copy(src, pydust_build_zig_file)
 
 
 class Writer:
@@ -221,4 +138,5 @@ class Writer:
 
 
 if __name__ == "__main__":
+    generate_pydust_build_zig("pydust.build.zig")
     generate_build_zig("test.build.zig")

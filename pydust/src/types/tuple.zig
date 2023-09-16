@@ -1,38 +1,79 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyLong = @import("long.zig").PyLong;
 const PyFloat = @import("float.zig").PyFloat;
 const PyObject = @import("obj.zig").PyObject;
 const PyError = @import("../errors.zig").PyError;
+const seq = @import("./sequence.zig");
 
 pub const PyTuple = extern struct {
     obj: PyObject,
 
-    pub fn of(obj: py.PyObject) PyTuple {
-        return .{ .obj = obj };
+    pub usingnamespace PyObjectMixin("tuple", "PyTuple", @This());
+    pub usingnamespace seq.SequenceMixin(@This());
+
+    /// Construct a PyTuple from the given Zig tuple.
+    pub fn create(values: anytype) !PyTuple {
+        const s = @typeInfo(@TypeOf(values)).Struct;
+        if (!s.is_tuple and s.fields.len > 0) {
+            @compileError("Expected a struct tuple " ++ @typeName(@TypeOf(values)));
+        }
+
+        const tuple = try new(s.fields.len);
+        inline for (s.fields, 0..) |field, i| {
+            // Recursively unwrap the field value
+            try tuple.setOwnedItem(@intCast(i), try py.create(@field(values, field.name)));
+        }
+        return tuple;
     }
 
-    pub fn new(size: isize) !PyTuple {
+    /// Convert this tuple into the given Zig tuple struct.
+    pub fn as(self: PyTuple, comptime T: type) !T {
+        const s = @typeInfo(T).Struct;
+        const result: T = undefined;
+        for (s.fields, 0..) |field, i| {
+            const value = try self.getItem(field.type, i);
+            if (value) |val| {
+                @field(result, field.name) = val;
+            } else if (field.default_value) |default| {
+                @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(default))).*;
+            } else {
+                return py.TypeError.raise("tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+            }
+        }
+        return result;
+    }
+
+    pub fn new(size: usize) !PyTuple {
         const tuple = ffi.PyTuple_New(@intCast(size)) orelse return PyError.Propagate;
         return .{ .obj = .{ .py = tuple } };
     }
 
-    /// Construct a PyTuple from the given Zig tuple.
-    pub fn from(values: anytype) !PyTuple {
-        if (!@typeInfo(@TypeOf(values)).Struct.is_tuple) {
-            @compileError("Must pass a Zig tuple into PyTuple.from");
-        }
-        return of(try py.PyObject.from(values));
+    pub fn length(self: *const PyTuple) usize {
+        return @intCast(ffi.PyTuple_Size(self.obj.py));
     }
 
-    pub fn getSize(self: *const PyTuple) !isize {
-        return ffi.PyTuple_Size(self.obj.py);
+    pub fn getItem(self: *const PyTuple, comptime T: type, idx: usize) !T {
+        return self.getItemZ(T, @intCast(idx));
     }
 
-    pub fn getItem(self: *const PyTuple, idx: isize) !PyObject {
-        if (ffi.PyTuple_GetItem(self.obj.py, @intCast(idx))) |item| {
-            return .{ .py = item };
+    pub fn getItemZ(self: *const PyTuple, comptime T: type, idx: isize) !T {
+        if (ffi.PyTuple_GetItem(self.obj.py, idx)) |item| {
+            return py.as(T, py.PyObject{ .py = item });
         } else {
             return PyError.Propagate;
         }
@@ -56,31 +97,25 @@ pub const PyTuple = extern struct {
         // See setOwnedItem for an implementation that does steal.
         value.incref();
     }
-
-    pub fn incref(self: PyTuple) void {
-        self.obj.incref();
-    }
-
-    pub fn decref(self: PyTuple) void {
-        self.obj.decref();
-    }
 };
 
 test "PyTuple" {
     py.initialize();
     defer py.finalize();
 
-    const first = try PyLong.from(c_long, 1);
+    const first = try PyLong.create(1);
     defer first.decref();
-    const second = try PyFloat.from(f64, 1.0);
+    const second = try PyFloat.create(1.0);
     defer second.decref();
 
-    var tuple = try PyTuple.from(.{ first.obj, second.obj });
+    var tuple = try PyTuple.create(.{ first.obj, second.obj });
     defer tuple.decref();
 
-    try std.testing.expectEqual(@as(isize, 2), try tuple.getSize());
+    try std.testing.expectEqual(@as(usize, 2), tuple.length());
 
-    try std.testing.expectEqual(@as(c_long, 1), try PyLong.of(try tuple.getItem(0)).as(c_long));
+    try std.testing.expectEqual(@as(usize, 0), try tuple.index(second));
+
+    try std.testing.expectEqual(@as(c_long, 1), try tuple.getItem(c_long, 0));
     try tuple.setItem(0, second.obj);
-    try std.testing.expectEqual(@as(f64, 1.0), try PyFloat.of(try tuple.getItem(0)).as(f64));
+    try std.testing.expectEqual(@as(f64, 1.0), try tuple.getItem(f64, 0));
 }

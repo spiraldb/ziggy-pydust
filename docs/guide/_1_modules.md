@@ -23,7 +23,7 @@ and exported from the compiled shared library. This allows the module to be impo
 Please refer to the annotations in this example module for an explanation of the Pydust features.
 
 ```zig title="src/modules.zig"
---8<-- "example/modules.zig"
+--8<-- "example/modules.zig:ex"
 ```
 
 1. In Zig, every file is itself a struct. So assigning `Self = @This();` allows you to get a reference to your own type.

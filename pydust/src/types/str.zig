@@ -1,5 +1,19 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+
 const ffi = py.ffi;
 const PyObject = @import("obj.zig").PyObject;
 const PyError = @import("../errors.zig").PyError;
@@ -7,12 +21,10 @@ const PyError = @import("../errors.zig").PyError;
 pub const PyString = extern struct {
     obj: PyObject,
 
-    pub fn of(obj: py.PyObject) PyString {
-        return .{ .obj = obj };
-    }
+    pub usingnamespace PyObjectMixin("str", "PyUnicode", @This());
 
-    pub fn fromSlice(str: []const u8) !PyString {
-        const unicode = ffi.PyUnicode_FromStringAndSize(str.ptr, @intCast(str.len)) orelse return PyError.Propagate;
+    pub fn create(value: []const u8) !PyString {
+        const unicode = ffi.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.Propagate;
         return .{ .obj = .{ .py = unicode } };
     }
 
@@ -27,7 +39,7 @@ pub const PyString = extern struct {
     ///
     /// Warning: a reference to self is stolen. Use concat, or self.incref(), if you don't own a reference to self.
     pub fn appendSlice(self: PyString, str: []const u8) !PyString {
-        const other = try fromSlice(str);
+        const other = try create(str);
         defer other.decref();
         return self.appendObj(other.obj);
     }
@@ -39,7 +51,7 @@ pub const PyString = extern struct {
         var self_ptr: ?*ffi.PyObject = self.obj.py;
         ffi.PyUnicode_Append(&self_ptr, other.py);
         if (self_ptr) |ptr| {
-            return of(.{ .py = ptr });
+            return PyString.unchecked(.{ .py = ptr });
         } else {
             // If set to null, then it failed.
             return PyError.Propagate;
@@ -49,12 +61,12 @@ pub const PyString = extern struct {
     /// Concat other to self. Returns a new reference.
     pub fn concat(self: PyString, other: PyString) !PyString {
         const result = ffi.PyUnicode_Concat(self.obj.py, other.obj.py) orelse return PyError.Propagate;
-        return of(.{ .py = result });
+        return PyString.unchecked(.{ .py = result });
     }
 
     /// Concat other to self. Returns a new reference.
     pub fn concatSlice(self: PyString, other: []const u8) !PyString {
-        const otherString = try fromSlice(other);
+        const otherString = try create(other);
         defer otherString.decref();
 
         return concat(self, otherString);
@@ -65,23 +77,11 @@ pub const PyString = extern struct {
         return @intCast(ffi.PyUnicode_GetLength(self.obj.py));
     }
 
-    pub fn asOwnedSlice(self: PyString) ![:0]const u8 {
-        defer self.decref();
-        return try self.asSlice();
-    }
-
+    /// Returns a view over the PyString bytes.
     pub fn asSlice(self: PyString) ![:0]const u8 {
         var size: i64 = 0;
         const buffer: [*:0]const u8 = ffi.PyUnicode_AsUTF8AndSize(self.obj.py, &size) orelse return PyError.Propagate;
         return buffer[0..@as(usize, @intCast(size)) :0];
-    }
-
-    pub fn incref(self: PyString) void {
-        self.obj.incref();
-    }
-
-    pub fn decref(self: PyString) void {
-        self.obj.decref();
     }
 };
 
@@ -94,7 +94,7 @@ test "PyString" {
     const a = "Hello";
     const b = ", world!";
 
-    var ps = try PyString.fromSlice(a);
+    var ps = try PyString.create(a);
     // defer ps.decref();  <-- We don't need to decref here since append steals the reference to self.
     ps = try ps.appendSlice(b);
     defer ps.decref();

@@ -1,32 +1,36 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 const std = @import("std");
 const builtins = @import("builtins.zig");
+const conversions = @import("conversions.zig");
 const mem = @import("mem.zig");
 const modules = @import("modules.zig");
+const ModuleDef = @import("modules.zig").ModuleDef;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
+const ClassDef = pytypes.ClassDef;
 const funcs = @import("functions.zig");
 const tramp = @import("trampoline.zig");
 const PyError = @import("errors.zig").PyError;
 
 // Export some useful things for users
 pub usingnamespace builtins;
+pub usingnamespace conversions;
 pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
 const Self = @This();
-
-pub const ModuleDef = struct {
-    name: [:0]const u8,
-    fullname: [:0]const u8,
-    definition: type,
-};
-
-pub const ClassDef = struct {
-    name: [:0]const u8,
-    definition: type,
-    bases: []const type,
-};
 
 const State = blk: {
     comptime var modList: [20]ModuleDef = undefined;
@@ -55,10 +59,12 @@ const State = blk: {
     };
 };
 
+/// Initialize Python interpreter state
 pub fn initialize() void {
     ffi.Py_Initialize();
 }
 
+/// Tear down Python interpreter state
 pub fn finalize() void {
     ffi.Py_Finalize();
 }
@@ -98,6 +104,7 @@ pub fn class(comptime name: [:0]const u8, comptime definition: type) @TypeOf(def
 }
 
 pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, comptime definition: type) @TypeOf(definition) {
+    // TODO(ngates): infer bases by looking at struct fields.
     const classdef: ClassDef = .{
         .name = name,
         .definition = definition,
@@ -108,62 +115,74 @@ pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, compt
     return definition;
 }
 
-/// Instantiate class register view class/subclass
-pub fn init(comptime Cls: type, args: ?InitArgs(Cls)) !types.PyObject {
+/// Instantiate a class defined in Pydust.
+pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     const moduleName = findContainingModule(Cls);
     const imported = try types.PyModule.import(moduleName);
     const pytype = try imported.obj.get(getClassName(Cls));
-    if (args) |arg| {
-        if (@hasDecl(Cls, "__init__")) {
-            const pyTup = try tramp.buildArgTuple(InitArgs(Cls), arg);
-            return try pytype.callObj(pyTup.obj);
-        } else {
-            var pyObj = try pytype.call0();
-            var zigObj: *pytypes.State(Cls) = @ptrCast(pyObj.py);
-            zigObj.state = arg;
-            return pyObj;
-        }
-    } else {
-        return try pytype.call0();
+
+    // Alloc the class
+    // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
+    // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
+    const pyobj: *pytypes.State(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.Propagate));
+
+    if (@hasDecl(Cls, "__new__")) {
+        pyobj.state = try Cls.__new__(args);
+    } else if (@typeInfo(Cls).Struct.fields.len > 0) {
+        pyobj.state = args;
     }
+
+    return &pyobj.state;
+}
+
+pub fn decref(value: anytype) void {
+    conversions.object(value).decref();
+}
+
+pub fn incref(value: anytype) void {
+    conversions.object(value).incref();
 }
 
 /// Find the type of the positional args for a class
-fn InitArgs(comptime Cls: type) type {
-    if (!@hasDecl(Cls, "__init__")) {
+inline fn NewArgs(comptime Cls: type) type {
+    if (!@hasDecl(Cls, "__new__")) {
+        // Default construct args are the struct fields themselves.
         return Cls;
     }
 
-    const func = @field(Cls, "__init__");
+    const func = @field(Cls, "__new__");
     const typeInfo = @typeInfo(@TypeOf(func));
-    const sig = funcs.parseSignature("__init__", typeInfo.Fn, &.{ types.PyObject, *Cls, *const Cls });
-    return @typeInfo(sig.argsParam.?.type.?).Pointer.child;
+    const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
+    return sig.argsParam orelse struct {};
 }
 
-/// Convert user state instance into PyObject instance
-pub fn self(selfInstance: anytype) !types.PyObject {
-    const selfState = @fieldParentPtr(pytypes.State(@typeInfo(@TypeOf(selfInstance)).Pointer.child), "state", selfInstance);
-    return .{ .py = &selfState.obj };
-}
-
-/// Get zig state of super class `Super` of `classSelf` parameter
-pub fn super(comptime Super: type, selfInstance: anytype) !types.PyObject {
-    const imported = try types.PyModule.import(findContainingModule(Super));
-    const superPyType = try imported.obj.get(getClassName(Super));
-    const pyObj = try self(selfInstance);
-
-    const superTypeObj = types.PyObject{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
-    return superTypeObj.callArgs(.{ superPyType, pyObj });
-}
-
-/// Find the name of the module that contains the given definition.
 pub fn getClassName(comptime definition: type) [:0]const u8 {
+    return findClassName(definition) orelse @compileError("Unrecognized class definition");
+}
+
+/// Find the class name of the given state definition.
+pub inline fn findClassName(comptime definition: type) ?[:0]const u8 {
     inline for (State.classes()) |classDef| {
         if (classDef.definition == definition) {
             return classDef.name;
         }
     }
-    @compileError("Unknown class definition");
+    return null;
+}
+
+/// Get the module name of the given state definition.
+pub fn getModuleName(comptime definition: type) ?[:0]const u8 {
+    return findModuleName(definition) orelse @compileError("Unrecognized module definition");
+}
+
+/// Find the module name of the given state definition.
+pub inline fn findModuleName(comptime definition: type) ?[:0]const u8 {
+    inline for (State.modules()) |modDef| {
+        if (modDef.definition == definition) {
+            return modDef.name;
+        }
+    }
+    return null;
 }
 
 /// Find the name of the module that contains the given definition.

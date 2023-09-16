@@ -12,12 +12,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-# --8<-- [start:ex]
-from example import hello
+import pytest
+
+from example import iterators
 
 
-def test_hello():
-    assert hello.hello() == "Hello!"
-
-
-# --8<-- [end:ex]
+def test_range_iterator():
+    range_iterator = iter(iterators.Range(0, 10, 1))
+    for i in range(10):
+        assert next(range_iterator) == i
+    with pytest.raises(StopIteration):
+        next(range_iterator)

@@ -8,7 +8,7 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 env:
   POETRY_VERSION: "1.6.1"
@@ -18,7 +18,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          # Needed for docs to discover gh-pages branch
+          fetch-depth: 0
       - uses: actions/setup-python@v4
         id: setup-python
         with:
@@ -34,6 +37,7 @@ jobs:
         id: install-poetry
         if: steps.cached-poetry.outputs.cache-hit != 'true'
         uses: snok/install-poetry@v1
+        # If changing any of these, you must comment out the if statement above.
         with:
           version: ${{ env.POETRY_VERSION }}
           virtualenvs-create: true
@@ -41,13 +45,6 @@ jobs:
           installer-parallel: true
       - name: Poetry git plugin
         run: poetry self add poetry-git-version-plugin
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.11.0
-      - name: Zig Build Test
-        run: zig build test
 
       - name: Load cached venv
         id: cached-poetry-dependencies
@@ -67,3 +64,13 @@ jobs:
         run: poetry run black .
       - name: Pytest
         run: poetry run pytest
+
+      - name: Zig Docs Build
+        run: poetry run python -m ziglang build docs
+      - name: Setup doc deploy
+        run: |
+          git config --global user.name Docs Deploy
+          git config --global user.email docs@dummy.bot.com
+      - name: MKDocs Build
+        run: poetry run mike deploy develop --push
+        if: ${{ github.ref == 'refs/heads/develop' }}

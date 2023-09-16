@@ -1,3 +1,15 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//         http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
@@ -28,7 +40,7 @@ pub const PyBuffer = extern struct {
         pub const FULL_RO: c_int = STRIDES | FORMAT | ND;
     };
 
-    buf: ?[*]u8,
+    buf: [*]u8,
 
     // Use pyObj to get the PyObject.
     // This must be an optional pointer so we can set null value.
@@ -40,12 +52,14 @@ pub const PyBuffer = extern struct {
     // have if it were copied to a contiguous representation.
     len: isize,
     itemsize: isize,
-    readonly: c_int,
+    readonly: bool,
 
     // If ndim == 0, the memory location pointed to by buf is interpreted as a scalar of size itemsize.
     // In that case, both shape and strides are NULL.
     ndim: c_int,
-    format: [*:0]const u8,
+    // A NULL terminated string in struct module style syntax describing the contents of a single item.
+    // If this is NULL, "B" (unsigned bytes) is assumed.
+    format: ?[*:0]const u8,
 
     shape: ?[*]const isize = null,
     // If strides is NULL, the array is interpreted as a standard n-dimensional C-array.
@@ -57,35 +71,39 @@ pub const PyBuffer = extern struct {
     suboffsets: ?[*]isize = null,
     internal: ?*anyopaque = null,
 
-    pub fn release(self: *Self) void {
-        ffi.PyBuffer_Release(@ptrCast(self));
+    pub fn release(self: *const Self) void {
+        ffi.PyBuffer_Release(@constCast(@ptrCast(self)));
     }
 
-    pub fn pyObj(self: *Self) py.PyObject {
-        return .{ .py = self.obj orelse unreachable };
+    /// Returns whether the buffer is contiguous in either C or Fortran order.
+    pub fn isContiguous(self: *const Self) bool {
+        return ffi.PyBuffer_IsContiguous(&self, 'A') == 1;
     }
 
-    pub fn initFromSlice(self: *Self, comptime value_type: type, values: []value_type, shape: [*]const isize, obj: py.PyObject) void {
+    pub fn initFromSlice(self: *Self, comptime T: type, values: []T, shape: []const isize, owner: anytype) void {
+        // We need to incref the owner object because it's being used by the view.
+        const ownerObj = py.object(owner);
+        ownerObj.incref();
+
         self.* = .{
             .buf = std.mem.sliceAsBytes(values).ptr,
-            .obj = obj.py,
-            .len = @intCast(values.len * @sizeOf(value_type)),
-            .itemsize = @sizeOf(value_type),
-            .readonly = 1,
-            .ndim = 1,
-            .format = getFormat(value_type).ptr,
-            .shape = shape,
+            .obj = ownerObj.py,
+            .len = @intCast(values.len * @sizeOf(T)),
+            .itemsize = @sizeOf(T),
+            .readonly = true,
+            .ndim = @intCast(shape.len),
+            .format = getFormat(T).ptr,
+            .shape = shape.ptr,
         };
-        // We need to incref the self object because it's being used by the view.
-        obj.incref();
     }
 
     // asSlice returns buf property as Zig slice. The view must have been created with ND flag.
-    pub fn asSlice(self: *const Self, comptime value_type: type) []value_type {
-        return @alignCast(std.mem.bytesAsSlice(value_type, self.buf.?[0..@intCast(self.len)]));
+    pub fn asSlice(self: Self, comptime value_type: type) []value_type {
+        return @alignCast(std.mem.bytesAsSlice(value_type, self.buf[0..@intCast(self.len)]));
     }
 
-    fn getFormat(comptime value_type: type) [:0]const u8 {
+    pub fn getFormat(comptime value_type: type) [:0]const u8 {
+        // TODO(ngates): support more complex composite types.
         switch (@typeInfo(value_type)) {
             .Int => |i| {
                 switch (i.signedness) {
