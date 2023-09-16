@@ -40,7 +40,7 @@ pub const PyBuffer = extern struct {
         pub const FULL_RO: c_int = STRIDES | FORMAT | ND;
     };
 
-    buf: ?[*]u8,
+    buf: [*]u8,
 
     // Use pyObj to get the PyObject.
     // This must be an optional pointer so we can set null value.
@@ -71,12 +71,13 @@ pub const PyBuffer = extern struct {
     suboffsets: ?[*]isize = null,
     internal: ?*anyopaque = null,
 
-    pub fn release(self: *Self) void {
-        ffi.PyBuffer_Release(@ptrCast(self));
+    pub fn release(self: *const Self) void {
+        ffi.PyBuffer_Release(@constCast(@ptrCast(self)));
     }
 
-    pub fn pyObj(self: *Self) py.PyObject {
-        return .{ .py = self.obj orelse unreachable };
+    /// Returns whether the buffer is contiguous in either C or Fortran order.
+    pub fn isContiguous(self: *const Self) bool {
+        return ffi.PyBuffer_IsContiguous(&self, 'A') == 1;
     }
 
     pub fn initFromSlice(self: *Self, comptime T: type, values: []T, shape: []const isize, owner: anytype) void {
@@ -97,11 +98,12 @@ pub const PyBuffer = extern struct {
     }
 
     // asSlice returns buf property as Zig slice. The view must have been created with ND flag.
-    pub fn asSlice(self: *const Self, comptime value_type: type) []value_type {
-        return @alignCast(std.mem.bytesAsSlice(value_type, self.buf.?[0..@intCast(self.len)]));
+    pub fn asSlice(self: Self, comptime value_type: type) []value_type {
+        return @alignCast(std.mem.bytesAsSlice(value_type, self.buf[0..@intCast(self.len)]));
     }
 
-    fn getFormat(comptime value_type: type) [:0]const u8 {
+    pub fn getFormat(comptime value_type: type) [:0]const u8 {
+        // TODO(ngates): support more complex composite types.
         switch (@typeInfo(value_type)) {
             .Int => |i| {
                 switch (i.signedness) {
