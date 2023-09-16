@@ -164,7 +164,7 @@
 <span class="line" id="L40">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> FULL_RO: <span class="tok-type">c_int</span> = STRIDES | FORMAT | ND;</span>
 <span class="line" id="L41">    };</span>
 <span class="line" id="L42"></span>
-<span class="line" id="L43">    buf: ?[*]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L43">    buf: [*]<span class="tok-type">u8</span>,</span>
 <span class="line" id="L44"></span>
 <span class="line" id="L45">    <span class="tok-comment">// Use pyObj to get the PyObject.</span>
 </span>
@@ -210,71 +210,74 @@
 <span class="line" id="L71">    suboffsets: ?[*]<span class="tok-type">isize</span> = <span class="tok-null">null</span>,</span>
 <span class="line" id="L72">    internal: ?*<span class="tok-type">anyopaque</span> = <span class="tok-null">null</span>,</span>
 <span class="line" id="L73"></span>
-<span class="line" id="L74">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">release</span>(self: *Self) <span class="tok-type">void</span> {</span>
-<span class="line" id="L75">        ffi.PyBuffer_Release(<span class="tok-builtin">@ptrCast</span>(self));</span>
+<span class="line" id="L74">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">release</span>(self: *<span class="tok-kw">const</span> Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L75">        ffi.PyBuffer_Release(<span class="tok-builtin">@constCast</span>(<span class="tok-builtin">@ptrCast</span>(self)));</span>
 <span class="line" id="L76">    }</span>
 <span class="line" id="L77"></span>
-<span class="line" id="L78">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pyObj</span>(self: *Self) py.PyObject {</span>
-<span class="line" id="L79">        <span class="tok-kw">return</span> .{ .py = self.obj <span class="tok-kw">orelse</span> <span class="tok-kw">unreachable</span> };</span>
-<span class="line" id="L80">    }</span>
-<span class="line" id="L81"></span>
-<span class="line" id="L82">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFromSlice</span>(self: *Self, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, values: []T, shape: []<span class="tok-kw">const</span> <span class="tok-type">isize</span>, owner: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L83">        <span class="tok-comment">// We need to incref the owner object because it's being used by the view.</span>
+<span class="line" id="L78">    <span class="tok-comment">/// Returns whether the buffer is contiguous in either C or Fortran order.</span></span>
+<span class="line" id="L79">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isContiguous</span>(self: *<span class="tok-kw">const</span> Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L80">        <span class="tok-kw">return</span> ffi.PyBuffer_IsContiguous(&amp;self, <span class="tok-str">'A'</span>) == <span class="tok-number">1</span>;</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFromSlice</span>(self: *Self, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, values: []T, shape: []<span class="tok-kw">const</span> <span class="tok-type">isize</span>, owner: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L84">        <span class="tok-comment">// We need to incref the owner object because it's being used by the view.</span>
 </span>
-<span class="line" id="L84">        <span class="tok-kw">const</span> ownerObj = py.object(owner);</span>
-<span class="line" id="L85">        ownerObj.incref();</span>
-<span class="line" id="L86"></span>
-<span class="line" id="L87">        self.* = .{</span>
-<span class="line" id="L88">            .buf = std.mem.sliceAsBytes(values).ptr,</span>
-<span class="line" id="L89">            .obj = ownerObj.py,</span>
-<span class="line" id="L90">            .len = <span class="tok-builtin">@intCast</span>(values.len * <span class="tok-builtin">@sizeOf</span>(T)),</span>
-<span class="line" id="L91">            .itemsize = <span class="tok-builtin">@sizeOf</span>(T),</span>
-<span class="line" id="L92">            .readonly = <span class="tok-null">true</span>,</span>
-<span class="line" id="L93">            .ndim = <span class="tok-builtin">@intCast</span>(shape.len),</span>
-<span class="line" id="L94">            .format = getFormat(T).ptr,</span>
-<span class="line" id="L95">            .shape = shape.ptr,</span>
-<span class="line" id="L96">        };</span>
-<span class="line" id="L97">    }</span>
-<span class="line" id="L98"></span>
-<span class="line" id="L99">    <span class="tok-comment">// asSlice returns buf property as Zig slice. The view must have been created with ND flag.</span>
+<span class="line" id="L85">        <span class="tok-kw">const</span> ownerObj = py.object(owner);</span>
+<span class="line" id="L86">        ownerObj.incref();</span>
+<span class="line" id="L87"></span>
+<span class="line" id="L88">        self.* = .{</span>
+<span class="line" id="L89">            .buf = std.mem.sliceAsBytes(values).ptr,</span>
+<span class="line" id="L90">            .obj = ownerObj.py,</span>
+<span class="line" id="L91">            .len = <span class="tok-builtin">@intCast</span>(values.len * <span class="tok-builtin">@sizeOf</span>(T)),</span>
+<span class="line" id="L92">            .itemsize = <span class="tok-builtin">@sizeOf</span>(T),</span>
+<span class="line" id="L93">            .readonly = <span class="tok-null">true</span>,</span>
+<span class="line" id="L94">            .ndim = <span class="tok-builtin">@intCast</span>(shape.len),</span>
+<span class="line" id="L95">            .format = getFormat(T).ptr,</span>
+<span class="line" id="L96">            .shape = shape.ptr,</span>
+<span class="line" id="L97">        };</span>
+<span class="line" id="L98">    }</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100">    <span class="tok-comment">// asSlice returns buf property as Zig slice. The view must have been created with ND flag.</span>
 </span>
-<span class="line" id="L100">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">asSlice</span>(self: *<span class="tok-kw">const</span> Self, <span class="tok-kw">comptime</span> value_type: <span class="tok-type">type</span>) []value_type {</span>
-<span class="line" id="L101">        <span class="tok-kw">return</span> <span class="tok-builtin">@alignCast</span>(std.mem.bytesAsSlice(value_type, self.buf.?[<span class="tok-number">0</span>..<span class="tok-builtin">@intCast</span>(self.len)]));</span>
-<span class="line" id="L102">    }</span>
-<span class="line" id="L103"></span>
-<span class="line" id="L104">    <span class="tok-kw">fn</span> <span class="tok-fn">getFormat</span>(<span class="tok-kw">comptime</span> value_type: <span class="tok-type">type</span>) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L105">        <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(value_type)) {</span>
-<span class="line" id="L106">            .Int =&gt; |i| {</span>
-<span class="line" id="L107">                <span class="tok-kw">switch</span> (i.signedness) {</span>
-<span class="line" id="L108">                    .unsigned =&gt; <span class="tok-kw">switch</span> (i.bits) {</span>
-<span class="line" id="L109">                        <span class="tok-number">8</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;B&quot;</span>,</span>
-<span class="line" id="L110">                        <span class="tok-number">16</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;H&quot;</span>,</span>
-<span class="line" id="L111">                        <span class="tok-number">32</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;I&quot;</span>,</span>
-<span class="line" id="L112">                        <span class="tok-number">64</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;L&quot;</span>,</span>
-<span class="line" id="L113">                        <span class="tok-kw">else</span> =&gt; {},</span>
-<span class="line" id="L114">                    },</span>
-<span class="line" id="L115">                    .signed =&gt; <span class="tok-kw">switch</span> (i.bits) {</span>
-<span class="line" id="L116">                        <span class="tok-number">8</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;b&quot;</span>,</span>
-<span class="line" id="L117">                        <span class="tok-number">16</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;h&quot;</span>,</span>
-<span class="line" id="L118">                        <span class="tok-number">32</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;i&quot;</span>,</span>
-<span class="line" id="L119">                        <span class="tok-number">64</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;l&quot;</span>,</span>
-<span class="line" id="L120">                        <span class="tok-kw">else</span> =&gt; {},</span>
-<span class="line" id="L121">                    },</span>
-<span class="line" id="L122">                }</span>
-<span class="line" id="L123">            },</span>
-<span class="line" id="L124">            .Float =&gt; |f| {</span>
-<span class="line" id="L125">                <span class="tok-kw">switch</span> (f.bits) {</span>
-<span class="line" id="L126">                    <span class="tok-number">32</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;f&quot;</span>,</span>
-<span class="line" id="L127">                    <span class="tok-number">64</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;d&quot;</span>,</span>
-<span class="line" id="L128">                    <span class="tok-kw">else</span> =&gt; {},</span>
-<span class="line" id="L129">                }</span>
-<span class="line" id="L130">            },</span>
-<span class="line" id="L131">            <span class="tok-kw">else</span> =&gt; {},</span>
-<span class="line" id="L132">        }</span>
-<span class="line" id="L133"></span>
-<span class="line" id="L134">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported buffer value type&quot;</span> ++ <span class="tok-builtin">@typeName</span>(value_type));</span>
-<span class="line" id="L135">    }</span>
-<span class="line" id="L136">};</span>
-<span class="line" id="L137"></span>
+<span class="line" id="L101">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">asSlice</span>(self: Self, <span class="tok-kw">comptime</span> value_type: <span class="tok-type">type</span>) []value_type {</span>
+<span class="line" id="L102">        <span class="tok-kw">return</span> <span class="tok-builtin">@alignCast</span>(std.mem.bytesAsSlice(value_type, self.buf[<span class="tok-number">0</span>..<span class="tok-builtin">@intCast</span>(self.len)]));</span>
+<span class="line" id="L103">    }</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getFormat</span>(<span class="tok-kw">comptime</span> value_type: <span class="tok-type">type</span>) [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L106">        <span class="tok-comment">// TODO(ngates): support more complex composite types.</span>
+</span>
+<span class="line" id="L107">        <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(value_type)) {</span>
+<span class="line" id="L108">            .Int =&gt; |i| {</span>
+<span class="line" id="L109">                <span class="tok-kw">switch</span> (i.signedness) {</span>
+<span class="line" id="L110">                    .unsigned =&gt; <span class="tok-kw">switch</span> (i.bits) {</span>
+<span class="line" id="L111">                        <span class="tok-number">8</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;B&quot;</span>,</span>
+<span class="line" id="L112">                        <span class="tok-number">16</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;H&quot;</span>,</span>
+<span class="line" id="L113">                        <span class="tok-number">32</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;I&quot;</span>,</span>
+<span class="line" id="L114">                        <span class="tok-number">64</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;L&quot;</span>,</span>
+<span class="line" id="L115">                        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L116">                    },</span>
+<span class="line" id="L117">                    .signed =&gt; <span class="tok-kw">switch</span> (i.bits) {</span>
+<span class="line" id="L118">                        <span class="tok-number">8</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;b&quot;</span>,</span>
+<span class="line" id="L119">                        <span class="tok-number">16</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;h&quot;</span>,</span>
+<span class="line" id="L120">                        <span class="tok-number">32</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;i&quot;</span>,</span>
+<span class="line" id="L121">                        <span class="tok-number">64</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;l&quot;</span>,</span>
+<span class="line" id="L122">                        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L123">                    },</span>
+<span class="line" id="L124">                }</span>
+<span class="line" id="L125">            },</span>
+<span class="line" id="L126">            .Float =&gt; |f| {</span>
+<span class="line" id="L127">                <span class="tok-kw">switch</span> (f.bits) {</span>
+<span class="line" id="L128">                    <span class="tok-number">32</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;f&quot;</span>,</span>
+<span class="line" id="L129">                    <span class="tok-number">64</span> =&gt; <span class="tok-kw">return</span> <span class="tok-str">&quot;d&quot;</span>,</span>
+<span class="line" id="L130">                    <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L131">                }</span>
+<span class="line" id="L132">            },</span>
+<span class="line" id="L133">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L134">        }</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported buffer value type&quot;</span> ++ <span class="tok-builtin">@typeName</span>(value_type));</span>
+<span class="line" id="L137">    }</span>
+<span class="line" id="L138">};</span>
+<span class="line" id="L139"></span>
 </code></pre></body>
 </html>
