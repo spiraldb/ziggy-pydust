@@ -59,9 +59,16 @@ const State = blk: {
     };
 };
 
+var ally: mem.TestingAllocator = undefined;
+
 /// Initialize Python interpreter state
 pub fn initialize() void {
+    ally.init();
+    ally.install();
+
     ffi.Py_Initialize();
+
+    ally.enabled = true;
 }
 
 /// Tear down Python interpreter state

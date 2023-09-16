@@ -189,7 +189,9 @@ test "PyDict set and get" {
     defer pd.decref();
 
     const bar = try py.PyString.create("bar");
-    try pd.setOwnedItem("foo", bar);
+    defer bar.decref();
+
+    try pd.setItem("foo", bar);
 
     try testing.expect(try pd.contains("foo"));
     try testing.expectEqual(@as(usize, 1), pd.length());

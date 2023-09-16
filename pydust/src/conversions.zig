@@ -45,6 +45,8 @@ test "as py -> zig" {
 
     // Start with a Python object
     const str = try py.PyString.create("hello");
+    defer str.decref();
+
     try expect(py.refcnt(str) == 1);
 
     // Return a slice representation of it, and ensure the refcnt is untouched

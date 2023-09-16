@@ -25,7 +25,10 @@ pub const PyModule = extern struct {
     pub usingnamespace PyObjectMixin("module", "PyModule", @This());
 
     pub fn import(name: [:0]const u8) !PyModule {
-        return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.Propagate } };
+        const pyname = try py.PyString.create(name);
+        defer pyname.decref();
+
+        return .{ .obj = .{ .py = ffi.PyImport_Import(pyname.obj.py) orelse return PyError.Propagate } };
     }
 
     pub fn getState(self: *const PyModule, comptime state: type) !*state {

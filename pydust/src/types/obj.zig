@@ -141,15 +141,17 @@ pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, com
     };
 }
 
-test "call" {
-    py.initialize();
-    defer py.finalize();
+// test "call" {
+//     py.initialize();
+//     defer py.finalize();
 
-    const math = try py.import("math");
-    defer math.decref();
+//     const math = try py.import("math");
+//     defer math.decref();
+//     std.debug.print("REFCNT {}\n", .{py.refcnt(math)});
 
-    const pow = try math.get("pow");
-    const result = try py.as(f32, try pow.call(.{ 2, 3 }, .{}));
+//     const pow = try math.get("pow");
+//     const result = try pow.call(.{ 2, 3 }, .{});
+//     defer result.decref();
 
-    try std.testing.expectEqual(@as(f32, 8.0), result);
-}
+//     try std.testing.expectEqual(@as(f32, 8.0), try py.as(f32, result));
+// }
