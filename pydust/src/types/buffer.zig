@@ -15,27 +15,6 @@ const py = @import("../pydust.zig");
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 
-pub fn TypedPyBuffer(comptime T: type) type {
-    return struct {
-        raw: PyBuffer,
-
-        const Self = @This();
-
-        /// Return a view of the buffer as a Zig slice.
-        pub fn asSlice(self: Self) ![]const T {
-            if (!self.isContiguous()) {
-                return py.ValueError.raise("Cannot read slice from non-contiguous buffer");
-            }
-            return @alignCast(@ptrCast(self.raw.buf[0..@intCast(self.raw.len)]));
-        }
-
-        /// Return a view of the buffer as a mutable Zig slice.
-        pub fn asMutableSlice(self: Self) ![]T {
-            return @constCast(self.asSlice());
-        }
-    };
-}
-
 /// Wrapper for Python Py_buffer.
 /// See: https://docs.python.org/3/c-api/buffer.html
 pub const PyBuffer = extern struct {
@@ -157,21 +136,3 @@ pub const PyBuffer = extern struct {
         @compileError("Unsupported buffer value type" ++ @typeName(value_type));
     }
 };
-
-/// A Pydust class that encapsulates a Zig slice in order to handle deferred deallocation.
-pub const ZigBuffer = py.class("ZigBuffer", struct {
-    slice: []const u8,
-    allocator: std.mem.Allocator,
-
-    pub fn __del__(self: ZigBuffer) void {
-        // TODO(ngates): here we should free the actual slice
-        // TODO(ngates): alignment
-        self.allocator.free(self.slice);
-    }
-
-    pub fn __release_buffer__(self: *ZigBuffer, buffer: PyBuffer) void {
-        // TODO(ngates): here we should free the "shape" slice and other pointers inside the buffer struct.
-        _ = buffer;
-        _ = self;
-    }
-});
