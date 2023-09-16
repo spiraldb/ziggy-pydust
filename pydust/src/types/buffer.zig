@@ -92,8 +92,8 @@ pub const PyBuffer = extern struct {
     suboffsets: ?[*]isize = null,
     internal: ?*anyopaque = null,
 
-    pub fn release(self: *Self) void {
-        ffi.PyBuffer_Release(@ptrCast(self));
+    pub fn release(self: *const Self) void {
+        ffi.PyBuffer_Release(@constCast(@ptrCast(self)));
     }
 
     /// Returns whether the buffer is contiguous in either C or Fortran order.
@@ -123,7 +123,7 @@ pub const PyBuffer = extern struct {
         return @alignCast(std.mem.bytesAsSlice(value_type, self.buf.?[0..@intCast(self.len)]));
     }
 
-    fn getFormat(comptime value_type: type) [:0]const u8 {
+    pub fn getFormat(comptime value_type: type) [:0]const u8 {
         // TODO(ngates): support more complex composite types.
         switch (@typeInfo(value_type)) {
             .Int => |i| {
