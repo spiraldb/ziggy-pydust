@@ -15,6 +15,7 @@ const std = @import("std");
 const Type = std.builtin.Type;
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const discovery = @import("discovery.zig");
 const funcs = @import("functions.zig");
 const pytypes = @import("pytypes.zig");
 const PyError = @import("errors.zig").PyError;
@@ -233,18 +234,20 @@ pub fn Trampoline(comptime T: type) type {
                 .Int => return try (try py.PyLong.checked(obj)).as(T),
                 .Optional => @compileError("Optional already handled"),
                 .Pointer => |p| {
-                    // If the pointer is for a Pydust class
-                    if (py.findClassName(p.child)) |_| {
-                        // TODO(ngates): check the PyType?
-                        const PyType = pytypes.State(p.child);
-                        const pyobject = @as(*PyType, @ptrCast(obj.py));
-                        return @constCast(&pyobject.state);
-                    }
+                    if (discovery.getDefinition(p.child)) |def| {
+                        // If the pointer is for a Pydust module
+                        if (def.type == .module) {
+                            const mod = try py.PyModule.checked(obj);
+                            return try mod.getState(p.child);
+                        }
 
-                    // If the pointer is for a Pydust module
-                    if (py.findModuleName(p.child)) |_| {
-                        const mod = try py.PyModule.checked(obj);
-                        return try mod.getState(p.child);
+                        // If the pointer is for a Pydust class
+                        if (def.type == .class) {
+                            // TODO(ngates): check the PyType?
+                            const PyType = pytypes.State(p.child);
+                            const pyobject = @as(*PyType, @ptrCast(obj.py));
+                            return @constCast(&pyobject.state);
+                        }
                     }
 
                     // We make the assumption that []const u8 is converted from a PyString

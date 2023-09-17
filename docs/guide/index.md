@@ -60,7 +60,7 @@ then a result of `foo` will be wrapped into the corresponding Python instance of
 `Foo`.
 
 ```zig title="foo.zig"
-const Foo = py.class("Foo", struct { a: u32 = 0 });
+const Foo = py.class(struct { a: u32 = 0 });
 
 pub fn create_foo() *const Foo {
     return py.init(Foo, .{});

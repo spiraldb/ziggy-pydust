@@ -18,7 +18,7 @@ pub fn double(args: struct { x: i64 }) i64 {
 }
 
 comptime {
-    py.module(@This());
+    py.rootmodule(@This());
 }
 // --8<-- [end:function]
 

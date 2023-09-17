@@ -15,6 +15,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const discovery = @import("discovery.zig");
 const funcs = @import("functions.zig");
 const PyError = @import("errors.zig").PyError;
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
@@ -31,6 +32,51 @@ pub fn State(comptime definition: type) type {
     return struct {
         obj: ffi.PyObject,
         state: definition,
+    };
+}
+
+/// Discover a Pydust class definition.
+pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
+    return struct {
+        const qualifiedName: [:0]const u8 = blk: {
+            const moduleDef = discovery.findContaining(
+                definition,
+                .module,
+            ) orelse @compileError("Cannot find containing module for class " ++ name);
+            break :blk moduleDef.name.? ++ "." ++ name;
+        };
+
+        // Declare a struct representing an instance of the object.
+        const Instance = State(definition);
+
+        const slots = Slots(definition, Instance);
+
+        const spec = ffi.PyType_Spec{
+            .name = qualifiedName.ptr,
+            .basicsize = @sizeOf(Instance),
+            .itemsize = 0,
+            .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
+            .slots = @constCast(slots.slots.ptr),
+        };
+
+        pub fn init(module: py.PyModule) !py.PyType {
+            // var basesPtr: ?*ffi.PyObject = null;
+            // if (class.bases.len > 0) {
+            //     const basesTuple = try py.PyTuple.new(class.bases.len);
+            //     inline for (class.bases, 0..) |base, i| {
+            //         const baseType = try module.obj.get(py.getClassName(base));
+            //         try basesTuple.setItem(i, baseType);
+            //     }
+            //     basesPtr = basesTuple.obj.py;
+            // }
+
+            const pytype = ffi.PyType_FromModuleAndSpec(
+                module.obj.py,
+                @constCast(&spec),
+                null,
+            ) orelse return PyError.Propagate;
+            return .{ .obj = .{ .py = pytype } };
+        }
     };
 }
 

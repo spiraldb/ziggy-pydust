@@ -30,6 +30,9 @@ pub const ffi = @import("ffi.zig");
 pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
+// FIXME(ngates): export the registry functions only
+pub usingnamespace @import("discovery.zig");
+
 const Self = @This();
 
 const State = blk: {
@@ -67,40 +70,6 @@ pub fn initialize() void {
 /// Tear down Python interpreter state
 pub fn finalize() void {
     ffi.Py_Finalize();
-}
-
-/// Register a struct as a Python module definition.
-pub fn module(comptime definition: type) void {
-    const pyconf = @import("pyconf");
-    const name = pyconf.module_name;
-
-    var shortname = name;
-    if (std.mem.lastIndexOf(u8, name, ".")) |idx| {
-        shortname = name[idx + 1 ..];
-    }
-
-    const moddef: ModuleDef = .{
-        .name = shortname,
-        .fullname = name,
-        .definition = definition,
-    };
-    State.addModule(moddef);
-    evaluateDeclarations(definition);
-
-    const wrapped = modules.define(moddef);
-    @export(wrapped.init, .{ .name = "PyInit_" ++ moddef.name, .linkage = .Strong });
-}
-
-/// Register a struct as a Python class definition.
-pub fn class(comptime name: [:0]const u8, comptime definition: type) @TypeOf(definition) {
-    const classdef: ClassDef = .{
-        .name = name,
-        .definition = definition,
-        .bases = &.{},
-    };
-    State.addClass(classdef);
-    evaluateDeclarations(definition);
-    return definition;
 }
 
 pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, comptime definition: type) @TypeOf(definition) {
