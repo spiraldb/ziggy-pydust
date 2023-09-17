@@ -13,7 +13,7 @@
 const std = @import("std");
 const builtins = @import("builtins.zig");
 const conversions = @import("conversions.zig");
-const discovery = @import("discovery.zig");
+const State = @import("discovery.zig").State;
 const mem = @import("mem.zig");
 const modules = @import("modules.zig");
 const ModuleDef = @import("modules.zig").ModuleDef;
@@ -36,33 +36,6 @@ pub usingnamespace @import("discovery.zig");
 
 const Self = @This();
 
-const State = blk: {
-    comptime var modList: [20]ModuleDef = undefined;
-    comptime var modulesOffset: u8 = 0;
-    comptime var classList: [100]ClassDef = undefined;
-    comptime var classesOffset: u8 = 0;
-
-    break :blk struct {
-        pub fn addModule(comptime def: ModuleDef) void {
-            modList[modulesOffset] = def;
-            modulesOffset += 1;
-        }
-
-        pub fn addClass(comptime def: ClassDef) void {
-            classList[classesOffset] = def;
-            classesOffset += 1;
-        }
-
-        pub fn modules() []const ModuleDef {
-            return modList[0..modulesOffset];
-        }
-
-        pub fn classes() []const ClassDef {
-            return classList[0..classesOffset];
-        }
-    };
-};
-
 /// Initialize Python interpreter state
 pub fn initialize() void {
     ffi.Py_Initialize();
@@ -73,25 +46,11 @@ pub fn finalize() void {
     ffi.Py_Finalize();
 }
 
-pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, comptime definition: type) @TypeOf(definition) {
-    _ = bases;
-    _ = name;
-    // // TODO(ngates): infer bases by looking at struct fields.
-    // const classdef: ClassDef = .{
-    //     .name = name,
-    //     .definition = definition,
-    //     .bases = bases,
-    // };
-    // State.addClass(classdef);
-    // evaluateDeclarations(definition);
-    return definition;
-}
-
 /// Instantiate a class defined in Pydust.
 pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
-    const module = discovery.findContaining(Cls, .module).?;
-    const imported = try types.PyModule.import(module.getName());
-    const pytype = try imported.obj.get(discovery.getDefinition(Cls).getName());
+    const module = State.getContaining(Cls, .module);
+    const imported = try types.PyModule.import(State.getIdentifier(module).name);
+    const pytype = try imported.obj.get(State.getIdentifier(Cls).name);
 
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
@@ -126,11 +85,4 @@ inline fn NewArgs(comptime Cls: type) type {
     const typeInfo = @typeInfo(@TypeOf(func));
     const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
     return sig.argsParam orelse struct {};
-}
-
-/// Force the eager evaluation of the public declarations of the module
-fn evaluateDeclarations(comptime definition: type) void {
-    for (@typeInfo(definition).Struct.decls) |decl| {
-        _ = @field(definition, decl.name);
-    }
 }

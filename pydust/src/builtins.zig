@@ -15,7 +15,7 @@
 //!
 //! See https://docs.python.org/3/library/functions.html for full reference.
 const py = @import("./pydust.zig");
-const discovery = @import("./discovery.zig");
+const State = @import("./discovery.zig").State;
 const ffi = @import("./ffi.zig");
 const PyError = @import("./errors.zig").PyError;
 
@@ -89,8 +89,9 @@ pub fn repr(object: anytype) !py.PyString {
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.
 pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
-    const imported = try import(discovery.getContaining(Super, .module));
-    const superPyType = try imported.get(py.getClassName(Super));
+    const module = State.getContaining(Super, .module);
+    const imported = try import(State.getIdentifier(module).name);
+    const superPyType = try imported.get(State.getIdentifier(Super).name);
     const pyObj = py.object(selfInstance);
 
     const superBuiltin: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };

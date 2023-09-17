@@ -15,7 +15,7 @@ const std = @import("std");
 const Type = std.builtin.Type;
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
-const discovery = @import("discovery.zig");
+const State = @import("discovery.zig").State;
 const funcs = @import("functions.zig");
 const pytypes = @import("pytypes.zig");
 const PyError = @import("errors.zig").PyError;
@@ -57,7 +57,7 @@ pub fn Trampoline(comptime T: type) type {
                         return .{ .py = obj };
                     }
 
-                    if (discovery.findDefinition(p.child)) |def| {
+                    if (State.findDefinition(p.child)) |def| {
                         // If the pointer is for a Pydust class
                         if (def.type == .class) {
                             const PyType = pytypes.State(p.child);
@@ -93,7 +93,7 @@ pub fn Trampoline(comptime T: type) type {
                         return true;
                     }
 
-                    if (discovery.findDefinition(p.child)) |_| {
+                    if (State.findDefinition(p.child)) |_| {
                         return true;
                     }
                 },
@@ -147,7 +147,7 @@ pub fn Trampoline(comptime T: type) type {
         /// Does not create a new reference.
         pub inline fn wrap(obj: T) !py.PyObject {
             // Check the user is not accidentally returning a Pydust class or Module without a pointer
-            if (discovery.findDefinition(T) != null) {
+            if (State.findDefinition(T) != null) {
                 @compileError("Pydust objects can only be returned as pointers");
             }
 
@@ -229,7 +229,7 @@ pub fn Trampoline(comptime T: type) type {
                 .Int => return try (try py.PyLong.checked(obj)).as(T),
                 .Optional => @compileError("Optional already handled"),
                 .Pointer => |p| {
-                    if (discovery.findDefinition(p.child)) |def| {
+                    if (State.findDefinition(p.child)) |def| {
                         // If the pointer is for a Pydust module
                         if (def.type == .module) {
                             const mod = try py.PyModule.checked(obj);

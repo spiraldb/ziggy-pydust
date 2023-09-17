@@ -41,7 +41,7 @@ pub const Animal = py.class(struct {
 // --8<-- [end:class]
 
 // --8<-- [start:subclass]
-pub const Dog = py.subclass("Dog", &.{Animal}, struct {
+pub const Dog = py.class(struct {
     pub const __doc__ = "Adorable animal docstring";
     const Self = @This();
 

@@ -11,7 +11,7 @@
 // limitations under the License.
 
 const std = @import("std");
-const discovery = @import("discovery.zig");
+const State = @import("discovery.zig").State;
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
 const PyError = py.PyError;
@@ -113,7 +113,7 @@ fn Slots(comptime definition: type) type {
 
             // Add attributes (including class definitions) to the module
             inline for (attributes.attributes) |attrDef| {
-                const attr = try attrDef.initFn(module);
+                const attr = try attrDef.attr.init(module);
                 try module.addObjectRef(attrDef.name, attr);
             }
         }
@@ -122,75 +122,57 @@ fn Slots(comptime definition: type) type {
 
 const Attribute = struct {
     name: [:0]const u8,
-    initFn: *const fn (module: py.PyModule) py.PyError!py.PyObject,
+    attr: type,
+    // initFn: *const fn (module: py.PyModule) py.PyError!py.PyObject,
 };
 
 fn Attributes(comptime definition: type) type {
     return struct {
         const attr_count = blk: {
-            var cnt = 0;
+            var cnt: usize = 0;
             for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
                 if (@typeInfo(@TypeOf(value)) != .Type) {
                     continue;
                 }
-                if (discovery.findDefinition(value)) |_| {
-                    cnt += 1;
+                if (State.findDefinition(value)) |def| {
+                    if (def.type == .class) {
+                        cnt += 1;
+                    }
                 }
             }
             break :blk cnt;
         };
 
         pub const attributes: [attr_count]Attribute = blk: {
-            @compileLog("ATTR CNT", attr_count);
             var attributes_: [attr_count]Attribute = undefined;
 
-            var idx = 0;
-            _ = idx;
-            inline for (@typeInfo(definition).Struct.decls) |decl| {
+            var idx: usize = 0;
+            for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
                 if (@typeInfo(@TypeOf(value)) != .Type) {
                     continue;
                 }
-                @compileLog("DEF", decl);
-                // if (discovery.findDefinition(value)) |def| {
-                //     @compileLog("DEF", def);
 
-                //     if (def.type == .class) {
-                //         @compileLog("DEF", def);
-                //         // const Closure = struct {
-                //         //     pub fn init(module: py.PyModule) !py.PyObject {
-                //         //         const typedef = pytypes.PyType(decl.name ++ "", def.definition);
-                //         //         return try typedef.init(module);
-                //         //     }
-                //         // };
-                //         // attributes_[idx] = .{ .name = decl.name ++ "", .initFn = &Closure.init };
-                //         // idx += 1;
-                //     }
-                // }
+                if (State.findDefinition(value)) |def| {
+                    if (def.type == .class) {
+                        const typedef = pytypes.PyType(decl.name ++ "", def.definition);
+                        State.identify(
+                            def.definition,
+                            decl.name ++ "",
+                            definition,
+                        );
+                        const Closure = struct {
+                            pub fn init(module: py.PyModule) !py.PyObject {
+                                return try typedef.init(module);
+                            }
+                        };
+                        attributes_[idx] = .{ .name = decl.name ++ "", .attr = Closure };
+                        idx += 1;
+                    }
+                }
             }
 
-            // var idx = 0;
-            // _ = idx;
-            // for (@typeInfo(definition).Struct.decls) |decl| {
-            //     const value = @field(definition, decl.name);
-            //     if (@typeInfo(@TypeOf(value)) != .Type) {
-            //         continue;
-            //     }
-            //     if (discovery.findDefinition(value)) |def| {
-            //         @compileLog("VALUE", def);
-            //         // if (def.type == .class) {
-            //         //     const Closure = struct {
-            //         //         pub fn init(module: py.PyModule) !py.PyObject {
-            //         //             const typedef = pytypes.PyType(decl.name ++ "", def.definition);
-            //         //             return try typedef.init(module);
-            //         //         }
-            //         //     };
-            //         //     attributes_[idx] = .{ .name = decl.name ++ "", .initFn = &Closure.init };
-            //         //     idx += 1;
-            //         // }
-            //     }
-            // }
             break :blk attributes_;
         };
     };
