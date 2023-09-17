@@ -16,6 +16,7 @@ const std = @import("std");
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
 const discovery = @import("discovery.zig");
+const State = @import("discovery.zig").State;
 const funcs = @import("functions.zig");
 const PyError = @import("errors.zig").PyError;
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
@@ -40,20 +41,17 @@ pub fn PyTypeStruct(comptime definition: type) type {
 pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
         const qualifiedName: [:0]const u8 = blk: {
-            const moduleDef = discovery.findContaining(
-                definition,
-                .module,
-            ) orelse @compileError("Cannot find containing module for class " ++ name);
-            break :blk moduleDef.getName() ++ "." ++ name;
+            const moduleName = State.getIdentifier(State.getContaining(definition, .module)).name;
+            break :blk moduleName ++ "." ++ name;
         };
 
-        // Declare a struct representing an instance of the object.
-        const Instance = PyTypeStruct(definition);
-
+        const bases = Bases(definition);
         const slots = Slots(definition);
 
         const spec = ffi.PyType_Spec{
-            .name = name.ptr,
+            // TODO(ngates): according to the docs, since we're a heap allocated type I think we
+            // should be manually setting a __module__ attribute and not using a qualified name here?
+            .name = qualifiedName.ptr,
             .basicsize = @sizeOf(PyTypeStruct(definition)),
             .itemsize = 0,
             .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
@@ -61,15 +59,16 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
         };
 
         pub fn init(module: py.PyModule) !py.PyObject {
-            // var basesPtr: ?*ffi.PyObject = null;
-            // if (class.bases.len > 0) {
-            //     const basesTuple = try py.PyTuple.new(class.bases.len);
-            //     inline for (class.bases, 0..) |base, i| {
-            //         const baseType = try module.obj.get(py.getClassName(base));
-            //         try basesTuple.setItem(i, baseType);
-            //     }
-            //     basesPtr = basesTuple.obj.py;
-            // }
+            var basesPtr: ?*ffi.PyObject = null;
+            if (bases.bases.len > 0) {
+                const basesTuple = try py.PyTuple.new(bases.bases.len);
+                inline for (bases.bases, 0..) |base, i| {
+                    std.debug.print("SUBCLASS {} {}", .{ @typeName(base), @typeName(definition) });
+                    const baseType = try module.obj.get(State.getIdentifier(base).name);
+                    try basesTuple.setItem(i, baseType);
+                }
+                basesPtr = basesTuple.obj.py;
+            }
 
             const pytype = ffi.PyType_FromModuleAndSpec(
                 module.obj.py,
@@ -78,6 +77,23 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
             ) orelse return PyError.Propagate;
             return .{ .py = pytype };
         }
+    };
+}
+
+/// Discover the base classes of the pytype definition.
+/// We look for any struct field that is itself a Pydust class.
+fn Bases(comptime definition: type) type {
+    const typeInfo = @typeInfo(definition).Struct;
+    return struct {
+        const bases: []const type = blk: {
+            var bases_: []const type = &.{};
+            for (typeInfo.fields) |field| {
+                if (State.findDefinition(field.type)) |_| {
+                    bases_ = bases_ ++ .{field.type};
+                }
+            }
+            break :blk bases_;
+        };
     };
 }
 
