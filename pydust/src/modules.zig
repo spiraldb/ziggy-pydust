@@ -131,35 +131,66 @@ fn Attributes(comptime definition: type) type {
             var cnt = 0;
             for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
-                if (@typeInfo(@TypeOf(value)) == .Type) {
-                    if (discovery.findDefinition(value)) |_| {
-                        cnt += 1;
-                    }
+                if (@typeInfo(@TypeOf(value)) != .Type) {
+                    continue;
+                }
+                if (discovery.findDefinition(value)) |_| {
+                    cnt += 1;
                 }
             }
             break :blk cnt;
         };
 
         pub const attributes: [attr_count]Attribute = blk: {
+            @compileLog("ATTR CNT", attr_count);
             var attributes_: [attr_count]Attribute = undefined;
+
             var idx = 0;
-            for (@typeInfo(definition).Struct.decls) |decl| {
+            _ = idx;
+            inline for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
-                if (@typeInfo(@TypeOf(value)) == .Type) {
-                    if (discovery.findDefinition(value)) |def| {
-                        if (def.type == .class) {
-                            const Closure = struct {
-                                pub fn init(module: py.PyModule) !py.PyObject {
-                                    const typedef = pytypes.PyType(decl.name ++ "", def.definition);
-                                    return try typedef.init(module);
-                                }
-                            };
-                            attributes_[idx] = .{ .name = decl.name ++ "", .initFn = &Closure.init };
-                            idx += 1;
-                        }
-                    }
+                if (@typeInfo(@TypeOf(value)) != .Type) {
+                    continue;
                 }
+                @compileLog("DEF", decl);
+                // if (discovery.findDefinition(value)) |def| {
+                //     @compileLog("DEF", def);
+
+                //     if (def.type == .class) {
+                //         @compileLog("DEF", def);
+                //         // const Closure = struct {
+                //         //     pub fn init(module: py.PyModule) !py.PyObject {
+                //         //         const typedef = pytypes.PyType(decl.name ++ "", def.definition);
+                //         //         return try typedef.init(module);
+                //         //     }
+                //         // };
+                //         // attributes_[idx] = .{ .name = decl.name ++ "", .initFn = &Closure.init };
+                //         // idx += 1;
+                //     }
+                // }
             }
+
+            // var idx = 0;
+            // _ = idx;
+            // for (@typeInfo(definition).Struct.decls) |decl| {
+            //     const value = @field(definition, decl.name);
+            //     if (@typeInfo(@TypeOf(value)) != .Type) {
+            //         continue;
+            //     }
+            //     if (discovery.findDefinition(value)) |def| {
+            //         @compileLog("VALUE", def);
+            //         // if (def.type == .class) {
+            //         //     const Closure = struct {
+            //         //         pub fn init(module: py.PyModule) !py.PyObject {
+            //         //             const typedef = pytypes.PyType(decl.name ++ "", def.definition);
+            //         //             return try typedef.init(module);
+            //         //         }
+            //         //     };
+            //         //     attributes_[idx] = .{ .name = decl.name ++ "", .initFn = &Closure.init };
+            //         //     idx += 1;
+            //         // }
+            //     }
+            // }
             break :blk attributes_;
         };
     };

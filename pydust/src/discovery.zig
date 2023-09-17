@@ -69,6 +69,8 @@ const State = blk: {
                 .parent = parent,
             };
 
+            @compileLog("Setting", stackSize, definitionsSize, def);
+
             stack[stackSize] = def;
             stackSize += 1;
 
@@ -99,7 +101,7 @@ const State = blk: {
             }
         }
 
-        fn getDefinitions() []Definition {
+        fn getDefinitions() []const Definition {
             return definitions[0..definitionsSize];
         }
     };
@@ -115,9 +117,9 @@ pub fn rootmodule(comptime definition: type) void {
         const pyconf = @import("pyconf");
         const name = pyconf.module_name;
 
+        // We never pop the root module
         State.push(.module, definition, &.{.module});
         State.setName(definition, name);
-        State.pop();
 
         const moddef = Module(name, definition);
 
@@ -150,16 +152,16 @@ pub fn class(comptime definition: type) @TypeOf(definition) {
     return definition;
 }
 
-pub fn getDefinitions() []const Definition {
+pub inline fn getDefinitions() []const Definition {
     return State.getDefinitions();
 }
 
-pub fn getDefinition(comptime definition: type) Definition {
+pub inline fn getDefinition(comptime definition: type) Definition {
     return findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
 }
 
-pub fn findDefinition(comptime definition: type) ?Definition {
-    for (State.getDefinitions()) |def| {
+pub inline fn findDefinition(comptime definition: type) ?Definition {
+    inline for (State.getDefinitions()) |def| {
         if (def.definition == definition) {
             return def;
         }
@@ -167,12 +169,12 @@ pub fn findDefinition(comptime definition: type) ?Definition {
     return null;
 }
 
-pub fn getContaining(comptime definition: type, comptime deftype: DefinitionType) Definition {
+pub inline fn getContaining(comptime definition: type, comptime deftype: DefinitionType) Definition {
     return findContaining(definition, deftype) orelse @compileError("Cannot find containing object");
 }
 
 /// Find the nearest containing definition with the given deftype.
-pub fn findContaining(comptime definition: type, comptime deftype: DefinitionType) ?Definition {
+pub inline fn findContaining(comptime definition: type, comptime deftype: DefinitionType) ?Definition {
     const defs = State.getDefinitions();
     var idx = defs.len;
     var foundOriginal = false;
