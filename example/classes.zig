@@ -45,7 +45,7 @@ pub const Dog = py.class(struct {
     pub const __doc__ = "Adorable animal docstring";
     const Self = @This();
 
-    // A subclass of a Pydust class is required to hold its parent's state.
+    // Subclasses are defined by including the superclass struct as a field.
     animal: Animal,
     name: py.PyString,
 

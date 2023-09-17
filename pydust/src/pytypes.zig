@@ -23,12 +23,6 @@ const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 const tramp = @import("trampoline.zig");
 const Type = std.builtin.Type;
 
-pub const ClassDef = struct {
-    name: [:0]const u8,
-    definition: type,
-    bases: []const type,
-};
-
 /// For a given Pydust class definition, return the encapsulating PyType struct.
 pub fn PyTypeStruct(comptime definition: type) type {
     return struct {
@@ -48,33 +42,33 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
         const bases = Bases(definition);
         const slots = Slots(definition);
 
-        const spec = ffi.PyType_Spec{
-            // TODO(ngates): according to the docs, since we're a heap allocated type I think we
-            // should be manually setting a __module__ attribute and not using a qualified name here?
-            .name = qualifiedName.ptr,
-            .basicsize = @sizeOf(PyTypeStruct(definition)),
-            .itemsize = 0,
-            .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
-            .slots = @constCast(slots.slots.ptr),
-        };
-
         pub fn init(module: py.PyModule) !py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;
             if (bases.bases.len > 0) {
                 const basesTuple = try py.PyTuple.new(bases.bases.len);
                 inline for (bases.bases, 0..) |base, i| {
-                    std.debug.print("SUBCLASS {s} {s}", .{ @typeName(base), @typeName(definition) });
                     const baseType = try module.obj.get(State.getIdentifier(base).name);
                     try basesTuple.setItem(i, baseType);
                 }
                 basesPtr = basesTuple.obj.py;
             }
 
+            const spec = ffi.PyType_Spec{
+                // TODO(ngates): according to the docs, since we're a heap allocated type I think we
+                // should be manually setting a __module__ attribute and not using a qualified name here?
+                .name = qualifiedName.ptr,
+                .basicsize = @sizeOf(PyTypeStruct(definition)),
+                .itemsize = 0,
+                .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
+                .slots = @constCast(slots.slots.ptr),
+            };
+
             const pytype = ffi.PyType_FromModuleAndSpec(
                 module.obj.py,
                 @constCast(&spec),
                 basesPtr,
             ) orelse return PyError.Propagate;
+
             return .{ .py = pytype };
         }
     };

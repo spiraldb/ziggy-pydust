@@ -42,7 +42,7 @@ def zig_build(argv: list[str]):
         # Generate the build.zig if we're managing the ext_modules ourselves
         generate_build_zig(conf.build_zig)
 
-    zig_exe = [os.path.expanduser(conf.zig_exe)] or [sys.executable, "-m", "ziglang"]
+    zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
 
     subprocess.run(
         zig_exe + ["build", "--build-file", conf.build_zig] + argv,
