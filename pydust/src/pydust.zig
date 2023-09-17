@@ -13,12 +13,14 @@
 const std = @import("std");
 const builtins = @import("builtins.zig");
 const conversions = @import("conversions.zig");
-const State = @import("discovery.zig").State;
+const discovery = @import("discovery.zig");
+const State = discovery.State;
 const mem = @import("mem.zig");
 const modules = @import("modules.zig");
-const ModuleDef = @import("modules.zig").ModuleDef;
+const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
+const PyType = @import("pytypes.zig").PyType;
 const ClassDef = pytypes.ClassDef;
 const funcs = @import("functions.zig");
 const tramp = @import("trampoline.zig");
@@ -30,9 +32,6 @@ pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
-
-// FIXME(ngates): export the registry functions only
-pub usingnamespace @import("discovery.zig");
 
 const Self = @This();
 
@@ -48,8 +47,8 @@ pub fn finalize() void {
 
 /// Instantiate a class defined in Pydust.
 pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
-    const module = State.getContaining(Cls, .module);
-    const imported = try types.PyModule.import(State.getIdentifier(module).name);
+    const moduleDefinition = State.getContaining(Cls, .module);
+    const imported = try types.PyModule.import(State.getIdentifier(moduleDefinition).name);
     const pytype = try imported.obj.get(State.getIdentifier(Cls).name);
 
     // Alloc the class
@@ -66,14 +65,6 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     return &pyobj.state;
 }
 
-pub fn decref(value: anytype) void {
-    conversions.object(value).decref();
-}
-
-pub fn incref(value: anytype) void {
-    conversions.object(value).incref();
-}
-
 /// Find the type of the positional args for a class
 inline fn NewArgs(comptime Cls: type) type {
     if (!@hasDecl(Cls, "__new__")) {
@@ -85,4 +76,41 @@ inline fn NewArgs(comptime Cls: type) type {
     const typeInfo = @typeInfo(@TypeOf(func));
     const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
     return sig.argsParam orelse struct {};
+}
+
+/// Register the root Pydust module
+pub fn rootmodule(comptime definition: type) void {
+    if (!State.isEmpty()) {
+        @compileError("Root module can only be registered in a root-level comptime block");
+    }
+
+    const pyconf = @import("pyconf");
+    const name = pyconf.module_name;
+
+    const moddef = Module(name, definition);
+    State.register(definition, .module);
+    State.identify(definition, name, definition);
+
+    // For root modules, we export a PyInit__name function per CPython API.
+    const Closure = struct {
+        pub fn init() callconv(.C) ?*ffi.PyObject {
+            const obj = @call(.always_inline, moddef.init, .{}) catch return null;
+            return obj.py;
+        }
+    };
+
+    const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
+    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .Strong });
+}
+
+/// Register a Pydust module as a submodule to an existing module.
+pub fn module(comptime definition: type) @TypeOf(definition) {
+    State.register(definition, .module);
+    return definition;
+}
+
+/// Register a struct as a Python class definition.
+pub fn class(comptime definition: type) @TypeOf(definition) {
+    State.register(definition, .class);
+    return definition;
 }

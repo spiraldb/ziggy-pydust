@@ -37,6 +37,14 @@ pub inline fn True() py.PyBool {
     return py.PyBool.true_();
 }
 
+pub fn decref(value: anytype) void {
+    py.object(value).decref();
+}
+
+pub fn incref(value: anytype) void {
+    py.object(value).incref();
+}
+
 /// Checks whether a given object is callable. Equivalent to Python's callable(o).
 pub fn callable(object: anytype) bool {
     const obj = try py.object(object);
