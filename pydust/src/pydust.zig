@@ -12,22 +12,17 @@
 
 const std = @import("std");
 const builtins = @import("builtins.zig");
-const conversions = @import("conversions.zig");
-const discovery = @import("discovery.zig");
-const State = discovery.State;
 const mem = @import("mem.zig");
-const modules = @import("modules.zig");
+const State = @import("discovery.zig").State;
 const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
-const PyType = @import("pytypes.zig").PyType;
-const ClassDef = pytypes.ClassDef;
+const PyType = pytypes.PyType;
 const funcs = @import("functions.zig");
-const tramp = @import("trampoline.zig");
 
 // Export some useful things for users
 pub usingnamespace builtins;
-pub usingnamespace conversions;
+pub usingnamespace @import("conversions.zig");
 pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const PyError = @import("errors.zig").PyError;
@@ -54,7 +49,7 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
     // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
-    const pyobj: *pytypes.State(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.Propagate));
+    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.Propagate));
 
     if (@hasDecl(Cls, "__new__")) {
         pyobj.state = try Cls.__new__(args);

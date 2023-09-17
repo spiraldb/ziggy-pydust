@@ -28,7 +28,8 @@ pub const ClassDef = struct {
     bases: []const type,
 };
 
-pub fn State(comptime definition: type) type {
+/// For a given Pydust class definition, return the encapsulating PyType struct.
+pub fn PyTypeStruct(comptime definition: type) type {
     return struct {
         obj: ffi.PyObject,
         state: definition,
@@ -47,13 +48,13 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
         };
 
         // Declare a struct representing an instance of the object.
-        const Instance = State(definition);
+        const Instance = PyTypeStruct(definition);
 
-        const slots = Slots(definition, Instance);
+        const slots = Slots(definition);
 
         const spec = ffi.PyType_Spec{
             .name = name.ptr,
-            .basicsize = @sizeOf(Instance),
+            .basicsize = @sizeOf(PyTypeStruct(definition)),
             .itemsize = 0,
             .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
             .slots = @constCast(slots.slots.ptr),
@@ -80,7 +81,7 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
     };
 }
 
-fn Slots(comptime definition: type, comptime Instance: type) type {
+fn Slots(comptime definition: type) type {
     return struct {
         const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
@@ -169,7 +170,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
             for (funcs.BinaryOperators.kvs) |kv| {
                 if (@hasDecl(definition, kv.key)) {
-                    const op = BinaryOperator(definition, Instance, kv.key);
+                    const op = BinaryOperator(definition, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
                         .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
@@ -191,7 +192,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 0) orelse return null;
             // Cast it into a supertype instance. Note: we check at comptime that subclasses of this class
             // include our own state object as the first field in their struct.
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
 
             // Allow the definition to initialize the state field.
             self.state = tp_new_internal(
@@ -235,7 +236,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             var error_tb: ?*ffi.PyObject = undefined;
             ffi.PyErr_Fetch(&error_type, &error_value, &error_tb);
 
-            const instance: *Instance = @ptrCast(pyself);
+            const instance: *PyTypeStruct(definition) = @ptrCast(pyself);
             definition.__del__(&instance.state);
 
             ffi.PyErr_Restore(error_type, error_value, error_tb);
@@ -245,30 +246,30 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             // In case of any error, the view.obj field must be set to NULL.
             view.obj = null;
 
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             definition.__buffer__(&self.state, @ptrCast(view), flags) catch return -1;
             return 0;
         }
 
         fn bf_releasebuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             return definition.__release_buffer__(&self.state, @ptrCast(view));
         }
 
         fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
-            const self: *const Instance = @ptrCast(pyself);
+            const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__len__(&self.state) catch return -1;
             return @as(isize, @intCast(result));
         }
 
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const iterator = definition.__iter__(&self.state) catch return null;
             return (py.createOwned(iterator) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const optionalNext = definition.__next__(&self.state) catch return null;
             if (optionalNext) |next| {
                 return (py.createOwned(next) catch return null).py;
@@ -277,13 +278,13 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         }
 
         fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__str__(&self.state) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
 
         fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__repr__(&self.state) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
@@ -292,7 +293,6 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
 fn BinaryOperator(
     comptime definition: type,
-    comptime Instance: type,
     comptime op: []const u8,
 ) type {
     return struct {
@@ -304,7 +304,7 @@ fn BinaryOperator(
             if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
             if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
 
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const other = tramp.Trampoline(
                 sig.argsParam orelse unreachable,
             ).unwrap(.{ .py = pyother }) catch return null;

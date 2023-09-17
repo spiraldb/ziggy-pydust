@@ -16,6 +16,7 @@ const ffi = py.ffi;
 const PyType = @import("./pytypes.zig").PyType;
 const Module = @import("./modules.zig").Module;
 
+/// Captures the type of the Pydust object.
 const Definition = struct {
     definition: type,
     type: DefinitionType,
@@ -23,6 +24,7 @@ const Definition = struct {
 
 const DefinitionType = enum { module, class };
 
+/// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
     name: [:0]const u8,
     definition: type,
