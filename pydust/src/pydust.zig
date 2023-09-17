@@ -109,3 +109,9 @@ pub fn class(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .class);
     return definition;
 }
+
+/// Register a property as a field on a Pydust class.
+pub fn property(comptime definition: type) @TypeOf(definition) {
+    State.register(definition, .property);
+    return definition;
+}

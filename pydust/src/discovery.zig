@@ -22,7 +22,7 @@ const Definition = struct {
     type: DefinitionType,
 };
 
-const DefinitionType = enum { module, class };
+const DefinitionType = enum { module, class, property };
 
 /// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
@@ -81,7 +81,7 @@ pub const State = blk: {
         }
 
         pub fn getIdentifier(comptime definition: type) Identifier {
-            return findIdentifier(definition) orelse @compileError("Definition not yet identifier " ++ @typeName(definition));
+            return findIdentifier(definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
         }
 
         pub inline fn findIdentifier(comptime definition: type) ?Identifier {

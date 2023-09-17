@@ -16,6 +16,7 @@ const std = @import("std");
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
 const discovery = @import("discovery.zig");
+const Attributes = @import("attributes.zig").Attributes;
 const State = @import("discovery.zig").State;
 const funcs = @import("functions.zig");
 const PyError = @import("errors.zig").PyError;
@@ -25,6 +26,8 @@ const Type = std.builtin.Type;
 
 /// For a given Pydust class definition, return the encapsulating PyType struct.
 pub fn PyTypeStruct(comptime definition: type) type {
+    // I think we might need to dynamically generate this struct to include PyMemberDef fields?
+    // This is how we can add nested classes and other attributes.
     return struct {
         obj: ffi.PyObject,
         state: definition,
@@ -40,6 +43,7 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
         };
 
         const bases = Bases(definition);
+        const attrs = Attributes(definition);
         const slots = Slots(definition);
 
         pub fn init(module: py.PyModule) !py.PyObject {
@@ -95,6 +99,7 @@ fn Slots(comptime definition: type) type {
     return struct {
         const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
+        const attrs = Attributes(definition);
         const methods = funcs.Methods(definition);
 
         /// Slots populated in the PyType

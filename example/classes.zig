@@ -107,6 +107,37 @@ pub const Dog = py.class(struct {
 });
 // --8<-- [end:subclass]
 
+// --8<-- [start:rectangle]
+pub const Rectangle = py.class(struct {
+    const Self = @This();
+
+    area: u32,
+    height: u32,
+
+    // Defining struct fields as properties exposes them to Python.
+    // Or attributes? Or members?
+    width: py.property(struct {
+        const Prop = @This();
+
+        width: u32,
+
+        pub fn get(self: *const Prop) u32 {
+            return self.width;
+        }
+
+        pub fn set(self: *Prop, value: u32) !void {
+            self.width = value;
+            const rectangle = @fieldParentPtr(Rectangle, "width", self);
+            rectangle.area = rectangle.height.get() * value;
+        }
+    }),
+
+    pub fn __new__(args: struct { width: u32, height: u32 }) !Self {
+        return .{ .width = args.width, .height = args.height };
+    }
+});
+// --8<-- [end:rectangle]
+
 // --8<-- [start:init]
 pub const Owner = py.class(struct {
     pub const __doc__ = "Takes care of an animal";
