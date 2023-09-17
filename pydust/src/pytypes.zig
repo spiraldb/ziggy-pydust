@@ -63,7 +63,7 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
             if (bases.bases.len > 0) {
                 const basesTuple = try py.PyTuple.new(bases.bases.len);
                 inline for (bases.bases, 0..) |base, i| {
-                    std.debug.print("SUBCLASS {} {}", .{ @typeName(base), @typeName(definition) });
+                    std.debug.print("SUBCLASS {s} {s}", .{ @typeName(base), @typeName(definition) });
                     const baseType = try module.obj.get(State.getIdentifier(base).name);
                     try basesTuple.setItem(i, baseType);
                 }
@@ -73,7 +73,7 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
             const pytype = ffi.PyType_FromModuleAndSpec(
                 module.obj.py,
                 @constCast(&spec),
-                null,
+                basesPtr,
             ) orelse return PyError.Propagate;
             return .{ .py = pytype };
         }
