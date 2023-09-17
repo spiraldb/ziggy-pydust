@@ -112,22 +112,27 @@ fn Slots(comptime definition: type) type {
             }
 
             // Add attributes (including class definitions) to the module
-            inline for (attributes.attributes, attributes.attributeNames) |attrFn, attrName| {
-                const attr = try attrFn(module);
-                try module.addObjectRef(attrName, attr);
+            inline for (attributes.attributes) |attrDef| {
+                const attr = try attrDef.initFn(module);
+                try module.addObjectRef(attrDef.name, attr);
             }
         }
     };
 }
 
+const Attribute = struct {
+    name: [:0]const u8,
+    initFn: *const fn (module: py.PyModule) py.PyError!py.PyObject,
+};
+
 fn Attributes(comptime definition: type) type {
     return struct {
         const attr_count = blk: {
             var cnt = 0;
-            inline for (@typeInfo(definition).Struct.decls) |decl| {
+            for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
                 if (@typeInfo(@TypeOf(value)) == .Type) {
-                    if (discovery.getDefinition(value)) |_| {
+                    if (discovery.findDefinition(value)) |_| {
                         cnt += 1;
                     }
                 }
@@ -135,16 +140,13 @@ fn Attributes(comptime definition: type) type {
             break :blk cnt;
         };
 
-        const InitFn = fn (module: py.PyModule) py.PyError!py.PyObject;
-
-        pub const attributes: [attr_count]*const InitFn = undefined;
-        pub const attributeNames: [attr_count][:0]const u8 = undefined;
-        comptime {
+        pub const attributes: [attr_count]Attribute = blk: {
+            var attributes_: [attr_count]Attribute = undefined;
             var idx = 0;
-            inline for (@typeInfo(definition).Struct.decls) |decl| {
+            for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
                 if (@typeInfo(@TypeOf(value)) == .Type) {
-                    if (discovery.getDefinition(value)) |def| {
+                    if (discovery.findDefinition(value)) |def| {
                         if (def.type == .class) {
                             const Closure = struct {
                                 pub fn init(module: py.PyModule) !py.PyObject {
@@ -152,13 +154,13 @@ fn Attributes(comptime definition: type) type {
                                     return try typedef.init(module);
                                 }
                             };
-                            attributes[idx] = &Closure.init;
-                            attributeNames[idx] = decl.name ++ "";
+                            attributes_[idx] = .{ .name = decl.name ++ "", .initFn = &Closure.init };
                             idx += 1;
                         }
                     }
                 }
             }
-        }
+            break :blk attributes_;
+        };
     };
 }

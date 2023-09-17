@@ -43,7 +43,7 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
                 definition,
                 .module,
             ) orelse @compileError("Cannot find containing module for class " ++ name);
-            break :blk moduleDef.name.? ++ "." ++ name;
+            break :blk moduleDef.getName() ++ "." ++ name;
         };
 
         // Declare a struct representing an instance of the object.
@@ -52,14 +52,14 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
         const slots = Slots(definition, Instance);
 
         const spec = ffi.PyType_Spec{
-            .name = qualifiedName.ptr,
+            .name = name.ptr,
             .basicsize = @sizeOf(Instance),
             .itemsize = 0,
             .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
             .slots = @constCast(slots.slots.ptr),
         };
 
-        pub fn init(module: py.PyModule) !py.PyType {
+        pub fn init(module: py.PyModule) !py.PyObject {
             // var basesPtr: ?*ffi.PyObject = null;
             // if (class.bases.len > 0) {
             //     const basesTuple = try py.PyTuple.new(class.bases.len);
@@ -75,56 +75,15 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
                 @constCast(&spec),
                 null,
             ) orelse return PyError.Propagate;
-            return .{ .obj = .{ .py = pytype } };
-        }
-    };
-}
-
-/// Wrap a user-defined class struct into a unique struct that itself wraps the trampolined functions.
-pub fn define(comptime class: ClassDef) type {
-    return struct {
-        const Self = @This();
-        pub const name: [:0]const u8 = class.name;
-
-        pub const pyName: [:0]const u8 = blk: {
-            const moduleName = py.findContainingModule(class.definition);
-            break :blk moduleName[0..moduleName.len] ++ "." ++ name;
-        };
-
-        // Declare a struct representing an instance of the object.
-        const Instance = State(class.definition);
-
-        const slots = Slots(class.definition, Instance);
-
-        const spec = ffi.PyType_Spec{
-            .name = pyName.ptr,
-            .basicsize = @sizeOf(Instance),
-            .itemsize = 0,
-            .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
-            .slots = @constCast(slots.slots.ptr),
-        };
-
-        pub fn init(module: py.PyModule) !py.PyType {
-            var basesPtr: ?*ffi.PyObject = null;
-            if (class.bases.len > 0) {
-                const basesTuple = try py.PyTuple.new(class.bases.len);
-                inline for (class.bases, 0..) |base, i| {
-                    const baseType = try module.obj.get(py.getClassName(base));
-                    try basesTuple.setItem(i, baseType);
-                }
-                basesPtr = basesTuple.obj.py;
-            }
-
-            var pytype = ffi.PyType_FromModuleAndSpec(module.obj.py, @constCast(&spec), basesPtr) orelse return PyError.Propagate;
-            return .{ .obj = .{ .py = pytype } };
+            return .{ .py = pytype };
         }
     };
 }
 
 fn Slots(comptime definition: type, comptime Instance: type) type {
-    const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
-
     return struct {
+        const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
+
         const methods = funcs.Methods(definition);
 
         /// Slots populated in the PyType

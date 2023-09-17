@@ -57,16 +57,18 @@ pub fn Trampoline(comptime T: type) type {
                         return .{ .py = obj };
                     }
 
-                    // If the pointer is for a Pydust class
-                    if (py.findClassName(p.child)) |_| {
-                        const PyType = pytypes.State(p.child);
-                        const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
-                        return .{ .py = ffiObject };
-                    }
+                    if (discovery.findDefinition(p.child)) |def| {
+                        // If the pointer is for a Pydust class
+                        if (def.type == .class) {
+                            const PyType = pytypes.State(p.child);
+                            const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
+                            return .{ .py = ffiObject };
+                        }
 
-                    // If the pointer is for a Pydust module
-                    if (py.findModuleName(p.child)) |_| {
-                        @compileError("Cannot currently return modules");
+                        // If the pointer is for a Pydust module
+                        if (def.type == .module) {
+                            @compileError("Cannot currently return modules");
+                        }
                     }
                 },
                 .Struct => {
@@ -91,15 +93,8 @@ pub fn Trampoline(comptime T: type) type {
                         return true;
                     }
 
-                    // If the pointer is for a Pydust class
-                    if (py.findClassName(p.child)) |_| {
+                    if (discovery.findDefinition(p.child)) |_| {
                         return true;
-                    }
-
-                    // If the pointer is for a Pydust module
-                    if (py.findModuleName(p.child)) |_| {
-                        // FIXME(ngates): support modules
-                        return false;
                     }
                 },
                 .Struct => {
@@ -152,7 +147,7 @@ pub fn Trampoline(comptime T: type) type {
         /// Does not create a new reference.
         pub inline fn wrap(obj: T) !py.PyObject {
             // Check the user is not accidentally returning a Pydust class or Module without a pointer
-            if (py.findClassName(T) != null or py.findModuleName(T) != null) {
+            if (discovery.findDefinition(T) != null) {
                 @compileError("Pydust objects can only be returned as pointers");
             }
 
@@ -234,7 +229,7 @@ pub fn Trampoline(comptime T: type) type {
                 .Int => return try (try py.PyLong.checked(obj)).as(T),
                 .Optional => @compileError("Optional already handled"),
                 .Pointer => |p| {
-                    if (discovery.getDefinition(p.child)) |def| {
+                    if (discovery.findDefinition(p.child)) |def| {
                         // If the pointer is for a Pydust module
                         if (def.type == .module) {
                             const mod = try py.PyModule.checked(obj);
@@ -255,7 +250,7 @@ pub fn Trampoline(comptime T: type) type {
                         return (try py.PyString.checked(obj)).asSlice();
                     }
 
-                    @compileLog("Unsupported pointer type " ++ @typeName(p.child));
+                    @compileError("Unsupported pointer type " ++ @typeName(p.child));
                 },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat

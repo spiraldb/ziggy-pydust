@@ -13,6 +13,7 @@
 const std = @import("std");
 const builtins = @import("builtins.zig");
 const conversions = @import("conversions.zig");
+const discovery = @import("discovery.zig");
 const mem = @import("mem.zig");
 const modules = @import("modules.zig");
 const ModuleDef = @import("modules.zig").ModuleDef;
@@ -73,22 +74,24 @@ pub fn finalize() void {
 }
 
 pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, comptime definition: type) @TypeOf(definition) {
-    // TODO(ngates): infer bases by looking at struct fields.
-    const classdef: ClassDef = .{
-        .name = name,
-        .definition = definition,
-        .bases = bases,
-    };
-    State.addClass(classdef);
-    evaluateDeclarations(definition);
+    _ = bases;
+    _ = name;
+    // // TODO(ngates): infer bases by looking at struct fields.
+    // const classdef: ClassDef = .{
+    //     .name = name,
+    //     .definition = definition,
+    //     .bases = bases,
+    // };
+    // State.addClass(classdef);
+    // evaluateDeclarations(definition);
     return definition;
 }
 
 /// Instantiate a class defined in Pydust.
 pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
-    const moduleName = findContainingModule(Cls);
-    const imported = try types.PyModule.import(moduleName);
-    const pytype = try imported.obj.get(getClassName(Cls));
+    const module = discovery.findContaining(Cls, .module).?;
+    const imported = try types.PyModule.import(module.getName());
+    const pytype = try imported.obj.get(discovery.getDefinition(Cls).getName());
 
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
@@ -123,68 +126,6 @@ inline fn NewArgs(comptime Cls: type) type {
     const typeInfo = @typeInfo(@TypeOf(func));
     const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
     return sig.argsParam orelse struct {};
-}
-
-pub fn getClassName(comptime definition: type) [:0]const u8 {
-    return findClassName(definition) orelse @compileError("Unrecognized class definition");
-}
-
-/// Find the class name of the given state definition.
-pub inline fn findClassName(comptime definition: type) ?[:0]const u8 {
-    inline for (State.classes()) |classDef| {
-        if (classDef.definition == definition) {
-            return classDef.name;
-        }
-    }
-    return null;
-}
-
-/// Get the module name of the given state definition.
-pub fn getModuleName(comptime definition: type) ?[:0]const u8 {
-    return findModuleName(definition) orelse @compileError("Unrecognized module definition");
-}
-
-/// Find the module name of the given state definition.
-pub inline fn findModuleName(comptime definition: type) ?[:0]const u8 {
-    inline for (State.modules()) |modDef| {
-        if (modDef.definition == definition) {
-            return modDef.name;
-        }
-    }
-    return null;
-}
-
-/// Find the name of the module that contains the given definition.
-pub fn findContainingModule(comptime definition: type) [:0]const u8 {
-    inline for (State.modules()) |mod| {
-        inline for (@typeInfo(mod.definition).Struct.decls) |decl| {
-            const value = @field(mod.definition, decl.name);
-            if (@TypeOf(value) != @TypeOf(definition)) {
-                continue;
-            }
-            if (value == definition) {
-                return mod.fullname;
-            }
-        }
-    }
-    @compileError("Class has no associated module");
-}
-
-/// Find the class definitions belonging to this module.
-pub fn findClasses(comptime mod: ModuleDef) []const ClassDef {
-    var moduleClasses: []const ClassDef = &.{};
-    inline for (State.classes()) |classDef| {
-        inline for (@typeInfo(mod.definition).Struct.decls) |decl| {
-            const value = @field(mod.definition, decl.name);
-            if (@typeInfo(@TypeOf(value)) != .Type) {
-                continue;
-            }
-            if (value == classDef.definition) {
-                moduleClasses = moduleClasses ++ .{classDef};
-            }
-        }
-    }
-    return moduleClasses;
 }
 
 /// Force the eager evaluation of the public declarations of the module

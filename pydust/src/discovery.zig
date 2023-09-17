@@ -13,6 +13,7 @@ const std = @import("std");
 const py = @import("pydust.zig");
 const ffi = py.ffi;
 
+const PyType = @import("./pytypes.zig").PyType;
 const Module = @import("./modules.zig").Module;
 
 /// Every Pydust definition registers itself in the discovery state against its parent.
@@ -22,6 +23,10 @@ const Definition = struct {
     name: ?[:0]const u8,
     definition: type,
     parent: type,
+
+    pub fn getName(self: Definition) [:0]const u8 {
+        return self.name orelse @compileError("Name not set for " ++ @typeName(self.definition));
+    }
 };
 
 const DefinitionType = enum { module, class };
@@ -37,16 +42,16 @@ const State = blk: {
         fn push(
             comptime deftype: DefinitionType,
             comptime definition: type,
-            comptime parentTypes: []const DefinitionType,
+            comptime permittedParents: []const DefinitionType,
         ) void {
-            const parentDefinition: ?Definition = if (stackSize == 0) null else stack[stackSize - 1];
+            _ = permittedParents;
+            const parent = if (stackSize == 0) definition else stack[stackSize].definition;
 
-            _ = parentTypes;
             // Ensure the definition is within a valid parent type.
             // e.g. cannot define a module inside a class
             // if (parentDefinition) |p| {
             //     var matched: bool = false;
-            //     for (parentTypes) |pt| {
+            //     for (permittedParents) |pt| {
             //         if (p.type == pt) {
             //             matched = true;
             //             break;
@@ -57,19 +62,18 @@ const State = blk: {
             //     }
             // }
 
-            const def: Definition = .{
+            const def = .{
                 .type = deftype,
                 .name = null,
                 .definition = definition,
-                // Use @This() as a placeholder for the root parent. Means we don't have to check optional everywhere.
-                .parent = if (parentDefinition) |p| p.definition else @This(),
+                .parent = parent,
             };
-
-            definitions[definitionsSize] = def;
-            definitionsSize += 1;
 
             stack[stackSize] = def;
             stackSize += 1;
+
+            definitions[definitionsSize] = def;
+            definitionsSize += 1;
         }
 
         fn pop() void {
@@ -103,29 +107,31 @@ const State = blk: {
 
 /// Register the root Pydust module
 pub fn rootmodule(comptime definition: type) void {
-    if (!State.isempty()) {
-        @compileError("Root module can only be registered in a root-level comptime block");
-    }
-
-    const pyconf = @import("pyconf");
-    const name = pyconf.module_name;
-
-    State.push(.module, definition, &.{});
-    State.setName(definition, name);
-    defer State.pop();
-
-    const moddef = Module(name, definition);
-
-    // For root modules, we export a PyInit__name function per CPython API.
-    const Closure = struct {
-        pub fn init() callconv(.C) ?*ffi.PyObject {
-            const obj = @call(.always_inline, moddef.init, .{}) catch return null;
-            return obj.py;
+    comptime {
+        if (!State.isempty()) {
+            @compileError("Root module can only be registered in a root-level comptime block");
         }
-    };
 
-    const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
-    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .Strong });
+        const pyconf = @import("pyconf");
+        const name = pyconf.module_name;
+
+        State.push(.module, definition, &.{.module});
+        State.setName(definition, name);
+        State.pop();
+
+        const moddef = Module(name, definition);
+
+        // For root modules, we export a PyInit__name function per CPython API.
+        const Closure = struct {
+            pub fn init() callconv(.C) ?*ffi.PyObject {
+                const obj = @call(.always_inline, moddef.init, .{}) catch return null;
+                return obj.py;
+            }
+        };
+
+        const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
+        @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .Strong });
+    }
 }
 
 /// Register a Pydust module as a submodule to an existing module.
@@ -144,21 +150,25 @@ pub fn class(comptime definition: type) @TypeOf(definition) {
     return definition;
 }
 
-pub fn setName(comptime definition: type, comptime name: [:0]const u8) void {
-    State.setName(definition, name);
-}
-
 pub fn getDefinitions() []const Definition {
     return State.getDefinitions();
 }
 
-pub fn getDefinition(comptime definition: type) ?Definition {
+pub fn getDefinition(comptime definition: type) Definition {
+    return findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
+}
+
+pub fn findDefinition(comptime definition: type) ?Definition {
     for (State.getDefinitions()) |def| {
         if (def.definition == definition) {
             return def;
         }
     }
     return null;
+}
+
+pub fn getContaining(comptime definition: type, comptime deftype: DefinitionType) Definition {
+    return findContaining(definition, deftype) orelse @compileError("Cannot find containing object");
 }
 
 /// Find the nearest containing definition with the given deftype.
@@ -169,17 +179,13 @@ pub fn findContaining(comptime definition: type, comptime deftype: DefinitionTyp
     while (idx > 0) : (idx -= 1) {
         const def = defs[idx - 1];
 
-        @compileLog("Checking", def, definition);
-
         if (def.definition == definition) {
             // Only once we found the original definition, should we check for deftype.
             foundOriginal = true;
-            @compileLog("Found");
             continue;
         }
 
         if (def.type == deftype) {
-            @compileLog("Found parent", def);
             return def;
         }
     }
@@ -190,9 +196,9 @@ pub fn findContaining(comptime definition: type, comptime deftype: DefinitionTyp
 /// From here, we can also update the definition names.
 fn evaluateDeclarations(comptime definition: type) void {
     for (@typeInfo(definition).Struct.decls) |decl| {
-        const def = @field(definition, decl.name);
-        if (@typeInfo(@TypeOf(def)) == .Type) {
-            setName(def, decl.name ++ "");
-        }
+        _ = @field(definition, decl.name);
+        // if (@typeInfo(@TypeOf(def)) == .Type) {
+        //     State.setName(def, decl.name ++ "");
+        // }
     }
 }
