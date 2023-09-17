@@ -114,26 +114,31 @@ pub const Rectangle = py.class(struct {
     area: u32,
     height: u32,
 
-    // Defining struct fields as properties exposes them to Python.
-    // Or attributes? Or members?
+    // A property defines getters and setters for instance attributes.
+    // Either get, set or both can be defined.
     width: py.property(struct {
         const Prop = @This();
 
-        width: u32,
+        w: u32,
 
-        pub fn get(self: *const Prop) u32 {
-            return self.width;
+        pub fn get(self: *const Prop) !u32 {
+            return self.w;
         }
 
         pub fn set(self: *Prop, value: u32) !void {
-            self.width = value;
             const rectangle = @fieldParentPtr(Rectangle, "width", self);
-            rectangle.area = rectangle.height.get() * value;
+            rectangle.area = rectangle.height * value;
+
+            self.w = value;
         }
     }),
 
     pub fn __new__(args: struct { width: u32, height: u32 }) !Self {
-        return .{ .width = args.width, .height = args.height };
+        return .{
+            .area = args.width * args.height,
+            .width = .{ .w = args.width },
+            .height = args.height,
+        };
     }
 });
 // --8<-- [end:rectangle]

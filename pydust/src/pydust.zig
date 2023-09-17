@@ -82,9 +82,11 @@ pub fn rootmodule(comptime definition: type) void {
     const pyconf = @import("pyconf");
     const name = pyconf.module_name;
 
-    const moddef = Module(name, definition);
     State.register(definition, .module);
     State.identify(definition, name, definition);
+    eagerEval(definition);
+
+    const moddef = Module(name, definition);
 
     // For root modules, we export a PyInit__name function per CPython API.
     const Closure = struct {
@@ -101,17 +103,32 @@ pub fn rootmodule(comptime definition: type) void {
 /// Register a Pydust module as a submodule to an existing module.
 pub fn module(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .module);
+    eagerEval(definition);
     return definition;
 }
 
 /// Register a struct as a Python class definition.
 pub fn class(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .class);
+    eagerEval(definition);
     return definition;
 }
 
 /// Register a property as a field on a Pydust class.
 pub fn property(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .property);
+    eagerEval(definition);
     return definition;
+}
+
+/// Force the evaluation of Pydust registration methods.
+/// Using this enables us to breadth-first traverse the object graph, ensuring
+/// objects are registered before they're referenced elsewhere.
+fn eagerEval(comptime definition: type) void {
+    for (@typeInfo(definition).Struct.fields) |f| {
+        _ = f;
+    }
+    for (@typeInfo(definition).Struct.decls) |d| {
+        _ = @field(definition, d.name);
+    }
 }

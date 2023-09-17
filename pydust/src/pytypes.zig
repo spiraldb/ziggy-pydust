@@ -86,8 +86,10 @@ fn Bases(comptime definition: type) type {
         const bases: []const type = blk: {
             var bases_: []const type = &.{};
             for (typeInfo.fields) |field| {
-                if (State.findDefinition(field.type)) |_| {
-                    bases_ = bases_ ++ .{field.type};
+                if (State.findDefinition(field.type)) |def| {
+                    if (def.type == .class) {
+                        bases_ = bases_ ++ .{field.type};
+                    }
                 }
             }
             break :blk bases_;
@@ -101,6 +103,7 @@ fn Slots(comptime definition: type) type {
 
         const attrs = Attributes(definition);
         const methods = funcs.Methods(definition);
+        const properties = Properties(definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -198,6 +201,10 @@ fn Slots(comptime definition: type) type {
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
             }};
 
+            slots_ = slots_ ++ .{ffi.PyType_Slot{
+                .slot = ffi.Py_tp_getset,
+                .pfunc = @ptrCast(@constCast(&properties.getsetdefs)),
+            }};
             slots_ = slots_ ++ .{empty};
 
             break :blk slots_;
@@ -303,6 +310,79 @@ fn Slots(comptime definition: type) type {
             const result = definition.__repr__(&self.state) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
+    };
+}
+
+fn Properties(comptime definition: type) type {
+    return struct {
+        const count = blk: {
+            var cnt = 0;
+            for (@typeInfo(definition).Struct.fields) |field| {
+                if (State.hasType(field.type, .property)) {
+                    cnt += 1;
+                }
+            }
+            break :blk cnt;
+        };
+
+        const getsetdefs: [count + 1]ffi.PyGetSetDef = blk: {
+            var props: [count + 1]ffi.PyGetSetDef = undefined;
+            var idx = 0;
+            for (@typeInfo(definition).Struct.fields) |field| {
+                if (State.hasType(field.type, .property)) {
+                    var prop: ffi.PyGetSetDef = .{
+                        .name = field.name ++ "",
+                        .get = null,
+                        .set = null,
+                        .doc = null,
+                        .closure = null,
+                    };
+
+                    if (@hasDecl(field.type, "get")) {
+                        const Closure = struct {
+                            pub fn get(pyself: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.C) ?*ffi.PyObject {
+                                _ = closure;
+
+                                const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+                                const propself = @constCast(&@field(self.state, field.name));
+
+                                // TODO(ngates): trampoline self?
+                                const result = field.type.get(propself) catch return null;
+                                const resultObj = tramp.Trampoline(@TypeOf(result)).wrap(result) catch return null;
+                                return resultObj.py;
+                            }
+                        };
+                        prop.get = &Closure.get;
+                    }
+
+                    if (@hasDecl(field.type, "set")) {
+                        const Closure = struct {
+                            pub fn set(pyself: [*c]ffi.PyObject, pyvalue: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.C) c_int {
+                                _ = closure;
+                                const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+                                const propself = &@field(self.state, field.name);
+
+                                const ValueArg = @typeInfo(@TypeOf(field.type.set)).Fn.params[1].type.?;
+                                const value = tramp.Trampoline(ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
+
+                                // TODO(ngates): trampoline self?
+                                field.type.set(propself, value) catch return -1;
+                                return 0;
+                            }
+                        };
+                        prop.set = &Closure.set;
+                    }
+
+                    props[idx] = prop;
+                    idx += 1;
+                }
+            }
+
+            // Null terminator
+            props[count] = .{ .name = null, .get = null, .set = null, .doc = null, .closure = null };
+
+            break :blk props;
+        };
     };
 }
 

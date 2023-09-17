@@ -64,6 +64,13 @@ pub const State = blk: {
             return definitions[0..definitionsSize];
         }
 
+        pub fn hasType(comptime definition: type, deftype: DefinitionType) bool {
+            if (findDefinition(definition)) |def| {
+                return def.type == deftype;
+            }
+            return false;
+        }
+
         pub fn getDefinition(comptime definition: type) Definition {
             return findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
         }
