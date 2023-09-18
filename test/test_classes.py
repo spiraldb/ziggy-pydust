@@ -17,6 +17,17 @@ import pytest
 from example import classes
 
 
+# --8<-- [start:subclass]
+def test_subclasses():
+    d = classes.Dog("labrador")
+    assert d.breed() == "labrador"
+    assert d.species() == "dog"
+    assert isinstance(d, classes.Animal)
+
+
+# --8<-- [end:subclass]
+
+
 def test_hierarchy():
     assert issubclass(classes.Dog, classes.Animal)
     assert isinstance(classes.Dog("Dug"), classes.Animal)

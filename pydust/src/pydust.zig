@@ -114,6 +114,11 @@ pub fn class(comptime definition: type) @TypeOf(definition) {
     return definition;
 }
 
+/// Register a struct field as a Python read-only attribute.
+pub fn attribute(comptime definition: type) @TypeOf(definition) {
+    return definition;
+}
+
 /// Register a property as a field on a Pydust class.
 pub fn property(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .property);
@@ -126,9 +131,16 @@ pub fn property(comptime definition: type) @TypeOf(definition) {
 /// objects are registered before they're referenced elsewhere.
 fn eagerEval(comptime definition: type) void {
     for (@typeInfo(definition).Struct.fields) |f| {
-        _ = f;
+        if (State.findDefinition(f.type)) |_| {
+            // If it's a Pydust definition, then we identify it.
+            State.identify(f.type, f.name ++ "", definition);
+        }
     }
     for (@typeInfo(definition).Struct.decls) |d| {
-        _ = @field(definition, d.name);
+        const value = @TypeOf(@field(definition, d.name));
+        if (State.findDefinition(value)) |_| {
+            // If it's a Pydust definition, then we identify it.
+            State.identify(value, d.name ++ "", definition);
+        }
     }
 }
