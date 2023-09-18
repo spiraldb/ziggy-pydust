@@ -28,6 +28,30 @@ def test_subclasses():
 # --8<-- [end:subclass]
 
 
+# --8<-- [start:staticmethods]
+def test_static_methods():
+    assert classes.Math.add(10, 30) == 40
+
+
+# --8<-- [end:staticmethods]
+
+
+# --8<-- [start:properties]
+def test_properties():
+    u = classes.User("Dave")
+    assert u.email is None
+
+    u.email = "dave@dave.com"
+    assert u.email == "dave@dave.com"
+
+    with pytest.raises(ValueError) as exc_info:
+        u.email = "dave"
+    assert str(exc_info.value) == "Invalid email address for Dave"
+
+
+# --8<-- [end:properties]
+
+
 def test_hierarchy():
     assert issubclass(classes.Dog, classes.Animal)
     assert isinstance(classes.Dog("Dug"), classes.Animal)

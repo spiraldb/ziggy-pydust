@@ -131,10 +131,7 @@ pub fn property(comptime definition: type) @TypeOf(definition) {
 /// objects are registered before they're referenced elsewhere.
 fn eagerEval(comptime definition: type) void {
     for (@typeInfo(definition).Struct.fields) |f| {
-        if (State.findDefinition(f.type)) |_| {
-            // If it's a Pydust definition, then we identify it.
-            State.identify(f.type, f.name ++ "", definition);
-        }
+        _ = f.type;
     }
     for (@typeInfo(definition).Struct.decls) |d| {
         const value = @TypeOf(@field(definition, d.name));

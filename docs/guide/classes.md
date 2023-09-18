@@ -64,16 +64,47 @@ Subclasses are defined by including the parent class struct as a field of the su
 --8<-- "example/classes.zig:subclass"
 ```
 
-They can then be instantiated from Zig using `py.init` and populating all fields, or from Python
+They can then be instantiated from Zig using `py.init`, or from Python
 if a `__new__` function is defined.
 
 ```python
 --8<-- "test/test_classes.py:subclass"
 ```
 
-Subclasses can then use builtins like [super](https://docs.python.org/3/library/functions.html#super)
-to invoke methods on their parent types. Bear in mind that Python superclasses aren't actually fields
-on the subtype. Thus it is only possible to refer to supertype methods from that supertype.
+### Super
+
+The `py.super(Type, self)` function returns a proxy `py.PyObject` that can be used to invoke methods on the super class. This behaves the same as the Python builtin [super](https://docs.python.org/3/library/functions.html#super).
+
+## Properties
+
+
+
+## Instance Attributes
+
+### Class Attributes
+
+Class attributes are not currently supported by Pydust.
+
+## Instance Methods
+
+## Class Methods
+
+## Static Methods
+
+Static methods are similar to class methods but do not have access to the class itself. You can define static methods by simply not taking a `self` argument.
+
+```zig
+--8<-- "example/classes.zig:staticmethods"
+```
+
+## Dunder Methods
+
+Dunder methods, or "double underscore" methods, provide a mechanism for overriding builtin
+Python operators.
+
+The currently supported methods are:
+
+
 
 ## Binary Operators
 

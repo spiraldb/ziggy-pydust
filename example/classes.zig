@@ -37,7 +37,7 @@ pub const Animal = py.class(struct {
 
     species: py.PyString,
 
-    pub fn species(self: Self) py.PyString {
+    pub fn species(self: *Self) py.PyString {
         return self.species;
     }
 });
@@ -56,12 +56,50 @@ pub const Dog = py.class(struct {
         };
     }
 
-    pub fn breed(self: Self) py.PyString {
+    pub fn breed(self: *Self) py.PyString {
         return self.breed;
     }
 });
 
 // --8<-- [end:subclass]
+
+// --8<-- [start:properties]
+pub const User = py.class(struct {
+    const Self = @This();
+
+    pub fn __new__(args: struct { name: py.PyString }) !Self {
+        args.name.incref();
+        return .{ .name = args.name, .email = .{} };
+    }
+
+    name: py.PyString,
+    email: py.property(struct {
+        const Prop = @This();
+
+        e: ?py.PyString = null,
+
+        pub fn get(prop: *const Prop) !?py.PyString {
+            return prop.e;
+        }
+
+        pub fn set(prop: *Prop, value: py.PyString) !void {
+            const self: *Self = @fieldParentPtr(Self, "email", prop);
+            if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
+                return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
+            }
+            prop.e = value;
+        }
+    }),
+});
+// --8<-- [end:properties]
+
+// --8<-- [start:staticmethods]
+pub const Math = py.class(struct {
+    pub fn add(args: struct { x: i32, y: i32 }) i32 {
+        return args.x + args.y;
+    }
+});
+// --8<-- [end:staticmethods]
 
 // --8<-- [start:rectangle]
 pub const Rectangle = py.class(struct {

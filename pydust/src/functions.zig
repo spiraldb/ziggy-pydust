@@ -13,6 +13,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const State = @import("discovery.zig").State;
 const PyError = @import("errors.zig").PyError;
 const Type = std.builtin.Type;
 
@@ -172,7 +173,8 @@ fn checkArgsParam(comptime Args: type) void {
     }
 }
 
-pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_int) type {
+pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Signature, comptime flags: c_int) type {
+    const def = State.getDefinition(definition);
     return struct {
         const doc = docTextSignature(sig);
 
@@ -181,7 +183,21 @@ pub fn wrap(comptime func: anytype, comptime sig: Signature, comptime flags: c_i
             return .{
                 .ml_name = sig.name.ptr ++ "",
                 .ml_meth = if (sig.nkwargs > 0) @ptrCast(&fastcallKwargs) else @ptrCast(&fastcall),
-                .ml_flags = ffi.METH_FASTCALL | flags | if (sig.nkwargs > 0) ffi.METH_KEYWORDS else 0,
+                .ml_flags = blk: {
+                    var ml_flags: c_int = ffi.METH_FASTCALL | flags;
+
+                    // We can only set METH_STATIC and METH_CLASS on class methods, not module methods.
+                    if (def.type == .class and sig.selfParam == null) {
+                        ml_flags |= ffi.METH_STATIC;
+                    }
+                    // TODO(ngates): check for METH_CLASS
+
+                    if (sig.nkwargs > 0) {
+                        ml_flags |= ffi.METH_KEYWORDS;
+                    }
+
+                    break :blk ml_flags;
+                },
                 .ml_doc = &doc,
             };
         }
@@ -334,7 +350,7 @@ pub fn Methods(comptime definition: type) type {
                 }
 
                 const sig = parseSignature(decl.name, typeInfo.Fn, &.{ py.PyObject, *definition, *const definition });
-                defs[idx] = wrap(value, sig, 0).aspy();
+                defs[idx] = wrap(definition, value, sig, 0).aspy();
                 idx += 1;
             }
 
