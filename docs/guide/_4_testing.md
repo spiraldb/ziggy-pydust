@@ -15,6 +15,22 @@ The Zig documentation provides an [excellent introduction to writing tests](http
 --8<-- "example/pytest.zig:example"
 ```
 
+Add `ziggy-pydust` as a dev dependency:
+
+```bash
+poetry add -G dev ziggy-pydust
+```
+
+```diff title="pyproject.toml"
+[tool.poetry.group.dev.dependencies]
++ ziggy-pydust = "0.TODO_SET_MINOR_VERSION.*"
+```
+
+!!! note
+
+    Keep this version the same as build dependency version. There is currently no way to guarantee this with Poetry.
+
+
 After running `poetry run pytest` you should see your Zig tests included in your Pytest output:
 
 ``` bash linenums="0"
