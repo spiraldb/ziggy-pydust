@@ -52,6 +52,18 @@ def test_properties():
 # --8<-- [end:properties]
 
 
+# --8<-- [start:attributes]
+def test_attributes():
+    c = classes.Counter()
+    assert c.count == 0
+    c.increment()
+    c.increment()
+    assert c.count == 2
+
+
+# --8<-- [end:attributes]
+
+
 def test_hierarchy():
     assert issubclass(classes.Dog, classes.Animal)
     assert isinstance(classes.Dog("Dug"), classes.Animal)

@@ -1,9 +1,5 @@
 # Python Functions
 
-TODO:
-* CallArgs struct (parsed into args/kwargs)
-
-
 Python functions can be declared as usual zig functions at top level of the module
 
 ```zig

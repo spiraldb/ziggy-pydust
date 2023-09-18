@@ -103,6 +103,7 @@ fn Slots(comptime definition: type) type {
 
         const attrs = Attributes(definition);
         const methods = funcs.Methods(definition);
+        const members = Members(definition);
         const properties = Properties(definition);
 
         /// Slots populated in the PyType
@@ -153,8 +154,8 @@ fn Slots(comptime definition: type) type {
 
             if (@hasDecl(definition, "__len__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_mp_length,
-                    .pfunc = @ptrCast(@constCast(&mp_length)),
+                    .slot = ffi.Py_sq_length,
+                    .pfunc = @ptrCast(@constCast(&sq_length)),
                 }};
             }
 
@@ -202,9 +203,15 @@ fn Slots(comptime definition: type) type {
             }};
 
             slots_ = slots_ ++ .{ffi.PyType_Slot{
+                .slot = ffi.Py_tp_members,
+                .pfunc = @ptrCast(@constCast(&members.memberdefs)),
+            }};
+
+            slots_ = slots_ ++ .{ffi.PyType_Slot{
                 .slot = ffi.Py_tp_getset,
                 .pfunc = @ptrCast(@constCast(&properties.getsetdefs)),
             }};
+
             slots_ = slots_ ++ .{empty};
 
             break :blk slots_;
@@ -278,7 +285,7 @@ fn Slots(comptime definition: type) type {
             return definition.__release_buffer__(&self.state, @ptrCast(view));
         }
 
-        fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
+        fn sq_length(pyself: *ffi.PyObject) callconv(.C) isize {
             const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__len__(&self.state) catch return -1;
             return @as(isize, @intCast(result));
@@ -313,17 +320,80 @@ fn Slots(comptime definition: type) type {
     };
 }
 
+fn Members(comptime definition: type) type {
+    return struct {
+        const count = State.countFieldsWithType(definition, .attribute);
+
+        const memberdefs: [count + 1]ffi.PyMemberDef = blk: {
+            var defs: [count + 1]ffi.PyMemberDef = undefined;
+            var idx = 0;
+            for (@typeInfo(definition).Struct.fields) |field| {
+                if (!State.hasType(field.type, .attribute)) {
+                    continue;
+                }
+
+                // We compute the offset of the attribute within the type, and then the value field within the attribute.
+                // Although the value within the attribute should always be 0 since it's the only field.
+                var offset = @offsetOf(PyTypeStruct(definition), "state") + @offsetOf(definition, field.name) + @offsetOf(field.type, "value");
+
+                const T = @typeInfo(field.type).Struct.fields[0].type;
+
+                defs[idx] = ffi.PyMemberDef{
+                    .name = field.name ++ "",
+                    .type = getMemberType(T),
+                    .offset = @intCast(offset),
+                    .flags = ffi.READONLY,
+                    .doc = null,
+                };
+                idx += 1;
+            }
+
+            // Add null terminator
+            defs[count] = .{ .name = null, .type = 0, .offset = 0, .flags = 0, .doc = null };
+
+            break :blk defs;
+        };
+
+        // We extract the equivalent C type by looking at signedness and bits.
+        // This allows us to support native Zig types like u32 and not require the user
+        // to specify c_int.
+        fn getMemberType(comptime T: type) c_int {
+            if (T == py.PyObject) {
+                return ffi.T_OBJECT_EX;
+            }
+
+            if (T == [*:0]const u8) {
+                return ffi.T_STRING;
+            }
+
+            switch (@typeInfo(T)) {
+                .Int => |i| switch (i.signedness) {
+                    .signed => switch (i.bits) {
+                        @bitSizeOf(i8) => return ffi.T_BYTE,
+                        @bitSizeOf(c_short) => return ffi.T_SHORT,
+                        @bitSizeOf(c_int) => return ffi.T_INT,
+                        @bitSizeOf(c_long) => return ffi.T_LONG,
+                        @bitSizeOf(isize) => return ffi.T_PYSSIZET,
+                        else => {},
+                    },
+                    .unsigned => switch (i.bits) {
+                        @bitSizeOf(u8) => return ffi.T_UBYTE,
+                        @bitSizeOf(c_ushort) => return ffi.T_USHORT,
+                        @bitSizeOf(c_uint) => return ffi.T_UINT,
+                        @bitSizeOf(c_ulong) => return ffi.T_ULONG,
+                        else => {},
+                    },
+                },
+                else => {},
+            }
+            @compileError("Zig type " ++ @typeName(T) ++ " is not supported for Pydust attribute. Consider using a py.property instead.");
+        }
+    };
+}
+
 fn Properties(comptime definition: type) type {
     return struct {
-        const count = blk: {
-            var cnt = 0;
-            for (@typeInfo(definition).Struct.fields) |field| {
-                if (State.hasType(field.type, .property)) {
-                    cnt += 1;
-                }
-            }
-            break :blk cnt;
-        };
+        const count = State.countFieldsWithType(definition, .property);
 
         const getsetdefs: [count + 1]ffi.PyGetSetDef = blk: {
             var props: [count + 1]ffi.PyGetSetDef = undefined;

@@ -19,4 +19,7 @@ pub usingnamespace @cImport({
     }
     @cDefine("PY_SSIZE_T_CLEAN", {});
     @cInclude("Python.h");
+    // From 3.12 onwards, structmember.h is fixed to be including in Python.h
+    // See https://github.com/python/cpython/pull/99014
+    @cInclude("structmember.h");
 });

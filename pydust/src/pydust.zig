@@ -115,8 +115,16 @@ pub fn class(comptime definition: type) @TypeOf(definition) {
 }
 
 /// Register a struct field as a Python read-only attribute.
-pub fn attribute(comptime definition: type) @TypeOf(definition) {
+pub fn attribute(comptime T: type) @TypeOf(Attribute(T)) {
+    const definition = Attribute(T);
+    State.register(definition, .attribute);
+    // No need to recursively eval an attribute since it cannot contain pydust definitions.
+    // eagerEval(definition);
     return definition;
+}
+
+fn Attribute(comptime T: type) type {
+    return struct { value: T };
 }
 
 /// Register a property as a field on a Pydust class.

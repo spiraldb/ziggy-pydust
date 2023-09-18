@@ -1,17 +1,5 @@
 # Python Classes
 
-TODO
-
-* Defining a class
-* Constructor
-* Inheritance
-* Instance Attributes (note no class attrs)
-* Properties
-* Instance methods
-* Class methods
-* Static methods
-* Slots
-
 This page describes how to define, instantiate and customize Python classes with Pydust.
 
 Classes are defined by wrapping structs with the `py.class` function.
@@ -40,15 +28,17 @@ const some_class = try py.init(SomeClass, .{ .count = 1 });
 To enable instantiation from Python, you must define a `__new__` function
 that takes a [CallArgs](./functions.md#call-args) struct and returns a new instance of `Self`.
 
-```zig
---8<-- "example/classes.zig:constructor"
-```
+=== "Zig"
 
-From Python, the class can then be instantiated as normal:
+    ```zig
+    --8<-- "example/classes.zig:constructor"
+    ```
 
-```python
---8<-- "test/test_classes_constructor.py:constructor"
-```
+=== "Python"
+
+    ```python
+    --8<-- "test/test_classes_constructor.py:constructor"
+    ```
 
 ## Inheritance
 
@@ -59,17 +49,20 @@ Inheritance allows you to define a subclass of another Zig Pydust class.
     It is currently not possible to create a subclass of a Python class.
 
 Subclasses are defined by including the parent class struct as a field of the subclass struct.
-
-```zig
---8<-- "example/classes.zig:subclass"
-```
-
 They can then be instantiated from Zig using `py.init`, or from Python
 if a `__new__` function is defined.
 
-```python
---8<-- "test/test_classes.py:subclass"
-```
+=== "Zig"
+
+    ```zig
+    --8<-- "example/classes.zig:subclass"
+    ```
+
+=== "Python"
+
+    ```python
+    --8<-- "test/test_classes.py:subclass"
+    ```
 
 ### Super
 
@@ -77,17 +70,59 @@ The `py.super(Type, self)` function returns a proxy `py.PyObject` that can be us
 
 ## Properties
 
+Properties behave the same as the Python `@property` decorator. They allow you to define
+getter and setter functions for an attribute of the class.
 
+Pydust properties are again defined as structs with optional `get` and `set` methods. If you
+do not define a `set` method for example, then the property is read-only. And vice versa.
+
+In this example we define an `email` property that performs a naive validity check. It makes
+use of Zig's `@fieldParentPointer` builtin to get a handle on the class instance struct.
+
+=== "Zig"
+
+    ```zig
+    --8<-- "example/classes.zig:properties"
+    ```
+
+=== "Python"
+
+    ```python
+    --8<-- "test/test_classes.py:properties"
+    ```
 
 ## Instance Attributes
+
+Attributes are similar to properties, except they do not allow for custom getters and setters.
+Due to how they are implemented, attributes wrap the type in a struct definition:
+
+```zig
+struct { value: T }
+```
+
+This means you must access the attribute in Zig using `.value`.
+
+
+=== "Zig"
+
+    ```zig
+    --8<-- "example/classes.zig:attributes"
+    ```
+
+=== "Python"
+
+    ```python
+    --8<-- "test/test_classes.py:attributes"
+    ```
+
+!!! note
+
+    Attributes are currently read-only. Please file an issue if you have a use-case for writable
+    attributes.
 
 ### Class Attributes
 
 Class attributes are not currently supported by Pydust.
-
-## Instance Methods
-
-## Class Methods
 
 ## Static Methods
 
@@ -102,20 +137,66 @@ Static methods are similar to class methods but do not have access to the class 
 Dunder methods, or "double underscore" methods, provide a mechanism for overriding builtin
 Python operators.
 
-The currently supported methods are:
+* `object` refers to either a pointer to a Pydust type, a `py.PyObject`,
+  or any other Pydust Python type, e.g. `py.PyString`.
+* `CallArgs` refers to a Zig struct that is interpreted as `args` and `kwargs`
+  where fields are marked as keyword arguments if they have a default value.  
 
-
-
-## Binary Operators
-
-Pydust supports classes implementing binary operators (e.g. `__add__` or bitwise operators).
+Also note the shorthand signatures:
 
 ```zig
---8<-- "example/classes.zig:operator"
+const binaryfunc = fn(*Self, other: object) !object;
 ```
 
-The self parameter must be a pointer to the class type. The other parameter can be of any Pydust supported type.
+### Type Methods
 
-Supported binary operators are: `__add__`, `__sub__`, `__mul__`, `__mod__`, `__divmod__`, `__pow__`,
-`__lshift__`, `__rshift__`, `__and__`, `__xor__`, `__or__`, `__truediv__`, `__floordiv__`,
-`__matmul__`, `__getitem__`.
+| Method     | Signature                      |
+|:-----------|:-------------------------------|
+| `__new__`  | `#!zig fn(CallArgs) !Self`     |
+| `__del__`  | `#!zig fn(*Self) void`         |
+| `__repr__` | `#!zig fn(*Self) !py.PyString` |
+| `__str__`  | `#!zig fn(*Self) !py.PyString` |
+| `__iter__` | `#!zig fn(*Self) !object`      |
+| `__next__` | `#!zig fn(*Self) !?object`     |
+
+### Sequence Methods
+
+| Method       | Signature                  |
+|:-------------|:---------------------------|
+| `__len__`    | `#!zig fn(*Self) !usize`   |
+
+The remaining sequence methods are yet to be implemented.
+
+### Mapping Methods
+
+| Method          | Signature     |
+|:----------------|:--------------|
+| `__getitem__`   | `binaryfunc`  |
+
+The remaining mapping methods are yet to be implemented.
+
+### Number Methods
+
+| Method         | Signature     |
+|:---------------|:--------------|
+| `__add__`      | `binaryfunc`  |
+| `__sub__`      | `binaryfunc`  |
+| `__mul__`      | `binaryfunc`  |
+| `__mod__`      | `binaryfunc`  |
+| `__divmod__`   | `binaryfunc`  |
+| `__pow__`      | `binaryfunc`  |
+| `__lshift__`   | `binaryfunc`  |
+| `__rshift__`   | `binaryfunc`  |
+| `__and__`      | `binaryfunc`  |
+| `__or__`       | `binaryfunc`  |
+| `__xor__`      | `binaryfunc`  |
+| `__truediv__`  | `binaryfunc`  |
+| `__floordiv__` | `binaryfunc`  |
+| `__matmul__`   | `binaryfunc`  |
+
+### Buffer Methods
+
+| Method               | Signature                                      |
+|:---------------------|:-----------------------------------------------|
+| `__buffer__`         | `#!zig fn (*Self, *py.PyBuffer, flags: c_int)` |
+| `__release_buffer__` | `#!zig fn (*Self, *py.PyBuffer)`               |

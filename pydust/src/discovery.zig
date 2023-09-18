@@ -22,7 +22,7 @@ const Definition = struct {
     type: DefinitionType,
 };
 
-const DefinitionType = enum { module, class, property };
+const DefinitionType = enum { module, class, attribute, property };
 
 /// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
@@ -62,6 +62,27 @@ pub const State = blk: {
 
         pub fn getDefinitions() []Definition {
             return definitions[0..definitionsSize];
+        }
+
+        pub fn countDeclsWithType(comptime definition: type, deftype: DefinitionType) usize {
+            var cnt = 0;
+            for (@typeInfo(definition).Struct.decls) |decl| {
+                const declType = @TypeOf(@field(definition, decl.name));
+                if (State.hasType(declType, deftype)) {
+                    cnt += 1;
+                }
+            }
+            return cnt;
+        }
+
+        pub fn countFieldsWithType(comptime definition: type, deftype: DefinitionType) usize {
+            var cnt = 0;
+            for (@typeInfo(definition).Struct.fields) |field| {
+                if (State.hasType(field.type, deftype)) {
+                    cnt += 1;
+                }
+            }
+            return cnt;
         }
 
         pub fn hasType(comptime definition: type, deftype: DefinitionType) bool {

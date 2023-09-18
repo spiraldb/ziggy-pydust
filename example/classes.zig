@@ -93,6 +93,23 @@ pub const User = py.class(struct {
 });
 // --8<-- [end:properties]
 
+// --8<-- [start:attributes]
+pub const Counter = py.class(struct {
+    const Self = @This();
+
+    count: py.attribute(usize) = .{ .value = 0 },
+
+    pub fn __new__(args: struct {}) !Self {
+        _ = args;
+        return .{};
+    }
+
+    pub fn increment(self: *Self) void {
+        self.count.value += 1;
+    }
+});
+// --8<-- [end:attributes]
+
 // --8<-- [start:staticmethods]
 pub const Math = py.class(struct {
     pub fn add(args: struct { x: i32, y: i32 }) i32 {
@@ -121,7 +138,7 @@ pub const Rectangle = py.class(struct {
 
         pub fn set(self: *Prop, value: u32) !void {
             const rectangle = @fieldParentPtr(Rectangle, "width", self);
-            rectangle.area = rectangle.height * value;
+            rectangle.area = rectangle.height.value * value;
 
             self.w = value;
         }
@@ -131,7 +148,7 @@ pub const Rectangle = py.class(struct {
         return .{
             .area = args.width * args.height,
             .width = .{ .w = args.width },
-            .height = args.height,
+            .height = .{ .value = args.height },
         };
     }
 });
