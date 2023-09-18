@@ -36,9 +36,13 @@ packages = [ { include = "your-module" } ]
 
 [build-system]
 - requires = ["poetry-core"]
-+ requires = ["poetry-core", "ziggy-pydust"]
++ requires = ["poetry-core", "ziggy-pydust==0.TODO_SET_MINOR_VERSION.*"]
 build-backend = "poetry.core.masonry.api"
 ```
+
+!!! note
+
+    We recommend locking the build dependency minor version before `ziggy-pydust` is `1.0`.
 
 As well as creating the `build.py` for Poetry to invoke the Pydust build.
 
