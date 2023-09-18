@@ -102,9 +102,7 @@ pub fn rootmodule(comptime definition: type) void {
 
 /// Register a Pydust module as a submodule to an existing module.
 pub fn module(comptime definition: type) @TypeOf(definition) {
-    State.register(definition, .module);
-    eagerEval(definition);
-    return definition;
+    @compileError("Submodules are not yet supported. Please use py.rootmodule to define a top-level module.");
 }
 
 /// Register a struct as a Python class definition.

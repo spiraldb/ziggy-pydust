@@ -26,7 +26,7 @@ const some_class = try py.init(SomeClass, .{ .count = 1 });
 ### From Python
 
 To enable instantiation from Python, you must define a `__new__` function
-that takes a [CallArgs](./functions.md#call-args) struct and returns a new instance of `Self`.
+that takes a CallArgs struct and returns a new instance of `Self`.
 
 === "Zig"
 
@@ -37,7 +37,7 @@ that takes a [CallArgs](./functions.md#call-args) struct and returns a new insta
 === "Python"
 
     ```python
-    --8<-- "test/test_classes_constructor.py:constructor"
+    --8<-- "test/test_classes.py:constructor"
     ```
 
 ## Inheritance
@@ -140,7 +140,7 @@ Python operators.
 * `object` refers to either a pointer to a Pydust type, a `py.PyObject`,
   or any other Pydust Python type, e.g. `py.PyString`.
 * `CallArgs` refers to a Zig struct that is interpreted as `args` and `kwargs`
-  where fields are marked as keyword arguments if they have a default value.  
+  where fields are marked as keyword arguments if they have a default value.
 
 Also note the shorthand signatures:
 

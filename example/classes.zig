@@ -118,42 +118,6 @@ pub const Math = py.class(struct {
 });
 // --8<-- [end:staticmethods]
 
-// --8<-- [start:rectangle]
-pub const Rectangle = py.class(struct {
-    const Self = @This();
-
-    area: u32,
-    height: py.attribute(u32),
-
-    // A property defines getters and setters for instance attributes.
-    // Either get, set or both can be defined.
-    width: py.property(struct {
-        const Prop = @This();
-
-        w: u32,
-
-        pub fn get(self: *const Prop) !u32 {
-            return self.w;
-        }
-
-        pub fn set(self: *Prop, value: u32) !void {
-            const rectangle = @fieldParentPtr(Rectangle, "width", self);
-            rectangle.area = rectangle.height.value * value;
-
-            self.w = value;
-        }
-    }),
-
-    pub fn __new__(args: struct { width: u32, height: u32 }) !Self {
-        return .{
-            .area = args.width * args.height,
-            .width = .{ .w = args.width },
-            .height = .{ .value = args.height },
-        };
-    }
-});
-// --8<-- [end:rectangle]
-
 comptime {
     py.rootmodule(@This());
 }
