@@ -53,9 +53,9 @@ pub fn Attributes(comptime definition: type) type {
                             }
                         };
                         attrs[idx] = .{ .name = decl.name ++ "", .ctor = Closure.init };
+                        idx += 1;
                     }
                 }
-                idx += 1;
             }
             break :blk attrs;
         };
