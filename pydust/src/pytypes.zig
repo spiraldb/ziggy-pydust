@@ -400,8 +400,6 @@ fn Properties(comptime definition: type) type {
             var idx = 0;
             for (@typeInfo(definition).Struct.fields) |field| {
                 if (State.hasType(field.type, .property)) {
-                    State.identify(field.type, field.name ++ "", definition);
-
                     var prop: ffi.PyGetSetDef = .{
                         .name = field.name ++ "",
                         .get = null,

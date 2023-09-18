@@ -141,12 +141,6 @@ fn eagerEval(comptime definition: type) void {
     }
     for (@typeInfo(definition).Struct.decls) |d| {
         const value = @field(definition, d.name);
-
-        if (@typeInfo(@TypeOf(value)) != .Type) {
-            // All pydust objects are struct types, so we only look at type declarations.
-            continue;
-        }
-
         if (State.findDefinition(value)) |_| {
             // If it's a Pydust definition, then we identify it.
             State.identify(value, d.name ++ "", definition);

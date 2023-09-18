@@ -44,15 +44,8 @@ pub fn Attributes(comptime definition: type) type {
             for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
 
-                // For now, ignore anything that isn't a struct definition.
-                if (@typeInfo(@TypeOf(value)) != .Type) {
-                    continue;
-                }
-
                 if (State.findDefinition(value)) |def| {
                     if (def.type == .class) {
-                        State.identify(def.definition, decl.name ++ "", definition);
-
                         const Closure = struct {
                             pub fn init(module: py.PyModule) !py.PyObject {
                                 const typedef = PyType(decl.name ++ "", def.definition);

@@ -96,7 +96,10 @@ pub const State = blk: {
             return findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
         }
 
-        pub inline fn findDefinition(comptime definition: type) ?Definition {
+        pub inline fn findDefinition(comptime definition: anytype) ?Definition {
+            if (@typeInfo(@TypeOf(definition)) != .Type) {
+                return null;
+            }
             if (@typeInfo(definition) != .Struct) {
                 return null;
             }
