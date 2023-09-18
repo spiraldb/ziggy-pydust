@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>RingBuffer.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! This ring buffer stores read and write indices while being able to utilise</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! the full backing slice by incrementing the indices modulo twice the slice's</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! length and reducing indices modulo the slice's length on slice access. This</span></span>
+<span class="line" id="L4"><span class="tok-comment">//! means that whether the ring buffer is full or empty can be distinguished by</span></span>
+<span class="line" id="L5"><span class="tok-comment">//! looking at the difference between the read and write indices without adding</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! an extra boolean flag or having to reserve a slot in the buffer.</span></span>
+<span class="line" id="L7"><span class="tok-comment">//!</span></span>
+<span class="line" id="L8"><span class="tok-comment">//! This ring buffer has not been implemented with thread safety in mind, and</span></span>
+<span class="line" id="L9"><span class="tok-comment">//! therefore should not be assumed to be suitable for use cases involving</span></span>
+<span class="line" id="L10"><span class="tok-comment">//! separate reader and writer threads.</span></span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-kw">const</span> Allocator = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>).mem.Allocator;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> assert = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>).debug.assert;</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15"><span class="tok-kw">const</span> RingBuffer = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17">data: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L18">read_index: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L19">write_index: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">error</span>{Full};</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23"><span class="tok-comment">/// Allocate a new `RingBuffer`; `deinit()` should be called to free the buffer.</span></span>
+<span class="line" id="L24"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(allocator: Allocator, capacity: <span class="tok-type">usize</span>) Allocator.Error!RingBuffer {</span>
+<span class="line" id="L25">    <span class="tok-kw">const</span> bytes = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, capacity);</span>
+<span class="line" id="L26">    <span class="tok-kw">return</span> RingBuffer{</span>
+<span class="line" id="L27">        .data = bytes,</span>
+<span class="line" id="L28">        .write_index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L29">        .read_index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L30">    };</span>
+<span class="line" id="L31">}</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33"><span class="tok-comment">/// Free the data backing a `RingBuffer`; must be passed the same `Allocator` as</span></span>
+<span class="line" id="L34"><span class="tok-comment">/// `init()`.</span></span>
+<span class="line" id="L35"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *RingBuffer, allocator: Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L36">    allocator.free(self.data);</span>
+<span class="line" id="L37">    self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L38">}</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40"><span class="tok-comment">/// Returns `index` modulo the length of the backing slice.</span></span>
+<span class="line" id="L41"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mask</span>(self: RingBuffer, index: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L42">    <span class="tok-kw">return</span> index % self.data.len;</span>
+<span class="line" id="L43">}</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45"><span class="tok-comment">/// Returns `index` modulo twice the length of the backing slice.</span></span>
+<span class="line" id="L46"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mask2</span>(self: RingBuffer, index: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L47">    <span class="tok-kw">return</span> index % (<span class="tok-number">2</span> * self.data.len);</span>
+<span class="line" id="L48">}</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50"><span class="tok-comment">/// Write `byte` into the ring buffer. Returns `error.Full` if the ring</span></span>
+<span class="line" id="L51"><span class="tok-comment">/// buffer is full.</span></span>
+<span class="line" id="L52"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(self: *RingBuffer, byte: <span class="tok-type">u8</span>) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L53">    <span class="tok-kw">if</span> (self.isFull()) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Full;</span>
+<span class="line" id="L54">    self.writeAssumeCapacity(byte);</span>
+<span class="line" id="L55">}</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57"><span class="tok-comment">/// Write `byte` into the ring buffer. If the ring buffer is full, the</span></span>
+<span class="line" id="L58"><span class="tok-comment">/// oldest byte is overwritten.</span></span>
+<span class="line" id="L59"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeAssumeCapacity</span>(self: *RingBuffer, byte: <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L60">    self.data[self.mask(self.write_index)] = byte;</span>
+<span class="line" id="L61">    self.write_index = self.mask2(self.write_index + <span class="tok-number">1</span>);</span>
+<span class="line" id="L62">}</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64"><span class="tok-comment">/// Write `bytes` into the ring buffer. Returns `error.Full` if the ring</span></span>
+<span class="line" id="L65"><span class="tok-comment">/// buffer does not have enough space, without writing any data.</span></span>
+<span class="line" id="L66"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeSlice</span>(self: *RingBuffer, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L67">    <span class="tok-kw">if</span> (self.len() + bytes.len &gt; self.data.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Full;</span>
+<span class="line" id="L68">    self.writeSliceAssumeCapacity(bytes);</span>
+<span class="line" id="L69">}</span>
+<span class="line" id="L70"></span>
+<span class="line" id="L71"><span class="tok-comment">/// Write `bytes` into the ring buffer. If there is not enough space, older</span></span>
+<span class="line" id="L72"><span class="tok-comment">/// bytes will be overwritten.</span></span>
+<span class="line" id="L73"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeSliceAssumeCapacity</span>(self: *RingBuffer, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L74">    <span class="tok-kw">for</span> (bytes) |b| self.writeAssumeCapacity(b);</span>
+<span class="line" id="L75">}</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77"><span class="tok-comment">/// Consume a byte from the ring buffer and return it. Returns `null` if the</span></span>
+<span class="line" id="L78"><span class="tok-comment">/// ring buffer is empty.</span></span>
+<span class="line" id="L79"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(self: *RingBuffer) ?<span class="tok-type">u8</span> {</span>
+<span class="line" id="L80">    <span class="tok-kw">if</span> (self.isEmpty()) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L81">    <span class="tok-kw">return</span> self.readAssumeLength();</span>
+<span class="line" id="L82">}</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84"><span class="tok-comment">/// Consume a byte from the ring buffer and return it; asserts that the buffer</span></span>
+<span class="line" id="L85"><span class="tok-comment">/// is not empty.</span></span>
+<span class="line" id="L86"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readAssumeLength</span>(self: *RingBuffer) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L87">    assert(!self.isEmpty());</span>
+<span class="line" id="L88">    <span class="tok-kw">const</span> byte = self.data[self.mask(self.read_index)];</span>
+<span class="line" id="L89">    self.read_index = self.mask2(self.read_index + <span class="tok-number">1</span>);</span>
+<span class="line" id="L90">    <span class="tok-kw">return</span> byte;</span>
+<span class="line" id="L91">}</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93"><span class="tok-comment">/// Returns `true` if the ring buffer is empty and `false` otherwise.</span></span>
+<span class="line" id="L94"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isEmpty</span>(self: RingBuffer) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L95">    <span class="tok-kw">return</span> self.write_index == self.read_index;</span>
+<span class="line" id="L96">}</span>
+<span class="line" id="L97"></span>
+<span class="line" id="L98"><span class="tok-comment">/// Returns `true` if the ring buffer is full and `false` otherwise.</span></span>
+<span class="line" id="L99"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isFull</span>(self: RingBuffer) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L100">    <span class="tok-kw">return</span> self.mask2(self.write_index + self.data.len) == self.read_index;</span>
+<span class="line" id="L101">}</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103"><span class="tok-comment">/// Returns the length</span></span>
+<span class="line" id="L104"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">len</span>(self: RingBuffer) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L105">    <span class="tok-kw">const</span> wrap_offset = <span class="tok-number">2</span> * self.data.len * <span class="tok-builtin">@intFromBool</span>(self.write_index &lt; self.read_index);</span>
+<span class="line" id="L106">    <span class="tok-kw">const</span> adjusted_write_index = self.write_index + wrap_offset;</span>
+<span class="line" id="L107">    <span class="tok-kw">return</span> adjusted_write_index - self.read_index;</span>
+<span class="line" id="L108">}</span>
+<span class="line" id="L109"></span>
+<span class="line" id="L110"><span class="tok-comment">/// A `Slice` represents a region of a ring buffer. The region is split into two</span></span>
+<span class="line" id="L111"><span class="tok-comment">/// sections as the ring buffer data will not be contiguous if the desired</span></span>
+<span class="line" id="L112"><span class="tok-comment">/// region wraps to the start of the backing slice.</span></span>
+<span class="line" id="L113"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Slice = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L114">    first: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L115">    second: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L116">};</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118"><span class="tok-comment">/// Returns a `Slice` for the region of the ring buffer starting at</span></span>
+<span class="line" id="L119"><span class="tok-comment">/// `self.mask(start_unmasked)` with the specified length.</span></span>
+<span class="line" id="L120"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sliceAt</span>(self: RingBuffer, start_unmasked: <span class="tok-type">usize</span>, length: <span class="tok-type">usize</span>) Slice {</span>
+<span class="line" id="L121">    assert(length &lt;= self.data.len);</span>
+<span class="line" id="L122">    <span class="tok-kw">const</span> slice1_start = self.mask(start_unmasked);</span>
+<span class="line" id="L123">    <span class="tok-kw">const</span> slice1_end = <span class="tok-builtin">@min</span>(self.data.len, slice1_start + length);</span>
+<span class="line" id="L124">    <span class="tok-kw">const</span> slice1 = self.data[slice1_start..slice1_end];</span>
+<span class="line" id="L125">    <span class="tok-kw">const</span> slice2 = self.data[<span class="tok-number">0</span> .. length - slice1.len];</span>
+<span class="line" id="L126">    <span class="tok-kw">return</span> Slice{</span>
+<span class="line" id="L127">        .first = slice1,</span>
+<span class="line" id="L128">        .second = slice2,</span>
+<span class="line" id="L129">    };</span>
+<span class="line" id="L130">}</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132"><span class="tok-comment">/// Returns a `Slice` for the last `length` bytes written to the ring buffer.</span></span>
+<span class="line" id="L133"><span class="tok-comment">/// Does not check that any bytes have been written into the region.</span></span>
+<span class="line" id="L134"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sliceLast</span>(self: RingBuffer, length: <span class="tok-type">usize</span>) Slice {</span>
+<span class="line" id="L135">    <span class="tok-kw">return</span> self.sliceAt(self.write_index + self.data.len - length, length);</span>
+<span class="line" id="L136">}</span>
+<span class="line" id="L137"></span>
+</code></pre></body>
+</html>

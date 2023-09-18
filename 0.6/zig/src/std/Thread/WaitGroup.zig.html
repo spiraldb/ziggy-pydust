@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Thread/WaitGroup.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> Atomic = std.atomic.Atomic;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> WaitGroup = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">const</span> is_waiting: <span class="tok-type">usize</span> = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">0</span>;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> one_pending: <span class="tok-type">usize</span> = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">1</span>;</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9">state: Atomic(<span class="tok-type">usize</span>) = Atomic(<span class="tok-type">usize</span>).init(<span class="tok-number">0</span>),</span>
+<span class="line" id="L10">event: std.Thread.ResetEvent = .{},</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">start</span>(self: *WaitGroup) <span class="tok-type">void</span> {</span>
+<span class="line" id="L13">    <span class="tok-kw">const</span> state = self.state.fetchAdd(one_pending, .Monotonic);</span>
+<span class="line" id="L14">    assert((state / one_pending) &lt; (std.math.maxInt(<span class="tok-type">usize</span>) / one_pending));</span>
+<span class="line" id="L15">}</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">finish</span>(self: *WaitGroup) <span class="tok-type">void</span> {</span>
+<span class="line" id="L18">    <span class="tok-kw">const</span> state = self.state.fetchSub(one_pending, .Release);</span>
+<span class="line" id="L19">    assert((state / one_pending) &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">    <span class="tok-kw">if</span> (state == (one_pending | is_waiting)) {</span>
+<span class="line" id="L22">        self.state.fence(.Acquire);</span>
+<span class="line" id="L23">        self.event.set();</span>
+<span class="line" id="L24">    }</span>
+<span class="line" id="L25">}</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *WaitGroup) <span class="tok-type">void</span> {</span>
+<span class="line" id="L28">    <span class="tok-kw">var</span> state = self.state.fetchAdd(is_waiting, .Acquire);</span>
+<span class="line" id="L29">    assert(state &amp; is_waiting == <span class="tok-number">0</span>);</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31">    <span class="tok-kw">if</span> ((state / one_pending) &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L32">        self.event.wait();</span>
+<span class="line" id="L33">    }</span>
+<span class="line" id="L34">}</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reset</span>(self: *WaitGroup) <span class="tok-type">void</span> {</span>
+<span class="line" id="L37">    self.state.store(<span class="tok-number">0</span>, .Monotonic);</span>
+<span class="line" id="L38">    self.event.reset();</span>
+<span class="line" id="L39">}</span>
+<span class="line" id="L40"></span>
+<span class="line" id="L41"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isDone</span>(wg: *WaitGroup) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L42">    <span class="tok-kw">const</span> state = wg.state.load(.Acquire);</span>
+<span class="line" id="L43">    assert(state &amp; is_waiting == <span class="tok-number">0</span>);</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45">    <span class="tok-kw">return</span> (state / one_pending) == <span class="tok-number">0</span>;</span>
+<span class="line" id="L46">}</span>
+<span class="line" id="L47"></span>
+</code></pre></body>
+</html>
