@@ -21,7 +21,7 @@ from example import classes
 def test_constructor():
     from example import classes
 
-    c = classes.ConstructableClass(20)
+    assert isinstance(classes.ConstructableClass(20), classes.ConstructableClass)
 
 
 # --8<-- [end:constructor]
