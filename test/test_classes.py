@@ -17,45 +17,58 @@ import pytest
 from example import classes
 
 
-def test_hierarchy():
-    assert issubclass(classes.Dog, classes.Animal)
-    assert isinstance(classes.Dog("Dug"), classes.Animal)
+# --8<-- [start:constructor]
+def test_constructor():
+    from example import classes
+
+    assert isinstance(classes.ConstructableClass(20), classes.ConstructableClass)
 
 
-def test_make_noise():
-    with pytest.raises(AttributeError):
-        classes.Animal(0).make_noise()
-    d = classes.Dog("Dug")
-
-    assert d.make_noise() == "bark..."
-    assert d.make_noise(is_loud=True) == "Bark!"
+# --8<-- [end:constructor]
 
 
-def test_init():
-    with pytest.raises(TypeError) as exc_info:
-        classes.Animal()
-    assert str(exc_info.value) == "expected 1 argument"
+# --8<-- [start:subclass]
+def test_subclasses():
+    d = classes.Dog("labrador")
+    assert d.breed() == "labrador"
+    assert d.species() == "dog"
+    assert isinstance(d, classes.Animal)
 
 
-def test_super():
-    owner = classes.Owner()
-    adopted = owner.name_puppy("Dug")
-    assert isinstance(adopted, classes.Dog)
-    assert adopted.get_name() == "Dug"
-    assert adopted.get_kind_name() == "Dog named Dug"
-    assert adopted.get_kind() == 1
+# --8<-- [end:subclass]
 
 
-def test_length():
-    assert len(classes.Dog("foo")) == 4
+# --8<-- [start:staticmethods]
+def test_static_methods():
+    assert classes.Math.add(10, 30) == 40
 
 
-def test_str_and_repr():
-    dog = classes.Dog("foo")
-    assert str(dog) == "Dog named foo"
-    assert repr(dog) == "Dog(foo)"
+# --8<-- [end:staticmethods]
 
 
-def test_add():
-    foo = classes.Dog("foo")
-    assert str(foo + "bar") == "Dog named foobar"
+# --8<-- [start:properties]
+def test_properties():
+    u = classes.User("Dave")
+    assert u.email is None
+
+    u.email = "dave@dave.com"
+    assert u.email == "dave@dave.com"
+
+    with pytest.raises(ValueError) as exc_info:
+        u.email = "dave"
+    assert str(exc_info.value) == "Invalid email address for Dave"
+
+
+# --8<-- [end:properties]
+
+
+# --8<-- [start:attributes]
+def test_attributes():
+    c = classes.Counter()
+    assert c.count == 0
+    c.increment()
+    c.increment()
+    assert c.count == 2
+
+
+# --8<-- [end:attributes]

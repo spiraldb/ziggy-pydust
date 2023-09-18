@@ -15,6 +15,7 @@ const std = @import("std");
 const Type = std.builtin.Type;
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const State = @import("discovery.zig").State;
 const funcs = @import("functions.zig");
 const pytypes = @import("pytypes.zig");
 const PyError = @import("errors.zig").PyError;
@@ -56,16 +57,18 @@ pub fn Trampoline(comptime T: type) type {
                         return .{ .py = obj };
                     }
 
-                    // If the pointer is for a Pydust class
-                    if (py.findClassName(p.child)) |_| {
-                        const PyType = pytypes.State(p.child);
-                        const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
-                        return .{ .py = ffiObject };
-                    }
+                    if (State.findDefinition(p.child)) |def| {
+                        // If the pointer is for a Pydust class
+                        if (def.type == .class) {
+                            const PyType = pytypes.PyTypeStruct(p.child);
+                            const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
+                            return .{ .py = ffiObject };
+                        }
 
-                    // If the pointer is for a Pydust module
-                    if (py.findModuleName(p.child)) |_| {
-                        @compileError("Cannot currently return modules");
+                        // If the pointer is for a Pydust module
+                        if (def.type == .module) {
+                            @compileError("Cannot currently return modules");
+                        }
                     }
                 },
                 .Struct => {
@@ -90,15 +93,8 @@ pub fn Trampoline(comptime T: type) type {
                         return true;
                     }
 
-                    // If the pointer is for a Pydust class
-                    if (py.findClassName(p.child)) |_| {
+                    if (State.findDefinition(p.child)) |_| {
                         return true;
-                    }
-
-                    // If the pointer is for a Pydust module
-                    if (py.findModuleName(p.child)) |_| {
-                        // FIXME(ngates): support modules
-                        return false;
                     }
                 },
                 .Struct => {
@@ -151,7 +147,7 @@ pub fn Trampoline(comptime T: type) type {
         /// Does not create a new reference.
         pub inline fn wrap(obj: T) !py.PyObject {
             // Check the user is not accidentally returning a Pydust class or Module without a pointer
-            if (py.findClassName(T) != null or py.findModuleName(T) != null) {
+            if (State.findDefinition(T) != null) {
                 @compileError("Pydust objects can only be returned as pointers");
             }
 
@@ -233,18 +229,20 @@ pub fn Trampoline(comptime T: type) type {
                 .Int => return try (try py.PyLong.checked(obj)).as(T),
                 .Optional => @compileError("Optional already handled"),
                 .Pointer => |p| {
-                    // If the pointer is for a Pydust class
-                    if (py.findClassName(p.child)) |_| {
-                        // TODO(ngates): check the PyType?
-                        const PyType = pytypes.State(p.child);
-                        const pyobject = @as(*PyType, @ptrCast(obj.py));
-                        return @constCast(&pyobject.state);
-                    }
+                    if (State.findDefinition(p.child)) |def| {
+                        // If the pointer is for a Pydust module
+                        if (def.type == .module) {
+                            const mod = try py.PyModule.checked(obj);
+                            return try mod.getState(p.child);
+                        }
 
-                    // If the pointer is for a Pydust module
-                    if (py.findModuleName(p.child)) |_| {
-                        const mod = try py.PyModule.checked(obj);
-                        return try mod.getState(p.child);
+                        // If the pointer is for a Pydust class
+                        if (def.type == .class) {
+                            // TODO(ngates): check the PyType?
+                            const PyType = pytypes.PyTypeStruct(p.child);
+                            const pyobject = @as(*PyType, @ptrCast(obj.py));
+                            return @constCast(&pyobject.state);
+                        }
                     }
 
                     // We make the assumption that []const u8 is converted from a PyString
@@ -252,7 +250,7 @@ pub fn Trampoline(comptime T: type) type {
                         return (try py.PyString.checked(obj)).asSlice();
                     }
 
-                    @compileLog("Unsupported pointer type " ++ @typeName(p.child));
+                    @compileError("Unsupported pointer type " ++ @typeName(p.child));
                 },
                 .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat

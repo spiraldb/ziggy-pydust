@@ -18,6 +18,6 @@ pub fn hello() !py.PyString {
 }
 
 comptime {
-    py.module(@This());
+    py.rootmodule(@This());
 }
 // --8<-- [end:ex]

@@ -78,5 +78,5 @@ pub fn zigstruct() StructResult {
 }
 
 comptime {
-    py.module(@This());
+    py.rootmodule(@This());
 }

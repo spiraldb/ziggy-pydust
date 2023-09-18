@@ -32,5 +32,5 @@ pub fn concat(args: struct { left: py.PyString }) !py.PyString {
 // --8<-- [end:concat]
 
 comptime {
-    py.module(@This());
+    py.rootmodule(@This());
 }

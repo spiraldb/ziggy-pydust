@@ -11,8 +11,11 @@
 // limitations under the License.
 
 const std = @import("std");
+const State = @import("discovery.zig").State;
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const PyError = py.PyError;
+const Attributes = @import("attributes.zig").Attributes;
 const pytypes = @import("pytypes.zig");
 const funcs = @import("functions.zig");
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
@@ -23,18 +26,22 @@ pub const ModuleDef = struct {
     definition: type,
 };
 
-pub fn define(comptime mod: ModuleDef) type {
+/// Discover a Pydust module.
+pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
-        const definition = mod.definition;
+        const slots = Slots(definition);
+        const methods = funcs.Methods(definition);
 
-        const doc: ?[:0]const u8 = if (@hasDecl(definition, "__doc__")) @field(definition, "__doc__") else null;
+        const doc: ?[:0]const u8 = blk: {
+            if (@hasDecl(definition, "__doc__")) {
+                break :blk definition.__doc__;
+            }
+            break :blk null;
+        };
 
-        const slots = Slots(mod);
-        const methods = funcs.Methods(mod.definition);
-
-        /// The PyInit_<modname> function to be exported in the output object file.
-        pub fn init() callconv(.C) ?*ffi.PyObject {
-            var pyModuleDef = py.allocator.create(ffi.PyModuleDef) catch @panic("OOM");
+        /// A function to initialize the Python module from its definition.
+        pub fn init() !py.PyObject {
+            var pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
             pyModuleDef.* = ffi.PyModuleDef{
                 .m_base = ffi.PyModuleDef_Base{
                     .ob_base = ffi.PyObject{
@@ -45,7 +52,7 @@ pub fn define(comptime mod: ModuleDef) type {
                     .m_index = 0,
                     .m_copy = null,
                 },
-                .m_name = mod.name.ptr,
+                .m_name = name.ptr,
                 .m_doc = if (doc) |d| d.ptr else null,
                 .m_size = @sizeOf(definition),
                 .m_methods = @constCast(&methods.pydefs),
@@ -54,18 +61,17 @@ pub fn define(comptime mod: ModuleDef) type {
                 .m_clear = null,
                 .m_free = null,
             };
-            return ffi.PyModuleDef_Init(pyModuleDef);
+            return .{ .py = ffi.PyModuleDef_Init(pyModuleDef) orelse return PyError.Propagate };
         }
     };
 }
 
-fn Slots(comptime mod: ModuleDef) type {
-    const empty = ffi.PyModuleDef_Slot{ .slot = 0, .value = null };
-    const definition = mod.definition;
-    const classDefs = py.findClasses(mod);
-
+fn Slots(comptime definition: type) type {
     return struct {
         const Self = @This();
+
+        const empty = ffi.PyModuleDef_Slot{ .slot = 0, .value = null };
+        const attrs = Attributes(definition);
 
         pub const slots: [:empty]const ffi.PyModuleDef_Slot = blk: {
             var slots_: [:empty]const ffi.PyModuleDef_Slot = &.{};
@@ -106,11 +112,10 @@ fn Slots(comptime mod: ModuleDef) type {
                 state.* = definition{};
             }
 
-            // Add class definitions to the module
-            inline for (classDefs) |classDef| {
-                const classType = pytypes.define(classDef);
-                const pytype: py.PyType = try classType.init(module);
-                try module.addObjectRef(classType.name, pytype.obj);
+            // Add attributes (including class definitions) to the module
+            inline for (attrs.attributes) |attr| {
+                const obj = try attr.ctor(module);
+                try module.addObjectRef(attr.name, obj);
             }
         }
     };

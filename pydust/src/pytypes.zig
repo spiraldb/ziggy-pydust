@@ -15,71 +15,96 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const discovery = @import("discovery.zig");
+const Attributes = @import("attributes.zig").Attributes;
+const State = @import("discovery.zig").State;
 const funcs = @import("functions.zig");
 const PyError = @import("errors.zig").PyError;
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 const tramp = @import("trampoline.zig");
 const Type = std.builtin.Type;
 
-pub const ClassDef = struct {
-    name: [:0]const u8,
-    definition: type,
-    bases: []const type,
-};
-
-pub fn State(comptime definition: type) type {
+/// For a given Pydust class definition, return the encapsulating PyType struct.
+pub fn PyTypeStruct(comptime definition: type) type {
+    // I think we might need to dynamically generate this struct to include PyMemberDef fields?
+    // This is how we can add nested classes and other attributes.
     return struct {
         obj: ffi.PyObject,
         state: definition,
     };
 }
 
-/// Wrap a user-defined class struct into a unique struct that itself wraps the trampolined functions.
-pub fn define(comptime class: ClassDef) type {
+/// Discover a Pydust class definition.
+pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
-        const Self = @This();
-        pub const name: [:0]const u8 = class.name;
-
-        pub const pyName: [:0]const u8 = blk: {
-            const moduleName = py.findContainingModule(class.definition);
-            break :blk moduleName[0..moduleName.len] ++ "." ++ name;
+        const qualifiedName: [:0]const u8 = blk: {
+            const moduleName = State.getIdentifier(State.getContaining(definition, .module)).name;
+            break :blk moduleName ++ "." ++ name;
         };
 
-        // Declare a struct representing an instance of the object.
-        const Instance = State(class.definition);
+        const bases = Bases(definition);
+        const attrs = Attributes(definition);
+        const slots = Slots(definition);
 
-        const slots = Slots(class.definition, Instance);
-
-        const spec = ffi.PyType_Spec{
-            .name = pyName.ptr,
-            .basicsize = @sizeOf(Instance),
-            .itemsize = 0,
-            .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
-            .slots = @constCast(slots.slots.ptr),
-        };
-
-        pub fn init(module: py.PyModule) !py.PyType {
+        pub fn init(module: py.PyModule) !py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;
-            if (class.bases.len > 0) {
-                const basesTuple = try py.PyTuple.new(class.bases.len);
-                inline for (class.bases, 0..) |base, i| {
-                    const baseType = try module.obj.get(py.getClassName(base));
+            if (bases.bases.len > 0) {
+                const basesTuple = try py.PyTuple.new(bases.bases.len);
+                inline for (bases.bases, 0..) |base, i| {
+                    const baseType = try module.obj.get(State.getIdentifier(base).name);
                     try basesTuple.setItem(i, baseType);
                 }
                 basesPtr = basesTuple.obj.py;
             }
 
-            var pytype = ffi.PyType_FromModuleAndSpec(module.obj.py, @constCast(&spec), basesPtr) orelse return PyError.Propagate;
-            return .{ .obj = .{ .py = pytype } };
+            const spec = ffi.PyType_Spec{
+                // TODO(ngates): according to the docs, since we're a heap allocated type I think we
+                // should be manually setting a __module__ attribute and not using a qualified name here?
+                .name = qualifiedName.ptr,
+                .basicsize = @sizeOf(PyTypeStruct(definition)),
+                .itemsize = 0,
+                .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
+                .slots = @constCast(slots.slots.ptr),
+            };
+
+            const pytype = ffi.PyType_FromModuleAndSpec(
+                module.obj.py,
+                @constCast(&spec),
+                basesPtr,
+            ) orelse return PyError.Propagate;
+
+            return .{ .py = pytype };
         }
     };
 }
 
-fn Slots(comptime definition: type, comptime Instance: type) type {
-    const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
-
+/// Discover the base classes of the pytype definition.
+/// We look for any struct field that is itself a Pydust class.
+fn Bases(comptime definition: type) type {
+    const typeInfo = @typeInfo(definition).Struct;
     return struct {
+        const bases: []const type = blk: {
+            var bases_: []const type = &.{};
+            for (typeInfo.fields) |field| {
+                if (State.findDefinition(field.type)) |def| {
+                    if (def.type == .class) {
+                        bases_ = bases_ ++ .{field.type};
+                    }
+                }
+            }
+            break :blk bases_;
+        };
+    };
+}
+
+fn Slots(comptime definition: type) type {
+    return struct {
+        const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
+
+        const attrs = Attributes(definition);
         const methods = funcs.Methods(definition);
+        const members = Members(definition);
+        const properties = Properties(definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -129,8 +154,8 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
             if (@hasDecl(definition, "__len__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_mp_length,
-                    .pfunc = @ptrCast(@constCast(&mp_length)),
+                    .slot = ffi.Py_sq_length,
+                    .pfunc = @ptrCast(@constCast(&sq_length)),
                 }};
             }
 
@@ -164,7 +189,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
 
             for (funcs.BinaryOperators.kvs) |kv| {
                 if (@hasDecl(definition, kv.key)) {
-                    const op = BinaryOperator(definition, Instance, kv.key);
+                    const op = BinaryOperator(definition, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
                         .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
@@ -177,6 +202,16 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
                 .pfunc = @ptrCast(@constCast(&methods.pydefs)),
             }};
 
+            slots_ = slots_ ++ .{ffi.PyType_Slot{
+                .slot = ffi.Py_tp_members,
+                .pfunc = @ptrCast(@constCast(&members.memberdefs)),
+            }};
+
+            slots_ = slots_ ++ .{ffi.PyType_Slot{
+                .slot = ffi.Py_tp_getset,
+                .pfunc = @ptrCast(@constCast(&properties.getsetdefs)),
+            }};
+
             slots_ = slots_ ++ .{empty};
 
             break :blk slots_;
@@ -186,7 +221,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 0) orelse return null;
             // Cast it into a supertype instance. Note: we check at comptime that subclasses of this class
             // include our own state object as the first field in their struct.
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
 
             // Allow the definition to initialize the state field.
             self.state = tp_new_internal(
@@ -230,7 +265,7 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             var error_tb: ?*ffi.PyObject = undefined;
             ffi.PyErr_Fetch(&error_type, &error_value, &error_tb);
 
-            const instance: *Instance = @ptrCast(pyself);
+            const instance: *PyTypeStruct(definition) = @ptrCast(pyself);
             definition.__del__(&instance.state);
 
             ffi.PyErr_Restore(error_type, error_value, error_tb);
@@ -240,30 +275,30 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
             // In case of any error, the view.obj field must be set to NULL.
             view.obj = null;
 
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             definition.__buffer__(&self.state, @ptrCast(view), flags) catch return -1;
             return 0;
         }
 
         fn bf_releasebuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             return definition.__release_buffer__(&self.state, @ptrCast(view));
         }
 
-        fn mp_length(pyself: *ffi.PyObject) callconv(.C) isize {
-            const self: *const Instance = @ptrCast(pyself);
+        fn sq_length(pyself: *ffi.PyObject) callconv(.C) isize {
+            const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__len__(&self.state) catch return -1;
             return @as(isize, @intCast(result));
         }
 
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const iterator = definition.__iter__(&self.state) catch return null;
             return (py.createOwned(iterator) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const optionalNext = definition.__next__(&self.state) catch return null;
             if (optionalNext) |next| {
                 return (py.createOwned(next) catch return null).py;
@@ -272,22 +307,157 @@ fn Slots(comptime definition: type, comptime Instance: type) type {
         }
 
         fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__str__(&self.state) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
 
         fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__repr__(&self.state) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };
 }
 
+fn Members(comptime definition: type) type {
+    return struct {
+        const count = State.countFieldsWithType(definition, .attribute);
+
+        const memberdefs: [count + 1]ffi.PyMemberDef = blk: {
+            var defs: [count + 1]ffi.PyMemberDef = undefined;
+            var idx = 0;
+            for (@typeInfo(definition).Struct.fields) |field| {
+                if (!State.hasType(field.type, .attribute)) {
+                    continue;
+                }
+
+                // We compute the offset of the attribute within the type, and then the value field within the attribute.
+                // Although the value within the attribute should always be 0 since it's the only field.
+                var offset = @offsetOf(PyTypeStruct(definition), "state") + @offsetOf(definition, field.name) + @offsetOf(field.type, "value");
+
+                const T = @typeInfo(field.type).Struct.fields[0].type;
+
+                defs[idx] = ffi.PyMemberDef{
+                    .name = field.name ++ "",
+                    .type = getMemberType(T),
+                    .offset = @intCast(offset),
+                    .flags = ffi.READONLY,
+                    .doc = null,
+                };
+                idx += 1;
+            }
+
+            // Add null terminator
+            defs[count] = .{ .name = null, .type = 0, .offset = 0, .flags = 0, .doc = null };
+
+            break :blk defs;
+        };
+
+        // We extract the equivalent C type by looking at signedness and bits.
+        // This allows us to support native Zig types like u32 and not require the user
+        // to specify c_int.
+        fn getMemberType(comptime T: type) c_int {
+            if (T == py.PyObject) {
+                return ffi.T_OBJECT_EX;
+            }
+
+            if (T == [*:0]const u8) {
+                return ffi.T_STRING;
+            }
+
+            switch (@typeInfo(T)) {
+                .Int => |i| switch (i.signedness) {
+                    .signed => switch (i.bits) {
+                        @bitSizeOf(i8) => return ffi.T_BYTE,
+                        @bitSizeOf(c_short) => return ffi.T_SHORT,
+                        @bitSizeOf(c_int) => return ffi.T_INT,
+                        @bitSizeOf(c_long) => return ffi.T_LONG,
+                        @bitSizeOf(isize) => return ffi.T_PYSSIZET,
+                        else => {},
+                    },
+                    .unsigned => switch (i.bits) {
+                        @bitSizeOf(u8) => return ffi.T_UBYTE,
+                        @bitSizeOf(c_ushort) => return ffi.T_USHORT,
+                        @bitSizeOf(c_uint) => return ffi.T_UINT,
+                        @bitSizeOf(c_ulong) => return ffi.T_ULONG,
+                        else => {},
+                    },
+                },
+                else => {},
+            }
+            @compileError("Zig type " ++ @typeName(T) ++ " is not supported for Pydust attribute. Consider using a py.property instead.");
+        }
+    };
+}
+
+fn Properties(comptime definition: type) type {
+    return struct {
+        const count = State.countFieldsWithType(definition, .property);
+
+        const getsetdefs: [count + 1]ffi.PyGetSetDef = blk: {
+            var props: [count + 1]ffi.PyGetSetDef = undefined;
+            var idx = 0;
+            for (@typeInfo(definition).Struct.fields) |field| {
+                if (State.hasType(field.type, .property)) {
+                    var prop: ffi.PyGetSetDef = .{
+                        .name = field.name ++ "",
+                        .get = null,
+                        .set = null,
+                        .doc = null,
+                        .closure = null,
+                    };
+
+                    if (@hasDecl(field.type, "get")) {
+                        const Closure = struct {
+                            pub fn get(pyself: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.C) ?*ffi.PyObject {
+                                _ = closure;
+
+                                const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+                                const propself = @constCast(&@field(self.state, field.name));
+
+                                // TODO(ngates): trampoline self?
+                                const result = field.type.get(propself) catch return null;
+                                const resultObj = tramp.Trampoline(@TypeOf(result)).wrap(result) catch return null;
+                                return resultObj.py;
+                            }
+                        };
+                        prop.get = &Closure.get;
+                    }
+
+                    if (@hasDecl(field.type, "set")) {
+                        const Closure = struct {
+                            pub fn set(pyself: [*c]ffi.PyObject, pyvalue: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.C) c_int {
+                                _ = closure;
+                                const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+                                const propself = &@field(self.state, field.name);
+
+                                const ValueArg = @typeInfo(@TypeOf(field.type.set)).Fn.params[1].type.?;
+                                const value = tramp.Trampoline(ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
+
+                                // TODO(ngates): trampoline self?
+                                field.type.set(propself, value) catch return -1;
+                                return 0;
+                            }
+                        };
+                        prop.set = &Closure.set;
+                    }
+
+                    props[idx] = prop;
+                    idx += 1;
+                }
+            }
+
+            // Null terminator
+            props[count] = .{ .name = null, .get = null, .set = null, .doc = null, .closure = null };
+
+            break :blk props;
+        };
+    };
+}
+
 fn BinaryOperator(
     comptime definition: type,
-    comptime Instance: type,
     comptime op: []const u8,
 ) type {
     return struct {
@@ -299,7 +469,7 @@ fn BinaryOperator(
             if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
             if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
 
-            const self: *Instance = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const other = tramp.Trampoline(
                 sig.argsParam orelse unreachable,
             ).unwrap(.{ .py = pyother }) catch return null;

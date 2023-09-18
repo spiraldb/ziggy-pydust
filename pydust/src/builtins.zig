@@ -15,6 +15,7 @@
 //!
 //! See https://docs.python.org/3/library/functions.html for full reference.
 const py = @import("./pydust.zig");
+const State = @import("./discovery.zig").State;
 const ffi = @import("./ffi.zig");
 const PyError = @import("./errors.zig").PyError;
 
@@ -34,6 +35,14 @@ pub inline fn False() py.PyBool {
 /// Returns a new reference to Py_True.
 pub inline fn True() py.PyBool {
     return py.PyBool.true_();
+}
+
+pub fn decref(value: anytype) void {
+    py.object(value).decref();
+}
+
+pub fn incref(value: anytype) void {
+    py.object(value).incref();
 }
 
 /// Checks whether a given object is callable. Equivalent to Python's callable(o).
@@ -88,8 +97,9 @@ pub fn repr(object: anytype) !py.PyString {
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.
 pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
-    const imported = try import(py.findContainingModule(Super));
-    const superPyType = try imported.get(py.getClassName(Super));
+    const module = State.getContaining(Super, .module);
+    const imported = try import(State.getIdentifier(module).name);
+    const superPyType = try imported.get(State.getIdentifier(Super).name);
     const pyObj = py.object(selfInstance);
 
     const superBuiltin: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };

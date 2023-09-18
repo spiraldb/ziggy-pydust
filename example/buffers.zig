@@ -14,7 +14,7 @@ const std = @import("std");
 const py = @import("pydust");
 
 // --8<-- [start:protocol]
-pub const ConstantBuffer = py.class("ConstantBuffer", struct {
+pub const ConstantBuffer = py.class(struct {
     pub const __doc__ = "A class implementing a buffer protocol";
     const Self = @This();
 
@@ -61,6 +61,6 @@ pub fn sum(args: struct { buf: py.PyObject }) !i64 {
 }
 
 comptime {
-    py.module(@This());
+    py.rootmodule(@This());
 }
 // --8<-- [end:sum]

@@ -12,52 +12,23 @@
 
 const std = @import("std");
 const builtins = @import("builtins.zig");
-const conversions = @import("conversions.zig");
 const mem = @import("mem.zig");
-const modules = @import("modules.zig");
-const ModuleDef = @import("modules.zig").ModuleDef;
+const State = @import("discovery.zig").State;
+const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
-const ClassDef = pytypes.ClassDef;
+const PyType = pytypes.PyType;
 const funcs = @import("functions.zig");
-const tramp = @import("trampoline.zig");
 
 // Export some useful things for users
 pub usingnamespace builtins;
-pub usingnamespace conversions;
+pub usingnamespace @import("conversions.zig");
 pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
 pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
 const Self = @This();
-
-const State = blk: {
-    comptime var modList: [20]ModuleDef = undefined;
-    comptime var modulesOffset: u8 = 0;
-    comptime var classList: [100]ClassDef = undefined;
-    comptime var classesOffset: u8 = 0;
-
-    break :blk struct {
-        pub fn addModule(comptime def: ModuleDef) void {
-            modList[modulesOffset] = def;
-            modulesOffset += 1;
-        }
-
-        pub fn addClass(comptime def: ClassDef) void {
-            classList[classesOffset] = def;
-            classesOffset += 1;
-        }
-
-        pub fn modules() []const ModuleDef {
-            return modList[0..modulesOffset];
-        }
-
-        pub fn classes() []const ClassDef {
-            return classList[0..classesOffset];
-        }
-    };
-};
 
 /// Initialize Python interpreter state
 pub fn initialize() void {
@@ -69,62 +40,16 @@ pub fn finalize() void {
     ffi.Py_Finalize();
 }
 
-/// Register a struct as a Python module definition.
-pub fn module(comptime definition: type) void {
-    const pyconf = @import("pyconf");
-    const name = pyconf.module_name;
-
-    var shortname = name;
-    if (std.mem.lastIndexOf(u8, name, ".")) |idx| {
-        shortname = name[idx + 1 ..];
-    }
-
-    const moddef: ModuleDef = .{
-        .name = shortname,
-        .fullname = name,
-        .definition = definition,
-    };
-    State.addModule(moddef);
-    evaluateDeclarations(definition);
-
-    const wrapped = modules.define(moddef);
-    @export(wrapped.init, .{ .name = "PyInit_" ++ moddef.name, .linkage = .Strong });
-}
-
-/// Register a struct as a Python class definition.
-pub fn class(comptime name: [:0]const u8, comptime definition: type) @TypeOf(definition) {
-    const classdef: ClassDef = .{
-        .name = name,
-        .definition = definition,
-        .bases = &.{},
-    };
-    State.addClass(classdef);
-    evaluateDeclarations(definition);
-    return definition;
-}
-
-pub fn subclass(comptime name: [:0]const u8, comptime bases: []const type, comptime definition: type) @TypeOf(definition) {
-    // TODO(ngates): infer bases by looking at struct fields.
-    const classdef: ClassDef = .{
-        .name = name,
-        .definition = definition,
-        .bases = bases,
-    };
-    State.addClass(classdef);
-    evaluateDeclarations(definition);
-    return definition;
-}
-
 /// Instantiate a class defined in Pydust.
 pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
-    const moduleName = findContainingModule(Cls);
-    const imported = try types.PyModule.import(moduleName);
-    const pytype = try imported.obj.get(getClassName(Cls));
+    const moduleDefinition = State.getContaining(Cls, .module);
+    const imported = try types.PyModule.import(State.getIdentifier(moduleDefinition).name);
+    const pytype = try imported.obj.get(State.getIdentifier(Cls).name);
 
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
     // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
-    const pyobj: *pytypes.State(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.Propagate));
+    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.Propagate));
 
     if (@hasDecl(Cls, "__new__")) {
         pyobj.state = try Cls.__new__(args);
@@ -133,14 +58,6 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) !*Cls {
     }
 
     return &pyobj.state;
-}
-
-pub fn decref(value: anytype) void {
-    conversions.object(value).decref();
-}
-
-pub fn incref(value: anytype) void {
-    conversions.object(value).incref();
 }
 
 /// Find the type of the positional args for a class
@@ -156,71 +73,77 @@ inline fn NewArgs(comptime Cls: type) type {
     return sig.argsParam orelse struct {};
 }
 
-pub fn getClassName(comptime definition: type) [:0]const u8 {
-    return findClassName(definition) orelse @compileError("Unrecognized class definition");
-}
-
-/// Find the class name of the given state definition.
-pub inline fn findClassName(comptime definition: type) ?[:0]const u8 {
-    inline for (State.classes()) |classDef| {
-        if (classDef.definition == definition) {
-            return classDef.name;
-        }
+/// Register the root Pydust module
+pub fn rootmodule(comptime definition: type) void {
+    if (!State.isEmpty()) {
+        @compileError("Root module can only be registered in a root-level comptime block");
     }
-    return null;
-}
 
-/// Get the module name of the given state definition.
-pub fn getModuleName(comptime definition: type) ?[:0]const u8 {
-    return findModuleName(definition) orelse @compileError("Unrecognized module definition");
-}
+    const pyconf = @import("pyconf");
+    const name = pyconf.module_name;
 
-/// Find the module name of the given state definition.
-pub inline fn findModuleName(comptime definition: type) ?[:0]const u8 {
-    inline for (State.modules()) |modDef| {
-        if (modDef.definition == definition) {
-            return modDef.name;
+    State.register(definition, .module);
+    State.identify(definition, name, definition);
+    eagerEval(definition);
+
+    const moddef = Module(name, definition);
+
+    // For root modules, we export a PyInit__name function per CPython API.
+    const Closure = struct {
+        pub fn init() callconv(.C) ?*ffi.PyObject {
+            const obj = @call(.always_inline, moddef.init, .{}) catch return null;
+            return obj.py;
         }
-    }
-    return null;
+    };
+
+    const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
+    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .Strong });
 }
 
-/// Find the name of the module that contains the given definition.
-pub fn findContainingModule(comptime definition: type) [:0]const u8 {
-    inline for (State.modules()) |mod| {
-        inline for (@typeInfo(mod.definition).Struct.decls) |decl| {
-            const value = @field(mod.definition, decl.name);
-            if (@TypeOf(value) != @TypeOf(definition)) {
-                continue;
-            }
-            if (value == definition) {
-                return mod.fullname;
-            }
+/// Register a Pydust module as a submodule to an existing module.
+pub fn module(comptime definition: type) @TypeOf(definition) {
+    @compileError("Submodules are not yet supported. Please use py.rootmodule to define a top-level module.");
+}
+
+/// Register a struct as a Python class definition.
+pub fn class(comptime definition: type) @TypeOf(definition) {
+    State.register(definition, .class);
+    // eagerEval(definition);
+    return definition;
+}
+
+/// Register a struct field as a Python read-only attribute.
+pub fn attribute(comptime T: type) @TypeOf(Attribute(T)) {
+    const definition = Attribute(T);
+    State.register(definition, .attribute);
+    // No need to recursively eval an attribute since it cannot contain pydust definitions.
+    // eagerEval(definition);
+    return definition;
+}
+
+fn Attribute(comptime T: type) type {
+    return struct { value: T };
+}
+
+/// Register a property as a field on a Pydust class.
+pub fn property(comptime definition: type) @TypeOf(definition) {
+    State.register(definition, .property);
+    //eagerEval(definition);
+    return definition;
+}
+
+/// Force the evaluation of Pydust registration methods.
+/// Using this enables us to breadth-first traverse the object graph, ensuring
+/// objects are registered before they're referenced elsewhere.
+fn eagerEval(comptime definition: type) void {
+    for (@typeInfo(definition).Struct.fields) |f| {
+        _ = f.type;
+    }
+    for (@typeInfo(definition).Struct.decls) |d| {
+        const value = @field(definition, d.name);
+        if (State.findDefinition(value)) |_| {
+            // If it's a Pydust definition, then we identify it.
+            State.identify(value, d.name ++ "", definition);
         }
-    }
-    @compileError("Class has no associated module");
-}
-
-/// Find the class definitions belonging to this module.
-pub fn findClasses(comptime mod: ModuleDef) []const ClassDef {
-    var moduleClasses: []const ClassDef = &.{};
-    inline for (State.classes()) |classDef| {
-        inline for (@typeInfo(mod.definition).Struct.decls) |decl| {
-            const value = @field(mod.definition, decl.name);
-            if (@typeInfo(@TypeOf(value)) != .Type) {
-                continue;
-            }
-            if (value == classDef.definition) {
-                moduleClasses = moduleClasses ++ .{classDef};
-            }
-        }
-    }
-    return moduleClasses;
-}
-
-/// Force the eager evaluation of the public declarations of the module
-fn evaluateDeclarations(comptime definition: type) void {
-    for (@typeInfo(definition).Struct.decls) |decl| {
-        _ = @field(definition, decl.name);
     }
 }

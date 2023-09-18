@@ -20,5 +20,5 @@ pub fn raise_value_error(args: struct { message: py.PyString }) !void {
 // --8<-- [end:valueerror]
 
 comptime {
-    py.module(@This());
+    py.rootmodule(@This());
 }

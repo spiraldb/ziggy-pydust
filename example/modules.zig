@@ -55,6 +55,6 @@ pub fn hello(
 }
 
 comptime {
-    py.module(@This()); // (6)!
+    py.rootmodule(@This()); // (6)!
 }
 // --8<-- [end:ex]
