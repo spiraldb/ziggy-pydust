@@ -108,7 +108,7 @@ pub fn module(comptime definition: type) @TypeOf(definition) {
 /// Register a struct as a Python class definition.
 pub fn class(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .class);
-    eagerEval(definition);
+    // eagerEval(definition);
     return definition;
 }
 
@@ -128,7 +128,7 @@ fn Attribute(comptime T: type) type {
 /// Register a property as a field on a Pydust class.
 pub fn property(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .property);
-    eagerEval(definition);
+    //eagerEval(definition);
     return definition;
 }
 
@@ -140,7 +140,13 @@ fn eagerEval(comptime definition: type) void {
         _ = f.type;
     }
     for (@typeInfo(definition).Struct.decls) |d| {
-        const value = @TypeOf(@field(definition, d.name));
+        const value = @field(definition, d.name);
+
+        if (@typeInfo(@TypeOf(value)) != .Type) {
+            // All pydust objects are struct types, so we only look at type declarations.
+            continue;
+        }
+
         if (State.findDefinition(value)) |_| {
             // If it's a Pydust definition, then we identify it.
             State.identify(value, d.name ++ "", definition);
