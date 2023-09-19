@@ -232,14 +232,13 @@
 <span class="line" id="L102"></span>
 <span class="line" id="L103"><span class="tok-comment">/// Register a Pydust module as a submodule to an existing module.</span></span>
 <span class="line" id="L104"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">module</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
-<span class="line" id="L105">    <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Submodules are not yet supported. Please use py.rootmodule to define a top-level module.&quot;</span>);</span>
-<span class="line" id="L106">}</span>
-<span class="line" id="L107"></span>
-<span class="line" id="L108"><span class="tok-comment">/// Register a struct as a Python class definition.</span></span>
-<span class="line" id="L109"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">class</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
-<span class="line" id="L110">    State.register(definition, .class);</span>
-<span class="line" id="L111">    <span class="tok-comment">// eagerEval(definition);</span>
-</span>
+<span class="line" id="L105">    State.register(definition, .module);</span>
+<span class="line" id="L106">    <span class="tok-kw">return</span> definition;</span>
+<span class="line" id="L107">}</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109"><span class="tok-comment">/// Register a struct as a Python class definition.</span></span>
+<span class="line" id="L110"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">class</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
+<span class="line" id="L111">    State.register(definition, .class);</span>
 <span class="line" id="L112">    <span class="tok-kw">return</span> definition;</span>
 <span class="line" id="L113">}</span>
 <span class="line" id="L114"></span>
@@ -247,41 +246,35 @@
 <span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">attribute</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(Attribute(T)) {</span>
 <span class="line" id="L117">    <span class="tok-kw">const</span> definition = Attribute(T);</span>
 <span class="line" id="L118">    State.register(definition, .attribute);</span>
-<span class="line" id="L119">    <span class="tok-comment">// No need to recursively eval an attribute since it cannot contain pydust definitions.</span>
+<span class="line" id="L119">    <span class="tok-kw">return</span> definition;</span>
+<span class="line" id="L120">}</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122"><span class="tok-kw">fn</span> <span class="tok-fn">Attribute</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L123">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> { value: T };</span>
+<span class="line" id="L124">}</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126"><span class="tok-comment">/// Register a property as a field on a Pydust class.</span></span>
+<span class="line" id="L127"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">property</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
+<span class="line" id="L128">    State.register(definition, .property);</span>
+<span class="line" id="L129">    <span class="tok-kw">return</span> definition;</span>
+<span class="line" id="L130">}</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132"><span class="tok-comment">/// Force the evaluation of Pydust registration methods.</span></span>
+<span class="line" id="L133"><span class="tok-comment">/// Using this enables us to breadth-first traverse the object graph, ensuring</span></span>
+<span class="line" id="L134"><span class="tok-comment">/// objects are registered before they're referenced elsewhere.</span></span>
+<span class="line" id="L135"><span class="tok-kw">fn</span> <span class="tok-fn">eagerEval</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L136">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.fields) |f| {</span>
+<span class="line" id="L137">        _ = f.<span class="tok-type">type</span>;</span>
+<span class="line" id="L138">    }</span>
+<span class="line" id="L139">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |d| {</span>
+<span class="line" id="L140">        <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, d.name);</span>
+<span class="line" id="L141">        <span class="tok-kw">if</span> (State.findDefinition(value)) |_| {</span>
+<span class="line" id="L142">            <span class="tok-comment">// If it's a Pydust definition, then we identify it.</span>
 </span>
-<span class="line" id="L120">    <span class="tok-comment">// eagerEval(definition);</span>
-</span>
-<span class="line" id="L121">    <span class="tok-kw">return</span> definition;</span>
-<span class="line" id="L122">}</span>
-<span class="line" id="L123"></span>
-<span class="line" id="L124"><span class="tok-kw">fn</span> <span class="tok-fn">Attribute</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L125">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> { value: T };</span>
-<span class="line" id="L126">}</span>
-<span class="line" id="L127"></span>
-<span class="line" id="L128"><span class="tok-comment">/// Register a property as a field on a Pydust class.</span></span>
-<span class="line" id="L129"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">property</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
-<span class="line" id="L130">    State.register(definition, .property);</span>
-<span class="line" id="L131">    <span class="tok-comment">//eagerEval(definition);</span>
-</span>
-<span class="line" id="L132">    <span class="tok-kw">return</span> definition;</span>
-<span class="line" id="L133">}</span>
-<span class="line" id="L134"></span>
-<span class="line" id="L135"><span class="tok-comment">/// Force the evaluation of Pydust registration methods.</span></span>
-<span class="line" id="L136"><span class="tok-comment">/// Using this enables us to breadth-first traverse the object graph, ensuring</span></span>
-<span class="line" id="L137"><span class="tok-comment">/// objects are registered before they're referenced elsewhere.</span></span>
-<span class="line" id="L138"><span class="tok-kw">fn</span> <span class="tok-fn">eagerEval</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L139">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.fields) |f| {</span>
-<span class="line" id="L140">        _ = f.<span class="tok-type">type</span>;</span>
-<span class="line" id="L141">    }</span>
-<span class="line" id="L142">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |d| {</span>
-<span class="line" id="L143">        <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, d.name);</span>
-<span class="line" id="L144">        <span class="tok-kw">if</span> (State.findDefinition(value)) |_| {</span>
-<span class="line" id="L145">            <span class="tok-comment">// If it's a Pydust definition, then we identify it.</span>
-</span>
-<span class="line" id="L146">            State.identify(value, d.name ++ <span class="tok-str">&quot;&quot;</span>, definition);</span>
-<span class="line" id="L147">        }</span>
-<span class="line" id="L148">    }</span>
-<span class="line" id="L149">}</span>
-<span class="line" id="L150"></span>
+<span class="line" id="L143">            State.identify(value, d.name ++ <span class="tok-str">&quot;&quot;</span>, definition);</span>
+<span class="line" id="L144">        }</span>
+<span class="line" id="L145">    }</span>
+<span class="line" id="L146">}</span>
+<span class="line" id="L147"></span>
 </code></pre></body>
 </html>
