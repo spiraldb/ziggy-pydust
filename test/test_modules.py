@@ -13,6 +13,7 @@ limitations under the License.
 """
 
 from example import modules
+from example.modules import submod
 
 
 def test_module_docstring():
@@ -32,3 +33,7 @@ def test_modules_mutable_state():
     modules.increment()
     modules.increment()
     assert modules.count() == 2
+
+
+def test_submodules():
+    assert submod.world() == "Hello, World!"

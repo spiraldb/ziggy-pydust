@@ -77,6 +77,13 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule.import(module_name)).obj;
 }
 
+/// Import a module and return a borrowed reference to an attribute on that module.
+pub fn importFrom(module_name: [:0]const u8, attr: [:0]const u8) !py.PyObject {
+    const mod = try import(module_name);
+    defer mod.decref();
+    return try mod.get(attr);
+}
+
 /// Return the reference count of the object.
 pub fn refcnt(object: anytype) isize {
     const pyobj = py.object(object);
