@@ -54,6 +54,12 @@ pub fn hello(
     return str;
 }
 
+pub const submod = py.module(struct {
+    pub fn world() !py.PyString {
+        return try py.PyString.create("Hello, World!");
+    }
+});
+
 comptime {
     py.rootmodule(@This()); // (6)!
 }

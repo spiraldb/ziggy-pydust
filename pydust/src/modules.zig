@@ -72,6 +72,7 @@ fn Slots(comptime definition: type) type {
 
         const empty = ffi.PyModuleDef_Slot{ .slot = 0, .value = null };
         const attrs = Attributes(definition);
+        const submodules = Submodules(definition);
 
         pub const slots: [:empty]const ffi.PyModuleDef_Slot = blk: {
             var slots_: [:empty]const ffi.PyModuleDef_Slot = &.{};
@@ -117,6 +118,45 @@ fn Slots(comptime definition: type) type {
                 const obj = try attr.ctor(module);
                 try module.addObjectRef(attr.name, obj);
             }
+
+            // Add submodules to the module
+            inline for (submodules.submodules) |submodule| {
+                // We use PEP489 multi-phase initialization. For this, we create a ModuleSpec
+                // which is a dumb object containing only a name.
+                // See https://github.com/python/cpython/blob/042f31da552c19054acd3ef7bb6cfd857bce172b/Python/import.c#L2527-L2539
+
+                const name = State.getIdentifier(submodule).name;
+                const submodDef = Module(name, submodule);
+                const pySubmodDef: *ffi.PyModuleDef = @ptrCast((try submodDef.init()).py);
+
+                // Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace
+                const SimpleNamespace = try py.importFrom("types", "SimpleNamespace");
+
+                const pyname = try py.PyString.create(name);
+                defer pyname.decref();
+                const spec = try SimpleNamespace.call(.{}, .{ .name = pyname });
+                defer spec.decref();
+
+                const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.Propagate };
+                try module.addObjectRef(name, submod);
+            }
         }
+    };
+}
+
+fn Submodules(comptime definition: type) type {
+    const typeInfo = @typeInfo(definition).Struct;
+    return struct {
+        const submodules: []const type = blk: {
+            var mods: []const type = &.{};
+            for (typeInfo.decls) |decl| {
+                if (State.findDefinition(@field(definition, decl.name))) |def| {
+                    if (def.type == .module) {
+                        mods = mods ++ .{def.definition};
+                    }
+                }
+            }
+            break :blk mods;
+        };
     };
 }

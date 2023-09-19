@@ -145,10 +145,7 @@ test "call" {
     py.initialize();
     defer py.finalize();
 
-    const math = try py.import("math");
-    defer math.decref();
-
-    const pow = try math.get("pow");
+    const pow = try py.importFrom("math", "pow");
     const result = try py.as(f32, try pow.call(.{ 2, 3 }, .{}));
 
     try std.testing.expectEqual(@as(f32, 8.0), result);
