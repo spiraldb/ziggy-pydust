@@ -37,9 +37,27 @@ pub const PyMemAllocator = struct {
 
     fn resize(ctx: *anyopaque, buf: []u8, buf_align: u8, new_len: usize, ret_addr: usize) bool {
         _ = ret_addr;
+        _ = new_len;
         _ = buf_align;
+        _ = buf;
         _ = ctx;
-        return ffi.PyMem_Realloc(buf.ptr, new_len) != null;
+        // We have a couple of options: return true, or return false...
+
+        // Firstly, we can never call PyMem_Realloc since that can internally copy data and return a new ptr.
+        // We have no way of passing that pointer back to the caller and buf will have been freed.
+
+        // 1) We could say we successfully resized if new_len < buf.len, and not actually do anything.
+        // This would work since we never use the slice length in the free function and PyMem will internally
+        // keep track of the initial alloc size.
+
+        // 2) We could say we _always_ fail to resize and force the caller to decide whether to blindly slice
+        // or to copy data into a new place.
+
+        // 3) We could succeed if new_len > 75% of buf.len. This minimises the amount of "dead" memory we pass
+        // around, but it seems like a somewhat arbitrary threshold to hard-code in the allocator.
+
+        // For now, we go with 2)
+        return false;
     }
 
     fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
