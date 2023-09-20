@@ -209,43 +209,53 @@
 <span class="line" id="L84">    <span class="tok-kw">return</span> <span class="tok-kw">try</span> mod.get(attr);</span>
 <span class="line" id="L85">}</span>
 <span class="line" id="L86"></span>
-<span class="line" id="L87"><span class="tok-comment">/// Return the reference count of the object.</span></span>
-<span class="line" id="L88"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">refcnt</span>(object: <span class="tok-kw">anytype</span>) <span class="tok-type">isize</span> {</span>
+<span class="line" id="L87"><span class="tok-comment">/// Check if object is an instance of cls.</span></span>
+<span class="line" id="L88"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isinstance</span>(object: <span class="tok-kw">anytype</span>, cls: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
 <span class="line" id="L89">    <span class="tok-kw">const</span> pyobj = py.object(object);</span>
-<span class="line" id="L90">    <span class="tok-kw">return</span> pyobj.py.ob_refcnt;</span>
-<span class="line" id="L91">}</span>
-<span class="line" id="L92"></span>
-<span class="line" id="L93"><span class="tok-comment">/// Compute a string representation of object - using str(o).</span></span>
-<span class="line" id="L94"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">str</span>(object: <span class="tok-kw">anytype</span>) !py.PyString {</span>
-<span class="line" id="L95">    <span class="tok-kw">const</span> pyobj = py.object(object);</span>
-<span class="line" id="L96">    <span class="tok-kw">return</span> py.PyString.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate });</span>
-<span class="line" id="L97">}</span>
-<span class="line" id="L98"></span>
-<span class="line" id="L99"><span class="tok-comment">/// Compute a string representation of object - using repr(o).</span></span>
-<span class="line" id="L100"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">repr</span>(object: <span class="tok-kw">anytype</span>) !py.PyString {</span>
-<span class="line" id="L101">    <span class="tok-kw">const</span> pyobj = py.object(object);</span>
-<span class="line" id="L102">    <span class="tok-kw">return</span> py.PyString.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate });</span>
-<span class="line" id="L103">}</span>
-<span class="line" id="L104"></span>
-<span class="line" id="L105"><span class="tok-comment">/// The equivalent of Python's super() builtin. Returns a PyObject.</span></span>
-<span class="line" id="L106"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">super</span>(<span class="tok-kw">comptime</span> Super: <span class="tok-type">type</span>, selfInstance: <span class="tok-kw">anytype</span>) !py.PyObject {</span>
-<span class="line" id="L107">    <span class="tok-kw">const</span> module = State.getContaining(Super, .module);</span>
-<span class="line" id="L108">    <span class="tok-kw">const</span> imported = <span class="tok-kw">try</span> import(State.getIdentifier(module).name);</span>
-<span class="line" id="L109">    <span class="tok-kw">const</span> superPyType = <span class="tok-kw">try</span> imported.get(State.getIdentifier(Super).name);</span>
-<span class="line" id="L110">    <span class="tok-kw">const</span> pyObj = py.object(selfInstance);</span>
-<span class="line" id="L111"></span>
-<span class="line" id="L112">    <span class="tok-kw">const</span> superBuiltin: py.PyObject = .{ .py = <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(&amp;ffi.PySuper_Type)) };</span>
-<span class="line" id="L113">    <span class="tok-kw">return</span> superBuiltin.call(.{ superPyType, pyObj }, .{});</span>
-<span class="line" id="L114">}</span>
-<span class="line" id="L115"></span>
-<span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">tuple</span>(object: <span class="tok-kw">anytype</span>) !py.PyTuple {</span>
-<span class="line" id="L117">    <span class="tok-kw">const</span> pytuple = ffi.PySequence_Tuple(py.object(object).py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate;</span>
-<span class="line" id="L118">    <span class="tok-kw">return</span> py.PyTuple.unchecked(.{ .py = pytuple });</span>
-<span class="line" id="L119">}</span>
-<span class="line" id="L120"></span>
-<span class="line" id="L121"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">type_</span>(object: <span class="tok-kw">anytype</span>) !py.PyObject {</span>
-<span class="line" id="L122">    <span class="tok-kw">return</span> .{ .py = ffi.Py_TYPE(py.object(object).py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate };</span>
-<span class="line" id="L123">}</span>
-<span class="line" id="L124"></span>
+<span class="line" id="L90">    <span class="tok-kw">const</span> pycls = py.object(cls);</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">    <span class="tok-kw">const</span> result = ffi.PyObject_IsInstance(pyobj.py, pycls.py);</span>
+<span class="line" id="L93">    <span class="tok-kw">if</span> (result &lt; <span class="tok-number">0</span>) <span class="tok-kw">return</span> PyError.Propagate;</span>
+<span class="line" id="L94">    <span class="tok-kw">return</span> result == <span class="tok-number">1</span>;</span>
+<span class="line" id="L95">}</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97"><span class="tok-comment">/// Return the reference count of the object.</span></span>
+<span class="line" id="L98"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">refcnt</span>(object: <span class="tok-kw">anytype</span>) <span class="tok-type">isize</span> {</span>
+<span class="line" id="L99">    <span class="tok-kw">const</span> pyobj = py.object(object);</span>
+<span class="line" id="L100">    <span class="tok-kw">return</span> pyobj.py.ob_refcnt;</span>
+<span class="line" id="L101">}</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103"><span class="tok-comment">/// Compute a string representation of object - using str(o).</span></span>
+<span class="line" id="L104"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">str</span>(object: <span class="tok-kw">anytype</span>) !py.PyString {</span>
+<span class="line" id="L105">    <span class="tok-kw">const</span> pyobj = py.object(object);</span>
+<span class="line" id="L106">    <span class="tok-kw">return</span> py.PyString.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate });</span>
+<span class="line" id="L107">}</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109"><span class="tok-comment">/// Compute a string representation of object - using repr(o).</span></span>
+<span class="line" id="L110"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">repr</span>(object: <span class="tok-kw">anytype</span>) !py.PyString {</span>
+<span class="line" id="L111">    <span class="tok-kw">const</span> pyobj = py.object(object);</span>
+<span class="line" id="L112">    <span class="tok-kw">return</span> py.PyString.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate });</span>
+<span class="line" id="L113">}</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115"><span class="tok-comment">/// The equivalent of Python's super() builtin. Returns a PyObject.</span></span>
+<span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">super</span>(<span class="tok-kw">comptime</span> Super: <span class="tok-type">type</span>, selfInstance: <span class="tok-kw">anytype</span>) !py.PyObject {</span>
+<span class="line" id="L117">    <span class="tok-kw">const</span> module = State.getContaining(Super, .module);</span>
+<span class="line" id="L118">    <span class="tok-kw">const</span> imported = <span class="tok-kw">try</span> import(State.getIdentifier(module).name);</span>
+<span class="line" id="L119">    <span class="tok-kw">const</span> superPyType = <span class="tok-kw">try</span> imported.get(State.getIdentifier(Super).name);</span>
+<span class="line" id="L120">    <span class="tok-kw">const</span> pyObj = py.object(selfInstance);</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">    <span class="tok-kw">const</span> superBuiltin: py.PyObject = .{ .py = <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(&amp;ffi.PySuper_Type)) };</span>
+<span class="line" id="L123">    <span class="tok-kw">return</span> superBuiltin.call(.{ superPyType, pyObj }, .{});</span>
+<span class="line" id="L124">}</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">tuple</span>(object: <span class="tok-kw">anytype</span>) !py.PyTuple {</span>
+<span class="line" id="L127">    <span class="tok-kw">const</span> pytuple = ffi.PySequence_Tuple(py.object(object).py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate;</span>
+<span class="line" id="L128">    <span class="tok-kw">return</span> py.PyTuple.unchecked(.{ .py = pytuple });</span>
+<span class="line" id="L129">}</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">type_</span>(object: <span class="tok-kw">anytype</span>) !py.PyObject {</span>
+<span class="line" id="L132">    <span class="tok-kw">return</span> .{ .py = ffi.Py_TYPE(py.object(object).py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate };</span>
+<span class="line" id="L133">}</span>
+<span class="line" id="L134"></span>
 </code></pre></body>
 </html>
