@@ -214,7 +214,7 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             return resultObject.py;
         }
 
-        fn internal(pyself: py.PyObject, pyargs: []py.PyObject) PyError!py.PyObject {
+        inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) PyError!py.PyObject {
             const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
 
             if (sig.argsParam) |Args| {
@@ -257,7 +257,7 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             return resultObject.py;
         }
 
-        fn internalKwargs(pyself: py.PyObject, pyargs: []py.PyObject, pykwargs: []py.PyObject, kwnames: ?py.PyTuple) PyError!py.PyObject {
+        inline fn internalKwargs(pyself: py.PyObject, pyargs: []py.PyObject, pykwargs: []py.PyObject, kwnames: ?py.PyTuple) PyError!py.PyObject {
             const Args = sig.argsParam.?; // We must have args if we know we have kwargs
             var args: Args = undefined;
 
