@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>os/linux/seccomp.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! API bits for the Secure Computing facility in the Linux kernel, which allows</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! processes to restrict access to the system call API.</span></span>
+<span class="line" id="L3"><span class="tok-comment">//!</span></span>
+<span class="line" id="L4"><span class="tok-comment">//! Seccomp started life with a single &quot;strict&quot; mode, which only allowed calls</span></span>
+<span class="line" id="L5"><span class="tok-comment">//! to read(2), write(2), _exit(2) and sigreturn(2). It turns out that this</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! isn't that useful for general-purpose applications, and so a mode that</span></span>
+<span class="line" id="L7"><span class="tok-comment">//! utilizes user-supplied filters mode was added.</span></span>
+<span class="line" id="L8"><span class="tok-comment">//!</span></span>
+<span class="line" id="L9"><span class="tok-comment">//! Seccomp filters are classic BPF programs. Conceptually, a seccomp program</span></span>
+<span class="line" id="L10"><span class="tok-comment">//! is attached to the kernel and is executed on each syscall. The &quot;packet&quot;</span></span>
+<span class="line" id="L11"><span class="tok-comment">//! being validated is the `data` structure, and the verdict is an action that</span></span>
+<span class="line" id="L12"><span class="tok-comment">//! the kernel performs on the calling process. The actions are variations on a</span></span>
+<span class="line" id="L13"><span class="tok-comment">//! &quot;pass&quot; or &quot;fail&quot; result, where a pass allows the syscall to continue and a</span></span>
+<span class="line" id="L14"><span class="tok-comment">//! fail blocks the syscall and returns some sort of error value. See the full</span></span>
+<span class="line" id="L15"><span class="tok-comment">//! list of actions under ::RET for more information. Finally, only word-sized,</span></span>
+<span class="line" id="L16"><span class="tok-comment">//! absolute loads (`ld [k]`) are supported to read from the `data` structure.</span></span>
+<span class="line" id="L17"><span class="tok-comment">//!</span></span>
+<span class="line" id="L18"><span class="tok-comment">//! There are some issues with the filter API that have traditionally made</span></span>
+<span class="line" id="L19"><span class="tok-comment">//! writing them a pain:</span></span>
+<span class="line" id="L20"><span class="tok-comment">//!</span></span>
+<span class="line" id="L21"><span class="tok-comment">//! 1. Each CPU architecture supported by Linux has its own unique ABI and</span></span>
+<span class="line" id="L22"><span class="tok-comment">//!    syscall API. It is not guaranteed that the syscall numbers and arguments</span></span>
+<span class="line" id="L23"><span class="tok-comment">//!    are the same across architectures, or that they're even implemented. Thus,</span></span>
+<span class="line" id="L24"><span class="tok-comment">//!    filters cannot be assumed to be portable without consulting documentation</span></span>
+<span class="line" id="L25"><span class="tok-comment">//!    like syscalls(2) and testing on target hardware. This also requires</span></span>
+<span class="line" id="L26"><span class="tok-comment">//!    checking the value of `data.arch` to make sure that a filter was compiled</span></span>
+<span class="line" id="L27"><span class="tok-comment">//!    for the correct architecture.</span></span>
+<span class="line" id="L28"><span class="tok-comment">//! 2. Many syscalls take an `unsigned long` or `size_t` argument, the size of</span></span>
+<span class="line" id="L29"><span class="tok-comment">//!    which is dependant on the ABI. Since BPF programs execute in a 32-bit</span></span>
+<span class="line" id="L30"><span class="tok-comment">//!    machine, validation of 64-bit arguments necessitates two load-and-compare</span></span>
+<span class="line" id="L31"><span class="tok-comment">//!    instructions for the upper and lower words.</span></span>
+<span class="line" id="L32"><span class="tok-comment">//! 3. A further wrinkle to the above is endianness. Unlike network packets,</span></span>
+<span class="line" id="L33"><span class="tok-comment">//!    syscall data shares the endianness of the target machine. A filter</span></span>
+<span class="line" id="L34"><span class="tok-comment">//!    compiled on a little-endian machine will not work on a big-endian one,</span></span>
+<span class="line" id="L35"><span class="tok-comment">//!    and vice-versa. For example: Checking the upper 32-bits of `data.arg1`</span></span>
+<span class="line" id="L36"><span class="tok-comment">//!    requires a load at `@offsetOf(data, &quot;arg1&quot;) + 4` on big-endian systems</span></span>
+<span class="line" id="L37"><span class="tok-comment">//!    and `@offsetOf(data, &quot;arg1&quot;)` on little-endian systems. Endian-portable</span></span>
+<span class="line" id="L38"><span class="tok-comment">//!    filters require adjusting these offsets at compile time, similar to how</span></span>
+<span class="line" id="L39"><span class="tok-comment">//!    e.g. OpenSSH does[1].</span></span>
+<span class="line" id="L40"><span class="tok-comment">//! 4. Syscalls with userspace implementations via the vDSO cannot be traced or</span></span>
+<span class="line" id="L41"><span class="tok-comment">//!    filtered. The vDSO can be disabled or just ignored, which must be taken</span></span>
+<span class="line" id="L42"><span class="tok-comment">//!    into account when writing filters.</span></span>
+<span class="line" id="L43"><span class="tok-comment">//! 5. Software libraries -  especially dynamically loaded ones - tend to use</span></span>
+<span class="line" id="L44"><span class="tok-comment">//!    more of the syscall API over time, thus filters must evolve with them.</span></span>
+<span class="line" id="L45"><span class="tok-comment">//!    Static filters can result in reduced or even broken functionality when</span></span>
+<span class="line" id="L46"><span class="tok-comment">//!    calling newer code from these libraries. This is known to happen with</span></span>
+<span class="line" id="L47"><span class="tok-comment">//!    critical libraries like glibc[2].</span></span>
+<span class="line" id="L48"><span class="tok-comment">//!</span></span>
+<span class="line" id="L49"><span class="tok-comment">//! Some of these issues can be mitigated with help from Zig and the standard</span></span>
+<span class="line" id="L50"><span class="tok-comment">//! library. Since the target CPU is known at compile time, the proper syscall</span></span>
+<span class="line" id="L51"><span class="tok-comment">//! numbers are mixed into the `os` namespace under `std.os.SYS (see the code</span></span>
+<span class="line" id="L52"><span class="tok-comment">//! for `arch_bits` in `os/linux.zig`). Referencing an unimplemented syscall</span></span>
+<span class="line" id="L53"><span class="tok-comment">//! would be a compile error. Endian offsets can also be defined in a similar</span></span>
+<span class="line" id="L54"><span class="tok-comment">//! manner to the OpenSSH example:</span></span>
+<span class="line" id="L55"><span class="tok-comment">//!</span></span>
+<span class="line" id="L56"><span class="tok-comment">//! ```zig</span></span>
+<span class="line" id="L57"><span class="tok-comment">//! const offset = if (native_endian == .Little) struct {</span></span>
+<span class="line" id="L58"><span class="tok-comment">//!     pub const low = 0;</span></span>
+<span class="line" id="L59"><span class="tok-comment">//!     pub const high = @sizeOf(u32);</span></span>
+<span class="line" id="L60"><span class="tok-comment">//! } else struct {</span></span>
+<span class="line" id="L61"><span class="tok-comment">//!     pub const low = @sizeOf(u32);</span></span>
+<span class="line" id="L62"><span class="tok-comment">//!     pub const high = 0;</span></span>
+<span class="line" id="L63"><span class="tok-comment">//! };</span></span>
+<span class="line" id="L64"><span class="tok-comment">//! ```</span></span>
+<span class="line" id="L65"><span class="tok-comment">//!</span></span>
+<span class="line" id="L66"><span class="tok-comment">//! Unfortunately, there is no easy solution for issue 5. The most reliable</span></span>
+<span class="line" id="L67"><span class="tok-comment">//! strategy is to keep testing; test newer Zig versions, different libcs,</span></span>
+<span class="line" id="L68"><span class="tok-comment">//! different distros, and design your filter to accommodate all of them.</span></span>
+<span class="line" id="L69"><span class="tok-comment">//! Alternatively, you could inject a filter at runtime. Since filters are</span></span>
+<span class="line" id="L70"><span class="tok-comment">//! preserved across execve(2), a filter could be setup before executing your</span></span>
+<span class="line" id="L71"><span class="tok-comment">//! program, without your program having any knowledge of this happening. This</span></span>
+<span class="line" id="L72"><span class="tok-comment">//! is the method used by systemd[3] and Cloudflare's sandbox library[4].</span></span>
+<span class="line" id="L73"><span class="tok-comment">//!</span></span>
+<span class="line" id="L74"><span class="tok-comment">//! [1]: https://github.com/openssh/openssh-portable/blob/master/sandbox-seccomp-filter.c#L81</span></span>
+<span class="line" id="L75"><span class="tok-comment">//! [2]: https://sourceware.org/legacy-ml/libc-alpha/2017-11/msg00246.html</span></span>
+<span class="line" id="L76"><span class="tok-comment">//! [3]: https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SystemCallFilter=</span></span>
+<span class="line" id="L77"><span class="tok-comment">//! [4]: https://github.com/cloudflare/sandbox</span></span>
+<span class="line" id="L78"><span class="tok-comment">//!</span></span>
+<span class="line" id="L79"><span class="tok-comment">//! See Also</span></span>
+<span class="line" id="L80"><span class="tok-comment">//! - seccomp(2), seccomp_unotify(2)</span></span>
+<span class="line" id="L81"><span class="tok-comment">//! - https://www.kernel.org/doc/html/latest/userspace-api/seccomp_filter.html</span></span>
+<span class="line" id="L82"><span class="tok-kw">const</span> IOCTL = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;ioctl.zig&quot;</span>);</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84"><span class="tok-comment">// Modes for the prctl(2) form `prctl(PR_SET_SECCOMP, mode)`</span>
+</span>
+<span class="line" id="L85"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MODE = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L86">    <span class="tok-comment">/// Seccomp not in use.</span></span>
+<span class="line" id="L87">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> DISABLED = <span class="tok-number">0</span>;</span>
+<span class="line" id="L88">    <span class="tok-comment">/// Uses a hard-coded filter.</span></span>
+<span class="line" id="L89">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> STRICT = <span class="tok-number">1</span>;</span>
+<span class="line" id="L90">    <span class="tok-comment">/// Uses a user-supplied filter.</span></span>
+<span class="line" id="L91">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> FILTER = <span class="tok-number">2</span>;</span>
+<span class="line" id="L92">};</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94"><span class="tok-comment">// Operations for the seccomp(2) form `seccomp(operation, flags, args)`</span>
+</span>
+<span class="line" id="L95"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SET_MODE_STRICT = <span class="tok-number">0</span>;</span>
+<span class="line" id="L96"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SET_MODE_FILTER = <span class="tok-number">1</span>;</span>
+<span class="line" id="L97"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> GET_ACTION_AVAIL = <span class="tok-number">2</span>;</span>
+<span class="line" id="L98"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> GET_NOTIF_SIZES = <span class="tok-number">3</span>;</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100"><span class="tok-comment">/// Bitflags for the SET_MODE_FILTER operation.</span></span>
+<span class="line" id="L101"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FILTER_FLAG = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L102">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TSYNC = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">0</span>;</span>
+<span class="line" id="L103">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> LOG = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">1</span>;</span>
+<span class="line" id="L104">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SPEC_ALLOW = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">2</span>;</span>
+<span class="line" id="L105">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> NEW_LISTENER = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">3</span>;</span>
+<span class="line" id="L106">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TSYNC_ESRCH = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">4</span>;</span>
+<span class="line" id="L107">};</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109"><span class="tok-comment">/// Action values for seccomp BPF programs.</span></span>
+<span class="line" id="L110"><span class="tok-comment">/// The lower 16-bits are for optional return data.</span></span>
+<span class="line" id="L111"><span class="tok-comment">/// The upper 16-bits are ordered from least permissive values to most.</span></span>
+<span class="line" id="L112"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RET = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L113">    <span class="tok-comment">/// Kill the process.</span></span>
+<span class="line" id="L114">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> KILL_PROCESS = <span class="tok-number">0x80000000</span>;</span>
+<span class="line" id="L115">    <span class="tok-comment">/// Kill the thread.</span></span>
+<span class="line" id="L116">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> KILL_THREAD = <span class="tok-number">0x00000000</span>;</span>
+<span class="line" id="L117">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> KILL = KILL_THREAD;</span>
+<span class="line" id="L118">    <span class="tok-comment">/// Disallow and force a SIGSYS.</span></span>
+<span class="line" id="L119">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TRAP = <span class="tok-number">0x00030000</span>;</span>
+<span class="line" id="L120">    <span class="tok-comment">/// Return an errno.</span></span>
+<span class="line" id="L121">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ERRNO = <span class="tok-number">0x00050000</span>;</span>
+<span class="line" id="L122">    <span class="tok-comment">/// Forward the syscall to a userspace supervisor to make a decision.</span></span>
+<span class="line" id="L123">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> USER_NOTIF = <span class="tok-number">0x7fc00000</span>;</span>
+<span class="line" id="L124">    <span class="tok-comment">/// Pass to a tracer or disallow.</span></span>
+<span class="line" id="L125">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> TRACE = <span class="tok-number">0x7ff00000</span>;</span>
+<span class="line" id="L126">    <span class="tok-comment">/// Allow after logging.</span></span>
+<span class="line" id="L127">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> LOG = <span class="tok-number">0x7ffc0000</span>;</span>
+<span class="line" id="L128">    <span class="tok-comment">/// Allow.</span></span>
+<span class="line" id="L129">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ALLOW = <span class="tok-number">0x7fff0000</span>;</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131">    <span class="tok-comment">// Masks for the return value sections.</span>
+</span>
+<span class="line" id="L132">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ACTION_FULL = <span class="tok-number">0xffff0000</span>;</span>
+<span class="line" id="L133">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ACTION = <span class="tok-number">0x7fff0000</span>;</span>
+<span class="line" id="L134">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> DATA = <span class="tok-number">0x0000ffff</span>;</span>
+<span class="line" id="L135">};</span>
+<span class="line" id="L136"></span>
+<span class="line" id="L137"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IOCTL_NOTIF = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L138">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> RECV = IOCTL.IOWR(<span class="tok-str">'!'</span>, <span class="tok-number">0</span>, notif);</span>
+<span class="line" id="L139">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SEND = IOCTL.IOWR(<span class="tok-str">'!'</span>, <span class="tok-number">1</span>, notif_resp);</span>
+<span class="line" id="L140">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ID_VALID = IOCTL.IOW(<span class="tok-str">'!'</span>, <span class="tok-number">2</span>, <span class="tok-type">u64</span>);</span>
+<span class="line" id="L141">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ADDFD = IOCTL.IOW(<span class="tok-str">'!'</span>, <span class="tok-number">3</span>, notif_addfd);</span>
+<span class="line" id="L142">};</span>
+<span class="line" id="L143"></span>
+<span class="line" id="L144"><span class="tok-comment">/// Tells the kernel that the supervisor allows the syscall to continue.</span></span>
+<span class="line" id="L145"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> USER_NOTIF_FLAG_CONTINUE = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">0</span>;</span>
+<span class="line" id="L146"></span>
+<span class="line" id="L147"><span class="tok-comment">/// See seccomp_unotify(2).</span></span>
+<span class="line" id="L148"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ADDFD_FLAG = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L149">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SETFD = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">0</span>;</span>
+<span class="line" id="L150">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SEND = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">1</span>;</span>
+<span class="line" id="L151">};</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> data = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L154">    <span class="tok-comment">/// The system call number.</span></span>
+<span class="line" id="L155">    nr: <span class="tok-type">c_int</span>,</span>
+<span class="line" id="L156">    <span class="tok-comment">/// The CPU architecture/system call convention.</span></span>
+<span class="line" id="L157">    <span class="tok-comment">/// One of the values defined in `std.os.linux.AUDIT`.</span></span>
+<span class="line" id="L158">    arch: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L159">    instruction_pointer: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L160">    arg0: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L161">    arg1: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L162">    arg2: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L163">    arg3: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L164">    arg4: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L165">    arg5: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L166">};</span>
+<span class="line" id="L167"></span>
+<span class="line" id="L168"><span class="tok-comment">/// Used with the ::GET_NOTIF_SIZES command to check if the kernel structures</span></span>
+<span class="line" id="L169"><span class="tok-comment">/// have changed.</span></span>
+<span class="line" id="L170"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> notif_sizes = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L171">    <span class="tok-comment">/// Size of ::notif.</span></span>
+<span class="line" id="L172">    notif: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L173">    <span class="tok-comment">/// Size of ::resp.</span></span>
+<span class="line" id="L174">    notif_resp: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L175">    <span class="tok-comment">/// Size of ::data.</span></span>
+<span class="line" id="L176">    data: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L177">};</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> notif = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L180">    <span class="tok-comment">/// Unique notification cookie for each filter.</span></span>
+<span class="line" id="L181">    id: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L182">    <span class="tok-comment">/// ID of the thread that triggered the notification.</span></span>
+<span class="line" id="L183">    pid: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L184">    <span class="tok-comment">/// Bitmask for event information. Currently set to zero.</span></span>
+<span class="line" id="L185">    flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L186">    <span class="tok-comment">/// The current system call data.</span></span>
+<span class="line" id="L187">    data: data,</span>
+<span class="line" id="L188">};</span>
+<span class="line" id="L189"></span>
+<span class="line" id="L190"><span class="tok-comment">/// The decision payload the supervisor process sends to the kernel.</span></span>
+<span class="line" id="L191"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> notif_resp = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L192">    <span class="tok-comment">/// The filter cookie.</span></span>
+<span class="line" id="L193">    id: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L194">    <span class="tok-comment">/// The return value for a spoofed syscall.</span></span>
+<span class="line" id="L195">    val: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L196">    <span class="tok-comment">/// Set to zero for a spoofed success or a negative error number for a</span></span>
+<span class="line" id="L197">    <span class="tok-comment">/// failure.</span></span>
+<span class="line" id="L198">    @&quot;error&quot;: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L199">    <span class="tok-comment">/// Bitmask containing the decision. Either USER_NOTIF_FLAG_CONTINUE to</span></span>
+<span class="line" id="L200">    <span class="tok-comment">/// allow the syscall or zero to spoof the return values.</span></span>
+<span class="line" id="L201">    flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L202">};</span>
+<span class="line" id="L203"></span>
+<span class="line" id="L204"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> notif_addfd = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L205">    id: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L206">    flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L207">    srcfd: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L208">    newfd: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L209">    newfd_flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L210">};</span>
+<span class="line" id="L211"></span>
+</code></pre></body>
+</html>

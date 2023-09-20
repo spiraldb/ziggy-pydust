@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>wasm.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">///! Contains all constants and types representing the wasm</span></span>
+<span class="line" id="L2"><span class="tok-comment">///! binary format, as specified by:</span></span>
+<span class="line" id="L3"><span class="tok-comment">///! https://webassembly.github.io/spec/core/</span></span>
+<span class="line" id="L4"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std.zig&quot;</span>);</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-comment">// TODO: Add support for multi-byte ops (e.g. table operations)</span>
+</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-comment">/// Wasm instruction opcodes</span></span>
+<span class="line" id="L10"><span class="tok-comment">///</span></span>
+<span class="line" id="L11"><span class="tok-comment">/// All instructions are defined as per spec:</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// https://webassembly.github.io/spec/core/appendix/index-instructions.html</span></span>
+<span class="line" id="L13"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Opcode = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L14">    @&quot;unreachable&quot; = <span class="tok-number">0x00</span>,</span>
+<span class="line" id="L15">    nop = <span class="tok-number">0x01</span>,</span>
+<span class="line" id="L16">    block = <span class="tok-number">0x02</span>,</span>
+<span class="line" id="L17">    loop = <span class="tok-number">0x03</span>,</span>
+<span class="line" id="L18">    @&quot;if&quot; = <span class="tok-number">0x04</span>,</span>
+<span class="line" id="L19">    @&quot;else&quot; = <span class="tok-number">0x05</span>,</span>
+<span class="line" id="L20">    end = <span class="tok-number">0x0B</span>,</span>
+<span class="line" id="L21">    br = <span class="tok-number">0x0C</span>,</span>
+<span class="line" id="L22">    br_if = <span class="tok-number">0x0D</span>,</span>
+<span class="line" id="L23">    br_table = <span class="tok-number">0x0E</span>,</span>
+<span class="line" id="L24">    @&quot;return&quot; = <span class="tok-number">0x0F</span>,</span>
+<span class="line" id="L25">    call = <span class="tok-number">0x10</span>,</span>
+<span class="line" id="L26">    call_indirect = <span class="tok-number">0x11</span>,</span>
+<span class="line" id="L27">    drop = <span class="tok-number">0x1A</span>,</span>
+<span class="line" id="L28">    select = <span class="tok-number">0x1B</span>,</span>
+<span class="line" id="L29">    local_get = <span class="tok-number">0x20</span>,</span>
+<span class="line" id="L30">    local_set = <span class="tok-number">0x21</span>,</span>
+<span class="line" id="L31">    local_tee = <span class="tok-number">0x22</span>,</span>
+<span class="line" id="L32">    global_get = <span class="tok-number">0x23</span>,</span>
+<span class="line" id="L33">    global_set = <span class="tok-number">0x24</span>,</span>
+<span class="line" id="L34">    i32_load = <span class="tok-number">0x28</span>,</span>
+<span class="line" id="L35">    i64_load = <span class="tok-number">0x29</span>,</span>
+<span class="line" id="L36">    f32_load = <span class="tok-number">0x2A</span>,</span>
+<span class="line" id="L37">    f64_load = <span class="tok-number">0x2B</span>,</span>
+<span class="line" id="L38">    i32_load8_s = <span class="tok-number">0x2C</span>,</span>
+<span class="line" id="L39">    i32_load8_u = <span class="tok-number">0x2D</span>,</span>
+<span class="line" id="L40">    i32_load16_s = <span class="tok-number">0x2E</span>,</span>
+<span class="line" id="L41">    i32_load16_u = <span class="tok-number">0x2F</span>,</span>
+<span class="line" id="L42">    i64_load8_s = <span class="tok-number">0x30</span>,</span>
+<span class="line" id="L43">    i64_load8_u = <span class="tok-number">0x31</span>,</span>
+<span class="line" id="L44">    i64_load16_s = <span class="tok-number">0x32</span>,</span>
+<span class="line" id="L45">    i64_load16_u = <span class="tok-number">0x33</span>,</span>
+<span class="line" id="L46">    i64_load32_s = <span class="tok-number">0x34</span>,</span>
+<span class="line" id="L47">    i64_load32_u = <span class="tok-number">0x35</span>,</span>
+<span class="line" id="L48">    i32_store = <span class="tok-number">0x36</span>,</span>
+<span class="line" id="L49">    i64_store = <span class="tok-number">0x37</span>,</span>
+<span class="line" id="L50">    f32_store = <span class="tok-number">0x38</span>,</span>
+<span class="line" id="L51">    f64_store = <span class="tok-number">0x39</span>,</span>
+<span class="line" id="L52">    i32_store8 = <span class="tok-number">0x3A</span>,</span>
+<span class="line" id="L53">    i32_store16 = <span class="tok-number">0x3B</span>,</span>
+<span class="line" id="L54">    i64_store8 = <span class="tok-number">0x3C</span>,</span>
+<span class="line" id="L55">    i64_store16 = <span class="tok-number">0x3D</span>,</span>
+<span class="line" id="L56">    i64_store32 = <span class="tok-number">0x3E</span>,</span>
+<span class="line" id="L57">    memory_size = <span class="tok-number">0x3F</span>,</span>
+<span class="line" id="L58">    memory_grow = <span class="tok-number">0x40</span>,</span>
+<span class="line" id="L59">    i32_const = <span class="tok-number">0x41</span>,</span>
+<span class="line" id="L60">    i64_const = <span class="tok-number">0x42</span>,</span>
+<span class="line" id="L61">    f32_const = <span class="tok-number">0x43</span>,</span>
+<span class="line" id="L62">    f64_const = <span class="tok-number">0x44</span>,</span>
+<span class="line" id="L63">    i32_eqz = <span class="tok-number">0x45</span>,</span>
+<span class="line" id="L64">    i32_eq = <span class="tok-number">0x46</span>,</span>
+<span class="line" id="L65">    i32_ne = <span class="tok-number">0x47</span>,</span>
+<span class="line" id="L66">    i32_lt_s = <span class="tok-number">0x48</span>,</span>
+<span class="line" id="L67">    i32_lt_u = <span class="tok-number">0x49</span>,</span>
+<span class="line" id="L68">    i32_gt_s = <span class="tok-number">0x4A</span>,</span>
+<span class="line" id="L69">    i32_gt_u = <span class="tok-number">0x4B</span>,</span>
+<span class="line" id="L70">    i32_le_s = <span class="tok-number">0x4C</span>,</span>
+<span class="line" id="L71">    i32_le_u = <span class="tok-number">0x4D</span>,</span>
+<span class="line" id="L72">    i32_ge_s = <span class="tok-number">0x4E</span>,</span>
+<span class="line" id="L73">    i32_ge_u = <span class="tok-number">0x4F</span>,</span>
+<span class="line" id="L74">    i64_eqz = <span class="tok-number">0x50</span>,</span>
+<span class="line" id="L75">    i64_eq = <span class="tok-number">0x51</span>,</span>
+<span class="line" id="L76">    i64_ne = <span class="tok-number">0x52</span>,</span>
+<span class="line" id="L77">    i64_lt_s = <span class="tok-number">0x53</span>,</span>
+<span class="line" id="L78">    i64_lt_u = <span class="tok-number">0x54</span>,</span>
+<span class="line" id="L79">    i64_gt_s = <span class="tok-number">0x55</span>,</span>
+<span class="line" id="L80">    i64_gt_u = <span class="tok-number">0x56</span>,</span>
+<span class="line" id="L81">    i64_le_s = <span class="tok-number">0x57</span>,</span>
+<span class="line" id="L82">    i64_le_u = <span class="tok-number">0x58</span>,</span>
+<span class="line" id="L83">    i64_ge_s = <span class="tok-number">0x59</span>,</span>
+<span class="line" id="L84">    i64_ge_u = <span class="tok-number">0x5A</span>,</span>
+<span class="line" id="L85">    f32_eq = <span class="tok-number">0x5B</span>,</span>
+<span class="line" id="L86">    f32_ne = <span class="tok-number">0x5C</span>,</span>
+<span class="line" id="L87">    f32_lt = <span class="tok-number">0x5D</span>,</span>
+<span class="line" id="L88">    f32_gt = <span class="tok-number">0x5E</span>,</span>
+<span class="line" id="L89">    f32_le = <span class="tok-number">0x5F</span>,</span>
+<span class="line" id="L90">    f32_ge = <span class="tok-number">0x60</span>,</span>
+<span class="line" id="L91">    f64_eq = <span class="tok-number">0x61</span>,</span>
+<span class="line" id="L92">    f64_ne = <span class="tok-number">0x62</span>,</span>
+<span class="line" id="L93">    f64_lt = <span class="tok-number">0x63</span>,</span>
+<span class="line" id="L94">    f64_gt = <span class="tok-number">0x64</span>,</span>
+<span class="line" id="L95">    f64_le = <span class="tok-number">0x65</span>,</span>
+<span class="line" id="L96">    f64_ge = <span class="tok-number">0x66</span>,</span>
+<span class="line" id="L97">    i32_clz = <span class="tok-number">0x67</span>,</span>
+<span class="line" id="L98">    i32_ctz = <span class="tok-number">0x68</span>,</span>
+<span class="line" id="L99">    i32_popcnt = <span class="tok-number">0x69</span>,</span>
+<span class="line" id="L100">    i32_add = <span class="tok-number">0x6A</span>,</span>
+<span class="line" id="L101">    i32_sub = <span class="tok-number">0x6B</span>,</span>
+<span class="line" id="L102">    i32_mul = <span class="tok-number">0x6C</span>,</span>
+<span class="line" id="L103">    i32_div_s = <span class="tok-number">0x6D</span>,</span>
+<span class="line" id="L104">    i32_div_u = <span class="tok-number">0x6E</span>,</span>
+<span class="line" id="L105">    i32_rem_s = <span class="tok-number">0x6F</span>,</span>
+<span class="line" id="L106">    i32_rem_u = <span class="tok-number">0x70</span>,</span>
+<span class="line" id="L107">    i32_and = <span class="tok-number">0x71</span>,</span>
+<span class="line" id="L108">    i32_or = <span class="tok-number">0x72</span>,</span>
+<span class="line" id="L109">    i32_xor = <span class="tok-number">0x73</span>,</span>
+<span class="line" id="L110">    i32_shl = <span class="tok-number">0x74</span>,</span>
+<span class="line" id="L111">    i32_shr_s = <span class="tok-number">0x75</span>,</span>
+<span class="line" id="L112">    i32_shr_u = <span class="tok-number">0x76</span>,</span>
+<span class="line" id="L113">    i32_rotl = <span class="tok-number">0x77</span>,</span>
+<span class="line" id="L114">    i32_rotr = <span class="tok-number">0x78</span>,</span>
+<span class="line" id="L115">    i64_clz = <span class="tok-number">0x79</span>,</span>
+<span class="line" id="L116">    i64_ctz = <span class="tok-number">0x7A</span>,</span>
+<span class="line" id="L117">    i64_popcnt = <span class="tok-number">0x7B</span>,</span>
+<span class="line" id="L118">    i64_add = <span class="tok-number">0x7C</span>,</span>
+<span class="line" id="L119">    i64_sub = <span class="tok-number">0x7D</span>,</span>
+<span class="line" id="L120">    i64_mul = <span class="tok-number">0x7E</span>,</span>
+<span class="line" id="L121">    i64_div_s = <span class="tok-number">0x7F</span>,</span>
+<span class="line" id="L122">    i64_div_u = <span class="tok-number">0x80</span>,</span>
+<span class="line" id="L123">    i64_rem_s = <span class="tok-number">0x81</span>,</span>
+<span class="line" id="L124">    i64_rem_u = <span class="tok-number">0x82</span>,</span>
+<span class="line" id="L125">    i64_and = <span class="tok-number">0x83</span>,</span>
+<span class="line" id="L126">    i64_or = <span class="tok-number">0x84</span>,</span>
+<span class="line" id="L127">    i64_xor = <span class="tok-number">0x85</span>,</span>
+<span class="line" id="L128">    i64_shl = <span class="tok-number">0x86</span>,</span>
+<span class="line" id="L129">    i64_shr_s = <span class="tok-number">0x87</span>,</span>
+<span class="line" id="L130">    i64_shr_u = <span class="tok-number">0x88</span>,</span>
+<span class="line" id="L131">    i64_rotl = <span class="tok-number">0x89</span>,</span>
+<span class="line" id="L132">    i64_rotr = <span class="tok-number">0x8A</span>,</span>
+<span class="line" id="L133">    f32_abs = <span class="tok-number">0x8B</span>,</span>
+<span class="line" id="L134">    f32_neg = <span class="tok-number">0x8C</span>,</span>
+<span class="line" id="L135">    f32_ceil = <span class="tok-number">0x8D</span>,</span>
+<span class="line" id="L136">    f32_floor = <span class="tok-number">0x8E</span>,</span>
+<span class="line" id="L137">    f32_trunc = <span class="tok-number">0x8F</span>,</span>
+<span class="line" id="L138">    f32_nearest = <span class="tok-number">0x90</span>,</span>
+<span class="line" id="L139">    f32_sqrt = <span class="tok-number">0x91</span>,</span>
+<span class="line" id="L140">    f32_add = <span class="tok-number">0x92</span>,</span>
+<span class="line" id="L141">    f32_sub = <span class="tok-number">0x93</span>,</span>
+<span class="line" id="L142">    f32_mul = <span class="tok-number">0x94</span>,</span>
+<span class="line" id="L143">    f32_div = <span class="tok-number">0x95</span>,</span>
+<span class="line" id="L144">    f32_min = <span class="tok-number">0x96</span>,</span>
+<span class="line" id="L145">    f32_max = <span class="tok-number">0x97</span>,</span>
+<span class="line" id="L146">    f32_copysign = <span class="tok-number">0x98</span>,</span>
+<span class="line" id="L147">    f64_abs = <span class="tok-number">0x99</span>,</span>
+<span class="line" id="L148">    f64_neg = <span class="tok-number">0x9A</span>,</span>
+<span class="line" id="L149">    f64_ceil = <span class="tok-number">0x9B</span>,</span>
+<span class="line" id="L150">    f64_floor = <span class="tok-number">0x9C</span>,</span>
+<span class="line" id="L151">    f64_trunc = <span class="tok-number">0x9D</span>,</span>
+<span class="line" id="L152">    f64_nearest = <span class="tok-number">0x9E</span>,</span>
+<span class="line" id="L153">    f64_sqrt = <span class="tok-number">0x9F</span>,</span>
+<span class="line" id="L154">    f64_add = <span class="tok-number">0xA0</span>,</span>
+<span class="line" id="L155">    f64_sub = <span class="tok-number">0xA1</span>,</span>
+<span class="line" id="L156">    f64_mul = <span class="tok-number">0xA2</span>,</span>
+<span class="line" id="L157">    f64_div = <span class="tok-number">0xA3</span>,</span>
+<span class="line" id="L158">    f64_min = <span class="tok-number">0xA4</span>,</span>
+<span class="line" id="L159">    f64_max = <span class="tok-number">0xA5</span>,</span>
+<span class="line" id="L160">    f64_copysign = <span class="tok-number">0xA6</span>,</span>
+<span class="line" id="L161">    i32_wrap_i64 = <span class="tok-number">0xA7</span>,</span>
+<span class="line" id="L162">    i32_trunc_f32_s = <span class="tok-number">0xA8</span>,</span>
+<span class="line" id="L163">    i32_trunc_f32_u = <span class="tok-number">0xA9</span>,</span>
+<span class="line" id="L164">    i32_trunc_f64_s = <span class="tok-number">0xAA</span>,</span>
+<span class="line" id="L165">    i32_trunc_f64_u = <span class="tok-number">0xAB</span>,</span>
+<span class="line" id="L166">    i64_extend_i32_s = <span class="tok-number">0xAC</span>,</span>
+<span class="line" id="L167">    i64_extend_i32_u = <span class="tok-number">0xAD</span>,</span>
+<span class="line" id="L168">    i64_trunc_f32_s = <span class="tok-number">0xAE</span>,</span>
+<span class="line" id="L169">    i64_trunc_f32_u = <span class="tok-number">0xAF</span>,</span>
+<span class="line" id="L170">    i64_trunc_f64_s = <span class="tok-number">0xB0</span>,</span>
+<span class="line" id="L171">    i64_trunc_f64_u = <span class="tok-number">0xB1</span>,</span>
+<span class="line" id="L172">    f32_convert_i32_s = <span class="tok-number">0xB2</span>,</span>
+<span class="line" id="L173">    f32_convert_i32_u = <span class="tok-number">0xB3</span>,</span>
+<span class="line" id="L174">    f32_convert_i64_s = <span class="tok-number">0xB4</span>,</span>
+<span class="line" id="L175">    f32_convert_i64_u = <span class="tok-number">0xB5</span>,</span>
+<span class="line" id="L176">    f32_demote_f64 = <span class="tok-number">0xB6</span>,</span>
+<span class="line" id="L177">    f64_convert_i32_s = <span class="tok-number">0xB7</span>,</span>
+<span class="line" id="L178">    f64_convert_i32_u = <span class="tok-number">0xB8</span>,</span>
+<span class="line" id="L179">    f64_convert_i64_s = <span class="tok-number">0xB9</span>,</span>
+<span class="line" id="L180">    f64_convert_i64_u = <span class="tok-number">0xBA</span>,</span>
+<span class="line" id="L181">    f64_promote_f32 = <span class="tok-number">0xBB</span>,</span>
+<span class="line" id="L182">    i32_reinterpret_f32 = <span class="tok-number">0xBC</span>,</span>
+<span class="line" id="L183">    i64_reinterpret_f64 = <span class="tok-number">0xBD</span>,</span>
+<span class="line" id="L184">    f32_reinterpret_i32 = <span class="tok-number">0xBE</span>,</span>
+<span class="line" id="L185">    f64_reinterpret_i64 = <span class="tok-number">0xBF</span>,</span>
+<span class="line" id="L186">    i32_extend8_s = <span class="tok-number">0xC0</span>,</span>
+<span class="line" id="L187">    i32_extend16_s = <span class="tok-number">0xC1</span>,</span>
+<span class="line" id="L188">    i64_extend8_s = <span class="tok-number">0xC2</span>,</span>
+<span class="line" id="L189">    i64_extend16_s = <span class="tok-number">0xC3</span>,</span>
+<span class="line" id="L190">    i64_extend32_s = <span class="tok-number">0xC4</span>,</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192">    misc_prefix = <span class="tok-number">0xFC</span>,</span>
+<span class="line" id="L193">    simd_prefix = <span class="tok-number">0xFD</span>,</span>
+<span class="line" id="L194">    atomics_prefix = <span class="tok-number">0xFE</span>,</span>
+<span class="line" id="L195">    _,</span>
+<span class="line" id="L196">};</span>
+<span class="line" id="L197"></span>
+<span class="line" id="L198"><span class="tok-comment">/// Returns the integer value of an `Opcode`. Used by the Zig compiler</span></span>
+<span class="line" id="L199"><span class="tok-comment">/// to write instructions to the wasm binary file</span></span>
+<span class="line" id="L200"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">opcode</span>(op: Opcode) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L201">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(op);</span>
+<span class="line" id="L202">}</span>
+<span class="line" id="L203"></span>
+<span class="line" id="L204"><span class="tok-kw">test</span> <span class="tok-str">&quot;Wasm - opcodes&quot;</span> {</span>
+<span class="line" id="L205">    <span class="tok-comment">// Ensure our opcodes values remain intact as certain values are skipped due to them being reserved</span>
+</span>
+<span class="line" id="L206">    <span class="tok-kw">const</span> i32_const = opcode(.i32_const);</span>
+<span class="line" id="L207">    <span class="tok-kw">const</span> end = opcode(.end);</span>
+<span class="line" id="L208">    <span class="tok-kw">const</span> drop = opcode(.drop);</span>
+<span class="line" id="L209">    <span class="tok-kw">const</span> local_get = opcode(.local_get);</span>
+<span class="line" id="L210">    <span class="tok-kw">const</span> i64_extend32_s = opcode(.i64_extend32_s);</span>
+<span class="line" id="L211"></span>
+<span class="line" id="L212">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">0x41</span>), i32_const);</span>
+<span class="line" id="L213">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">0x0B</span>), end);</span>
+<span class="line" id="L214">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">0x1A</span>), drop);</span>
+<span class="line" id="L215">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">0x20</span>), local_get);</span>
+<span class="line" id="L216">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-number">0xC4</span>), i64_extend32_s);</span>
+<span class="line" id="L217">}</span>
+<span class="line" id="L218"></span>
+<span class="line" id="L219"><span class="tok-comment">/// Opcodes that require a prefix `0xFC`</span></span>
+<span class="line" id="L220"><span class="tok-comment">/// Each opcode represents a varuint32, meaning</span></span>
+<span class="line" id="L221"><span class="tok-comment">/// they are encoded as leb128 in binary.</span></span>
+<span class="line" id="L222"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MiscOpcode = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L223">    i32_trunc_sat_f32_s = <span class="tok-number">0x00</span>,</span>
+<span class="line" id="L224">    i32_trunc_sat_f32_u = <span class="tok-number">0x01</span>,</span>
+<span class="line" id="L225">    i32_trunc_sat_f64_s = <span class="tok-number">0x02</span>,</span>
+<span class="line" id="L226">    i32_trunc_sat_f64_u = <span class="tok-number">0x03</span>,</span>
+<span class="line" id="L227">    i64_trunc_sat_f32_s = <span class="tok-number">0x04</span>,</span>
+<span class="line" id="L228">    i64_trunc_sat_f32_u = <span class="tok-number">0x05</span>,</span>
+<span class="line" id="L229">    i64_trunc_sat_f64_s = <span class="tok-number">0x06</span>,</span>
+<span class="line" id="L230">    i64_trunc_sat_f64_u = <span class="tok-number">0x07</span>,</span>
+<span class="line" id="L231">    memory_init = <span class="tok-number">0x08</span>,</span>
+<span class="line" id="L232">    data_drop = <span class="tok-number">0x09</span>,</span>
+<span class="line" id="L233">    memory_copy = <span class="tok-number">0x0A</span>,</span>
+<span class="line" id="L234">    memory_fill = <span class="tok-number">0x0B</span>,</span>
+<span class="line" id="L235">    table_init = <span class="tok-number">0x0C</span>,</span>
+<span class="line" id="L236">    elem_drop = <span class="tok-number">0x0D</span>,</span>
+<span class="line" id="L237">    table_copy = <span class="tok-number">0x0E</span>,</span>
+<span class="line" id="L238">    table_grow = <span class="tok-number">0x0F</span>,</span>
+<span class="line" id="L239">    table_size = <span class="tok-number">0x10</span>,</span>
+<span class="line" id="L240">    table_fill = <span class="tok-number">0x11</span>,</span>
+<span class="line" id="L241">    _,</span>
+<span class="line" id="L242">};</span>
+<span class="line" id="L243"></span>
+<span class="line" id="L244"><span class="tok-comment">/// Returns the integer value of an `MiscOpcode`. Used by the Zig compiler</span></span>
+<span class="line" id="L245"><span class="tok-comment">/// to write instructions to the wasm binary file</span></span>
+<span class="line" id="L246"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">miscOpcode</span>(op: MiscOpcode) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L247">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(op);</span>
+<span class="line" id="L248">}</span>
+<span class="line" id="L249"></span>
+<span class="line" id="L250"><span class="tok-comment">/// Simd opcodes that require a prefix `0xFD`.</span></span>
+<span class="line" id="L251"><span class="tok-comment">/// Each opcode represents a varuint32, meaning</span></span>
+<span class="line" id="L252"><span class="tok-comment">/// they are encoded as leb128 in binary.</span></span>
+<span class="line" id="L253"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SimdOpcode = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L254">    v128_load = <span class="tok-number">0x00</span>,</span>
+<span class="line" id="L255">    v128_load8x8_s = <span class="tok-number">0x01</span>,</span>
+<span class="line" id="L256">    v128_load8x8_u = <span class="tok-number">0x02</span>,</span>
+<span class="line" id="L257">    v128_load16x4_s = <span class="tok-number">0x03</span>,</span>
+<span class="line" id="L258">    v128_load16x4_u = <span class="tok-number">0x04</span>,</span>
+<span class="line" id="L259">    v128_load32x2_s = <span class="tok-number">0x05</span>,</span>
+<span class="line" id="L260">    v128_load32x2_u = <span class="tok-number">0x06</span>,</span>
+<span class="line" id="L261">    v128_load8_splat = <span class="tok-number">0x07</span>,</span>
+<span class="line" id="L262">    v128_load16_splat = <span class="tok-number">0x08</span>,</span>
+<span class="line" id="L263">    v128_load32_splat = <span class="tok-number">0x09</span>,</span>
+<span class="line" id="L264">    v128_load64_splat = <span class="tok-number">0x0A</span>,</span>
+<span class="line" id="L265">    v128_store = <span class="tok-number">0x0B</span>,</span>
+<span class="line" id="L266">    v128_const = <span class="tok-number">0x0C</span>,</span>
+<span class="line" id="L267">    i8x16_shuffle = <span class="tok-number">0x0D</span>,</span>
+<span class="line" id="L268">    i8x16_swizzle = <span class="tok-number">0x0E</span>,</span>
+<span class="line" id="L269">    i8x16_splat = <span class="tok-number">0x0F</span>,</span>
+<span class="line" id="L270">    i16x8_splat = <span class="tok-number">0x10</span>,</span>
+<span class="line" id="L271">    i32x4_splat = <span class="tok-number">0x11</span>,</span>
+<span class="line" id="L272">    i64x2_splat = <span class="tok-number">0x12</span>,</span>
+<span class="line" id="L273">    f32x4_splat = <span class="tok-number">0x13</span>,</span>
+<span class="line" id="L274">    f64x2_splat = <span class="tok-number">0x14</span>,</span>
+<span class="line" id="L275">    i8x16_extract_lane_s = <span class="tok-number">0x15</span>,</span>
+<span class="line" id="L276">    i8x16_extract_lane_u = <span class="tok-number">0x16</span>,</span>
+<span class="line" id="L277">    i8x16_replace_lane = <span class="tok-number">0x17</span>,</span>
+<span class="line" id="L278">    i16x8_extract_lane_s = <span class="tok-number">0x18</span>,</span>
+<span class="line" id="L279">    i16x8_extract_lane_u = <span class="tok-number">0x19</span>,</span>
+<span class="line" id="L280">    i16x8_replace_lane = <span class="tok-number">0x1A</span>,</span>
+<span class="line" id="L281">    i32x4_extract_lane = <span class="tok-number">0x1B</span>,</span>
+<span class="line" id="L282">    i32x4_replace_lane = <span class="tok-number">0x1C</span>,</span>
+<span class="line" id="L283">    i64x2_extract_lane = <span class="tok-number">0x1D</span>,</span>
+<span class="line" id="L284">    i64x2_replace_lane = <span class="tok-number">0x1E</span>,</span>
+<span class="line" id="L285">    f32x4_extract_lane = <span class="tok-number">0x1F</span>,</span>
+<span class="line" id="L286">    f32x4_replace_lane = <span class="tok-number">0x20</span>,</span>
+<span class="line" id="L287">    f64x2_extract_lane = <span class="tok-number">0x21</span>,</span>
+<span class="line" id="L288">    f64x2_replace_lane = <span class="tok-number">0x22</span>,</span>
+<span class="line" id="L289">    i8x16_eq = <span class="tok-number">0x23</span>,</span>
+<span class="line" id="L290">    i16x8_eq = <span class="tok-number">0x2D</span>,</span>
+<span class="line" id="L291">    i32x4_eq = <span class="tok-number">0x37</span>,</span>
+<span class="line" id="L292">    i8x16_ne = <span class="tok-number">0x24</span>,</span>
+<span class="line" id="L293">    i16x8_ne = <span class="tok-number">0x2E</span>,</span>
+<span class="line" id="L294">    i32x4_ne = <span class="tok-number">0x38</span>,</span>
+<span class="line" id="L295">    i8x16_lt_s = <span class="tok-number">0x25</span>,</span>
+<span class="line" id="L296">    i16x8_lt_s = <span class="tok-number">0x2F</span>,</span>
+<span class="line" id="L297">    i32x4_lt_s = <span class="tok-number">0x39</span>,</span>
+<span class="line" id="L298">    i8x16_lt_u = <span class="tok-number">0x26</span>,</span>
+<span class="line" id="L299">    i16x8_lt_u = <span class="tok-number">0x30</span>,</span>
+<span class="line" id="L300">    i32x4_lt_u = <span class="tok-number">0x3A</span>,</span>
+<span class="line" id="L301">    i8x16_gt_s = <span class="tok-number">0x27</span>,</span>
+<span class="line" id="L302">    i16x8_gt_s = <span class="tok-number">0x31</span>,</span>
+<span class="line" id="L303">    i32x4_gt_s = <span class="tok-number">0x3B</span>,</span>
+<span class="line" id="L304">    i8x16_gt_u = <span class="tok-number">0x28</span>,</span>
+<span class="line" id="L305">    i16x8_gt_u = <span class="tok-number">0x32</span>,</span>
+<span class="line" id="L306">    i32x4_gt_u = <span class="tok-number">0x3C</span>,</span>
+<span class="line" id="L307">    i8x16_le_s = <span class="tok-number">0x29</span>,</span>
+<span class="line" id="L308">    i16x8_le_s = <span class="tok-number">0x33</span>,</span>
+<span class="line" id="L309">    i32x4_le_s = <span class="tok-number">0x3D</span>,</span>
+<span class="line" id="L310">    i8x16_le_u = <span class="tok-number">0x2A</span>,</span>
+<span class="line" id="L311">    i16x8_le_u = <span class="tok-number">0x34</span>,</span>
+<span class="line" id="L312">    i32x4_le_u = <span class="tok-number">0x3E</span>,</span>
+<span class="line" id="L313">    i8x16_ge_s = <span class="tok-number">0x2B</span>,</span>
+<span class="line" id="L314">    i16x8_ge_s = <span class="tok-number">0x35</span>,</span>
+<span class="line" id="L315">    i32x4_ge_s = <span class="tok-number">0x3F</span>,</span>
+<span class="line" id="L316">    i8x16_ge_u = <span class="tok-number">0x2C</span>,</span>
+<span class="line" id="L317">    i16x8_ge_u = <span class="tok-number">0x36</span>,</span>
+<span class="line" id="L318">    i32x4_ge_u = <span class="tok-number">0x40</span>,</span>
+<span class="line" id="L319">    f32x4_eq = <span class="tok-number">0x41</span>,</span>
+<span class="line" id="L320">    f64x2_eq = <span class="tok-number">0x47</span>,</span>
+<span class="line" id="L321">    f32x4_ne = <span class="tok-number">0x42</span>,</span>
+<span class="line" id="L322">    f64x2_ne = <span class="tok-number">0x48</span>,</span>
+<span class="line" id="L323">    f32x4_lt = <span class="tok-number">0x43</span>,</span>
+<span class="line" id="L324">    f64x2_lt = <span class="tok-number">0x49</span>,</span>
+<span class="line" id="L325">    f32x4_gt = <span class="tok-number">0x44</span>,</span>
+<span class="line" id="L326">    f64x2_gt = <span class="tok-number">0x4A</span>,</span>
+<span class="line" id="L327">    f32x4_le = <span class="tok-number">0x45</span>,</span>
+<span class="line" id="L328">    f64x2_le = <span class="tok-number">0x4B</span>,</span>
+<span class="line" id="L329">    f32x4_ge = <span class="tok-number">0x46</span>,</span>
+<span class="line" id="L330">    f64x2_ge = <span class="tok-number">0x4C</span>,</span>
+<span class="line" id="L331">    v128_not = <span class="tok-number">0x4D</span>,</span>
+<span class="line" id="L332">    v128_and = <span class="tok-number">0x4E</span>,</span>
+<span class="line" id="L333">    v128_andnot = <span class="tok-number">0x4F</span>,</span>
+<span class="line" id="L334">    v128_or = <span class="tok-number">0x50</span>,</span>
+<span class="line" id="L335">    v128_xor = <span class="tok-number">0x51</span>,</span>
+<span class="line" id="L336">    v128_bitselect = <span class="tok-number">0x52</span>,</span>
+<span class="line" id="L337">    v128_any_true = <span class="tok-number">0x53</span>,</span>
+<span class="line" id="L338">    v128_load8_lane = <span class="tok-number">0x54</span>,</span>
+<span class="line" id="L339">    v128_load16_lane = <span class="tok-number">0x55</span>,</span>
+<span class="line" id="L340">    v128_load32_lane = <span class="tok-number">0x56</span>,</span>
+<span class="line" id="L341">    v128_load64_lane = <span class="tok-number">0x57</span>,</span>
+<span class="line" id="L342">    v128_store8_lane = <span class="tok-number">0x58</span>,</span>
+<span class="line" id="L343">    v128_store16_lane = <span class="tok-number">0x59</span>,</span>
+<span class="line" id="L344">    v128_store32_lane = <span class="tok-number">0x5A</span>,</span>
+<span class="line" id="L345">    v128_store64_lane = <span class="tok-number">0x5B</span>,</span>
+<span class="line" id="L346">    v128_load32_zero = <span class="tok-number">0x5C</span>,</span>
+<span class="line" id="L347">    v128_load64_zero = <span class="tok-number">0x5D</span>,</span>
+<span class="line" id="L348">    f32x4_demote_f64x2_zero = <span class="tok-number">0x5E</span>,</span>
+<span class="line" id="L349">    f64x2_promote_low_f32x4 = <span class="tok-number">0x5F</span>,</span>
+<span class="line" id="L350">    i8x16_abs = <span class="tok-number">0x60</span>,</span>
+<span class="line" id="L351">    i16x8_abs = <span class="tok-number">0x80</span>,</span>
+<span class="line" id="L352">    i32x4_abs = <span class="tok-number">0xA0</span>,</span>
+<span class="line" id="L353">    i64x2_abs = <span class="tok-number">0xC0</span>,</span>
+<span class="line" id="L354">    i8x16_neg = <span class="tok-number">0x61</span>,</span>
+<span class="line" id="L355">    i16x8_neg = <span class="tok-number">0x81</span>,</span>
+<span class="line" id="L356">    i32x4_neg = <span class="tok-number">0xA1</span>,</span>
+<span class="line" id="L357">    i64x2_neg = <span class="tok-number">0xC1</span>,</span>
+<span class="line" id="L358">    i8x16_popcnt = <span class="tok-number">0x62</span>,</span>
+<span class="line" id="L359">    i16x8_q15mulr_sat_s = <span class="tok-number">0x82</span>,</span>
+<span class="line" id="L360">    i8x16_all_true = <span class="tok-number">0x63</span>,</span>
+<span class="line" id="L361">    i16x8_all_true = <span class="tok-number">0x83</span>,</span>
+<span class="line" id="L362">    i32x4_all_true = <span class="tok-number">0xA3</span>,</span>
+<span class="line" id="L363">    i64x2_all_true = <span class="tok-number">0xC3</span>,</span>
+<span class="line" id="L364">    i8x16_bitmask = <span class="tok-number">0x64</span>,</span>
+<span class="line" id="L365">    i16x8_bitmask = <span class="tok-number">0x84</span>,</span>
+<span class="line" id="L366">    i32x4_bitmask = <span class="tok-number">0xA4</span>,</span>
+<span class="line" id="L367">    i64x2_bitmask = <span class="tok-number">0xC4</span>,</span>
+<span class="line" id="L368">    i8x16_narrow_i16x8_s = <span class="tok-number">0x65</span>,</span>
+<span class="line" id="L369">    i16x8_narrow_i32x4_s = <span class="tok-number">0x85</span>,</span>
+<span class="line" id="L370">    i8x16_narrow_i16x8_u = <span class="tok-number">0x66</span>,</span>
+<span class="line" id="L371">    i16x8_narrow_i32x4_u = <span class="tok-number">0x86</span>,</span>
+<span class="line" id="L372">    f32x4_ceil = <span class="tok-number">0x67</span>,</span>
+<span class="line" id="L373">    i16x8_extend_low_i8x16_s = <span class="tok-number">0x87</span>,</span>
+<span class="line" id="L374">    i32x4_extend_low_i16x8_s = <span class="tok-number">0xA7</span>,</span>
+<span class="line" id="L375">    i64x2_extend_low_i32x4_s = <span class="tok-number">0xC7</span>,</span>
+<span class="line" id="L376">    f32x4_floor = <span class="tok-number">0x68</span>,</span>
+<span class="line" id="L377">    i16x8_extend_high_i8x16_s = <span class="tok-number">0x88</span>,</span>
+<span class="line" id="L378">    i32x4_extend_high_i16x8_s = <span class="tok-number">0xA8</span>,</span>
+<span class="line" id="L379">    i64x2_extend_high_i32x4_s = <span class="tok-number">0xC8</span>,</span>
+<span class="line" id="L380">    f32x4_trunc = <span class="tok-number">0x69</span>,</span>
+<span class="line" id="L381">    i16x8_extend_low_i8x16_u = <span class="tok-number">0x89</span>,</span>
+<span class="line" id="L382">    i32x4_extend_low_i16x8_u = <span class="tok-number">0xA9</span>,</span>
+<span class="line" id="L383">    i64x2_extend_low_i32x4_u = <span class="tok-number">0xC9</span>,</span>
+<span class="line" id="L384">    f32x4_nearest = <span class="tok-number">0x6A</span>,</span>
+<span class="line" id="L385">    i16x8_extend_high_i8x16_u = <span class="tok-number">0x8A</span>,</span>
+<span class="line" id="L386">    i32x4_extend_high_i16x8_u = <span class="tok-number">0xAA</span>,</span>
+<span class="line" id="L387">    i64x2_extend_high_i32x4_u = <span class="tok-number">0xCA</span>,</span>
+<span class="line" id="L388">    i8x16_shl = <span class="tok-number">0x6B</span>,</span>
+<span class="line" id="L389">    i16x8_shl = <span class="tok-number">0x8B</span>,</span>
+<span class="line" id="L390">    i32x4_shl = <span class="tok-number">0xAB</span>,</span>
+<span class="line" id="L391">    i64x2_shl = <span class="tok-number">0xCB</span>,</span>
+<span class="line" id="L392">    i8x16_shr_s = <span class="tok-number">0x6C</span>,</span>
+<span class="line" id="L393">    i16x8_shr_s = <span class="tok-number">0x8C</span>,</span>
+<span class="line" id="L394">    i32x4_shr_s = <span class="tok-number">0xAC</span>,</span>
+<span class="line" id="L395">    i64x2_shr_s = <span class="tok-number">0xCC</span>,</span>
+<span class="line" id="L396">    i8x16_shr_u = <span class="tok-number">0x6D</span>,</span>
+<span class="line" id="L397">    i16x8_shr_u = <span class="tok-number">0x8D</span>,</span>
+<span class="line" id="L398">    i32x4_shr_u = <span class="tok-number">0xAD</span>,</span>
+<span class="line" id="L399">    i64x2_shr_u = <span class="tok-number">0xCD</span>,</span>
+<span class="line" id="L400">    i8x16_add = <span class="tok-number">0x6E</span>,</span>
+<span class="line" id="L401">    i16x8_add = <span class="tok-number">0x8E</span>,</span>
+<span class="line" id="L402">    i32x4_add = <span class="tok-number">0xAE</span>,</span>
+<span class="line" id="L403">    i64x2_add = <span class="tok-number">0xCE</span>,</span>
+<span class="line" id="L404">    i8x16_add_sat_s = <span class="tok-number">0x6F</span>,</span>
+<span class="line" id="L405">    i16x8_add_sat_s = <span class="tok-number">0x8F</span>,</span>
+<span class="line" id="L406">    i8x16_add_sat_u = <span class="tok-number">0x70</span>,</span>
+<span class="line" id="L407">    i16x8_add_sat_u = <span class="tok-number">0x90</span>,</span>
+<span class="line" id="L408">    i8x16_sub = <span class="tok-number">0x71</span>,</span>
+<span class="line" id="L409">    i16x8_sub = <span class="tok-number">0x91</span>,</span>
+<span class="line" id="L410">    i32x4_sub = <span class="tok-number">0xB1</span>,</span>
+<span class="line" id="L411">    i64x2_sub = <span class="tok-number">0xD1</span>,</span>
+<span class="line" id="L412">    i8x16_sub_sat_s = <span class="tok-number">0x72</span>,</span>
+<span class="line" id="L413">    i16x8_sub_sat_s = <span class="tok-number">0x92</span>,</span>
+<span class="line" id="L414">    i8x16_sub_sat_u = <span class="tok-number">0x73</span>,</span>
+<span class="line" id="L415">    i16x8_sub_sat_u = <span class="tok-number">0x93</span>,</span>
+<span class="line" id="L416">    f64x2_ceil = <span class="tok-number">0x74</span>,</span>
+<span class="line" id="L417">    f64x2_nearest = <span class="tok-number">0x94</span>,</span>
+<span class="line" id="L418">    f64x2_floor = <span class="tok-number">0x75</span>,</span>
+<span class="line" id="L419">    i16x8_mul = <span class="tok-number">0x95</span>,</span>
+<span class="line" id="L420">    i32x4_mul = <span class="tok-number">0xB5</span>,</span>
+<span class="line" id="L421">    i64x2_mul = <span class="tok-number">0xD5</span>,</span>
+<span class="line" id="L422">    i8x16_min_s = <span class="tok-number">0x76</span>,</span>
+<span class="line" id="L423">    i16x8_min_s = <span class="tok-number">0x96</span>,</span>
+<span class="line" id="L424">    i32x4_min_s = <span class="tok-number">0xB6</span>,</span>
+<span class="line" id="L425">    i64x2_eq = <span class="tok-number">0xD6</span>,</span>
+<span class="line" id="L426">    i8x16_min_u = <span class="tok-number">0x77</span>,</span>
+<span class="line" id="L427">    i16x8_min_u = <span class="tok-number">0x97</span>,</span>
+<span class="line" id="L428">    i32x4_min_u = <span class="tok-number">0xB7</span>,</span>
+<span class="line" id="L429">    i64x2_ne = <span class="tok-number">0xD7</span>,</span>
+<span class="line" id="L430">    i8x16_max_s = <span class="tok-number">0x78</span>,</span>
+<span class="line" id="L431">    i16x8_max_s = <span class="tok-number">0x98</span>,</span>
+<span class="line" id="L432">    i32x4_max_s = <span class="tok-number">0xB8</span>,</span>
+<span class="line" id="L433">    i64x2_lt_s = <span class="tok-number">0xD8</span>,</span>
+<span class="line" id="L434">    i8x16_max_u = <span class="tok-number">0x79</span>,</span>
+<span class="line" id="L435">    i16x8_max_u = <span class="tok-number">0x99</span>,</span>
+<span class="line" id="L436">    i32x4_max_u = <span class="tok-number">0xB9</span>,</span>
+<span class="line" id="L437">    i64x2_gt_s = <span class="tok-number">0xD9</span>,</span>
+<span class="line" id="L438">    f64x2_trunc = <span class="tok-number">0x7A</span>,</span>
+<span class="line" id="L439">    i32x4_dot_i16x8_s = <span class="tok-number">0xBA</span>,</span>
+<span class="line" id="L440">    i64x2_le_s = <span class="tok-number">0xDA</span>,</span>
+<span class="line" id="L441">    i8x16_avgr_u = <span class="tok-number">0x7B</span>,</span>
+<span class="line" id="L442">    i16x8_avgr_u = <span class="tok-number">0x9B</span>,</span>
+<span class="line" id="L443">    i64x2_ge_s = <span class="tok-number">0xDB</span>,</span>
+<span class="line" id="L444">    i16x8_extadd_pairwise_i8x16_s = <span class="tok-number">0x7C</span>,</span>
+<span class="line" id="L445">    i16x8_extmul_low_i8x16_s = <span class="tok-number">0x9C</span>,</span>
+<span class="line" id="L446">    i32x4_extmul_low_i16x8_s = <span class="tok-number">0xBC</span>,</span>
+<span class="line" id="L447">    i64x2_extmul_low_i32x4_s = <span class="tok-number">0xDC</span>,</span>
+<span class="line" id="L448">    i16x8_extadd_pairwise_i8x16_u = <span class="tok-number">0x7D</span>,</span>
+<span class="line" id="L449">    i16x8_extmul_high_i8x16_s = <span class="tok-number">0x9D</span>,</span>
+<span class="line" id="L450">    i32x4_extmul_high_i16x8_s = <span class="tok-number">0xBD</span>,</span>
+<span class="line" id="L451">    i64x2_extmul_high_i32x4_s = <span class="tok-number">0xDD</span>,</span>
+<span class="line" id="L452">    i32x4_extadd_pairwise_i16x8_s = <span class="tok-number">0x7E</span>,</span>
+<span class="line" id="L453">    i16x8_extmul_low_i8x16_u = <span class="tok-number">0x9E</span>,</span>
+<span class="line" id="L454">    i32x4_extmul_low_i16x8_u = <span class="tok-number">0xBE</span>,</span>
+<span class="line" id="L455">    i64x2_extmul_low_i32x4_u = <span class="tok-number">0xDE</span>,</span>
+<span class="line" id="L456">    i32x4_extadd_pairwise_i16x8_u = <span class="tok-number">0x7F</span>,</span>
+<span class="line" id="L457">    i16x8_extmul_high_i8x16_u = <span class="tok-number">0x9F</span>,</span>
+<span class="line" id="L458">    i32x4_extmul_high_i16x8_u = <span class="tok-number">0xBF</span>,</span>
+<span class="line" id="L459">    i64x2_extmul_high_i32x4_u = <span class="tok-number">0xDF</span>,</span>
+<span class="line" id="L460">    f32x4_abs = <span class="tok-number">0xE0</span>,</span>
+<span class="line" id="L461">    f64x2_abs = <span class="tok-number">0xEC</span>,</span>
+<span class="line" id="L462">    f32x4_neg = <span class="tok-number">0xE1</span>,</span>
+<span class="line" id="L463">    f64x2_neg = <span class="tok-number">0xED</span>,</span>
+<span class="line" id="L464">    f32x4_sqrt = <span class="tok-number">0xE3</span>,</span>
+<span class="line" id="L465">    f64x2_sqrt = <span class="tok-number">0xEF</span>,</span>
+<span class="line" id="L466">    f32x4_add = <span class="tok-number">0xE4</span>,</span>
+<span class="line" id="L467">    f64x2_add = <span class="tok-number">0xF0</span>,</span>
+<span class="line" id="L468">    f32x4_sub = <span class="tok-number">0xE5</span>,</span>
+<span class="line" id="L469">    f64x2_sub = <span class="tok-number">0xF1</span>,</span>
+<span class="line" id="L470">    f32x4_mul = <span class="tok-number">0xE6</span>,</span>
+<span class="line" id="L471">    f64x2_mul = <span class="tok-number">0xF2</span>,</span>
+<span class="line" id="L472">    f32x4_div = <span class="tok-number">0xE7</span>,</span>
+<span class="line" id="L473">    f64x2_div = <span class="tok-number">0xF3</span>,</span>
+<span class="line" id="L474">    f32x4_min = <span class="tok-number">0xE8</span>,</span>
+<span class="line" id="L475">    f64x2_min = <span class="tok-number">0xF4</span>,</span>
+<span class="line" id="L476">    f32x4_max = <span class="tok-number">0xE9</span>,</span>
+<span class="line" id="L477">    f64x2_max = <span class="tok-number">0xF5</span>,</span>
+<span class="line" id="L478">    f32x4_pmin = <span class="tok-number">0xEA</span>,</span>
+<span class="line" id="L479">    f64x2_pmin = <span class="tok-number">0xF6</span>,</span>
+<span class="line" id="L480">    f32x4_pmax = <span class="tok-number">0xEB</span>,</span>
+<span class="line" id="L481">    f64x2_pmax = <span class="tok-number">0xF7</span>,</span>
+<span class="line" id="L482">    i32x4_trunc_sat_f32x4_s = <span class="tok-number">0xF8</span>,</span>
+<span class="line" id="L483">    i32x4_trunc_sat_f32x4_u = <span class="tok-number">0xF9</span>,</span>
+<span class="line" id="L484">    f32x4_convert_i32x4_s = <span class="tok-number">0xFA</span>,</span>
+<span class="line" id="L485">    f32x4_convert_i32x4_u = <span class="tok-number">0xFB</span>,</span>
+<span class="line" id="L486">    i32x4_trunc_sat_f64x2_s_zero = <span class="tok-number">0xFC</span>,</span>
+<span class="line" id="L487">    i32x4_trunc_sat_f64x2_u_zero = <span class="tok-number">0xFD</span>,</span>
+<span class="line" id="L488">    f64x2_convert_low_i32x4_s = <span class="tok-number">0xFE</span>,</span>
+<span class="line" id="L489">    f64x2_convert_low_i32x4_u = <span class="tok-number">0xFF</span>,</span>
+<span class="line" id="L490"></span>
+<span class="line" id="L491">    <span class="tok-comment">// relaxed-simd opcodes</span>
+</span>
+<span class="line" id="L492">    i8x16_relaxed_swizzle = <span class="tok-number">0x100</span>,</span>
+<span class="line" id="L493">    i32x4_relaxed_trunc_f32x4_s = <span class="tok-number">0x101</span>,</span>
+<span class="line" id="L494">    i32x4_relaxed_trunc_f32x4_u = <span class="tok-number">0x102</span>,</span>
+<span class="line" id="L495">    i32x4_relaxed_trunc_f64x2_s_zero = <span class="tok-number">0x103</span>,</span>
+<span class="line" id="L496">    i32x4_relaxed_trunc_f64x2_u_zero = <span class="tok-number">0x104</span>,</span>
+<span class="line" id="L497">    f32x4_relaxed_madd = <span class="tok-number">0x105</span>,</span>
+<span class="line" id="L498">    f32x4_relaxed_nmadd = <span class="tok-number">0x106</span>,</span>
+<span class="line" id="L499">    f64x2_relaxed_madd = <span class="tok-number">0x107</span>,</span>
+<span class="line" id="L500">    f64x2_relaxed_nmadd = <span class="tok-number">0x108</span>,</span>
+<span class="line" id="L501">    i8x16_relaxed_laneselect = <span class="tok-number">0x109</span>,</span>
+<span class="line" id="L502">    i16x8_relaxed_laneselect = <span class="tok-number">0x10a</span>,</span>
+<span class="line" id="L503">    i32x4_relaxed_laneselect = <span class="tok-number">0x10b</span>,</span>
+<span class="line" id="L504">    i64x2_relaxed_laneselect = <span class="tok-number">0x10c</span>,</span>
+<span class="line" id="L505">    f32x4_relaxed_min = <span class="tok-number">0x10d</span>,</span>
+<span class="line" id="L506">    f32x4_relaxed_max = <span class="tok-number">0x10e</span>,</span>
+<span class="line" id="L507">    f64x2_relaxed_min = <span class="tok-number">0x10f</span>,</span>
+<span class="line" id="L508">    f64x2_relaxed_max = <span class="tok-number">0x110</span>,</span>
+<span class="line" id="L509">    i16x8_relaxed_q15mulr_s = <span class="tok-number">0x111</span>,</span>
+<span class="line" id="L510">    i16x8_relaxed_dot_i8x16_i7x16_s = <span class="tok-number">0x112</span>,</span>
+<span class="line" id="L511">    i32x4_relaxed_dot_i8x16_i7x16_add_s = <span class="tok-number">0x113</span>,</span>
+<span class="line" id="L512">    f32x4_relaxed_dot_bf16x8_add_f32x4 = <span class="tok-number">0x114</span>,</span>
+<span class="line" id="L513">};</span>
+<span class="line" id="L514"></span>
+<span class="line" id="L515"><span class="tok-comment">/// Returns the integer value of an `SimdOpcode`. Used by the Zig compiler</span></span>
+<span class="line" id="L516"><span class="tok-comment">/// to write instructions to the wasm binary file</span></span>
+<span class="line" id="L517"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">simdOpcode</span>(op: SimdOpcode) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L518">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(op);</span>
+<span class="line" id="L519">}</span>
+<span class="line" id="L520"></span>
+<span class="line" id="L521"><span class="tok-comment">/// Simd opcodes that require a prefix `0xFE`.</span></span>
+<span class="line" id="L522"><span class="tok-comment">/// Each opcode represents a varuint32, meaning</span></span>
+<span class="line" id="L523"><span class="tok-comment">/// they are encoded as leb128 in binary.</span></span>
+<span class="line" id="L524"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AtomicsOpcode = <span class="tok-kw">enum</span>(<span class="tok-type">u32</span>) {</span>
+<span class="line" id="L525">    memory_atomic_notify = <span class="tok-number">0x00</span>,</span>
+<span class="line" id="L526">    memory_atomic_wait32 = <span class="tok-number">0x01</span>,</span>
+<span class="line" id="L527">    memory_atomic_wait64 = <span class="tok-number">0x02</span>,</span>
+<span class="line" id="L528">    atomic_fence = <span class="tok-number">0x03</span>,</span>
+<span class="line" id="L529">    i32_atomic_load = <span class="tok-number">0x10</span>,</span>
+<span class="line" id="L530">    i64_atomic_load = <span class="tok-number">0x11</span>,</span>
+<span class="line" id="L531">    i32_atomic_load8_u = <span class="tok-number">0x12</span>,</span>
+<span class="line" id="L532">    i32_atomic_load16_u = <span class="tok-number">0x13</span>,</span>
+<span class="line" id="L533">    i64_atomic_load8_u = <span class="tok-number">0x14</span>,</span>
+<span class="line" id="L534">    i64_atomic_load16_u = <span class="tok-number">0x15</span>,</span>
+<span class="line" id="L535">    i64_atomic_load32_u = <span class="tok-number">0x16</span>,</span>
+<span class="line" id="L536">    i32_atomic_store = <span class="tok-number">0x17</span>,</span>
+<span class="line" id="L537">    i64_atomic_store = <span class="tok-number">0x18</span>,</span>
+<span class="line" id="L538">    i32_atomic_store8 = <span class="tok-number">0x19</span>,</span>
+<span class="line" id="L539">    i32_atomic_store16 = <span class="tok-number">0x1A</span>,</span>
+<span class="line" id="L540">    i64_atomic_store8 = <span class="tok-number">0x1B</span>,</span>
+<span class="line" id="L541">    i64_atomic_store16 = <span class="tok-number">0x1C</span>,</span>
+<span class="line" id="L542">    i64_atomic_store32 = <span class="tok-number">0x1D</span>,</span>
+<span class="line" id="L543">    i32_atomic_rmw_add = <span class="tok-number">0x1E</span>,</span>
+<span class="line" id="L544">    i64_atomic_rmw_add = <span class="tok-number">0x1F</span>,</span>
+<span class="line" id="L545">    i32_atomic_rmw8_add_u = <span class="tok-number">0x20</span>,</span>
+<span class="line" id="L546">    i32_atomic_rmw16_add_u = <span class="tok-number">0x21</span>,</span>
+<span class="line" id="L547">    i64_atomic_rmw8_add_u = <span class="tok-number">0x22</span>,</span>
+<span class="line" id="L548">    i64_atomic_rmw16_add_u = <span class="tok-number">0x23</span>,</span>
+<span class="line" id="L549">    i64_atomic_rmw32_add_u = <span class="tok-number">0x24</span>,</span>
+<span class="line" id="L550">    i32_atomic_rmw_sub = <span class="tok-number">0x25</span>,</span>
+<span class="line" id="L551">    i64_atomic_rmw_sub = <span class="tok-number">0x26</span>,</span>
+<span class="line" id="L552">    i32_atomic_rmw8_sub_u = <span class="tok-number">0x27A</span>,</span>
+<span class="line" id="L553">    i32_atomic_rmw16_sub_u = <span class="tok-number">0x28A</span>,</span>
+<span class="line" id="L554">    i64_atomic_rmw8_sub_u = <span class="tok-number">0x29A</span>,</span>
+<span class="line" id="L555">    i64_atomic_rmw16_sub_u = <span class="tok-number">0x2A</span>,</span>
+<span class="line" id="L556">    i64_atomic_rmw32_sub_u = <span class="tok-number">0x2B</span>,</span>
+<span class="line" id="L557">    i32_atomic_rmw_and = <span class="tok-number">0x2C</span>,</span>
+<span class="line" id="L558">    i64_atomic_rmw_and = <span class="tok-number">0x2D</span>,</span>
+<span class="line" id="L559">    i32_atomic_rmw8_and_u = <span class="tok-number">0x2E</span>,</span>
+<span class="line" id="L560">    i32_atomic_rmw16_and_u = <span class="tok-number">0x2F</span>,</span>
+<span class="line" id="L561">    i64_atomic_rmw8_and_u = <span class="tok-number">0x30</span>,</span>
+<span class="line" id="L562">    i64_atomic_rmw16_and_u = <span class="tok-number">0x31</span>,</span>
+<span class="line" id="L563">    i64_atomic_rmw32_and_u = <span class="tok-number">0x32</span>,</span>
+<span class="line" id="L564">    i32_atomic_rmw_or = <span class="tok-number">0x33</span>,</span>
+<span class="line" id="L565">    i64_atomic_rmw_or = <span class="tok-number">0x34</span>,</span>
+<span class="line" id="L566">    i32_atomic_rmw8_or_u = <span class="tok-number">0x35</span>,</span>
+<span class="line" id="L567">    i32_atomic_rmw16_or_u = <span class="tok-number">0x36</span>,</span>
+<span class="line" id="L568">    i64_atomic_rmw8_or_u = <span class="tok-number">0x37</span>,</span>
+<span class="line" id="L569">    i64_atomic_rmw16_or_u = <span class="tok-number">0x38</span>,</span>
+<span class="line" id="L570">    i64_atomic_rmw32_or_u = <span class="tok-number">0x39</span>,</span>
+<span class="line" id="L571">    i32_atomic_rmw_xor = <span class="tok-number">0x3A</span>,</span>
+<span class="line" id="L572">    i64_atomic_rmw_xor = <span class="tok-number">0x3B</span>,</span>
+<span class="line" id="L573">    i32_atomic_rmw8_xor_u = <span class="tok-number">0x3C</span>,</span>
+<span class="line" id="L574">    i32_atomic_rmw16_xor_u = <span class="tok-number">0x3D</span>,</span>
+<span class="line" id="L575">    i64_atomic_rmw8_xor_u = <span class="tok-number">0x3E</span>,</span>
+<span class="line" id="L576">    i64_atomic_rmw16_xor_u = <span class="tok-number">0x3F</span>,</span>
+<span class="line" id="L577">    i64_atomic_rmw32_xor_u = <span class="tok-number">0x40</span>,</span>
+<span class="line" id="L578">    i32_atomic_rmw_xchg = <span class="tok-number">0x41</span>,</span>
+<span class="line" id="L579">    i64_atomic_rmw_xchg = <span class="tok-number">0x42</span>,</span>
+<span class="line" id="L580">    i32_atomic_rmw8_xchg_u = <span class="tok-number">0x43</span>,</span>
+<span class="line" id="L581">    i32_atomic_rmw16_xchg_u = <span class="tok-number">0x44</span>,</span>
+<span class="line" id="L582">    i64_atomic_rmw8_xchg_u = <span class="tok-number">0x45</span>,</span>
+<span class="line" id="L583">    i64_atomic_rmw16_xchg_u = <span class="tok-number">0x46</span>,</span>
+<span class="line" id="L584">    i64_atomic_rmw32_xchg_u = <span class="tok-number">0x47</span>,</span>
+<span class="line" id="L585"></span>
+<span class="line" id="L586">    i32_atomic_rmw_cmpxchg = <span class="tok-number">0x48</span>,</span>
+<span class="line" id="L587">    i64_atomic_rmw_cmpxchg = <span class="tok-number">0x49</span>,</span>
+<span class="line" id="L588">    i32_atomic_rmw8_cmpxchg_u = <span class="tok-number">0x4A</span>,</span>
+<span class="line" id="L589">    i32_atomic_rmw16_cmpxchg_u = <span class="tok-number">0x4B</span>,</span>
+<span class="line" id="L590">    i64_atomic_rmw8_cmpxchg_u = <span class="tok-number">0x4C</span>,</span>
+<span class="line" id="L591">    i64_atomic_rmw16_cmpxchg_u = <span class="tok-number">0x4D</span>,</span>
+<span class="line" id="L592">    i64_atomic_rmw32_cmpxchg_u = <span class="tok-number">0x4E</span>,</span>
+<span class="line" id="L593">};</span>
+<span class="line" id="L594"></span>
+<span class="line" id="L595"><span class="tok-comment">/// Returns the integer value of an `AtomicsOpcode`. Used by the Zig compiler</span></span>
+<span class="line" id="L596"><span class="tok-comment">/// to write instructions to the wasm binary file</span></span>
+<span class="line" id="L597"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">atomicsOpcode</span>(op: AtomicsOpcode) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L598">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(op);</span>
+<span class="line" id="L599">}</span>
+<span class="line" id="L600"></span>
+<span class="line" id="L601"><span class="tok-comment">/// Enum representing all Wasm value types as per spec:</span></span>
+<span class="line" id="L602"><span class="tok-comment">/// https://webassembly.github.io/spec/core/binary/types.html</span></span>
+<span class="line" id="L603"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Valtype = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L604">    <span class="tok-type">i32</span> = <span class="tok-number">0x7F</span>,</span>
+<span class="line" id="L605">    <span class="tok-type">i64</span> = <span class="tok-number">0x7E</span>,</span>
+<span class="line" id="L606">    <span class="tok-type">f32</span> = <span class="tok-number">0x7D</span>,</span>
+<span class="line" id="L607">    <span class="tok-type">f64</span> = <span class="tok-number">0x7C</span>,</span>
+<span class="line" id="L608">    v128 = <span class="tok-number">0x7B</span>,</span>
+<span class="line" id="L609">};</span>
+<span class="line" id="L610"></span>
+<span class="line" id="L611"><span class="tok-comment">/// Returns the integer value of a `Valtype`</span></span>
+<span class="line" id="L612"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">valtype</span>(value: Valtype) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L613">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(value);</span>
+<span class="line" id="L614">}</span>
+<span class="line" id="L615"></span>
+<span class="line" id="L616"><span class="tok-comment">/// Reference types, where the funcref references to a function regardless of its type</span></span>
+<span class="line" id="L617"><span class="tok-comment">/// and ref references an object from the embedder.</span></span>
+<span class="line" id="L618"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RefType = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L619">    funcref = <span class="tok-number">0x70</span>,</span>
+<span class="line" id="L620">    externref = <span class="tok-number">0x6F</span>,</span>
+<span class="line" id="L621">};</span>
+<span class="line" id="L622"></span>
+<span class="line" id="L623"><span class="tok-comment">/// Returns the integer value of a `Reftype`</span></span>
+<span class="line" id="L624"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reftype</span>(value: RefType) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L625">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(value);</span>
+<span class="line" id="L626">}</span>
+<span class="line" id="L627"></span>
+<span class="line" id="L628"><span class="tok-kw">test</span> <span class="tok-str">&quot;Wasm - valtypes&quot;</span> {</span>
+<span class="line" id="L629">    <span class="tok-kw">const</span> _i32 = valtype(.<span class="tok-type">i32</span>);</span>
+<span class="line" id="L630">    <span class="tok-kw">const</span> _i64 = valtype(.<span class="tok-type">i64</span>);</span>
+<span class="line" id="L631">    <span class="tok-kw">const</span> _f32 = valtype(.<span class="tok-type">f32</span>);</span>
+<span class="line" id="L632">    <span class="tok-kw">const</span> _f64 = valtype(.<span class="tok-type">f64</span>);</span>
+<span class="line" id="L633"></span>
+<span class="line" id="L634">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0x7F</span>), _i32);</span>
+<span class="line" id="L635">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0x7E</span>), _i64);</span>
+<span class="line" id="L636">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0x7D</span>), _f32);</span>
+<span class="line" id="L637">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">0x7C</span>), _f64);</span>
+<span class="line" id="L638">}</span>
+<span class="line" id="L639"></span>
+<span class="line" id="L640"><span class="tok-comment">/// Limits classify the size range of resizeable storage associated with memory types and table types.</span></span>
+<span class="line" id="L641"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Limits = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L642">    flags: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L643">    min: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L644">    max: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L645"></span>
+<span class="line" id="L646">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Flags = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L647">        WASM_LIMITS_FLAG_HAS_MAX = <span class="tok-number">0x1</span>,</span>
+<span class="line" id="L648">        WASM_LIMITS_FLAG_IS_SHARED = <span class="tok-number">0x2</span>,</span>
+<span class="line" id="L649">    };</span>
+<span class="line" id="L650"></span>
+<span class="line" id="L651">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">hasFlag</span>(limits: Limits, flag: Flags) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L652">        <span class="tok-kw">return</span> limits.flags &amp; <span class="tok-builtin">@intFromEnum</span>(flag) != <span class="tok-number">0</span>;</span>
+<span class="line" id="L653">    }</span>
+<span class="line" id="L654"></span>
+<span class="line" id="L655">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setFlag</span>(limits: *Limits, flag: Flags) <span class="tok-type">void</span> {</span>
+<span class="line" id="L656">        limits.flags |= <span class="tok-builtin">@intFromEnum</span>(flag);</span>
+<span class="line" id="L657">    }</span>
+<span class="line" id="L658">};</span>
+<span class="line" id="L659"></span>
+<span class="line" id="L660"><span class="tok-comment">/// Initialization expressions are used to set the initial value on an object</span></span>
+<span class="line" id="L661"><span class="tok-comment">/// when a wasm module is being loaded.</span></span>
+<span class="line" id="L662"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> InitExpression = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L663">    i32_const: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L664">    i64_const: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L665">    f32_const: <span class="tok-type">f32</span>,</span>
+<span class="line" id="L666">    f64_const: <span class="tok-type">f64</span>,</span>
+<span class="line" id="L667">    global_get: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L668">};</span>
+<span class="line" id="L669"></span>
+<span class="line" id="L670"><span class="tok-comment">/// Represents a function entry, holding the index to its type</span></span>
+<span class="line" id="L671"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Func = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L672">    type_index: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L673">};</span>
+<span class="line" id="L674"></span>
+<span class="line" id="L675"><span class="tok-comment">/// Tables are used to hold pointers to opaque objects.</span></span>
+<span class="line" id="L676"><span class="tok-comment">/// This can either by any function, or an object from the host.</span></span>
+<span class="line" id="L677"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Table = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L678">    limits: Limits,</span>
+<span class="line" id="L679">    reftype: RefType,</span>
+<span class="line" id="L680">};</span>
+<span class="line" id="L681"></span>
+<span class="line" id="L682"><span class="tok-comment">/// Describes the layout of the memory where `min` represents</span></span>
+<span class="line" id="L683"><span class="tok-comment">/// the minimal amount of pages, and the optional `max` represents</span></span>
+<span class="line" id="L684"><span class="tok-comment">/// the max pages. When `null` will allow the host to determine the</span></span>
+<span class="line" id="L685"><span class="tok-comment">/// amount of pages.</span></span>
+<span class="line" id="L686"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Memory = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L687">    limits: Limits,</span>
+<span class="line" id="L688">};</span>
+<span class="line" id="L689"></span>
+<span class="line" id="L690"><span class="tok-comment">/// Represents the type of a `Global` or an imported global.</span></span>
+<span class="line" id="L691"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> GlobalType = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L692">    valtype: Valtype,</span>
+<span class="line" id="L693">    mutable: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L694">};</span>
+<span class="line" id="L695"></span>
+<span class="line" id="L696"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Global = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L697">    global_type: GlobalType,</span>
+<span class="line" id="L698">    init: InitExpression,</span>
+<span class="line" id="L699">};</span>
+<span class="line" id="L700"></span>
+<span class="line" id="L701"><span class="tok-comment">/// Notates an object to be exported from wasm</span></span>
+<span class="line" id="L702"><span class="tok-comment">/// to the host.</span></span>
+<span class="line" id="L703"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Export = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L704">    name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L705">    kind: ExternalKind,</span>
+<span class="line" id="L706">    index: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L707">};</span>
+<span class="line" id="L708"></span>
+<span class="line" id="L709"><span class="tok-comment">/// Element describes the layout of the table that can</span></span>
+<span class="line" id="L710"><span class="tok-comment">/// be found at `table_index`</span></span>
+<span class="line" id="L711"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Element = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L712">    table_index: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L713">    offset: InitExpression,</span>
+<span class="line" id="L714">    func_indexes: []<span class="tok-kw">const</span> <span class="tok-type">u32</span>,</span>
+<span class="line" id="L715">};</span>
+<span class="line" id="L716"></span>
+<span class="line" id="L717"><span class="tok-comment">/// Imports are used to import objects from the host</span></span>
+<span class="line" id="L718"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Import = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L719">    module_name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L720">    name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L721">    kind: Kind,</span>
+<span class="line" id="L722"></span>
+<span class="line" id="L723">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Kind = <span class="tok-kw">union</span>(ExternalKind) {</span>
+<span class="line" id="L724">        function: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L725">        table: Table,</span>
+<span class="line" id="L726">        memory: Limits,</span>
+<span class="line" id="L727">        global: GlobalType,</span>
+<span class="line" id="L728">    };</span>
+<span class="line" id="L729">};</span>
+<span class="line" id="L730"></span>
+<span class="line" id="L731"><span class="tok-comment">/// `Type` represents a function signature type containing both</span></span>
+<span class="line" id="L732"><span class="tok-comment">/// a slice of parameters as well as a slice of return values.</span></span>
+<span class="line" id="L733"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Type = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L734">    params: []<span class="tok-kw">const</span> Valtype,</span>
+<span class="line" id="L735">    returns: []<span class="tok-kw">const</span> Valtype,</span>
+<span class="line" id="L736"></span>
+<span class="line" id="L737">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">format</span>(self: Type, <span class="tok-kw">comptime</span> fmt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, opt: std.fmt.FormatOptions, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L738">        <span class="tok-kw">if</span> (fmt.len != <span class="tok-number">0</span>) std.fmt.invalidFmtError(fmt, self);</span>
+<span class="line" id="L739">        _ = opt;</span>
+<span class="line" id="L740">        <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'('</span>);</span>
+<span class="line" id="L741">        <span class="tok-kw">for</span> (self.params, <span class="tok-number">0</span>..) |param, i| {</span>
+<span class="line" id="L742">            <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{s}&quot;</span>, .{<span class="tok-builtin">@tagName</span>(param)});</span>
+<span class="line" id="L743">            <span class="tok-kw">if</span> (i + <span class="tok-number">1</span> != self.params.len) {</span>
+<span class="line" id="L744">                <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;, &quot;</span>);</span>
+<span class="line" id="L745">            }</span>
+<span class="line" id="L746">        }</span>
+<span class="line" id="L747">        <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;) -&gt; &quot;</span>);</span>
+<span class="line" id="L748">        <span class="tok-kw">if</span> (self.returns.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L749">            <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;nil&quot;</span>);</span>
+<span class="line" id="L750">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L751">            <span class="tok-kw">for</span> (self.returns, <span class="tok-number">0</span>..) |return_ty, i| {</span>
+<span class="line" id="L752">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{s}&quot;</span>, .{<span class="tok-builtin">@tagName</span>(return_ty)});</span>
+<span class="line" id="L753">                <span class="tok-kw">if</span> (i + <span class="tok-number">1</span> != self.returns.len) {</span>
+<span class="line" id="L754">                    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;, &quot;</span>);</span>
+<span class="line" id="L755">                }</span>
+<span class="line" id="L756">            }</span>
+<span class="line" id="L757">        }</span>
+<span class="line" id="L758">    }</span>
+<span class="line" id="L759"></span>
+<span class="line" id="L760">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(self: Type, other: Type) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L761">        <span class="tok-kw">return</span> std.mem.eql(Valtype, self.params, other.params) <span class="tok-kw">and</span></span>
+<span class="line" id="L762">            std.mem.eql(Valtype, self.returns, other.returns);</span>
+<span class="line" id="L763">    }</span>
+<span class="line" id="L764"></span>
+<span class="line" id="L765">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *Type, gpa: std.mem.Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L766">        gpa.free(self.params);</span>
+<span class="line" id="L767">        gpa.free(self.returns);</span>
+<span class="line" id="L768">        self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L769">    }</span>
+<span class="line" id="L770">};</span>
+<span class="line" id="L771"></span>
+<span class="line" id="L772"><span class="tok-comment">/// Wasm module sections as per spec:</span></span>
+<span class="line" id="L773"><span class="tok-comment">/// https://webassembly.github.io/spec/core/binary/modules.html</span></span>
+<span class="line" id="L774"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Section = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L775">    custom,</span>
+<span class="line" id="L776">    <span class="tok-type">type</span>,</span>
+<span class="line" id="L777">    import,</span>
+<span class="line" id="L778">    function,</span>
+<span class="line" id="L779">    table,</span>
+<span class="line" id="L780">    memory,</span>
+<span class="line" id="L781">    global,</span>
+<span class="line" id="L782">    @&quot;export&quot;,</span>
+<span class="line" id="L783">    start,</span>
+<span class="line" id="L784">    element,</span>
+<span class="line" id="L785">    code,</span>
+<span class="line" id="L786">    data,</span>
+<span class="line" id="L787">    data_count,</span>
+<span class="line" id="L788">    _,</span>
+<span class="line" id="L789">};</span>
+<span class="line" id="L790"></span>
+<span class="line" id="L791"><span class="tok-comment">/// Returns the integer value of a given `Section`</span></span>
+<span class="line" id="L792"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">section</span>(val: Section) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L793">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(val);</span>
+<span class="line" id="L794">}</span>
+<span class="line" id="L795"></span>
+<span class="line" id="L796"><span class="tok-comment">/// The kind of the type when importing or exporting to/from the host environment</span></span>
+<span class="line" id="L797"><span class="tok-comment">/// https://webassembly.github.io/spec/core/syntax/modules.html</span></span>
+<span class="line" id="L798"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ExternalKind = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L799">    function,</span>
+<span class="line" id="L800">    table,</span>
+<span class="line" id="L801">    memory,</span>
+<span class="line" id="L802">    global,</span>
+<span class="line" id="L803">};</span>
+<span class="line" id="L804"></span>
+<span class="line" id="L805"><span class="tok-comment">/// Returns the integer value of a given `ExternalKind`</span></span>
+<span class="line" id="L806"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">externalKind</span>(val: ExternalKind) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L807">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromEnum</span>(val);</span>
+<span class="line" id="L808">}</span>
+<span class="line" id="L809"></span>
+<span class="line" id="L810"><span class="tok-comment">/// Defines the enum values for each subsection id for the &quot;Names&quot; custom section</span></span>
+<span class="line" id="L811"><span class="tok-comment">/// as described by:</span></span>
+<span class="line" id="L812"><span class="tok-comment">/// https://webassembly.github.io/spec/core/appendix/custom.html?highlight=name#name-section</span></span>
+<span class="line" id="L813"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> NameSubsection = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L814">    module,</span>
+<span class="line" id="L815">    function,</span>
+<span class="line" id="L816">    local,</span>
+<span class="line" id="L817">    label,</span>
+<span class="line" id="L818">    <span class="tok-type">type</span>,</span>
+<span class="line" id="L819">    table,</span>
+<span class="line" id="L820">    memory,</span>
+<span class="line" id="L821">    global,</span>
+<span class="line" id="L822">    elem_segment,</span>
+<span class="line" id="L823">    data_segment,</span>
+<span class="line" id="L824">};</span>
+<span class="line" id="L825"></span>
+<span class="line" id="L826"><span class="tok-comment">// type constants</span>
+</span>
+<span class="line" id="L827"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> element_type: <span class="tok-type">u8</span> = <span class="tok-number">0x70</span>;</span>
+<span class="line" id="L828"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> function_type: <span class="tok-type">u8</span> = <span class="tok-number">0x60</span>;</span>
+<span class="line" id="L829"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> result_type: <span class="tok-type">u8</span> = <span class="tok-number">0x40</span>;</span>
+<span class="line" id="L830"></span>
+<span class="line" id="L831"><span class="tok-comment">/// Represents a block which will not return a value</span></span>
+<span class="line" id="L832"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_empty: <span class="tok-type">u8</span> = <span class="tok-number">0x40</span>;</span>
+<span class="line" id="L833"></span>
+<span class="line" id="L834"><span class="tok-comment">// binary constants</span>
+</span>
+<span class="line" id="L835"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> magic = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x61</span>, <span class="tok-number">0x73</span>, <span class="tok-number">0x6D</span> }; <span class="tok-comment">// \0asm</span>
+</span>
+<span class="line" id="L836"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> version = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x01</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span> }; <span class="tok-comment">// version 1 (MVP)</span>
+</span>
+<span class="line" id="L837"></span>
+<span class="line" id="L838"><span class="tok-comment">// Each wasm page size is 64kB</span>
+</span>
+<span class="line" id="L839"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> page_size = <span class="tok-number">64</span> * <span class="tok-number">1024</span>;</span>
+<span class="line" id="L840"></span>
+</code></pre></body>
+</html>
