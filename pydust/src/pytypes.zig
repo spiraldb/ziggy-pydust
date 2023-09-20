@@ -131,6 +131,13 @@ fn Slots(comptime definition: type) type {
                 }};
             }
 
+            if (@hasDecl(definition, "__init__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_init,
+                    .pfunc = @ptrCast(@constCast(&tp_init)),
+                }};
+            }
+
             if (@hasDecl(definition, "__del__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_finalize,
@@ -225,6 +232,7 @@ fn Slots(comptime definition: type) type {
 
             // Allow the definition to initialize the state field.
             self.state = tp_new_internal(
+                .{ .py = @alignCast(@ptrCast(subtype)) },
                 if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null,
                 if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null,
             ) catch return null;
@@ -232,11 +240,17 @@ fn Slots(comptime definition: type) type {
             return pyself;
         }
 
-        fn tp_new_internal(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) !definition {
-            const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{});
-            if (sig.selfParam) |_| @compileError("__new__ must not take a self parameter");
+        fn tp_new_internal(subtype: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) !definition {
+            const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
 
-            if (sig.argsParam) |Args| {
+            if (sig.selfParam) |_| {
+                if (sig.argsParam) |Args| {
+                    const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
+                    return try definition.__new__(subtype, args);
+                } else {
+                    return try definition.__new__(subtype);
+                }
+            } else if (sig.argsParam) |Args| {
                 const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
                 return try definition.__new__(args);
             } else {
@@ -250,6 +264,22 @@ fn Slots(comptime definition: type) type {
             _ = subtype;
             py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
             return null;
+        }
+
+        fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
+            const sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ *definition, *const definition, py.PyObject });
+
+            if (sig.selfParam == null or sig.argsParam == null) {
+                @compileError("__init__ must take both a self argument and an args struct");
+            }
+
+            const args = if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null;
+            const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
+
+            const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
+            const init_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(.{ .args = args, .kwargs = kwargs }) catch return -1;
+            definition.__init__(self, init_args) catch return -1;
+            return 0;
         }
 
         /// Wrapper for the user's __del__ function.

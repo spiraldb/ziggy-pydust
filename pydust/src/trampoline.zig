@@ -238,7 +238,20 @@ pub fn Trampoline(comptime T: type) type {
 
                         // If the pointer is for a Pydust class
                         if (def.type == .class) {
-                            // TODO(ngates): check the PyType?
+                            // TODO(ngates): What's the easiest / cheapest way to do this?
+                            // For now, we just check the name
+                            const clsName = State.getIdentifier(p.child).name;
+                            const mod = State.getContaining(p.child, .module);
+                            const modName = State.getIdentifier(mod).name;
+
+                            const Cls = try py.importFrom(modName, clsName);
+                            if (!try py.isinstance(obj, Cls)) {
+                                return py.TypeError.raiseFmt(
+                                    "Expected {s}.{s} but found {s}",
+                                    .{ modName, clsName, try obj.getTypeName() },
+                                );
+                            }
+
                             const PyType = pytypes.PyTypeStruct(p.child);
                             const pyobject = @as(*PyType, @ptrCast(obj.py));
                             return @constCast(&pyobject.state);
