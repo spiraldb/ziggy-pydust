@@ -84,6 +84,16 @@ pub fn importFrom(module_name: [:0]const u8, attr: [:0]const u8) !py.PyObject {
     return try mod.get(attr);
 }
 
+/// Check if object is an instance of cls.
+pub fn isinstance(object: anytype, cls: anytype) !bool {
+    const pyobj = py.object(object);
+    const pycls = py.object(cls);
+
+    const result = ffi.PyObject_IsInstance(pyobj.py, pycls.py);
+    if (result < 0) return PyError.Propagate;
+    return result == 1;
+}
+
 /// Return the reference count of the object.
 pub fn refcnt(object: anytype) isize {
     const pyobj = py.object(object);

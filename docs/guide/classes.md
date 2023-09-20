@@ -150,14 +150,15 @@ const binaryfunc = fn(*Self, other: object) !object;
 
 ### Type Methods
 
-| Method     | Signature                      |
-|:-----------|:-------------------------------|
-| `__new__`  | `#!zig fn(CallArgs) !Self`     |
-| `__del__`  | `#!zig fn(*Self) void`         |
-| `__repr__` | `#!zig fn(*Self) !py.PyString` |
-| `__str__`  | `#!zig fn(*Self) !py.PyString` |
-| `__iter__` | `#!zig fn(*Self) !object`      |
-| `__next__` | `#!zig fn(*Self) !?object`     |
+| Method     | Signature                        |
+|:-----------|:---------------------------------|
+| `__new__`  | `#!zig fn(CallArgs) !Self`       |
+| `__init__` | `#!zig fn(*Self, CallArgs) !void`|
+| `__del__`  | `#!zig fn(*Self) void`           |
+| `__repr__` | `#!zig fn(*Self) !py.PyString`   |
+| `__str__`  | `#!zig fn(*Self) !py.PyString`   |
+| `__iter__` | `#!zig fn(*Self) !object`        |
+| `__next__` | `#!zig fn(*Self) !?object`       |
 
 ### Sequence Methods
 

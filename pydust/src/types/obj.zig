@@ -36,6 +36,12 @@ pub const PyObject = extern struct {
         ffi.Py_DECREF(self.py);
     }
 
+    pub fn getTypeName(self: PyObject) ![:0]const u8 {
+        const pytype: *ffi.PyObject = ffi.PyObject_Type(self.py) orelse return PyError.Propagate;
+        const name = py.PyString.unchecked(.{ .py = ffi.PyType_GetName(@ptrCast(pytype)) orelse return PyError.Propagate });
+        return name.asSlice();
+    }
+
     /// Call this object without any arguments.
     pub fn call0(self: PyObject) !PyObject {
         return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.Propagate };
