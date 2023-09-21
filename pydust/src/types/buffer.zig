@@ -125,6 +125,7 @@ pub const PyBuffer = extern struct {
             },
             .Float => |f| {
                 switch (f.bits) {
+                    16 => return "e",
                     32 => return "f",
                     64 => return "d",
                     else => {},
@@ -133,6 +134,6 @@ pub const PyBuffer = extern struct {
             else => {},
         }
 
-        @compileError("Unsupported buffer value type" ++ @typeName(value_type));
+        @compileError("Unsupported buffer value type " ++ @typeName(value_type));
     }
 };
