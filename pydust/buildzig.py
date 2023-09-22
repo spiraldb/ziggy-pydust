@@ -33,21 +33,22 @@ PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
 def zig_build(argv: list[str]):
-    conf = config.load()
+    with config.within_project_root():
+        conf = config.load()
 
-    # Always generate the supporting pydist.build.zig
-    generate_pydust_build_zig(conf.pydust_build_zig)
+        # Always generate the supporting pydist.build.zig
+        generate_pydust_build_zig(conf.pydust_build_zig)
 
-    if not conf.self_managed:
-        # Generate the build.zig if we're managing the ext_modules ourselves
-        generate_build_zig(conf.build_zig)
+        if not conf.self_managed:
+            # Generate the build.zig if we're managing the ext_modules ourselves
+            generate_build_zig(conf.build_zig)
 
-    zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
+        zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
 
-    subprocess.run(
-        zig_exe + ["build", "--build-file", conf.build_zig] + argv,
-        check=True,
-    )
+        subprocess.run(
+            zig_exe + ["build", "--build-file", conf.build_zig] + argv,
+            check=True,
+        )
 
 
 def generate_build_zig(build_zig_file):

@@ -11,7 +11,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
+import contextlib
 import functools
 import os
 
@@ -65,7 +65,31 @@ class ToolPydust(BaseModel):
 
 
 @functools.cache
+def find_project_root():
+    dir = os.getcwd()
+    while True:
+        if dir == "/":
+            raise ValueError
+        if os.path.exists(os.path.join(dir, "pyproject.toml")):
+            return dir
+        if os.path.exists(os.path.join(dir, ".git")):
+            raise ValueError("Reached git root without finding pyproject.toml")
+        dir = os.path.dirname(dir)
+
+
+@contextlib.contextmanager
+def within_project_root():
+    old_cwd = os.getcwd()
+    os.chdir(find_project_root())
+    try:
+        yield
+    finally:
+        os.chdir(old_cwd)
+
+
+@functools.cache
 def load() -> ToolPydust:
-    with open("pyproject.toml", "rb") as f:
+    root = find_project_root()
+    with open(os.path.join(root, "pyproject.toml"), "rb") as f:
         pyproject = tomllib.load(f)
     return ToolPydust(**pyproject["tool"].get("pydust", {}))

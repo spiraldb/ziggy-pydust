@@ -34,8 +34,9 @@ def pytest_collection(session):
     * Invoke a `zig build install` to generate the Python extension modules (used by Python tests)
     * Invoke a `zig build pydust-test-build` to generate the Zig test runners (used by Zig tests)
     """
-    buildzig.zig_build(["install", f"-Dpython-exe={sys.executable}"])
-    buildzig.zig_build(["pydust-test-build", f"-Dpython-exe={sys.executable}"])
+    mode = "Debug"
+    buildzig.zig_build(["install", f"-Doptimize={mode}", f"-Dpython-exe={sys.executable}"])
+    buildzig.zig_build(["pydust-test-build", f"-Doptimize={mode}", f"-Dpython-exe={sys.executable}"])
 
 
 def pytest_collect_file(file_path, path, parent):
