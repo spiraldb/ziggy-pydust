@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>os/uefi.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3"><span class="tok-comment">/// A protocol is an interface identified by a GUID.</span></span>
+<span class="line" id="L4"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> protocols = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;uefi/protocols.zig&quot;</span>);</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-comment">/// Status codes returned by EFI interfaces</span></span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Status = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;uefi/status.zig&quot;</span>).Status;</span>
+<span class="line" id="L8"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> tables = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;uefi/tables.zig&quot;</span>);</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-comment">/// The memory type to allocate when using the pool</span></span>
+<span class="line" id="L11"><span class="tok-comment">/// Defaults to .LoaderData, the default data allocation type</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// used by UEFI applications to allocate pool memory.</span></span>
+<span class="line" id="L13"><span class="tok-kw">pub</span> <span class="tok-kw">var</span> efi_pool_memory_type: tables.MemoryType = .LoaderData;</span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> pool_allocator = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;uefi/pool_allocator.zig&quot;</span>).pool_allocator;</span>
+<span class="line" id="L15"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> raw_pool_allocator = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;uefi/pool_allocator.zig&quot;</span>).raw_pool_allocator;</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17"><span class="tok-comment">/// The EFI image's handle that is passed to its entry point.</span></span>
+<span class="line" id="L18"><span class="tok-kw">pub</span> <span class="tok-kw">var</span> handle: Handle = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20"><span class="tok-comment">/// A pointer to the EFI System Table that is passed to the EFI image's entry point.</span></span>
+<span class="line" id="L21"><span class="tok-kw">pub</span> <span class="tok-kw">var</span> system_table: *tables.SystemTable = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23"><span class="tok-comment">/// A handle to an event structure.</span></span>
+<span class="line" id="L24"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Event = *<span class="tok-kw">opaque</span> {};</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26"><span class="tok-comment">/// The calling convention used for all external functions part of the UEFI API.</span></span>
+<span class="line" id="L27"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> cc = <span class="tok-kw">switch</span> (<span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>).target.cpu.arch) {</span>
+<span class="line" id="L28">    .x86_64 =&gt; .Win64,</span>
+<span class="line" id="L29">    <span class="tok-kw">else</span> =&gt; .C,</span>
+<span class="line" id="L30">};</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MacAddress = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L33">    address: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L34">};</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Ipv4Address = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L37">    address: [<span class="tok-number">4</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L38">};</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Ipv6Address = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L41">    address: [<span class="tok-number">16</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L42">};</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44"><span class="tok-comment">/// GUIDs are align(8) unless otherwise specified.</span></span>
+<span class="line" id="L45"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Guid = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L46">    time_low: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L47">    time_mid: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L48">    time_high_and_version: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L49">    clock_seq_high_and_reserved: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L50">    clock_seq_low: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L51">    node: [<span class="tok-number">6</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L52"></span>
+<span class="line" id="L53">    <span class="tok-comment">/// Format GUID into hexadecimal lowercase xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx format</span></span>
+<span class="line" id="L54">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">format</span>(</span>
+<span class="line" id="L55">        self: <span class="tok-builtin">@This</span>(),</span>
+<span class="line" id="L56">        <span class="tok-kw">comptime</span> f: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L57">        options: std.fmt.FormatOptions,</span>
+<span class="line" id="L58">        writer: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L59">    ) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L60">        _ = options;</span>
+<span class="line" id="L61">        <span class="tok-kw">if</span> (f.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L62">            <span class="tok-kw">const</span> fmt = std.fmt.fmtSliceHexLower;</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">            <span class="tok-kw">const</span> time_low = <span class="tok-builtin">@byteSwap</span>(self.time_low);</span>
+<span class="line" id="L65">            <span class="tok-kw">const</span> time_mid = <span class="tok-builtin">@byteSwap</span>(self.time_mid);</span>
+<span class="line" id="L66">            <span class="tok-kw">const</span> time_high_and_version = <span class="tok-builtin">@byteSwap</span>(self.time_high_and_version);</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">            <span class="tok-kw">return</span> std.fmt.format(writer, <span class="tok-str">&quot;{:0&gt;8}-{:0&gt;4}-{:0&gt;4}-{:0&gt;2}{:0&gt;2}-{:0&gt;12}&quot;</span>, .{</span>
+<span class="line" id="L69">                fmt(std.mem.asBytes(&amp;time_low)),</span>
+<span class="line" id="L70">                fmt(std.mem.asBytes(&amp;time_mid)),</span>
+<span class="line" id="L71">                fmt(std.mem.asBytes(&amp;time_high_and_version)),</span>
+<span class="line" id="L72">                fmt(std.mem.asBytes(&amp;self.clock_seq_high_and_reserved)),</span>
+<span class="line" id="L73">                fmt(std.mem.asBytes(&amp;self.clock_seq_low)),</span>
+<span class="line" id="L74">                fmt(std.mem.asBytes(&amp;self.node)),</span>
+<span class="line" id="L75">            });</span>
+<span class="line" id="L76">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L77">            std.fmt.invalidFmtError(f, self);</span>
+<span class="line" id="L78">        }</span>
+<span class="line" id="L79">    }</span>
+<span class="line" id="L80"></span>
+<span class="line" id="L81">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(a: std.os.uefi.Guid, b: std.os.uefi.Guid) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L82">        <span class="tok-kw">return</span> a.time_low == b.time_low <span class="tok-kw">and</span></span>
+<span class="line" id="L83">            a.time_mid == b.time_mid <span class="tok-kw">and</span></span>
+<span class="line" id="L84">            a.time_high_and_version == b.time_high_and_version <span class="tok-kw">and</span></span>
+<span class="line" id="L85">            a.clock_seq_high_and_reserved == b.clock_seq_high_and_reserved <span class="tok-kw">and</span></span>
+<span class="line" id="L86">            a.clock_seq_low == b.clock_seq_low <span class="tok-kw">and</span></span>
+<span class="line" id="L87">            std.mem.eql(<span class="tok-type">u8</span>, &amp;a.node, &amp;b.node);</span>
+<span class="line" id="L88">    }</span>
+<span class="line" id="L89">};</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91"><span class="tok-comment">/// An EFI Handle represents a collection of related interfaces.</span></span>
+<span class="line" id="L92"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Handle = *<span class="tok-kw">opaque</span> {};</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94"><span class="tok-comment">/// This structure represents time information.</span></span>
+<span class="line" id="L95"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Time = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L96">    <span class="tok-comment">/// 1900 - 9999</span></span>
+<span class="line" id="L97">    year: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">    <span class="tok-comment">/// 1 - 12</span></span>
+<span class="line" id="L100">    month: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">    <span class="tok-comment">/// 1 - 31</span></span>
+<span class="line" id="L103">    day: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">    <span class="tok-comment">/// 0 - 23</span></span>
+<span class="line" id="L106">    hour: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108">    <span class="tok-comment">/// 0 - 59</span></span>
+<span class="line" id="L109">    minute: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111">    <span class="tok-comment">/// 0 - 59</span></span>
+<span class="line" id="L112">    second: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">    <span class="tok-comment">/// 0 - 999999999</span></span>
+<span class="line" id="L115">    nanosecond: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">    <span class="tok-comment">/// The time's offset in minutes from UTC.</span></span>
+<span class="line" id="L118">    <span class="tok-comment">/// Allowed values are -1440 to 1440 or unspecified_timezone</span></span>
+<span class="line" id="L119">    timezone: <span class="tok-type">i16</span>,</span>
+<span class="line" id="L120">    daylight: <span class="tok-kw">packed</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L121">        _pad1: <span class="tok-type">u6</span>,</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123">        <span class="tok-comment">/// If true, the time has been adjusted for daylight savings time.</span></span>
+<span class="line" id="L124">        in_daylight: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">        <span class="tok-comment">/// If true, the time is affected by daylight savings time.</span></span>
+<span class="line" id="L127">        adjust_daylight: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L128">    },</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">    <span class="tok-comment">/// Time is to be interpreted as local time</span></span>
+<span class="line" id="L131">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> unspecified_timezone: <span class="tok-type">i16</span> = <span class="tok-number">0x7ff</span>;</span>
+<span class="line" id="L132">};</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134"><span class="tok-comment">/// Capabilities of the clock device</span></span>
+<span class="line" id="L135"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> TimeCapabilities = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L136">    <span class="tok-comment">/// Resolution in Hz</span></span>
+<span class="line" id="L137">    resolution: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L138"></span>
+<span class="line" id="L139">    <span class="tok-comment">/// Accuracy in an error rate of 1e-6 parts per million.</span></span>
+<span class="line" id="L140">    accuracy: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">    <span class="tok-comment">/// If true, a time set operation clears the device's time below the resolution level.</span></span>
+<span class="line" id="L143">    sets_to_zero: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L144">};</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146"><span class="tok-comment">/// File Handle as specified in the EFI Shell Spec</span></span>
+<span class="line" id="L147"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FileHandle = *<span class="tok-kw">opaque</span> {};</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149"><span class="tok-kw">test</span> <span class="tok-str">&quot;GUID formatting&quot;</span> {</span>
+<span class="line" id="L150">    <span class="tok-kw">var</span> bytes = [_]<span class="tok-type">u8</span>{ <span class="tok-number">137</span>, <span class="tok-number">60</span>, <span class="tok-number">203</span>, <span class="tok-number">50</span>, <span class="tok-number">128</span>, <span class="tok-number">128</span>, <span class="tok-number">124</span>, <span class="tok-number">66</span>, <span class="tok-number">186</span>, <span class="tok-number">19</span>, <span class="tok-number">80</span>, <span class="tok-number">73</span>, <span class="tok-number">135</span>, <span class="tok-number">59</span>, <span class="tok-number">194</span>, <span class="tok-number">135</span> };</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">    <span class="tok-kw">var</span> guid = <span class="tok-builtin">@as</span>(Guid, <span class="tok-builtin">@bitCast</span>(bytes));</span>
+<span class="line" id="L153"></span>
+<span class="line" id="L154">    <span class="tok-kw">var</span> str = <span class="tok-kw">try</span> std.fmt.allocPrint(std.testing.allocator, <span class="tok-str">&quot;{}&quot;</span>, .{guid});</span>
+<span class="line" id="L155">    <span class="tok-kw">defer</span> std.testing.allocator.free(str);</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157">    <span class="tok-kw">try</span> std.testing.expect(std.mem.eql(<span class="tok-type">u8</span>, str, <span class="tok-str">&quot;32cb3c89-8080-427c-ba13-5049873bc287&quot;</span>));</span>
+<span class="line" id="L158">}</span>
+<span class="line" id="L159"></span>
+<span class="line" id="L160"><span class="tok-kw">test</span> {</span>
+<span class="line" id="L161">    _ = tables;</span>
+<span class="line" id="L162">    _ = protocols;</span>
+<span class="line" id="L163">}</span>
+<span class="line" id="L164"></span>
+</code></pre></body>
+</html>

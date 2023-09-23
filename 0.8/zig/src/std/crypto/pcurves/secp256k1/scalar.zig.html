@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/pcurves/secp256k1/scalar.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> common = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../common.zig&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> debug = std.debug;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-kw">const</span> Field = common.Field;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">const</span> NonCanonicalError = std.crypto.errors.NonCanonicalError;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> NotSquareError = std.crypto.errors.NotSquareError;</span>
+<span class="line" id="L12"></span>
+<span class="line" id="L13"><span class="tok-comment">/// Number of bytes required to encode a scalar.</span></span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> encoded_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16"><span class="tok-comment">/// A compressed scalar, in canonical form.</span></span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> CompressedScalar = [encoded_length]<span class="tok-type">u8</span>;</span>
+<span class="line" id="L18"></span>
+<span class="line" id="L19"><span class="tok-kw">const</span> Fe = Field(.{</span>
+<span class="line" id="L20">    .fiat = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;secp256k1_scalar_64.zig&quot;</span>),</span>
+<span class="line" id="L21">    .field_order = <span class="tok-number">115792089237316195423570985008687907852837564279074904382605163141518161494337</span>,</span>
+<span class="line" id="L22">    .field_bits = <span class="tok-number">256</span>,</span>
+<span class="line" id="L23">    .saturated_bits = <span class="tok-number">256</span>,</span>
+<span class="line" id="L24">    .encoded_length = encoded_length,</span>
+<span class="line" id="L25">});</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27"><span class="tok-comment">/// The scalar field order.</span></span>
+<span class="line" id="L28"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> field_order = Fe.field_order;</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30"><span class="tok-comment">/// Reject a scalar whose encoding is not canonical.</span></span>
+<span class="line" id="L31"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rejectNonCanonical</span>(s: CompressedScalar, endian: std.builtin.Endian) NonCanonicalError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L32">    <span class="tok-kw">return</span> Fe.rejectNonCanonical(s, endian);</span>
+<span class="line" id="L33">}</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35"><span class="tok-comment">/// Reduce a 48-bytes scalar to the field size.</span></span>
+<span class="line" id="L36"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reduce48</span>(s: [<span class="tok-number">48</span>]<span class="tok-type">u8</span>, endian: std.builtin.Endian) CompressedScalar {</span>
+<span class="line" id="L37">    <span class="tok-kw">return</span> Scalar.fromBytes48(s, endian).toBytes(endian);</span>
+<span class="line" id="L38">}</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40"><span class="tok-comment">/// Reduce a 64-bytes scalar to the field size.</span></span>
+<span class="line" id="L41"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reduce64</span>(s: [<span class="tok-number">64</span>]<span class="tok-type">u8</span>, endian: std.builtin.Endian) CompressedScalar {</span>
+<span class="line" id="L42">    <span class="tok-kw">return</span> ScalarDouble.fromBytes64(s, endian).toBytes(endian);</span>
+<span class="line" id="L43">}</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45"><span class="tok-comment">/// Return a*b (mod L)</span></span>
+<span class="line" id="L46"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mul</span>(a: CompressedScalar, b: CompressedScalar, endian: std.builtin.Endian) NonCanonicalError!CompressedScalar {</span>
+<span class="line" id="L47">    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> Scalar.fromBytes(a, endian)).mul(<span class="tok-kw">try</span> Scalar.fromBytes(b, endian)).toBytes(endian);</span>
+<span class="line" id="L48">}</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50"><span class="tok-comment">/// Return a*b+c (mod L)</span></span>
+<span class="line" id="L51"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mulAdd</span>(a: CompressedScalar, b: CompressedScalar, c: CompressedScalar, endian: std.builtin.Endian) NonCanonicalError!CompressedScalar {</span>
+<span class="line" id="L52">    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> Scalar.fromBytes(a, endian)).mul(<span class="tok-kw">try</span> Scalar.fromBytes(b, endian)).add(<span class="tok-kw">try</span> Scalar.fromBytes(c, endian)).toBytes(endian);</span>
+<span class="line" id="L53">}</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55"><span class="tok-comment">/// Return a+b (mod L)</span></span>
+<span class="line" id="L56"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(a: CompressedScalar, b: CompressedScalar, endian: std.builtin.Endian) NonCanonicalError!CompressedScalar {</span>
+<span class="line" id="L57">    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> Scalar.fromBytes(a, endian)).add(<span class="tok-kw">try</span> Scalar.fromBytes(b, endian)).toBytes(endian);</span>
+<span class="line" id="L58">}</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60"><span class="tok-comment">/// Return -s (mod L)</span></span>
+<span class="line" id="L61"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">neg</span>(s: CompressedScalar, endian: std.builtin.Endian) NonCanonicalError!CompressedScalar {</span>
+<span class="line" id="L62">    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> Scalar.fromBytes(s, endian)).neg().toBytes(endian);</span>
+<span class="line" id="L63">}</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65"><span class="tok-comment">/// Return (a-b) (mod L)</span></span>
+<span class="line" id="L66"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sub</span>(a: CompressedScalar, b: CompressedScalar, endian: std.builtin.Endian) NonCanonicalError!CompressedScalar {</span>
+<span class="line" id="L67">    <span class="tok-kw">return</span> (<span class="tok-kw">try</span> Scalar.fromBytes(a, endian)).sub(<span class="tok-kw">try</span> Scalar.fromBytes(b, endian)).toBytes(endian);</span>
+<span class="line" id="L68">}</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70"><span class="tok-comment">/// Return a random scalar</span></span>
+<span class="line" id="L71"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">random</span>(endian: std.builtin.Endian) CompressedScalar {</span>
+<span class="line" id="L72">    <span class="tok-kw">return</span> Scalar.random().toBytes(endian);</span>
+<span class="line" id="L73">}</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75"><span class="tok-comment">/// A scalar in unpacked representation.</span></span>
+<span class="line" id="L76"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Scalar = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L77">    fe: Fe,</span>
+<span class="line" id="L78"></span>
+<span class="line" id="L79">    <span class="tok-comment">/// Zero.</span></span>
+<span class="line" id="L80">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> zero = Scalar{ .fe = Fe.zero };</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">    <span class="tok-comment">/// One.</span></span>
+<span class="line" id="L83">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> one = Scalar{ .fe = Fe.one };</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85">    <span class="tok-comment">/// Unpack a serialized representation of a scalar.</span></span>
+<span class="line" id="L86">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(s: CompressedScalar, endian: std.builtin.Endian) NonCanonicalError!Scalar {</span>
+<span class="line" id="L87">        <span class="tok-kw">return</span> Scalar{ .fe = <span class="tok-kw">try</span> Fe.fromBytes(s, endian) };</span>
+<span class="line" id="L88">    }</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">    <span class="tok-comment">/// Reduce a 384 bit input to the field size.</span></span>
+<span class="line" id="L91">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes48</span>(s: [<span class="tok-number">48</span>]<span class="tok-type">u8</span>, endian: std.builtin.Endian) Scalar {</span>
+<span class="line" id="L92">        <span class="tok-kw">const</span> t = ScalarDouble.fromBytes(<span class="tok-number">384</span>, s, endian);</span>
+<span class="line" id="L93">        <span class="tok-kw">return</span> t.reduce(<span class="tok-number">384</span>);</span>
+<span class="line" id="L94">    }</span>
+<span class="line" id="L95"></span>
+<span class="line" id="L96">    <span class="tok-comment">/// Reduce a 512 bit input to the field size.</span></span>
+<span class="line" id="L97">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes64</span>(s: [<span class="tok-number">64</span>]<span class="tok-type">u8</span>, endian: std.builtin.Endian) Scalar {</span>
+<span class="line" id="L98">        <span class="tok-kw">const</span> t = ScalarDouble.fromBytes(<span class="tok-number">512</span>, s, endian);</span>
+<span class="line" id="L99">        <span class="tok-kw">return</span> t.reduce(<span class="tok-number">512</span>);</span>
+<span class="line" id="L100">    }</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">    <span class="tok-comment">/// Pack a scalar into bytes.</span></span>
+<span class="line" id="L103">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toBytes</span>(n: Scalar, endian: std.builtin.Endian) CompressedScalar {</span>
+<span class="line" id="L104">        <span class="tok-kw">return</span> n.fe.toBytes(endian);</span>
+<span class="line" id="L105">    }</span>
+<span class="line" id="L106"></span>
+<span class="line" id="L107">    <span class="tok-comment">/// Return true if the scalar is zero..</span></span>
+<span class="line" id="L108">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isZero</span>(n: Scalar) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L109">        <span class="tok-kw">return</span> n.fe.isZero();</span>
+<span class="line" id="L110">    }</span>
+<span class="line" id="L111"></span>
+<span class="line" id="L112">    <span class="tok-comment">/// Return true if the scalar is odd.</span></span>
+<span class="line" id="L113">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isOdd</span>(n: Scalar) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L114">        <span class="tok-kw">return</span> n.fe.isOdd();</span>
+<span class="line" id="L115">    }</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">    <span class="tok-comment">/// Return true if a and b are equivalent.</span></span>
+<span class="line" id="L118">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">equivalent</span>(a: Scalar, b: Scalar) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L119">        <span class="tok-kw">return</span> a.fe.equivalent(b.fe);</span>
+<span class="line" id="L120">    }</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">    <span class="tok-comment">/// Compute x+y (mod L)</span></span>
+<span class="line" id="L123">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(x: Scalar, y: Scalar) Scalar {</span>
+<span class="line" id="L124">        <span class="tok-kw">return</span> Scalar{ .fe = x.fe.add(y.fe) };</span>
+<span class="line" id="L125">    }</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127">    <span class="tok-comment">/// Compute x-y (mod L)</span></span>
+<span class="line" id="L128">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sub</span>(x: Scalar, y: Scalar) Scalar {</span>
+<span class="line" id="L129">        <span class="tok-kw">return</span> Scalar{ .fe = x.fe.sub(y.fe) };</span>
+<span class="line" id="L130">    }</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">    <span class="tok-comment">/// Compute 2n (mod L)</span></span>
+<span class="line" id="L133">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">dbl</span>(n: Scalar) Scalar {</span>
+<span class="line" id="L134">        <span class="tok-kw">return</span> Scalar{ .fe = n.fe.dbl() };</span>
+<span class="line" id="L135">    }</span>
+<span class="line" id="L136"></span>
+<span class="line" id="L137">    <span class="tok-comment">/// Compute x*y (mod L)</span></span>
+<span class="line" id="L138">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mul</span>(x: Scalar, y: Scalar) Scalar {</span>
+<span class="line" id="L139">        <span class="tok-kw">return</span> Scalar{ .fe = x.fe.mul(y.fe) };</span>
+<span class="line" id="L140">    }</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">    <span class="tok-comment">/// Compute x^2 (mod L)</span></span>
+<span class="line" id="L143">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sq</span>(n: Scalar) Scalar {</span>
+<span class="line" id="L144">        <span class="tok-kw">return</span> Scalar{ .fe = n.fe.sq() };</span>
+<span class="line" id="L145">    }</span>
+<span class="line" id="L146"></span>
+<span class="line" id="L147">    <span class="tok-comment">/// Compute x^n (mod L)</span></span>
+<span class="line" id="L148">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pow</span>(a: Scalar, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> n: T) Scalar {</span>
+<span class="line" id="L149">        <span class="tok-kw">return</span> Scalar{ .fe = a.fe.pow(n) };</span>
+<span class="line" id="L150">    }</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">    <span class="tok-comment">/// Compute -x (mod L)</span></span>
+<span class="line" id="L153">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">neg</span>(n: Scalar) Scalar {</span>
+<span class="line" id="L154">        <span class="tok-kw">return</span> Scalar{ .fe = n.fe.neg() };</span>
+<span class="line" id="L155">    }</span>
+<span class="line" id="L156"></span>
+<span class="line" id="L157">    <span class="tok-comment">/// Compute x^-1 (mod L)</span></span>
+<span class="line" id="L158">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">invert</span>(n: Scalar) Scalar {</span>
+<span class="line" id="L159">        <span class="tok-kw">return</span> Scalar{ .fe = n.fe.invert() };</span>
+<span class="line" id="L160">    }</span>
+<span class="line" id="L161"></span>
+<span class="line" id="L162">    <span class="tok-comment">/// Return true if n is a quadratic residue mod L.</span></span>
+<span class="line" id="L163">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isSquare</span>(n: Scalar) Scalar {</span>
+<span class="line" id="L164">        <span class="tok-kw">return</span> n.fe.isSquare();</span>
+<span class="line" id="L165">    }</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167">    <span class="tok-comment">/// Return the square root of L, or NotSquare if there isn't any solutions.</span></span>
+<span class="line" id="L168">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sqrt</span>(n: Scalar) NotSquareError!Scalar {</span>
+<span class="line" id="L169">        <span class="tok-kw">return</span> Scalar{ .fe = <span class="tok-kw">try</span> n.fe.sqrt() };</span>
+<span class="line" id="L170">    }</span>
+<span class="line" id="L171"></span>
+<span class="line" id="L172">    <span class="tok-comment">/// Return a random scalar &lt; L.</span></span>
+<span class="line" id="L173">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">random</span>() Scalar {</span>
+<span class="line" id="L174">        <span class="tok-kw">var</span> s: [<span class="tok-number">48</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L175">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L176">            crypto.random.bytes(&amp;s);</span>
+<span class="line" id="L177">            <span class="tok-kw">const</span> n = Scalar.fromBytes48(s, .Little);</span>
+<span class="line" id="L178">            <span class="tok-kw">if</span> (!n.isZero()) {</span>
+<span class="line" id="L179">                <span class="tok-kw">return</span> n;</span>
+<span class="line" id="L180">            }</span>
+<span class="line" id="L181">        }</span>
+<span class="line" id="L182">    }</span>
+<span class="line" id="L183">};</span>
+<span class="line" id="L184"></span>
+<span class="line" id="L185"><span class="tok-kw">const</span> ScalarDouble = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L186">    x1: Fe,</span>
+<span class="line" id="L187">    x2: Fe,</span>
+<span class="line" id="L188">    x3: Fe,</span>
+<span class="line" id="L189"></span>
+<span class="line" id="L190">    <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(<span class="tok-kw">comptime</span> bits: <span class="tok-type">usize</span>, s_: [bits / <span class="tok-number">8</span>]<span class="tok-type">u8</span>, endian: std.builtin.Endian) ScalarDouble {</span>
+<span class="line" id="L191">        debug.assert(bits &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> bits &lt;= <span class="tok-number">512</span> <span class="tok-kw">and</span> bits &gt;= Fe.saturated_bits <span class="tok-kw">and</span> bits &lt;= Fe.saturated_bits * <span class="tok-number">3</span>);</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">        <span class="tok-kw">var</span> s = s_;</span>
+<span class="line" id="L194">        <span class="tok-kw">if</span> (endian == .Big) {</span>
+<span class="line" id="L195">            <span class="tok-kw">for</span> (s_, <span class="tok-number">0</span>..) |x, i| s[s.len - <span class="tok-number">1</span> - i] = x;</span>
+<span class="line" id="L196">        }</span>
+<span class="line" id="L197">        <span class="tok-kw">var</span> t = ScalarDouble{ .x1 = <span class="tok-null">undefined</span>, .x2 = Fe.zero, .x3 = Fe.zero };</span>
+<span class="line" id="L198">        {</span>
+<span class="line" id="L199">            <span class="tok-kw">var</span> b = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** encoded_length;</span>
+<span class="line" id="L200">            <span class="tok-kw">const</span> len = <span class="tok-builtin">@min</span>(s.len, <span class="tok-number">24</span>);</span>
+<span class="line" id="L201">            b[<span class="tok-number">0</span>..len].* = s[<span class="tok-number">0</span>..len].*;</span>
+<span class="line" id="L202">            t.x1 = Fe.fromBytes(b, .Little) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L203">        }</span>
+<span class="line" id="L204">        <span class="tok-kw">if</span> (s_.len &gt;= <span class="tok-number">24</span>) {</span>
+<span class="line" id="L205">            <span class="tok-kw">var</span> b = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** encoded_length;</span>
+<span class="line" id="L206">            <span class="tok-kw">const</span> len = <span class="tok-builtin">@min</span>(s.len - <span class="tok-number">24</span>, <span class="tok-number">24</span>);</span>
+<span class="line" id="L207">            b[<span class="tok-number">0</span>..len].* = s[<span class="tok-number">24</span>..][<span class="tok-number">0</span>..len].*;</span>
+<span class="line" id="L208">            t.x2 = Fe.fromBytes(b, .Little) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L209">        }</span>
+<span class="line" id="L210">        <span class="tok-kw">if</span> (s_.len &gt;= <span class="tok-number">48</span>) {</span>
+<span class="line" id="L211">            <span class="tok-kw">var</span> b = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** encoded_length;</span>
+<span class="line" id="L212">            <span class="tok-kw">const</span> len = s.len - <span class="tok-number">48</span>;</span>
+<span class="line" id="L213">            b[<span class="tok-number">0</span>..len].* = s[<span class="tok-number">48</span>..][<span class="tok-number">0</span>..len].*;</span>
+<span class="line" id="L214">            t.x3 = Fe.fromBytes(b, .Little) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L215">        }</span>
+<span class="line" id="L216">        <span class="tok-kw">return</span> t;</span>
+<span class="line" id="L217">    }</span>
+<span class="line" id="L218"></span>
+<span class="line" id="L219">    <span class="tok-kw">fn</span> <span class="tok-fn">reduce</span>(expanded: ScalarDouble, <span class="tok-kw">comptime</span> bits: <span class="tok-type">usize</span>) Scalar {</span>
+<span class="line" id="L220">        debug.assert(bits &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> bits &lt;= Fe.saturated_bits * <span class="tok-number">3</span> <span class="tok-kw">and</span> bits &lt;= <span class="tok-number">512</span>);</span>
+<span class="line" id="L221">        <span class="tok-kw">var</span> fe = expanded.x1;</span>
+<span class="line" id="L222">        <span class="tok-kw">if</span> (bits &gt;= <span class="tok-number">192</span>) {</span>
+<span class="line" id="L223">            <span class="tok-kw">const</span> st1 = Fe.fromInt(<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">192</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L224">            fe = fe.add(expanded.x2.mul(st1));</span>
+<span class="line" id="L225">            <span class="tok-kw">if</span> (bits &gt;= <span class="tok-number">384</span>) {</span>
+<span class="line" id="L226">                <span class="tok-kw">const</span> st2 = st1.sq();</span>
+<span class="line" id="L227">                fe = fe.add(expanded.x3.mul(st2));</span>
+<span class="line" id="L228">            }</span>
+<span class="line" id="L229">        }</span>
+<span class="line" id="L230">        <span class="tok-kw">return</span> Scalar{ .fe = fe };</span>
+<span class="line" id="L231">    }</span>
+<span class="line" id="L232">};</span>
+<span class="line" id="L233"></span>
+</code></pre></body>
+</html>
