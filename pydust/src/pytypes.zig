@@ -443,10 +443,15 @@ fn Properties(comptime definition: type) type {
                             pub fn get(pyself: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.C) ?*ffi.PyObject {
                                 _ = closure;
 
-                                const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-                                const propself = @constCast(&@field(self.state, field.name));
+                                const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
 
-                                // TODO(ngates): trampoline self?
+                                const SelfParam = @typeInfo(@TypeOf(field.type.get)).Fn.params[0].type.?;
+                                const propself = switch (SelfParam) {
+                                    *const definition => &self.state,
+                                    *const field.type => @constCast(&@field(self.state, field.name)),
+                                    else => @compileError("Unsupported self parameter " ++ @typeName(SelfParam) ++ ". Expected " ++ @typeName(*const definition) ++ " or " ++ @typeName(*const field.type)),
+                                };
+
                                 const result = field.type.get(propself) catch return null;
                                 const resultObj = tramp.Trampoline(@TypeOf(result)).wrap(result) catch return null;
                                 return resultObj.py;

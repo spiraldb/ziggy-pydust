@@ -58,6 +58,8 @@ def test_properties():
         u.email = "dave"
     assert str(exc_info.value) == "Invalid email address for Dave"
 
+    assert u.greeting == "Hello, Dave!"
+
 
 # --8<-- [end:properties]
 

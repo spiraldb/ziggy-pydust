@@ -91,6 +91,9 @@ use of Zig's `@fieldParentPointer` builtin to get a handle on the class instance
     --8<-- "test/test_classes.py:properties"
     ```
 
+In the second example, the `greeting` property takes `*const Self` as a first parameter providing it direct
+access to the outer struct. This is a convenience when implementing typically getter-only properties.
+
 ## Instance Attributes
 
 Attributes are similar to properties, except they do not allow for custom getters and setters.

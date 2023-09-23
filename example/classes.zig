@@ -90,6 +90,15 @@ pub const User = py.class(struct {
             prop.e = value;
         }
     }),
+
+    greeting: py.property(struct {
+        pub fn get(self: *const Self) !py.PyString {
+            var g = try py.PyString.create("Hello, ");
+            g = try g.append(self.name);
+            g = try g.appendSlice("!");
+            return g;
+        }
+    }) = .{},
 });
 // --8<-- [end:properties]
 
