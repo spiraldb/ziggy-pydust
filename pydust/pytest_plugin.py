@@ -28,14 +28,26 @@ from pydust import buildzig, config
 pydust_conf = config.load()
 
 
+def pytest_addoption(parser, pluginmanager):
+    """Register Pytest command line options."""
+    group = parser.getgroup("ziggy pydust")
+    group.addoption(
+        "--zig-optimize",
+        default="Debug",
+        choices=("Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"),
+        help="The optimize level passed to Zig",
+    )
+
+
 def pytest_collection(session):
     """Setup the testing environment for Pydust.
 
     * Invoke a `zig build install` to generate the Python extension modules (used by Python tests)
     * Invoke a `zig build pydust-test-build` to generate the Zig test runners (used by Zig tests)
     """
-    buildzig.zig_build(["install", f"-Dpython-exe={sys.executable}"])
-    buildzig.zig_build(["pydust-test-build", f"-Dpython-exe={sys.executable}"])
+    optimize = session.config.getoption("zig_optimize")
+    buildzig.zig_build(["install", f"-Doptimize={optimize}", f"-Dpython-exe={sys.executable}"])
+    buildzig.zig_build(["pydust-test-build", f"-Doptimize={optimize}", f"-Dpython-exe={sys.executable}"])
 
 
 def pytest_collect_file(file_path, path, parent):
