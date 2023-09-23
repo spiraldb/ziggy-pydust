@@ -15,6 +15,7 @@ limitations under the License.
 import functools
 import os
 
+import pkg_resources
 import tomllib
 from pydantic import BaseModel, Field, model_validator
 
@@ -68,4 +69,21 @@ class ToolPydust(BaseModel):
 def load() -> ToolPydust:
     with open("pyproject.toml", "rb") as f:
         pyproject = tomllib.load(f)
+
+    # Since Poetry doesn't support locking the build-system.requires dependencies,
+    # we perform a check here to prevent the versions from diverging.
+    pydust_version = pkg_resources.get_distribution("ziggy-pydust").version
+
+    # Skip 0.1.0 as it's the development version when installed locally.
+    if pydust_version != "0.1.0":
+        for req in pyproject["build-system"]["requires"]:
+            if not req.startswith("ziggy-pydust"):
+                continue
+            expected = f"ziggy-pydust=={pydust_version}"
+            if req != expected:
+                raise ValueError(
+                    "Detected misconfigured ziggy-pydust. "
+                    f'You must include "{expected}" in build-system.requires in pyproject.toml'
+                )
+
     return ToolPydust(**pyproject["tool"].get("pydust", {}))
