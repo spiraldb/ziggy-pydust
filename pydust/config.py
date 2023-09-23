@@ -76,10 +76,14 @@ def load() -> ToolPydust:
 
     # Skip 0.1.0 as it's the development version when installed locally.
     if pydust_version != "0.1.0":
-        if f"ziggy-pydust=={pydust_version}" not in pyproject["build-system"]["requires"]:
-            raise ValueError(
-                "Detected misconfigured ziggy-pydust. "
-                f'You must include "ziggy-pydust=={pydust_version}" in build-system.requires in pyproject.toml'
-            )
+        for req in pyproject["build-system"]["requires"]:
+            if not req.startswith("ziggy-pydust"):
+                continue
+            expected = f"ziggy-pydust=={pydust_version}"
+            if req != expected:
+                raise ValueError(
+                    "Detected misconfigured ziggy-pydust. "
+                    f'You must include "{expected}" in build-system.requires in pyproject.toml'
+                )
 
     return ToolPydust(**pyproject["tool"].get("pydust", {}))
