@@ -105,7 +105,6 @@ struct { value: T }
 
 This means you must access the attribute in Zig using `.value`.
 
-
 === "Zig"
 
     ```zig
@@ -140,67 +139,100 @@ Static methods are similar to class methods but do not have access to the class 
 Dunder methods, or "double underscore" methods, provide a mechanism for overriding builtin
 Python operators.
 
-* `object` refers to either a pointer to a Pydust type, a `py.PyObject`,
+- `object` refers to either a pointer to a Pydust type, a `py.PyObject`,
   or any other Pydust Python type, e.g. `py.PyString`.
-* `CallArgs` refers to a Zig struct that is interpreted as `args` and `kwargs`
+- `CallArgs` refers to a Zig struct that is interpreted as `args` and `kwargs`
   where fields are marked as keyword arguments if they have a default value.
 
 Also note the shorthand signatures:
 
 ```zig
-const binaryfunc = fn(*Self, other: object) !object;
+const binaryfunc = fn(self: *Self, other: object) !object;
 ```
 
 ### Type Methods
 
-| Method     | Signature                        |
-|:-----------|:---------------------------------|
-| `__new__`  | `#!zig fn(CallArgs) !Self`       |
-| `__init__` | `#!zig fn(*Self, CallArgs) !void`|
-| `__del__`  | `#!zig fn(*Self) void`           |
-| `__repr__` | `#!zig fn(*Self) !py.PyString`   |
-| `__str__`  | `#!zig fn(*Self) !py.PyString`   |
-| `__iter__` | `#!zig fn(*Self) !object`        |
-| `__next__` | `#!zig fn(*Self) !?object`       |
+| Method     | Signature                         |
+| :--------- | :-------------------------------- |
+| `__new__`  | `#!zig fn(CallArgs) !Self`        |
+| `__init__` | `#!zig fn(*Self, CallArgs) !void` |
+| `__del__`  | `#!zig fn(*Self) void`            |
+| `__repr__` | `#!zig fn(*Self) !py.PyString`    |
+| `__str__`  | `#!zig fn(*Self) !py.PyString`    |
+| `__iter__` | `#!zig fn(*Self) !object`         |
+| `__next__` | `#!zig fn(*Self) !?object`        |
 
 ### Sequence Methods
 
-| Method       | Signature                  |
-|:-------------|:---------------------------|
-| `__len__`    | `#!zig fn(*Self) !usize`   |
+| Method    | Signature                |
+| :-------- | :----------------------- |
+| `__len__` | `#!zig fn(*Self) !usize` |
 
 The remaining sequence methods are yet to be implemented.
 
 ### Mapping Methods
 
-| Method          | Signature     |
-|:----------------|:--------------|
-| `__getitem__`   | `binaryfunc`  |
+| Method        | Signature    |
+| :------------ | :----------- |
+| `__getitem__` | `binaryfunc` |
 
 The remaining mapping methods are yet to be implemented.
 
 ### Number Methods
 
-| Method         | Signature     |
-|:---------------|:--------------|
-| `__add__`      | `binaryfunc`  |
-| `__sub__`      | `binaryfunc`  |
-| `__mul__`      | `binaryfunc`  |
-| `__mod__`      | `binaryfunc`  |
-| `__divmod__`   | `binaryfunc`  |
-| `__pow__`      | `binaryfunc`  |
-| `__lshift__`   | `binaryfunc`  |
-| `__rshift__`   | `binaryfunc`  |
-| `__and__`      | `binaryfunc`  |
-| `__or__`       | `binaryfunc`  |
-| `__xor__`      | `binaryfunc`  |
-| `__truediv__`  | `binaryfunc`  |
-| `__floordiv__` | `binaryfunc`  |
-| `__matmul__`   | `binaryfunc`  |
+You can override numerical methods. If you want to support mixing types declare second argument as `py.PyObject` and perform the type checks inside the function
+
+=== "Zig"
+
+    ```zig
+    --8<-- "example/operators.zig:ops"
+    ```
+
+=== "Python"
+
+    ```python
+    --8<-- "test/test_operators.py:test_ops"
+    ```
+
+| Method          | Signature    |
+| :-------------- | :----------- |
+| `__add__`       | `binaryfunc` |
+| `__iadd__`      | `binaryfunc` |
+| `__sub__`       | `binaryfunc` |
+| `__isub__`      | `binaryfunc` |
+| `__mul__`       | `binaryfunc` |
+| `__imul__`      | `binaryfunc` |
+| `__mod__`       | `binaryfunc` |
+| `__imod__`      | `binaryfunc` |
+| `__divmod__`    | `binaryfunc` |
+| `__pow__`       | `binaryfunc` |
+| `__ipow__`      | `binaryfunc` |
+| `__lshift__`    | `binaryfunc` |
+| `__ilshift__`   | `binaryfunc` |
+| `__rshift__`    | `binaryfunc` |
+| `__irshift__`   | `binaryfunc` |
+| `__and__`       | `binaryfunc` |
+| `__iand__`      | `binaryfunc` |
+| `__or__`        | `binaryfunc` |
+| `__ior__`       | `binaryfunc` |
+| `__xor__`       | `binaryfunc` |
+| `__ixor__`      | `binaryfunc` |
+| `__truediv__`   | `binaryfunc` |
+| `__itruediv__`  | `binaryfunc` |
+| `__floordiv__`  | `binaryfunc` |
+| `__ifloordiv__` | `binaryfunc` |
+| `__matmul__`    | `binaryfunc` |
+| `__imatmul__`   | `binaryfunc` |
+
+??? "Example usage of all numeric functions"
+
+    ```zig
+    --8<-- "example/operators.zig:all"
+    ```
 
 ### Buffer Methods
 
 | Method               | Signature                                      |
-|:---------------------|:-----------------------------------------------|
+| :------------------- | :--------------------------------------------- |
 | `__buffer__`         | `#!zig fn (*Self, *py.PyBuffer, flags: c_int)` |
 | `__release_buffer__` | `#!zig fn (*Self, *py.PyBuffer)`               |

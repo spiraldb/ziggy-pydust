@@ -131,3 +131,13 @@ pub fn tuple(object: anytype) !py.PyTuple {
 pub fn type_(object: anytype) !py.PyObject {
     return .{ .py = ffi.Py_TYPE(py.object(object).py) orelse return PyError.PyRaised };
 }
+
+// TODO(ngates): What's the easiest / cheapest way to do this?
+// For now, we just check the name
+pub fn self(comptime PydustType: type) !py.PyObject {
+    const clsName = State.getIdentifier(PydustType).name;
+    const mod = State.getContaining(PydustType, .module);
+    const modName = State.getIdentifier(mod).name;
+
+    return try importFrom(modName, clsName);
+}

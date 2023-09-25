@@ -69,3 +69,22 @@ def test_iops(iop, expected):
 
     iop(ops, other)
     assert ops.num() == expected
+
+
+def test_divmod():
+    ops = operators.Ops(3)
+    other = operators.Ops(2)
+
+    assert divmod(ops, other) == (1, 1)
+
+
+# --8<-- [start:test_ops]
+def test_custom_ops():
+    op = operators.Operator(3)
+
+    assert op / 2 == 1
+    assert op / 2.0 == 1.5
+    assert (op / operators.Operator(3)).num() == 1
+
+
+# --8<-- [end:test_ops]

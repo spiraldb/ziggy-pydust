@@ -13,6 +13,7 @@
 const std = @import("std");
 const py = @import("pydust");
 
+// --8<-- [start:all]
 pub const Ops = py.class(struct {
     const Self = @This();
 
@@ -162,7 +163,43 @@ pub const Ops = py.class(struct {
         return self;
     }
 });
+// --8<-- [end:all]
 
 comptime {
     py.rootmodule(@This());
 }
+
+// --8<-- [start:ops]
+pub const Operator = py.class(struct {
+    const Self = @This();
+
+    num: u64,
+
+    pub fn __new__(args: struct { num: u64 }) Self {
+        return .{ .num = args.num };
+    }
+
+    pub fn num(self: *const Self) u64 {
+        return self.num;
+    }
+
+    pub fn __truediv__(self: *const Self, other: py.PyObject) !py.PyObject {
+        if (try py.PyFloat.check(other)) {
+            const numF: f64 = @floatFromInt(self.num);
+            const otherf: f64 = try py.PyFloat.unchecked(other).as(f64);
+            const pyFloat = try py.PyFloat.create(numF / otherf);
+            return pyFloat.obj;
+        } else if (try py.PyLong.check(other)) {
+            const otherL: u64 = try py.PyLong.unchecked(other).as(u64);
+            const pyLong = try py.PyLong.create(self.num / otherL);
+            return pyLong.obj;
+        } else if (try py.isinstance(other, try py.self(Self))) {
+            const otherO: *Self = try py.as(*Self, other);
+            const obj = try py.init(Self, .{ .num = self.num / otherO.num });
+            return py.object(obj);
+        } else {
+            return py.TypeError.raise("Unsupported number type for Operator division");
+        }
+    }
+});
+// --8<-- [end:ops]
