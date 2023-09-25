@@ -247,7 +247,7 @@
 <span class="line" id="L115"></span>
 <span class="line" id="L116">        <span class="tok-comment">/// Wraps a Zig object into a Python object.</span></span>
 <span class="line" id="L117">        <span class="tok-comment">/// Always creates a new strong reference.</span></span>
-<span class="line" id="L118">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrapNew</span>(obj: T) !py.PyObject {</span>
+<span class="line" id="L118">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrapNew</span>(obj: T) PyError!py.PyObject {</span>
 <span class="line" id="L119">            <span class="tok-comment">// For existing object types, we just incref and return the object.</span>
 </span>
 <span class="line" id="L120">            <span class="tok-kw">if</span> (isObjectLike()) {</span>
@@ -281,7 +281,7 @@
 <span class="line" id="L145"></span>
 <span class="line" id="L146">        <span class="tok-comment">/// Wraps a Zig object into a Python object.</span></span>
 <span class="line" id="L147">        <span class="tok-comment">/// Does not create a new reference.</span></span>
-<span class="line" id="L148">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrap</span>(obj: T) !py.PyObject {</span>
+<span class="line" id="L148">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrap</span>(obj: T) PyError!py.PyObject {</span>
 <span class="line" id="L149">            <span class="tok-comment">// Check the user is not accidentally returning a Pydust class or Module without a pointer</span>
 </span>
 <span class="line" id="L150">            <span class="tok-kw">if</span> (State.findDefinition(T) != <span class="tok-null">null</span>) {</span>
@@ -293,7 +293,7 @@
 <span class="line" id="L156">            <span class="tok-comment">// Early return to handle errors</span>
 </span>
 <span class="line" id="L157">            <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
-<span class="line" id="L158">                <span class="tok-kw">const</span> value = obj <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L158">                <span class="tok-kw">const</span> value = coerceError(obj) <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> err;</span>
 <span class="line" id="L159">                <span class="tok-kw">return</span> Trampoline(typeInfo.ErrorUnion.payload).wrap(value);</span>
 <span class="line" id="L160">            }</span>
 <span class="line" id="L161"></span>
@@ -351,7 +351,7 @@
 <span class="line" id="L203"></span>
 <span class="line" id="L204">        <span class="tok-comment">/// Unwrap a Python object into a Zig object. Does not steal a reference.</span></span>
 <span class="line" id="L205">        <span class="tok-comment">/// The Python object must be the correct corresponding type (vs a cast which coerces values).</span></span>
-<span class="line" id="L206">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrap</span>(object: ?py.PyObject) py.PyError!T {</span>
+<span class="line" id="L206">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrap</span>(object: ?py.PyObject) PyError!T {</span>
 <span class="line" id="L207">            <span class="tok-comment">// Handle the error case explicitly, then we can unwrap the error case entirely.</span>
 </span>
 <span class="line" id="L208">            <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(T);</span>
@@ -359,7 +359,7 @@
 <span class="line" id="L210">            <span class="tok-comment">// Early return to handle errors</span>
 </span>
 <span class="line" id="L211">            <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
-<span class="line" id="L212">                <span class="tok-kw">const</span> value = object <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L212">                <span class="tok-kw">const</span> value = coerceError(object) <span class="tok-kw">catch</span> |err| <span class="tok-kw">return</span> err;</span>
 <span class="line" id="L213">                <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(T, Trampoline(typeInfo.ErrorUnion.payload).unwrap(value));</span>
 <span class="line" id="L214">            }</span>
 <span class="line" id="L215"></span>
@@ -499,7 +499,7 @@
 <span class="line" id="L336">            <span class="tok-kw">return</span> .{ .args = args, .kwargs = kwargs };</span>
 <span class="line" id="L337">        }</span>
 <span class="line" id="L338"></span>
-<span class="line" id="L339">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrapCallArgs</span>(callArgs: CallArgs) !T {</span>
+<span class="line" id="L339">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrapCallArgs</span>(callArgs: CallArgs) PyError!T {</span>
 <span class="line" id="L340">            <span class="tok-kw">if</span> (funcs.argCount(T) != callArgs.nargs()) {</span>
 <span class="line" id="L341">                <span class="tok-kw">return</span> py.TypeError.raiseComptimeFmt(</span>
 <span class="line" id="L342">                    <span class="tok-str">&quot;expected {d} argument{s}&quot;</span>,</span>
@@ -551,5 +551,35 @@
 <span class="line" id="L385">    };</span>
 <span class="line" id="L386">}</span>
 <span class="line" id="L387"></span>
+<span class="line" id="L388"><span class="tok-comment">/// Takes a value that optionally errors and coerces it always into a PyError.</span></span>
+<span class="line" id="L389"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">coerceError</span>(result: <span class="tok-kw">anytype</span>) coerceErrorType(<span class="tok-builtin">@TypeOf</span>(result)) {</span>
+<span class="line" id="L390">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(result));</span>
+<span class="line" id="L391">    <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
+<span class="line" id="L392">        <span class="tok-kw">return</span> result <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L393">            <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |e| {</span>
+<span class="line" id="L394">                <span class="tok-kw">if</span> (e == PyError.PyRaised <span class="tok-kw">or</span> e == PyError.OutOfMemory) {</span>
+<span class="line" id="L395">                    <span class="tok-kw">return</span> e;</span>
+<span class="line" id="L396">                }</span>
+<span class="line" id="L397">                <span class="tok-kw">return</span> py.RuntimeError.raise(<span class="tok-builtin">@errorName</span>(e));</span>
+<span class="line" id="L398">            },</span>
+<span class="line" id="L399">        };</span>
+<span class="line" id="L400">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L401">        <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L402">    }</span>
+<span class="line" id="L403">}</span>
+<span class="line" id="L404"></span>
+<span class="line" id="L405"><span class="tok-kw">fn</span> <span class="tok-fn">coerceErrorType</span>(<span class="tok-kw">comptime</span> Result: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L406">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(Result);</span>
+<span class="line" id="L407">    <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
+<span class="line" id="L408">        <span class="tok-comment">// Unwrap the error to ensure it's a PyError</span>
+</span>
+<span class="line" id="L409">        <span class="tok-kw">return</span> PyError!typeInfo.ErrorUnion.payload;</span>
+<span class="line" id="L410">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L411">        <span class="tok-comment">// Always return a PyError union so the caller can always &quot;try&quot;.</span>
+</span>
+<span class="line" id="L412">        <span class="tok-kw">return</span> PyError!Result;</span>
+<span class="line" id="L413">    }</span>
+<span class="line" id="L414">}</span>
+<span class="line" id="L415"></span>
 </code></pre></body>
 </html>
