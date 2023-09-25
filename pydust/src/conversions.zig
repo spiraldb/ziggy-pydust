@@ -22,17 +22,17 @@ pub fn object(value: anytype) py.PyObject {
 /// Zig -> Python. Return a Python representation of a Zig object.
 /// For Zig primitives, this constructs a new Python object.
 /// For PyObject-like values, this returns the value without creating a new reference.
-pub fn createOwned(value: anytype) !py.PyObject {
+pub fn createOwned(value: anytype) py.PyError!py.PyObject {
     return tramp.Trampoline(@TypeOf(value)).wrap(value);
 }
 
 /// Zig -> Python. Convert a Zig object into a Python object. Returns a new object.
-pub fn create(value: anytype) !py.PyObject {
+pub fn create(value: anytype) py.PyError!py.PyObject {
     return tramp.Trampoline(@TypeOf(value)).wrapNew(value);
 }
 
 /// Python -> Zig. Return a Zig object representing the Python object.
-pub fn as(comptime T: type, obj: anytype) !T {
+pub fn as(comptime T: type, obj: anytype) py.PyError!T {
     return tramp.Trampoline(T).unwrap(object(obj));
 }
 
