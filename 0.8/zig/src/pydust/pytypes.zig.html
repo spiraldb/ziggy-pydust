@@ -173,7 +173,7 @@
 <span class="line" id="L46">        <span class="tok-kw">const</span> attrs = Attributes(definition);</span>
 <span class="line" id="L47">        <span class="tok-kw">const</span> slots = Slots(definition);</span>
 <span class="line" id="L48"></span>
-<span class="line" id="L49">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(module: py.PyModule) !py.PyObject {</span>
+<span class="line" id="L49">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(module: py.PyModule) PyError!py.PyObject {</span>
 <span class="line" id="L50">            <span class="tok-kw">var</span> basesPtr: ?*ffi.PyObject = <span class="tok-null">null</span>;</span>
 <span class="line" id="L51">            <span class="tok-kw">if</span> (bases.bases.len &gt; <span class="tok-number">0</span>) {</span>
 <span class="line" id="L52">                <span class="tok-kw">const</span> basesTuple = <span class="tok-kw">try</span> py.PyTuple.new(bases.bases.len);</span>
@@ -200,7 +200,7 @@
 <span class="line" id="L71">                module.obj.py,</span>
 <span class="line" id="L72">                <span class="tok-builtin">@constCast</span>(&amp;spec),</span>
 <span class="line" id="L73">                basesPtr,</span>
-<span class="line" id="L74">            ) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate;</span>
+<span class="line" id="L74">            ) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised;</span>
 <span class="line" id="L75"></span>
 <span class="line" id="L76">            <span class="tok-kw">return</span> .{ .py = pytype };</span>
 <span class="line" id="L77">        }</span>
@@ -373,21 +373,21 @@
 <span class="line" id="L240">            <span class="tok-kw">return</span> pyself;</span>
 <span class="line" id="L241">        }</span>
 <span class="line" id="L242"></span>
-<span class="line" id="L243">        <span class="tok-kw">fn</span> <span class="tok-fn">tp_new_internal</span>(subtype: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) !definition {</span>
+<span class="line" id="L243">        <span class="tok-kw">fn</span> <span class="tok-fn">tp_new_internal</span>(subtype: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!definition {</span>
 <span class="line" id="L244">            <span class="tok-kw">const</span> sig = funcs.parseSignature(<span class="tok-str">&quot;__new__&quot;</span>, <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(definition.__new__)).Fn, &amp;.{py.PyObject});</span>
 <span class="line" id="L245"></span>
 <span class="line" id="L246">            <span class="tok-kw">if</span> (sig.selfParam) |_| {</span>
 <span class="line" id="L247">                <span class="tok-kw">if</span> (sig.argsParam) |Args| {</span>
 <span class="line" id="L248">                    <span class="tok-kw">const</span> args = <span class="tok-kw">try</span> tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });</span>
-<span class="line" id="L249">                    <span class="tok-kw">return</span> <span class="tok-kw">try</span> definition.__new__(subtype, args);</span>
+<span class="line" id="L249">                    <span class="tok-kw">return</span> <span class="tok-kw">try</span> tramp.coerceError(definition.__new__(subtype, args));</span>
 <span class="line" id="L250">                } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L251">                    <span class="tok-kw">return</span> <span class="tok-kw">try</span> definition.__new__(subtype);</span>
+<span class="line" id="L251">                    <span class="tok-kw">return</span> <span class="tok-kw">try</span> tramp.coerceError(definition.__new__(subtype));</span>
 <span class="line" id="L252">                }</span>
 <span class="line" id="L253">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (sig.argsParam) |Args| {</span>
 <span class="line" id="L254">                <span class="tok-kw">const</span> args = <span class="tok-kw">try</span> tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });</span>
-<span class="line" id="L255">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> definition.__new__(args);</span>
+<span class="line" id="L255">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> tramp.coerceError(definition.__new__(args));</span>
 <span class="line" id="L256">            } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L257">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> definition.__new__();</span>
+<span class="line" id="L257">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> tramp.coerceError(definition.__new__());</span>
 <span class="line" id="L258">            }</span>
 <span class="line" id="L259">        }</span>
 <span class="line" id="L260"></span>
@@ -411,7 +411,7 @@
 <span class="line" id="L278"></span>
 <span class="line" id="L279">            <span class="tok-kw">const</span> self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
 <span class="line" id="L280">            <span class="tok-kw">const</span> init_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(.{ .args = args, .kwargs = kwargs }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
-<span class="line" id="L281">            definition.__init__(self, init_args) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
+<span class="line" id="L281">            tramp.coerceError(definition.__init__(self, init_args)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
 <span class="line" id="L282">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
 <span class="line" id="L283">        }</span>
 <span class="line" id="L284"></span>
@@ -443,7 +443,7 @@
 <span class="line" id="L306">            view.obj = <span class="tok-null">null</span>;</span>
 <span class="line" id="L307"></span>
 <span class="line" id="L308">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
-<span class="line" id="L309">            definition.__buffer__(&amp;self.state, <span class="tok-builtin">@ptrCast</span>(view), flags) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
+<span class="line" id="L309">            tramp.coerceError(definition.__buffer__(&amp;self.state, <span class="tok-builtin">@ptrCast</span>(view), flags)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
 <span class="line" id="L310">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
 <span class="line" id="L311">        }</span>
 <span class="line" id="L312"></span>
@@ -460,13 +460,13 @@
 <span class="line" id="L323"></span>
 <span class="line" id="L324">        <span class="tok-kw">fn</span> <span class="tok-fn">tp_iter</span>(pyself: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
 <span class="line" id="L325">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
-<span class="line" id="L326">            <span class="tok-kw">const</span> iterator = definition.__iter__(&amp;self.state) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L326">            <span class="tok-kw">const</span> iterator = tramp.coerceError(definition.__iter__(&amp;self.state)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
 <span class="line" id="L327">            <span class="tok-kw">return</span> (py.createOwned(iterator) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
 <span class="line" id="L328">        }</span>
 <span class="line" id="L329"></span>
 <span class="line" id="L330">        <span class="tok-kw">fn</span> <span class="tok-fn">tp_iternext</span>(pyself: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
 <span class="line" id="L331">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
-<span class="line" id="L332">            <span class="tok-kw">const</span> optionalNext = definition.__next__(&amp;self.state) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L332">            <span class="tok-kw">const</span> optionalNext = tramp.coerceError(definition.__next__(&amp;self.state)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
 <span class="line" id="L333">            <span class="tok-kw">if</span> (optionalNext) |next| {</span>
 <span class="line" id="L334">                <span class="tok-kw">return</span> (py.createOwned(next) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
 <span class="line" id="L335">            }</span>
@@ -475,13 +475,13 @@
 <span class="line" id="L338"></span>
 <span class="line" id="L339">        <span class="tok-kw">fn</span> <span class="tok-fn">tp_str</span>(pyself: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
 <span class="line" id="L340">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
-<span class="line" id="L341">            <span class="tok-kw">const</span> result = definition.__str__(&amp;self.state) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L341">            <span class="tok-kw">const</span> result = tramp.coerceError(definition.__str__(&amp;self.state)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
 <span class="line" id="L342">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
 <span class="line" id="L343">        }</span>
 <span class="line" id="L344"></span>
 <span class="line" id="L345">        <span class="tok-kw">fn</span> <span class="tok-fn">tp_repr</span>(pyself: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
 <span class="line" id="L346">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
-<span class="line" id="L347">            <span class="tok-kw">const</span> result = definition.__repr__(&amp;self.state) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L347">            <span class="tok-kw">const</span> result = tramp.coerceError(definition.__repr__(&amp;self.state)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
 <span class="line" id="L348">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
 <span class="line" id="L349">        }</span>
 <span class="line" id="L350">    };</span>
@@ -595,7 +595,7 @@
 <span class="line" id="L452">                                    <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported self parameter &quot;</span> ++ <span class="tok-builtin">@typeName</span>(SelfParam) ++ <span class="tok-str">&quot;. Expected &quot;</span> ++ <span class="tok-builtin">@typeName</span>(*<span class="tok-kw">const</span> definition) ++ <span class="tok-str">&quot; or &quot;</span> ++ <span class="tok-builtin">@typeName</span>(*<span class="tok-kw">const</span> field.<span class="tok-type">type</span>)),</span>
 <span class="line" id="L453">                                };</span>
 <span class="line" id="L454"></span>
-<span class="line" id="L455">                                <span class="tok-kw">const</span> result = field.<span class="tok-type">type</span>.get(propself) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L455">                                <span class="tok-kw">const</span> result = tramp.coerceError(field.<span class="tok-type">type</span>.get(propself)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
 <span class="line" id="L456">                                <span class="tok-kw">const</span> resultObj = tramp.Trampoline(<span class="tok-builtin">@TypeOf</span>(result)).wrap(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
 <span class="line" id="L457">                                <span class="tok-kw">return</span> resultObj.py;</span>
 <span class="line" id="L458">                            }</span>
@@ -613,52 +613,50 @@
 <span class="line" id="L470">                                <span class="tok-kw">const</span> ValueArg = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(field.<span class="tok-type">type</span>.set)).Fn.params[<span class="tok-number">1</span>].<span class="tok-type">type</span>.?;</span>
 <span class="line" id="L471">                                <span class="tok-kw">const</span> value = tramp.Trampoline(ValueArg).unwrap(.{ .py = pyvalue }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
 <span class="line" id="L472"></span>
-<span class="line" id="L473">                                <span class="tok-comment">// TODO(ngates): trampoline self?</span>
+<span class="line" id="L473">                                tramp.coerceError(field.<span class="tok-type">type</span>.set(propself, value)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
+<span class="line" id="L474">                                <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L475">                            }</span>
+<span class="line" id="L476">                        };</span>
+<span class="line" id="L477">                        prop.set = &amp;Closure.set;</span>
+<span class="line" id="L478">                    }</span>
+<span class="line" id="L479"></span>
+<span class="line" id="L480">                    props[idx] = prop;</span>
+<span class="line" id="L481">                    idx += <span class="tok-number">1</span>;</span>
+<span class="line" id="L482">                }</span>
+<span class="line" id="L483">            }</span>
+<span class="line" id="L484"></span>
+<span class="line" id="L485">            <span class="tok-comment">// Null terminator</span>
 </span>
-<span class="line" id="L474">                                field.<span class="tok-type">type</span>.set(propself, value) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
-<span class="line" id="L475">                                <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
-<span class="line" id="L476">                            }</span>
-<span class="line" id="L477">                        };</span>
-<span class="line" id="L478">                        prop.set = &amp;Closure.set;</span>
-<span class="line" id="L479">                    }</span>
-<span class="line" id="L480"></span>
-<span class="line" id="L481">                    props[idx] = prop;</span>
-<span class="line" id="L482">                    idx += <span class="tok-number">1</span>;</span>
-<span class="line" id="L483">                }</span>
-<span class="line" id="L484">            }</span>
-<span class="line" id="L485"></span>
-<span class="line" id="L486">            <span class="tok-comment">// Null terminator</span>
-</span>
-<span class="line" id="L487">            props[count] = .{ .name = <span class="tok-null">null</span>, .get = <span class="tok-null">null</span>, .set = <span class="tok-null">null</span>, .doc = <span class="tok-null">null</span>, .closure = <span class="tok-null">null</span> };</span>
-<span class="line" id="L488"></span>
-<span class="line" id="L489">            <span class="tok-kw">break</span> :blk props;</span>
-<span class="line" id="L490">        };</span>
-<span class="line" id="L491">    };</span>
-<span class="line" id="L492">}</span>
-<span class="line" id="L493"></span>
-<span class="line" id="L494"><span class="tok-kw">fn</span> <span class="tok-fn">BinaryOperator</span>(</span>
-<span class="line" id="L495">    <span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>,</span>
-<span class="line" id="L496">    <span class="tok-kw">comptime</span> op: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
-<span class="line" id="L497">) <span class="tok-type">type</span> {</span>
-<span class="line" id="L498">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L499">        <span class="tok-kw">fn</span> <span class="tok-fn">call</span>(pyself: *ffi.PyObject, pyother: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
-<span class="line" id="L500">            <span class="tok-kw">const</span> func = <span class="tok-builtin">@field</span>(definition, op);</span>
-<span class="line" id="L501">            <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func));</span>
-<span class="line" id="L502">            <span class="tok-kw">const</span> sig = funcs.parseSignature(op, typeInfo.Fn, &amp;.{});</span>
-<span class="line" id="L503"></span>
-<span class="line" id="L504">            <span class="tok-kw">if</span> (sig.selfParam == <span class="tok-null">null</span>) <span class="tok-builtin">@compileError</span>(op ++ <span class="tok-str">&quot; must take a self parameter&quot;</span>);</span>
-<span class="line" id="L505">            <span class="tok-kw">if</span> (sig.nargs != <span class="tok-number">1</span>) <span class="tok-builtin">@compileError</span>(op ++ <span class="tok-str">&quot; must take exactly one parameter after self parameter&quot;</span>);</span>
-<span class="line" id="L506"></span>
-<span class="line" id="L507">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
-<span class="line" id="L508">            <span class="tok-kw">const</span> other = tramp.Trampoline(</span>
-<span class="line" id="L509">                sig.argsParam <span class="tok-kw">orelse</span> <span class="tok-kw">unreachable</span>,</span>
-<span class="line" id="L510">            ).unwrap(.{ .py = pyother }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L511"></span>
-<span class="line" id="L512">            <span class="tok-kw">const</span> result = func(&amp;self.state, other) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L513">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
-<span class="line" id="L514">        }</span>
-<span class="line" id="L515">    };</span>
-<span class="line" id="L516">}</span>
-<span class="line" id="L517"></span>
+<span class="line" id="L486">            props[count] = .{ .name = <span class="tok-null">null</span>, .get = <span class="tok-null">null</span>, .set = <span class="tok-null">null</span>, .doc = <span class="tok-null">null</span>, .closure = <span class="tok-null">null</span> };</span>
+<span class="line" id="L487"></span>
+<span class="line" id="L488">            <span class="tok-kw">break</span> :blk props;</span>
+<span class="line" id="L489">        };</span>
+<span class="line" id="L490">    };</span>
+<span class="line" id="L491">}</span>
+<span class="line" id="L492"></span>
+<span class="line" id="L493"><span class="tok-kw">fn</span> <span class="tok-fn">BinaryOperator</span>(</span>
+<span class="line" id="L494">    <span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>,</span>
+<span class="line" id="L495">    <span class="tok-kw">comptime</span> op: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L496">) <span class="tok-type">type</span> {</span>
+<span class="line" id="L497">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L498">        <span class="tok-kw">fn</span> <span class="tok-fn">call</span>(pyself: *ffi.PyObject, pyother: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
+<span class="line" id="L499">            <span class="tok-kw">const</span> func = <span class="tok-builtin">@field</span>(definition, op);</span>
+<span class="line" id="L500">            <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func));</span>
+<span class="line" id="L501">            <span class="tok-kw">const</span> sig = funcs.parseSignature(op, typeInfo.Fn, &amp;.{});</span>
+<span class="line" id="L502"></span>
+<span class="line" id="L503">            <span class="tok-kw">if</span> (sig.selfParam == <span class="tok-null">null</span>) <span class="tok-builtin">@compileError</span>(op ++ <span class="tok-str">&quot; must take a self parameter&quot;</span>);</span>
+<span class="line" id="L504">            <span class="tok-kw">if</span> (sig.nargs != <span class="tok-number">1</span>) <span class="tok-builtin">@compileError</span>(op ++ <span class="tok-str">&quot; must take exactly one parameter after self parameter&quot;</span>);</span>
+<span class="line" id="L505"></span>
+<span class="line" id="L506">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
+<span class="line" id="L507">            <span class="tok-kw">const</span> other = tramp.Trampoline(</span>
+<span class="line" id="L508">                sig.argsParam <span class="tok-kw">orelse</span> <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L509">            ).unwrap(.{ .py = pyother }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L510"></span>
+<span class="line" id="L511">            <span class="tok-kw">const</span> result = tramp.coerceError(func(&amp;self.state, other)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L512">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
+<span class="line" id="L513">        }</span>
+<span class="line" id="L514">    };</span>
+<span class="line" id="L515">}</span>
+<span class="line" id="L516"></span>
 </code></pre></body>
 </html>

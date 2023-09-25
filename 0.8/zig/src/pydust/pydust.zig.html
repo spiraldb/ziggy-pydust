@@ -143,138 +143,139 @@
 <span class="line" id="L19"><span class="tok-kw">const</span> pytypes = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;pytypes.zig&quot;</span>);</span>
 <span class="line" id="L20"><span class="tok-kw">const</span> PyType = pytypes.PyType;</span>
 <span class="line" id="L21"><span class="tok-kw">const</span> funcs = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;functions.zig&quot;</span>);</span>
-<span class="line" id="L22"></span>
-<span class="line" id="L23"><span class="tok-comment">// Export some useful things for users</span>
+<span class="line" id="L22"><span class="tok-kw">const</span> tramp = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;trampoline.zig&quot;</span>);</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24"><span class="tok-comment">// Export some useful things for users</span>
 </span>
-<span class="line" id="L24"><span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> builtins;</span>
-<span class="line" id="L25"><span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;conversions.zig&quot;</span>);</span>
-<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> types;</span>
-<span class="line" id="L27"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ffi = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;ffi.zig&quot;</span>);</span>
-<span class="line" id="L28"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> PyError = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;errors.zig&quot;</span>).PyError;</span>
-<span class="line" id="L29"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();</span>
-<span class="line" id="L30"></span>
-<span class="line" id="L31"><span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
-<span class="line" id="L32"></span>
-<span class="line" id="L33"><span class="tok-comment">/// Initialize Python interpreter state</span></span>
-<span class="line" id="L34"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initialize</span>() <span class="tok-type">void</span> {</span>
-<span class="line" id="L35">    ffi.Py_Initialize();</span>
-<span class="line" id="L36">}</span>
-<span class="line" id="L37"></span>
-<span class="line" id="L38"><span class="tok-comment">/// Tear down Python interpreter state</span></span>
-<span class="line" id="L39"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">finalize</span>() <span class="tok-type">void</span> {</span>
-<span class="line" id="L40">    ffi.Py_Finalize();</span>
-<span class="line" id="L41">}</span>
-<span class="line" id="L42"></span>
-<span class="line" id="L43"><span class="tok-comment">/// Instantiate a class defined in Pydust.</span></span>
-<span class="line" id="L44"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(<span class="tok-kw">comptime</span> Cls: <span class="tok-type">type</span>, args: NewArgs(Cls)) !*Cls {</span>
-<span class="line" id="L45">    <span class="tok-kw">const</span> moduleDefinition = State.getContaining(Cls, .module);</span>
-<span class="line" id="L46">    <span class="tok-kw">const</span> imported = <span class="tok-kw">try</span> types.PyModule.import(State.getIdentifier(moduleDefinition).name);</span>
-<span class="line" id="L47">    <span class="tok-kw">const</span> pytype = <span class="tok-kw">try</span> imported.obj.get(State.getIdentifier(Cls).name);</span>
-<span class="line" id="L48"></span>
-<span class="line" id="L49">    <span class="tok-comment">// Alloc the class</span>
+<span class="line" id="L25"><span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> builtins;</span>
+<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;conversions.zig&quot;</span>);</span>
+<span class="line" id="L27"><span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> types;</span>
+<span class="line" id="L28"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ffi = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;ffi.zig&quot;</span>);</span>
+<span class="line" id="L29"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> PyError = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;errors.zig&quot;</span>).PyError;</span>
+<span class="line" id="L30"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32"><span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34"><span class="tok-comment">/// Initialize Python interpreter state</span></span>
+<span class="line" id="L35"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initialize</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L36">    ffi.Py_Initialize();</span>
+<span class="line" id="L37">}</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39"><span class="tok-comment">/// Tear down Python interpreter state</span></span>
+<span class="line" id="L40"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">finalize</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L41">    ffi.Py_Finalize();</span>
+<span class="line" id="L42">}</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44"><span class="tok-comment">/// Instantiate a class defined in Pydust.</span></span>
+<span class="line" id="L45"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(<span class="tok-kw">comptime</span> Cls: <span class="tok-type">type</span>, args: NewArgs(Cls)) PyError!*Cls {</span>
+<span class="line" id="L46">    <span class="tok-kw">const</span> moduleDefinition = State.getContaining(Cls, .module);</span>
+<span class="line" id="L47">    <span class="tok-kw">const</span> imported = <span class="tok-kw">try</span> types.PyModule.import(State.getIdentifier(moduleDefinition).name);</span>
+<span class="line" id="L48">    <span class="tok-kw">const</span> pytype = <span class="tok-kw">try</span> imported.obj.get(State.getIdentifier(Cls).name);</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50">    <span class="tok-comment">// Alloc the class</span>
 </span>
-<span class="line" id="L50">    <span class="tok-comment">// NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut</span>
+<span class="line" id="L51">    <span class="tok-comment">// NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut</span>
 </span>
-<span class="line" id="L51">    <span class="tok-comment">// using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc</span>
+<span class="line" id="L52">    <span class="tok-comment">// using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc</span>
 </span>
-<span class="line" id="L52">    <span class="tok-kw">const</span> pyobj: *pytypes.PyTypeStruct(Cls) = <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(ffi.PyType_GenericAlloc(<span class="tok-builtin">@ptrCast</span>(pytype.py), <span class="tok-number">0</span>) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.Propagate));</span>
-<span class="line" id="L53"></span>
-<span class="line" id="L54">    <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
-<span class="line" id="L55">        pyobj.state = <span class="tok-kw">try</span> Cls.__new__(args);</span>
-<span class="line" id="L56">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(Cls).Struct.fields.len &gt; <span class="tok-number">0</span>) {</span>
-<span class="line" id="L57">        pyobj.state = args;</span>
-<span class="line" id="L58">    }</span>
-<span class="line" id="L59"></span>
-<span class="line" id="L60">    <span class="tok-kw">return</span> &amp;pyobj.state;</span>
-<span class="line" id="L61">}</span>
-<span class="line" id="L62"></span>
-<span class="line" id="L63"><span class="tok-comment">/// Find the type of the positional args for a class</span></span>
-<span class="line" id="L64"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">NewArgs</span>(<span class="tok-kw">comptime</span> Cls: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L65">    <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
-<span class="line" id="L66">        <span class="tok-comment">// Default construct args are the struct fields themselves.</span>
+<span class="line" id="L53">    <span class="tok-kw">const</span> pyobj: *pytypes.PyTypeStruct(Cls) = <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(ffi.PyType_GenericAlloc(<span class="tok-builtin">@ptrCast</span>(pytype.py), <span class="tok-number">0</span>) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised));</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">    <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
+<span class="line" id="L56">        pyobj.state = <span class="tok-kw">try</span> tramp.coerceError(Cls.__new__(args));</span>
+<span class="line" id="L57">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(Cls).Struct.fields.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L58">        pyobj.state = args;</span>
+<span class="line" id="L59">    }</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61">    <span class="tok-kw">return</span> &amp;pyobj.state;</span>
+<span class="line" id="L62">}</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64"><span class="tok-comment">/// Find the type of the positional args for a class</span></span>
+<span class="line" id="L65"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">NewArgs</span>(<span class="tok-kw">comptime</span> Cls: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L66">    <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
+<span class="line" id="L67">        <span class="tok-comment">// Default construct args are the struct fields themselves.</span>
 </span>
-<span class="line" id="L67">        <span class="tok-kw">return</span> Cls;</span>
-<span class="line" id="L68">    }</span>
-<span class="line" id="L69"></span>
-<span class="line" id="L70">    <span class="tok-kw">const</span> func = <span class="tok-builtin">@field</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>);</span>
-<span class="line" id="L71">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func));</span>
-<span class="line" id="L72">    <span class="tok-kw">const</span> sig = funcs.parseSignature(<span class="tok-str">&quot;__new__&quot;</span>, typeInfo.Fn, &amp;.{});</span>
-<span class="line" id="L73">    <span class="tok-kw">return</span> sig.argsParam <span class="tok-kw">orelse</span> <span class="tok-kw">struct</span> {};</span>
-<span class="line" id="L74">}</span>
-<span class="line" id="L75"></span>
-<span class="line" id="L76"><span class="tok-comment">/// Register the root Pydust module</span></span>
-<span class="line" id="L77"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rootmodule</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L78">    <span class="tok-kw">if</span> (!State.isEmpty()) {</span>
-<span class="line" id="L79">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Root module can only be registered in a root-level comptime block&quot;</span>);</span>
-<span class="line" id="L80">    }</span>
-<span class="line" id="L81"></span>
-<span class="line" id="L82">    <span class="tok-kw">const</span> pyconf = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;pyconf&quot;</span>);</span>
-<span class="line" id="L83">    <span class="tok-kw">const</span> name = pyconf.module_name;</span>
-<span class="line" id="L84"></span>
-<span class="line" id="L85">    State.register(definition, .module);</span>
-<span class="line" id="L86">    State.identify(definition, name, definition);</span>
-<span class="line" id="L87">    eagerEval(definition);</span>
-<span class="line" id="L88"></span>
-<span class="line" id="L89">    <span class="tok-kw">const</span> moddef = Module(name, definition);</span>
-<span class="line" id="L90"></span>
-<span class="line" id="L91">    <span class="tok-comment">// For root modules, we export a PyInit__name function per CPython API.</span>
+<span class="line" id="L68">        <span class="tok-kw">return</span> Cls;</span>
+<span class="line" id="L69">    }</span>
+<span class="line" id="L70"></span>
+<span class="line" id="L71">    <span class="tok-kw">const</span> func = <span class="tok-builtin">@field</span>(Cls, <span class="tok-str">&quot;__new__&quot;</span>);</span>
+<span class="line" id="L72">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func));</span>
+<span class="line" id="L73">    <span class="tok-kw">const</span> sig = funcs.parseSignature(<span class="tok-str">&quot;__new__&quot;</span>, typeInfo.Fn, &amp;.{});</span>
+<span class="line" id="L74">    <span class="tok-kw">return</span> sig.argsParam <span class="tok-kw">orelse</span> <span class="tok-kw">struct</span> {};</span>
+<span class="line" id="L75">}</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77"><span class="tok-comment">/// Register the root Pydust module</span></span>
+<span class="line" id="L78"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rootmodule</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L79">    <span class="tok-kw">if</span> (!State.isEmpty()) {</span>
+<span class="line" id="L80">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Root module can only be registered in a root-level comptime block&quot;</span>);</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    <span class="tok-kw">const</span> pyconf = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;pyconf&quot;</span>);</span>
+<span class="line" id="L84">    <span class="tok-kw">const</span> name = pyconf.module_name;</span>
+<span class="line" id="L85"></span>
+<span class="line" id="L86">    State.register(definition, .module);</span>
+<span class="line" id="L87">    State.identify(definition, name, definition);</span>
+<span class="line" id="L88">    eagerEval(definition);</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">    <span class="tok-kw">const</span> moddef = Module(name, definition);</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">    <span class="tok-comment">// For root modules, we export a PyInit__name function per CPython API.</span>
 </span>
-<span class="line" id="L92">    <span class="tok-kw">const</span> Closure = <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L93">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>() <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
-<span class="line" id="L94">            <span class="tok-kw">const</span> obj = <span class="tok-builtin">@call</span>(.always_inline, moddef.init, .{}) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L95">            <span class="tok-kw">return</span> obj.py;</span>
-<span class="line" id="L96">        }</span>
-<span class="line" id="L97">    };</span>
-<span class="line" id="L98"></span>
-<span class="line" id="L99">    <span class="tok-kw">const</span> short_name = <span class="tok-kw">if</span> (std.mem.lastIndexOfScalar(<span class="tok-type">u8</span>, name, <span class="tok-str">'.'</span>)) |idx| name[idx + <span class="tok-number">1</span> ..] <span class="tok-kw">else</span> name;</span>
-<span class="line" id="L100">    <span class="tok-builtin">@export</span>(Closure.init, .{ .name = <span class="tok-str">&quot;PyInit_&quot;</span> ++ short_name, .linkage = .Strong });</span>
-<span class="line" id="L101">}</span>
-<span class="line" id="L102"></span>
-<span class="line" id="L103"><span class="tok-comment">/// Register a Pydust module as a submodule to an existing module.</span></span>
-<span class="line" id="L104"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">module</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
-<span class="line" id="L105">    State.register(definition, .module);</span>
-<span class="line" id="L106">    <span class="tok-kw">return</span> definition;</span>
-<span class="line" id="L107">}</span>
-<span class="line" id="L108"></span>
-<span class="line" id="L109"><span class="tok-comment">/// Register a struct as a Python class definition.</span></span>
-<span class="line" id="L110"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">class</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
-<span class="line" id="L111">    State.register(definition, .class);</span>
-<span class="line" id="L112">    <span class="tok-kw">return</span> definition;</span>
-<span class="line" id="L113">}</span>
-<span class="line" id="L114"></span>
-<span class="line" id="L115"><span class="tok-comment">/// Register a struct field as a Python read-only attribute.</span></span>
-<span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">attribute</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(Attribute(T)) {</span>
-<span class="line" id="L117">    <span class="tok-kw">const</span> definition = Attribute(T);</span>
-<span class="line" id="L118">    State.register(definition, .attribute);</span>
-<span class="line" id="L119">    <span class="tok-kw">return</span> definition;</span>
-<span class="line" id="L120">}</span>
-<span class="line" id="L121"></span>
-<span class="line" id="L122"><span class="tok-kw">fn</span> <span class="tok-fn">Attribute</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L123">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> { value: T };</span>
-<span class="line" id="L124">}</span>
-<span class="line" id="L125"></span>
-<span class="line" id="L126"><span class="tok-comment">/// Register a property as a field on a Pydust class.</span></span>
-<span class="line" id="L127"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">property</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
-<span class="line" id="L128">    State.register(definition, .property);</span>
-<span class="line" id="L129">    <span class="tok-kw">return</span> definition;</span>
-<span class="line" id="L130">}</span>
-<span class="line" id="L131"></span>
-<span class="line" id="L132"><span class="tok-comment">/// Force the evaluation of Pydust registration methods.</span></span>
-<span class="line" id="L133"><span class="tok-comment">/// Using this enables us to breadth-first traverse the object graph, ensuring</span></span>
-<span class="line" id="L134"><span class="tok-comment">/// objects are registered before they're referenced elsewhere.</span></span>
-<span class="line" id="L135"><span class="tok-kw">fn</span> <span class="tok-fn">eagerEval</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L136">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.fields) |f| {</span>
-<span class="line" id="L137">        _ = f.<span class="tok-type">type</span>;</span>
-<span class="line" id="L138">    }</span>
-<span class="line" id="L139">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |d| {</span>
-<span class="line" id="L140">        <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, d.name);</span>
-<span class="line" id="L141">        <span class="tok-kw">if</span> (State.findDefinition(value)) |_| {</span>
-<span class="line" id="L142">            <span class="tok-comment">// If it's a Pydust definition, then we identify it.</span>
+<span class="line" id="L93">    <span class="tok-kw">const</span> Closure = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L94">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>() <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
+<span class="line" id="L95">            <span class="tok-kw">const</span> obj = <span class="tok-builtin">@call</span>(.always_inline, moddef.init, .{}) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L96">            <span class="tok-kw">return</span> obj.py;</span>
+<span class="line" id="L97">        }</span>
+<span class="line" id="L98">    };</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100">    <span class="tok-kw">const</span> short_name = <span class="tok-kw">if</span> (std.mem.lastIndexOfScalar(<span class="tok-type">u8</span>, name, <span class="tok-str">'.'</span>)) |idx| name[idx + <span class="tok-number">1</span> ..] <span class="tok-kw">else</span> name;</span>
+<span class="line" id="L101">    <span class="tok-builtin">@export</span>(Closure.init, .{ .name = <span class="tok-str">&quot;PyInit_&quot;</span> ++ short_name, .linkage = .Strong });</span>
+<span class="line" id="L102">}</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104"><span class="tok-comment">/// Register a Pydust module as a submodule to an existing module.</span></span>
+<span class="line" id="L105"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">module</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
+<span class="line" id="L106">    State.register(definition, .module);</span>
+<span class="line" id="L107">    <span class="tok-kw">return</span> definition;</span>
+<span class="line" id="L108">}</span>
+<span class="line" id="L109"></span>
+<span class="line" id="L110"><span class="tok-comment">/// Register a struct as a Python class definition.</span></span>
+<span class="line" id="L111"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">class</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
+<span class="line" id="L112">    State.register(definition, .class);</span>
+<span class="line" id="L113">    <span class="tok-kw">return</span> definition;</span>
+<span class="line" id="L114">}</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116"><span class="tok-comment">/// Register a struct field as a Python read-only attribute.</span></span>
+<span class="line" id="L117"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">attribute</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(Attribute(T)) {</span>
+<span class="line" id="L118">    <span class="tok-kw">const</span> definition = Attribute(T);</span>
+<span class="line" id="L119">    State.register(definition, .attribute);</span>
+<span class="line" id="L120">    <span class="tok-kw">return</span> definition;</span>
+<span class="line" id="L121">}</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123"><span class="tok-kw">fn</span> <span class="tok-fn">Attribute</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L124">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> { value: T };</span>
+<span class="line" id="L125">}</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127"><span class="tok-comment">/// Register a property as a field on a Pydust class.</span></span>
+<span class="line" id="L128"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">property</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-builtin">@TypeOf</span>(definition) {</span>
+<span class="line" id="L129">    State.register(definition, .property);</span>
+<span class="line" id="L130">    <span class="tok-kw">return</span> definition;</span>
+<span class="line" id="L131">}</span>
+<span class="line" id="L132"></span>
+<span class="line" id="L133"><span class="tok-comment">/// Force the evaluation of Pydust registration methods.</span></span>
+<span class="line" id="L134"><span class="tok-comment">/// Using this enables us to breadth-first traverse the object graph, ensuring</span></span>
+<span class="line" id="L135"><span class="tok-comment">/// objects are registered before they're referenced elsewhere.</span></span>
+<span class="line" id="L136"><span class="tok-kw">fn</span> <span class="tok-fn">eagerEval</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L137">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.fields) |f| {</span>
+<span class="line" id="L138">        _ = f.<span class="tok-type">type</span>;</span>
+<span class="line" id="L139">    }</span>
+<span class="line" id="L140">    <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |d| {</span>
+<span class="line" id="L141">        <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, d.name);</span>
+<span class="line" id="L142">        <span class="tok-kw">if</span> (State.findDefinition(value)) |_| {</span>
+<span class="line" id="L143">            <span class="tok-comment">// If it's a Pydust definition, then we identify it.</span>
 </span>
-<span class="line" id="L143">            State.identify(value, d.name ++ <span class="tok-str">&quot;&quot;</span>, definition);</span>
-<span class="line" id="L144">        }</span>
-<span class="line" id="L145">    }</span>
-<span class="line" id="L146">}</span>
-<span class="line" id="L147"></span>
+<span class="line" id="L144">            State.identify(value, d.name ++ <span class="tok-str">&quot;&quot;</span>, definition);</span>
+<span class="line" id="L145">        }</span>
+<span class="line" id="L146">    }</span>
+<span class="line" id="L147">}</span>
+<span class="line" id="L148"></span>
 </code></pre></body>
 </html>
