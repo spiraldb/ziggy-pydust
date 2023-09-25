@@ -33,7 +33,7 @@ pub const PyLong = extern struct {
         const pylong = switch (typeInfo.signedness) {
             .signed => ffi.PyLong_FromLongLong(@intCast(value)),
             .unsigned => ffi.PyLong_FromUnsignedLongLong(@intCast(value)),
-        } orelse return PyError.Propagate;
+        } orelse return PyError.PyRaised;
 
         return .{ .obj = .{ .py = pylong } };
     }
@@ -44,12 +44,12 @@ pub const PyLong = extern struct {
         return switch (typeInfo.signedness) {
             .signed => {
                 const ll = ffi.PyLong_AsLongLong(self.obj.py);
-                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
+                if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
                 return @intCast(ll);
             },
             .unsigned => {
                 const ull = ffi.PyLong_AsUnsignedLongLong(self.obj.py);
-                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
+                if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
                 return @intCast(ull);
             },
         };
@@ -70,7 +70,7 @@ test "PyLong" {
     defer neg_pl.decref();
 
     try std.testing.expectError(
-        PyError.Propagate,
+        PyError.PyRaised,
         neg_pl.as(c_ulong),
     );
 }

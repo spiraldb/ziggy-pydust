@@ -19,6 +19,12 @@ pub fn raise_value_error(args: struct { message: py.PyString }) !void {
 }
 // --8<-- [end:valueerror]
 
+pub const CustomError = error{Oops};
+
+pub fn raise_custom_error() !void {
+    return CustomError.Oops;
+}
+
 comptime {
     py.rootmodule(@This());
 }

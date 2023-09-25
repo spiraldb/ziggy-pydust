@@ -13,6 +13,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const py = @import("pydust.zig");
+const tramp = @import("trampoline.zig");
 const State = @import("discovery.zig").State;
 const PyError = @import("errors.zig").PyError;
 const Type = std.builtin.Type;
@@ -229,10 +230,10 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
 
                 const result = if (sig.selfParam) |_| func(self, args) else func(args);
 
-                return py.createOwned(result);
+                return py.createOwned(tramp.coerceError(result));
             } else {
                 const result = if (sig.selfParam) |_| func(self) else func();
-                return py.createOwned(result);
+                return py.createOwned(tramp.coerceError(result));
             }
         }
 
@@ -257,7 +258,12 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             return resultObject.py;
         }
 
-        inline fn internalKwargs(pyself: py.PyObject, pyargs: []py.PyObject, pykwargs: []py.PyObject, kwnames: ?py.PyTuple) PyError!py.PyObject {
+        inline fn internalKwargs(
+            pyself: py.PyObject,
+            pyargs: []py.PyObject,
+            pykwargs: []py.PyObject,
+            kwnames: ?py.PyTuple,
+        ) PyError!py.PyObject {
             const Args = sig.argsParam.?; // We must have args if we know we have kwargs
             var args: Args = undefined;
 
@@ -313,7 +319,7 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
 
             const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
             const result = if (sig.selfParam) |_| func(self, args) else func(args);
-            return py.createOwned(result);
+            return py.createOwned(tramp.coerceError(result));
         }
     };
 }

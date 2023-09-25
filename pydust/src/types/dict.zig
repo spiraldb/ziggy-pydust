@@ -54,13 +54,13 @@ pub const PyDict = extern struct {
 
     /// Return a new empty dictionary.
     pub fn new() !PyDict {
-        const dict = ffi.PyDict_New() orelse return PyError.Propagate;
+        const dict = ffi.PyDict_New() orelse return PyError.PyRaised;
         return PyDict.unchecked(.{ .py = dict });
     }
 
     /// Return a new dictionary that contains the same key-value pairs as p.
     pub fn copy(self: PyDict) !PyDict {
-        const dict = ffi.PyDict_Copy(self.obj.py) orelse return PyError.Propagate;
+        const dict = ffi.PyDict_Copy(self.obj.py) orelse return PyError.PyRaised;
         return PyDict.unchecked(.{ .py = dict });
     }
 
@@ -81,7 +81,7 @@ pub const PyDict = extern struct {
         defer keyObj.decref();
 
         const result = ffi.PyDict_Contains(self.obj.py, keyObj.py);
-        if (result < 0) return PyError.Propagate;
+        if (result < 0) return PyError.PyRaised;
         return result == 1;
     }
 
@@ -104,7 +104,7 @@ pub const PyDict = extern struct {
         defer valueObj.decref();
 
         const result = ffi.PyDict_SetItem(self.obj.py, keyObj.py, valueObj.py);
-        if (result < 0) return PyError.Propagate;
+        if (result < 0) return PyError.PyRaised;
     }
 
     /// Remove the entry in dictionary p with key key.
@@ -113,7 +113,7 @@ pub const PyDict = extern struct {
         defer keyObj.decref();
 
         if (ffi.PyDict_DelItem(self.obj.py, keyObj.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
@@ -132,7 +132,7 @@ pub const PyDict = extern struct {
             return null;
         }
 
-        return PyError.Propagate;
+        return PyError.PyRaised;
     }
 
     pub fn itemsIterator(self: PyDict) ItemIterator {

@@ -22,14 +22,14 @@ pub const PyBytes = extern struct {
     pub usingnamespace PyObjectMixin("bytes", "PyBytes", @This());
 
     pub fn create(value: []const u8) !PyBytes {
-        const bytes = ffi.PyBytes_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.Propagate;
+        const bytes = ffi.PyBytes_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = bytes } };
     }
 
     /// Return the bytes representation of object obj that implements the buffer protocol.
     pub fn fromObject(obj: anytype) !PyBytes {
         const pyobj = py.object(obj);
-        const bytes = ffi.PyBytes_FromObject(pyobj.py) orelse return PyError.Propagate;
+        const bytes = ffi.PyBytes_FromObject(pyobj.py) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = bytes } };
     }
 
@@ -43,7 +43,7 @@ pub const PyBytes = extern struct {
         var buffer: [*]u8 = undefined;
         var size: i64 = 0;
         if (ffi.PyBytes_AsStringAndSize(self.obj.py, @ptrCast(&buffer), &size) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
         return buffer[0..@as(usize, @intCast(size)) :0];
     }

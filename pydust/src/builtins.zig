@@ -68,7 +68,7 @@ pub fn is_none(object: anytype) bool {
 /// Get the length of the given object. Equivalent to len(obj) in Python.
 pub fn len(object: anytype) !usize {
     const length = ffi.PyObject_Length(py.object(object).py);
-    if (length < 0) return PyError.Propagate;
+    if (length < 0) return PyError.PyRaised;
     return @intCast(length);
 }
 
@@ -90,7 +90,7 @@ pub fn isinstance(object: anytype, cls: anytype) !bool {
     const pycls = py.object(cls);
 
     const result = ffi.PyObject_IsInstance(pyobj.py, pycls.py);
-    if (result < 0) return PyError.Propagate;
+    if (result < 0) return PyError.PyRaised;
     return result == 1;
 }
 
@@ -103,13 +103,13 @@ pub fn refcnt(object: anytype) isize {
 /// Compute a string representation of object - using str(o).
 pub fn str(object: anytype) !py.PyString {
     const pyobj = py.object(object);
-    return py.PyString.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) orelse return PyError.Propagate });
+    return py.PyString.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) orelse return PyError.PyRaised });
 }
 
 /// Compute a string representation of object - using repr(o).
 pub fn repr(object: anytype) !py.PyString {
     const pyobj = py.object(object);
-    return py.PyString.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.Propagate });
+    return py.PyString.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.PyRaised });
 }
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.
@@ -124,10 +124,10 @@ pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
 }
 
 pub fn tuple(object: anytype) !py.PyTuple {
-    const pytuple = ffi.PySequence_Tuple(py.object(object).py) orelse return PyError.Propagate;
+    const pytuple = ffi.PySequence_Tuple(py.object(object).py) orelse return PyError.PyRaised;
     return py.PyTuple.unchecked(.{ .py = pytuple });
 }
 
 pub fn type_(object: anytype) !py.PyObject {
-    return .{ .py = ffi.Py_TYPE(py.object(object).py) orelse return PyError.Propagate };
+    return .{ .py = ffi.Py_TYPE(py.object(object).py) orelse return PyError.PyRaised };
 }

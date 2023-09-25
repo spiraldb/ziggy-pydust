@@ -39,7 +39,7 @@ pub fn count(self: *const Self) u32 {
     return self.count;
 }
 
-pub fn whoami(self: *const Self) !py.PyString {
+pub fn whoami(self: *const Self) py.PyString {
     return self.name;
 }
 

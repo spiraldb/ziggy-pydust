@@ -46,7 +46,7 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
         const attrs = Attributes(definition);
         const slots = Slots(definition);
 
-        pub fn init(module: py.PyModule) !py.PyObject {
+        pub fn init(module: py.PyModule) PyError!py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;
             if (bases.bases.len > 0) {
                 const basesTuple = try py.PyTuple.new(bases.bases.len);
@@ -71,7 +71,7 @@ pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
                 module.obj.py,
                 @constCast(&spec),
                 basesPtr,
-            ) orelse return PyError.Propagate;
+            ) orelse return PyError.PyRaised;
 
             return .{ .py = pytype };
         }
@@ -240,21 +240,21 @@ fn Slots(comptime definition: type) type {
             return pyself;
         }
 
-        fn tp_new_internal(subtype: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) !definition {
+        fn tp_new_internal(subtype: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!definition {
             const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
 
             if (sig.selfParam) |_| {
                 if (sig.argsParam) |Args| {
                     const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
-                    return try definition.__new__(subtype, args);
+                    return try tramp.coerceError(definition.__new__(subtype, args));
                 } else {
-                    return try definition.__new__(subtype);
+                    return try tramp.coerceError(definition.__new__(subtype));
                 }
             } else if (sig.argsParam) |Args| {
                 const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
-                return try definition.__new__(args);
+                return try tramp.coerceError(definition.__new__(args));
             } else {
-                return try definition.__new__();
+                return try tramp.coerceError(definition.__new__());
             }
         }
 
@@ -278,7 +278,7 @@ fn Slots(comptime definition: type) type {
 
             const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
             const init_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(.{ .args = args, .kwargs = kwargs }) catch return -1;
-            definition.__init__(self, init_args) catch return -1;
+            tramp.coerceError(definition.__init__(self, init_args)) catch return -1;
             return 0;
         }
 
@@ -306,7 +306,7 @@ fn Slots(comptime definition: type) type {
             view.obj = null;
 
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            definition.__buffer__(&self.state, @ptrCast(view), flags) catch return -1;
+            tramp.coerceError(definition.__buffer__(&self.state, @ptrCast(view), flags)) catch return -1;
             return 0;
         }
 
@@ -323,13 +323,13 @@ fn Slots(comptime definition: type) type {
 
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const iterator = definition.__iter__(&self.state) catch return null;
+            const iterator = tramp.coerceError(definition.__iter__(&self.state)) catch return null;
             return (py.createOwned(iterator) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const optionalNext = definition.__next__(&self.state) catch return null;
+            const optionalNext = tramp.coerceError(definition.__next__(&self.state)) catch return null;
             if (optionalNext) |next| {
                 return (py.createOwned(next) catch return null).py;
             }
@@ -338,13 +338,13 @@ fn Slots(comptime definition: type) type {
 
         fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = definition.__str__(&self.state) catch return null;
+            const result = tramp.coerceError(definition.__str__(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
 
         fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = definition.__repr__(&self.state) catch return null;
+            const result = tramp.coerceError(definition.__repr__(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };
@@ -452,7 +452,7 @@ fn Properties(comptime definition: type) type {
                                     else => @compileError("Unsupported self parameter " ++ @typeName(SelfParam) ++ ". Expected " ++ @typeName(*const definition) ++ " or " ++ @typeName(*const field.type)),
                                 };
 
-                                const result = field.type.get(propself) catch return null;
+                                const result = tramp.coerceError(field.type.get(propself)) catch return null;
                                 const resultObj = tramp.Trampoline(@TypeOf(result)).wrap(result) catch return null;
                                 return resultObj.py;
                             }
@@ -470,8 +470,7 @@ fn Properties(comptime definition: type) type {
                                 const ValueArg = @typeInfo(@TypeOf(field.type.set)).Fn.params[1].type.?;
                                 const value = tramp.Trampoline(ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
 
-                                // TODO(ngates): trampoline self?
-                                field.type.set(propself, value) catch return -1;
+                                tramp.coerceError(field.type.set(propself, value)) catch return -1;
                                 return 0;
                             }
                         };
@@ -509,7 +508,7 @@ fn BinaryOperator(
                 sig.argsParam orelse unreachable,
             ).unwrap(.{ .py = pyother }) catch return null;
 
-            const result = func(&self.state, other) catch return null;
+            const result = tramp.coerceError(func(&self.state, other)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };

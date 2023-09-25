@@ -59,7 +59,7 @@ pub const PyTuple = extern struct {
     }
 
     pub fn new(size: usize) !PyTuple {
-        const tuple = ffi.PyTuple_New(@intCast(size)) orelse return PyError.Propagate;
+        const tuple = ffi.PyTuple_New(@intCast(size)) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = tuple } };
     }
 
@@ -75,7 +75,7 @@ pub const PyTuple = extern struct {
         if (ffi.PyTuple_GetItem(self.obj.py, idx)) |item| {
             return py.as(T, py.PyObject{ .py = item });
         } else {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
@@ -84,14 +84,14 @@ pub const PyTuple = extern struct {
     /// Warning: steals a reference to value.
     pub fn setOwnedItem(self: *const PyTuple, pos: isize, value: PyObject) !void {
         if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), value.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
     /// Insert a reference to object o at position pos of the tuple. Does not steal a reference to value.
     pub fn setItem(self: *const PyTuple, pos: isize, value: PyObject) !void {
         if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), value.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
         // PyTuple_SetItem steals a reference to value. We want the default behaviour not to do that.
         // See setOwnedItem for an implementation that does steal.

@@ -27,7 +27,7 @@ pub const PyList = extern struct {
     pub usingnamespace PyObjectMixin("list", "PyList", @This());
 
     pub fn new(size: usize) !PyList {
-        const list = ffi.PyList_New(@intCast(size)) orelse return PyError.Propagate;
+        const list = ffi.PyList_New(@intCast(size)) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = list } };
     }
 
@@ -40,7 +40,7 @@ pub const PyList = extern struct {
         if (ffi.PyList_GetItem(self.obj.py, idx)) |item| {
             return py.as(T, py.PyObject{ .py = item });
         } else {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
@@ -49,7 +49,7 @@ pub const PyList = extern struct {
         if (ffi.PyList_GetSlice(self.obj.py, low, high)) |item| {
             return .{ .obj = .{ .py = item } };
         } else {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
@@ -57,7 +57,7 @@ pub const PyList = extern struct {
     pub fn setOwnedItem(self: PyList, pos: isize, value: anytype) !void {
         // Since this function steals the reference, it can only accept object-like values.
         if (ffi.PyList_SetItem(self.obj.py, pos, py.object(value).py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
@@ -72,7 +72,7 @@ pub const PyList = extern struct {
         const valueObj = try py.create(value);
         defer valueObj.decref();
         if (ffi.PyList_Insert(self.obj.py, idx, valueObj.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
@@ -82,26 +82,26 @@ pub const PyList = extern struct {
         defer valueObj.decref();
 
         if (ffi.PyList_Append(self.obj.py, valueObj.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
     // Sort the items of list in place.
     pub fn sort(self: PyList) !void {
         if (ffi.PyList_Sort(self.obj.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
     // Reverse the items of list in place.
     pub fn reverse(self: PyList) !void {
         if (ffi.PyList_Reverse(self.obj.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
     pub fn toTuple(self: PyList) !py.PyTuple {
-        const pytuple = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.Propagate;
+        const pytuple = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.PyRaised;
         return py.PyTuple.unchecked(.{ .py = pytuple });
     }
 };
