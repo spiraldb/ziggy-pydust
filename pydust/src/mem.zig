@@ -29,10 +29,28 @@ pub const PyMemAllocator = struct {
     }
 
     fn alloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
+        // As per this issue, we will hack an aligned allocator.
+        // https://bugs.python.org/msg232221
         _ = ret_addr;
-        _ = ptr_align;
         _ = ctx;
-        return @ptrCast(ffi.PyMem_Malloc(len));
+
+        // Zig gives us ptr_align as power of 2
+        // This may not always fit into a byte, we should figure out a better way to store the shift value.
+        const alignment: u8 = @intCast(@as(u8, 1) << @intCast(ptr_align));
+
+        // By default, ptr_align == 1 which gives us our 1 byte header to store the alignment shift
+        const raw_ptr: usize = @intFromPtr(ffi.PyMem_Malloc(len + alignment) orelse return null);
+
+        const shift: u8 = @intCast(alignment - (raw_ptr % alignment));
+        std.debug.assert(0 < shift and shift <= alignment);
+
+        const aligned_ptr: usize = raw_ptr + shift;
+
+        // Store the shift in the first byte before the aligned ptr
+        // We know from above that we are guaranteed to own that byte.
+        @as(*u8, @ptrFromInt(aligned_ptr - 1)).* = shift;
+
+        return @ptrFromInt(aligned_ptr);
     }
 
     fn resize(ctx: *anyopaque, buf: []u8, buf_align: u8, new_len: usize, ret_addr: usize) bool {
@@ -61,9 +79,15 @@ pub const PyMemAllocator = struct {
     }
 
     fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
-        _ = ret_addr;
         _ = buf_align;
         _ = ctx;
-        ffi.PyMem_Free(buf.ptr);
+        _ = ret_addr;
+
+        // Fetch the alignment shift. We could check it matches the buf_align, but it's a bit annoying.
+        const aligned_ptr: usize = @intFromPtr(buf.ptr);
+        const shift = @as(*const u8, @ptrFromInt(aligned_ptr - 1)).*;
+
+        const raw_ptr: *anyopaque = @ptrFromInt(aligned_ptr - shift);
+        ffi.PyMem_Free(raw_ptr);
     }
 }{};
