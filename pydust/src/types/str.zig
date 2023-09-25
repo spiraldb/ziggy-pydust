@@ -24,7 +24,7 @@ pub const PyString = extern struct {
     pub usingnamespace PyObjectMixin("str", "PyUnicode", @This());
 
     pub fn create(value: []const u8) !PyString {
-        const unicode = ffi.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.Propagate;
+        const unicode = ffi.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = unicode } };
     }
 
@@ -61,13 +61,13 @@ pub const PyString = extern struct {
             return PyString.unchecked(.{ .py = ptr });
         } else {
             // If set to null, then it failed.
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
     }
 
     /// Concat other to self. Returns a new reference.
     pub fn concat(self: PyString, other: PyString) !PyString {
-        const result = ffi.PyUnicode_Concat(self.obj.py, other.obj.py) orelse return PyError.Propagate;
+        const result = ffi.PyUnicode_Concat(self.obj.py, other.obj.py) orelse return PyError.PyRaised;
         return PyString.unchecked(.{ .py = result });
     }
 
@@ -87,7 +87,7 @@ pub const PyString = extern struct {
     /// Returns a view over the PyString bytes.
     pub fn asSlice(self: PyString) ![:0]const u8 {
         var size: i64 = 0;
-        const buffer: [*:0]const u8 = ffi.PyUnicode_AsUTF8AndSize(self.obj.py, &size) orelse return PyError.Propagate;
+        const buffer: [*:0]const u8 = ffi.PyUnicode_AsUTF8AndSize(self.obj.py, &size) orelse return PyError.PyRaised;
         return buffer[0..@as(usize, @intCast(size)) :0];
     }
 };

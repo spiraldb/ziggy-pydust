@@ -18,6 +18,7 @@ const PyError = py.PyError;
 const Attributes = @import("attributes.zig").Attributes;
 const pytypes = @import("pytypes.zig");
 const funcs = @import("functions.zig");
+const tramp = @import("trampoline.zig");
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 
 pub const ModuleDef = struct {
@@ -61,7 +62,7 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
                 .m_clear = null,
                 .m_free = null,
             };
-            return .{ .py = ffi.PyModuleDef_Init(pyModuleDef) orelse return PyError.Propagate };
+            return .{ .py = ffi.PyModuleDef_Init(pyModuleDef) orelse return PyError.PyRaised };
         }
     };
 }
@@ -99,7 +100,7 @@ fn Slots(comptime definition: type) type {
         };
 
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
-            mod_exec_internal(.{ .obj = .{ .py = pymodule } }) catch return -1;
+            tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
             return 0;
         }
 
@@ -137,7 +138,7 @@ fn Slots(comptime definition: type) type {
                 const spec = try SimpleNamespace.call(.{}, .{ .name = pyname });
                 defer spec.decref();
 
-                const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.Propagate };
+                const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
                 try module.addObjectRef(name, submod);
             }
         }

@@ -115,7 +115,7 @@ pub fn Trampoline(comptime T: type) type {
 
         /// Wraps a Zig object into a Python object.
         /// Always creates a new strong reference.
-        pub inline fn wrapNew(obj: T) !py.PyObject {
+        pub inline fn wrapNew(obj: T) PyError!py.PyObject {
             // For existing object types, we just incref and return the object.
             if (isObjectLike()) {
                 const pyobj = asObject(obj);
@@ -145,7 +145,7 @@ pub fn Trampoline(comptime T: type) type {
 
         /// Wraps a Zig object into a Python object.
         /// Does not create a new reference.
-        pub inline fn wrap(obj: T) !py.PyObject {
+        pub inline fn wrap(obj: T) PyError!py.PyObject {
             // Check the user is not accidentally returning a Pydust class or Module without a pointer
             if (State.findDefinition(T) != null) {
                 @compileError("Pydust objects can only be returned as pointers");
@@ -155,7 +155,7 @@ pub fn Trampoline(comptime T: type) type {
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
-                const value = obj catch |err| return err;
+                const value = coerceError(obj) catch |err| return err;
                 return Trampoline(typeInfo.ErrorUnion.payload).wrap(value);
             }
 
@@ -203,13 +203,13 @@ pub fn Trampoline(comptime T: type) type {
 
         /// Unwrap a Python object into a Zig object. Does not steal a reference.
         /// The Python object must be the correct corresponding type (vs a cast which coerces values).
-        pub inline fn unwrap(object: ?py.PyObject) py.PyError!T {
+        pub inline fn unwrap(object: ?py.PyObject) PyError!T {
             // Handle the error case explicitly, then we can unwrap the error case entirely.
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
-                const value = object catch |err| return err;
+                const value = coerceError(object) catch |err| return err;
                 return @as(T, Trampoline(typeInfo.ErrorUnion.payload).unwrap(value));
             }
 
@@ -336,7 +336,7 @@ pub fn Trampoline(comptime T: type) type {
             return .{ .args = args, .kwargs = kwargs };
         }
 
-        pub inline fn unwrapCallArgs(callArgs: CallArgs) !T {
+        pub inline fn unwrapCallArgs(callArgs: CallArgs) PyError!T {
             if (funcs.argCount(T) != callArgs.nargs()) {
                 return py.TypeError.raiseComptimeFmt(
                     "expected {d} argument{s}",
@@ -383,4 +383,32 @@ pub fn Trampoline(comptime T: type) type {
             return args;
         }
     };
+}
+
+/// Takes a value that optionally errors and coerces it always into a PyError.
+pub fn coerceError(result: anytype) coerceErrorType(@TypeOf(result)) {
+    const typeInfo = @typeInfo(@TypeOf(result));
+    if (typeInfo == .ErrorUnion) {
+        return result catch |err| switch (err) {
+            inline else => |e| {
+                if (e == PyError.PyRaised or e == PyError.OutOfMemory) {
+                    return e;
+                }
+                return py.RuntimeError.raise(@errorName(e));
+            },
+        };
+    } else {
+        return result;
+    }
+}
+
+fn coerceErrorType(comptime Result: type) type {
+    const typeInfo = @typeInfo(Result);
+    if (typeInfo == .ErrorUnion) {
+        // Unwrap the error to ensure it's a PyError
+        return PyError!typeInfo.ErrorUnion.payload;
+    } else {
+        // Always return a PyError union so the caller can always "try".
+        return PyError!Result;
+    }
 }

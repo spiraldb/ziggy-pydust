@@ -21,7 +21,7 @@ pub const PyType = extern struct {
     obj: PyObject,
 
     pub fn getQualifiedName(self: PyType) !py.PyString {
-        return py.PyString.of(ffi.PyType_GetQualName(self.obj.py) orelse return PyError.Propagate);
+        return py.PyString.of(ffi.PyType_GetQualName(self.obj.py) orelse return PyError.PyRaised);
     }
 };
 
@@ -37,14 +37,14 @@ pub const PyObject = extern struct {
     }
 
     pub fn getTypeName(self: PyObject) ![:0]const u8 {
-        const pytype: *ffi.PyObject = ffi.PyObject_Type(self.py) orelse return PyError.Propagate;
-        const name = py.PyString.unchecked(.{ .py = ffi.PyType_GetName(@ptrCast(pytype)) orelse return PyError.Propagate });
+        const pytype: *ffi.PyObject = ffi.PyObject_Type(self.py) orelse return PyError.PyRaised;
+        const name = py.PyString.unchecked(.{ .py = ffi.PyType_GetName(@ptrCast(pytype)) orelse return PyError.PyRaised });
         return name.asSlice();
     }
 
     /// Call this object without any arguments.
     pub fn call0(self: PyObject) !PyObject {
-        return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.Propagate };
+        return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.PyRaised };
     }
 
     /// Call this object with the given args and kwargs.
@@ -73,12 +73,12 @@ pub const PyObject = extern struct {
         defer kwargsPy.decref();
 
         // We _must_ return a PyObject to the user to let them handle the lifetime of the object.
-        const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.Propagate;
+        const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.PyRaised;
         return PyObject{ .py = result };
     }
 
     pub fn get(self: PyObject, attr: [:0]const u8) !PyObject {
-        return .{ .py = ffi.PyObject_GetAttrString(self.py, attr) orelse return PyError.Propagate };
+        return .{ .py = ffi.PyObject_GetAttrString(self.py, attr) orelse return PyError.PyRaised };
     }
 
     // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
@@ -89,27 +89,27 @@ pub const PyObject = extern struct {
         var buffer: py.PyBuffer = undefined;
         if (ffi.PyObject_GetBuffer(self.py, @ptrCast(&buffer), flags) != 0) {
             // Error is already raised.
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
         return buffer;
     }
 
     pub fn set(self: PyObject, attr: [:0]const u8, value: PyObject) !PyObject {
         if (ffi.PyObject_SetAttrString(self.py, attr, value.py) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
         return self;
     }
 
     pub fn del(self: PyObject, attr: [:0]const u8) !PyObject {
         if (ffi.PyObject_DelAttrString(self.py, attr) < 0) {
-            return PyError.Propagate;
+            return PyError.PyRaised;
         }
         return self;
     }
 
     pub fn repr(self: PyObject) !PyObject {
-        return .{ .py = ffi.PyObject_Repr(@ptrCast(self)) orelse return PyError.Propagate };
+        return .{ .py = ffi.PyObject_Repr(@ptrCast(self)) orelse return PyError.PyRaised };
     }
 };
 

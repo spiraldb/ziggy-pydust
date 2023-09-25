@@ -25,7 +25,7 @@ pub const PyFloat = extern struct {
     pub usingnamespace PyObjectMixin("float", "PyFloat", @This());
 
     pub fn create(value: anytype) !PyFloat {
-        const pyfloat = ffi.PyFloat_FromDouble(@floatCast(value)) orelse return PyError.Propagate;
+        const pyfloat = ffi.PyFloat_FromDouble(@floatCast(value)) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = pyfloat } };
     }
 
@@ -33,7 +33,7 @@ pub const PyFloat = extern struct {
         return switch (T) {
             f32, f64 => {
                 const double = ffi.PyFloat_AsDouble(self.obj.py);
-                if (ffi.PyErr_Occurred() != null) return PyError.Propagate;
+                if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
                 return @floatCast(double);
             },
             else => @compileError("Unsupported float type " ++ @typeName(T)),

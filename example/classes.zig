@@ -25,7 +25,7 @@ pub const SomeClass = py.class(struct {
 pub const ConstructableClass = py.class(struct {
     count: u32 = 0,
 
-    pub fn __new__(args: struct { count: u32 }) !@This() {
+    pub fn __new__(args: struct { count: u32 }) @This() {
         return .{ .count = args.count };
     }
 });
@@ -67,7 +67,7 @@ pub const Dog = py.class(struct {
 pub const User = py.class(struct {
     const Self = @This();
 
-    pub fn __new__(args: struct { name: py.PyString }) !Self {
+    pub fn __new__(args: struct { name: py.PyString }) Self {
         args.name.incref();
         return .{ .name = args.name, .email = .{} };
     }
@@ -78,7 +78,7 @@ pub const User = py.class(struct {
 
         e: ?py.PyString = null,
 
-        pub fn get(prop: *const Prop) !?py.PyString {
+        pub fn get(prop: *const Prop) ?py.PyString {
             return prop.e;
         }
 
@@ -108,7 +108,7 @@ pub const Counter = py.class(struct {
 
     count: py.attribute(usize) = .{ .value = 0 },
 
-    pub fn __new__(args: struct {}) !Self {
+    pub fn __new__(args: struct {}) Self {
         _ = args;
         return .{};
     }

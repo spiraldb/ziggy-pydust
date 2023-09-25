@@ -95,7 +95,7 @@ const PyExc = struct {
     pub fn raise(comptime self: Self, message: [:0]const u8) PyError {
         ffi.PyErr_SetString(self.asPyObject().py, message.ptr);
         try augmentTraceback();
-        return PyError.Raised;
+        return PyError.PyRaised;
     }
 
     pub fn raiseFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError {
