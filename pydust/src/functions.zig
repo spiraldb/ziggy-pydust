@@ -31,19 +31,32 @@ pub const Signature = struct {
 
 pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
     .{ "__add__", ffi.Py_nb_add },
+    .{ "__iadd__", ffi.Py_nb_inplace_add },
     .{ "__sub__", ffi.Py_nb_subtract },
+    .{ "__isub__", ffi.Py_nb_inplace_subtract },
     .{ "__mul__", ffi.Py_nb_multiply },
+    .{ "__imul__", ffi.Py_nb_inplace_multiply },
     .{ "__mod__", ffi.Py_nb_remainder },
+    .{ "__imod__", ffi.Py_nb_inplace_remainder },
     .{ "__divmod__", ffi.Py_nb_divmod },
     .{ "__pow__", ffi.Py_nb_power },
+    .{ "__ipow__", ffi.Py_nb_inplace_power },
     .{ "__lshift__", ffi.Py_nb_lshift },
+    .{ "__ilshift__", ffi.Py_nb_inplace_lshift },
     .{ "__rshift__", ffi.Py_nb_rshift },
+    .{ "__irshift__", ffi.Py_nb_inplace_rshift },
     .{ "__and__", ffi.Py_nb_and },
+    .{ "__iand__", ffi.Py_nb_inplace_and },
     .{ "__xor__", ffi.Py_nb_xor },
+    .{ "__ixor__", ffi.Py_nb_inplace_xor },
     .{ "__or__", ffi.Py_nb_or },
+    .{ "__ior__", ffi.Py_nb_inplace_or },
     .{ "__truediv__", ffi.Py_nb_true_divide },
+    .{ "__itruediv__", ffi.Py_nb_inplace_true_divide },
     .{ "__floordiv__", ffi.Py_nb_floor_divide },
+    .{ "__ifloordiv__", ffi.Py_nb_inplace_floor_divide },
     .{ "__matmul__", ffi.Py_nb_matrix_multiply },
+    .{ "__imatmul__", ffi.Py_nb_inplace_matrix_multiply },
     .{ "__getitem__", ffi.Py_sq_item },
 });
 pub const NBinaryOperators = BinaryOperators.kvs.len;
@@ -137,6 +150,7 @@ pub fn kwargCount(comptime argsParam: type) usize {
 }
 
 fn isReserved(comptime name: []const u8) bool {
+    @setEvalBranchQuota(10000);
     for (reservedNames) |reserved| {
         if (std.mem.eql(u8, name, reserved)) {
             return true;
@@ -346,6 +360,7 @@ pub fn Methods(comptime definition: type) type {
             var defs: [methodCount:empty]ffi.PyMethodDef = undefined;
 
             var idx: u32 = 0;
+            @setEvalBranchQuota(10000);
             for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
                 const typeInfo = @typeInfo(@TypeOf(value));
