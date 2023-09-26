@@ -235,8 +235,11 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             if (sig.argsParam) |Args| {
                 // Create an args struct and populate it with pyargs.
                 var args: Args = undefined;
-                if (argCount(Args) != pyargs.len) {
-                    return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
+                if (pyargs.len != argCount(Args)) {
+                    return py.TypeError.raiseComptimeFmt("expected {d} arg{s}, {d} kwarg{s}", .{
+                        argCount(Args),   if (argCount(Args) > 1) "s" else "",
+                        kwargCount(Args), if (kwargCount(Args) > 1) "s" else "",
+                    });
                 }
                 inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
                     @field(args, field.name) = try py.as(field.type, pyargs[i]);
@@ -282,7 +285,10 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             var args: Args = undefined;
 
             if (pyargs.len != argCount(Args)) {
-                return py.TypeError.raiseComptimeFmt("expected {d} arg{s}", .{ argCount(Args), if (argCount(Args) > 1) "s" else "" });
+                return py.TypeError.raiseComptimeFmt("expected {d} arg{s}, {d} kwarg{s}", .{
+                    argCount(Args),   if (argCount(Args) > 1) "s" else "",
+                    kwargCount(Args), if (kwargCount(Args) > 1) "s" else "",
+                });
             }
 
             inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {

@@ -39,7 +39,7 @@ def test_kwargs():
         functions.with_kwargs(1.0, y=9.0, k=-2)
     with pytest.raises(TypeError) as exc_info:
         functions.with_kwargs(y=9.0)
-    assert str(exc_info.value) == "expected 1 arg"
+    assert str(exc_info.value) == "expected 1 arg, 1 kwarg"
 
 
 def test_kw_signature():
