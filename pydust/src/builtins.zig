@@ -14,6 +14,7 @@
 //! These functions similarly operate over all types of PyObject-like values.
 //!
 //! See https://docs.python.org/3/library/functions.html for full reference.
+const std = @import("std");
 const py = @import("./pydust.zig");
 const State = @import("./discovery.zig").State;
 const ffi = @import("./ffi.zig");
@@ -61,7 +62,7 @@ pub fn dict(object: anytype) !py.PyDict {
 
 /// Checks whether a given object is None. Avoids incref'ing None to do the check.
 pub fn is_none(object: anytype) bool {
-    const obj = try py.object(object);
+    const obj = py.object(object);
     return ffi.Py_IsNone(obj.py) == 1;
 }
 
@@ -140,4 +141,16 @@ pub fn self(comptime PydustType: type) !py.PyObject {
     const modName = State.getIdentifier(mod).name;
 
     return try importFrom(modName, clsName);
+}
+
+const testing = std.testing;
+
+test "is_none" {
+    py.initialize();
+    defer py.finalize();
+
+    const none = None();
+    defer none.decref();
+
+    try testing.expect(is_none(none));
 }
