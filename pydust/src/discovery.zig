@@ -22,7 +22,7 @@ const Definition = struct {
     type: DefinitionType,
 };
 
-const DefinitionType = enum { module, class, attribute, property };
+const DefinitionType = enum { module, class, attribute, property, zigmethod };
 
 /// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
@@ -32,6 +32,9 @@ const Identifier = struct {
 };
 
 pub const State = blk: {
+    comptime var privateMethods: [1000]*anyopaque = undefined;
+    comptime var privateMethodsSize: usize = 0;
+
     comptime var definitions: [1000]Definition = undefined;
     comptime var definitionsSize: usize = 0;
 
@@ -45,6 +48,12 @@ pub const State = blk: {
         ) void {
             definitions[definitionsSize] = .{ .definition = definition, .type = deftype };
             definitionsSize += 1;
+        }
+
+        pub fn privateMethod(comptime fnPtr: anytype) void {
+            const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
+            privateMethods[privateMethodsSize] = castPtr;
+            privateMethodsSize += 1;
         }
 
         pub fn identify(
@@ -92,6 +101,16 @@ pub const State = blk: {
             return false;
         }
 
+        pub fn isPrivate(fnPtr: anytype) bool {
+            const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
+            for (privateMethods[0..privateMethodsSize]) |methPtr| {
+                if (castPtr == methPtr) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         pub fn getDefinition(comptime definition: type) Definition {
             return findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
         }
@@ -103,9 +122,9 @@ pub const State = blk: {
             if (@typeInfo(definition) != .Struct) {
                 return null;
             }
-            for (0..definitionsSize) |i| {
-                if (definitions[i].definition == definition) {
-                    return definitions[i];
+            for (definitions[0..definitionsSize]) |def| {
+                if (def.definition == definition) {
+                    return def;
                 }
             }
             return null;
@@ -119,9 +138,9 @@ pub const State = blk: {
             if (@typeInfo(definition) != .Struct) {
                 return null;
             }
-            for (0..identifiersSize) |i| {
-                if (identifiers[i].definition == definition) {
-                    return identifiers[i];
+            for (identifiers[0..identifiersSize]) |idef| {
+                if (idef.definition == definition) {
+                    return idef;
                 }
             }
             return null;
@@ -133,7 +152,7 @@ pub const State = blk: {
 
         /// Find the nearest containing definition with the given deftype.
         pub fn findContaining(comptime definition: type, comptime deftype: DefinitionType) ?type {
-            const defs = State.getDefinitions();
+            const defs = definitions[0..definitionsSize];
             var idx = defs.len;
             var foundOriginal = false;
             while (idx > 0) : (idx -= 1) {
@@ -145,7 +164,7 @@ pub const State = blk: {
                     continue;
                 }
 
-                if (def.type == deftype) {
+                if (foundOriginal and def.type == deftype) {
                     return def.definition;
                 }
             }
