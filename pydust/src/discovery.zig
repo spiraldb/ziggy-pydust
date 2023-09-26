@@ -22,7 +22,7 @@ const Definition = struct {
     type: DefinitionType,
 };
 
-const DefinitionType = enum { module, class, attribute, property, zigmethod };
+const DefinitionType = enum { module, class, attribute, property };
 
 /// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
