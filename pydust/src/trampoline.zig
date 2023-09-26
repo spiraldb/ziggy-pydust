@@ -389,13 +389,10 @@ pub fn Trampoline(comptime T: type) type {
 pub fn coerceError(result: anytype) coerceErrorType(@TypeOf(result)) {
     const typeInfo = @typeInfo(@TypeOf(result));
     if (typeInfo == .ErrorUnion) {
-        return result catch |err| switch (err) {
-            inline else => |e| {
-                if (e == PyError.PyRaised or e == PyError.OutOfMemory) {
-                    return e;
-                }
-                return py.RuntimeError.raise(@errorName(e));
-            },
+        return result catch |err| {
+            if (err == PyError.PyRaised) return PyError.PyRaised;
+            if (err == PyError.OutOfMemory) return PyError.OutOfMemory;
+            return py.RuntimeError.raise(@errorName(err));
         };
     } else {
         return result;
