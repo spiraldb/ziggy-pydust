@@ -14,8 +14,11 @@ const std = @import("std");
 const Allocator = @import("std").mem.Allocator;
 const mem = @import("../mem.zig");
 const ffi = @import("../ffi.zig");
-const py = @import("../types.zig");
+const py = @import("../pydust.zig");
 const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+const pytypes = @import("../pytypes.zig");
+const tramp = @import("../trampoline.zig");
+const State = @import("../discovery.zig").State;
 
 const PyError = @import("../errors.zig").PyError;
 
@@ -28,15 +31,36 @@ pub const PyModule = extern struct {
         return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.PyRaised } };
     }
 
-    pub fn getState(self: *const PyModule, comptime state: type) !*state {
+    pub fn getState(self: PyModule, comptime state: type) !*state {
         const statePtr = ffi.PyModule_GetState(self.obj.py) orelse return PyError.PyRaised;
         return @ptrCast(@alignCast(statePtr));
     }
 
-    pub fn addObjectRef(self: *const PyModule, name: [:0]const u8, obj: py.PyObject) !void {
-        if (ffi.PyModule_AddObjectRef(self.obj.py, name.ptr, obj.py) < 0) {
+    pub fn addObjectRef(self: PyModule, name: [:0]const u8, obj: anytype) !void {
+        const pyobject = py.object(obj);
+        if (ffi.PyModule_AddObjectRef(self.obj.py, name.ptr, pyobject.py) < 0) {
             return PyError.PyRaised;
         }
+    }
+
+    /// Initialize a class that is defined within this module.
+    /// Most useful during module.__exec__ initialization.
+    pub fn init(self: PyModule, class_name: [:0]const u8, class_state: anytype) !*const @TypeOf(class_state) {
+        const pytype = try self.obj.get(class_name);
+        const Cls = @TypeOf(class_state);
+
+        if (State.getDefinition(Cls).type != .class) {
+            @compileError("Can only init class objects");
+        }
+
+        if (@hasDecl(Cls, "__new__")) {
+            @compileError("PyTypes with a __new__ method should be instantiated with ptype.call(...)");
+        }
+
+        // Alloc the class
+        const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.PyRaised));
+        pyobj.state = class_state;
+        return &pyobj.state;
     }
 
     /// Create and insantiate a PyModule object from a Python code string.
