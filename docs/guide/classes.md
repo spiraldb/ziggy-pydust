@@ -224,11 +224,11 @@ You can override numerical methods. If you want to support mixing types declare 
 | `__matmul__`    | `binaryfunc` |
 | `__imatmul__`   | `binaryfunc` |
 
-??? "Example usage of all numeric functions"
+!!! note
 
-    ```zig
-    --8<-- "example/operators.zig:all"
-    ```
+    When implementing in place variants of the functions make sure to incref reference to self as your function is supposed to return a new reference, per [CPython](https://docs.python.org/3/c-api/number.html#c.PyNumber_InPlaceAdd) documentation
+
+For a more detailed example on how to implement all those methods refer to [example](https://github.com/fulcrum-so/ziggy-pydust/blob/develop/example/operators.zig).
 
 ### Buffer Methods
 
