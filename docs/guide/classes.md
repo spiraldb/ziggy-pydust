@@ -180,20 +180,6 @@ The remaining mapping methods are yet to be implemented.
 
 ### Number Methods
 
-You can override numerical methods. If you want to support mixing types declare second argument as `py.PyObject` and perform the type checks inside the function
-
-=== "Zig"
-
-    ```zig
-    --8<-- "example/operators.zig:ops"
-    ```
-
-=== "Python"
-
-    ```python
-    --8<-- "test/test_operators.py:test_ops"
-    ```
-
 | Method          | Signature    |
 | :-------------- | :----------- |
 | `__add__`       | `binaryfunc` |
@@ -228,7 +214,17 @@ You can override numerical methods. If you want to support mixing types declare 
 
     When implementing in place variants of the functions make sure to incref reference to self as your function is supposed to return a new reference, per [CPython](https://docs.python.org/3/c-api/number.html#c.PyNumber_InPlaceAdd) documentation
 
-For a more detailed example on how to implement all those methods refer to [example](https://github.com/fulcrum-so/ziggy-pydust/blob/develop/example/operators.zig).
+???+ example "Dynamic dispatch example"
+
+    ```zig
+    --8<-- "example/operators.zig:ops"
+    ```
+
+??? example "All numerical methods example"
+
+    ```zig
+    --8<-- "example/operators.zig:all"
+    ```
 
 ### Buffer Methods
 

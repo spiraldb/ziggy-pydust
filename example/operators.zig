@@ -186,17 +186,12 @@ pub const Operator = py.class(struct {
     pub fn __truediv__(self: *const Self, other: py.PyObject) !py.PyObject {
         if (try py.PyFloat.check(other)) {
             const numF: f64 = @floatFromInt(self.num);
-            const otherf: f64 = try py.PyFloat.unchecked(other).as(f64);
-            const pyFloat = try py.PyFloat.create(numF / otherf);
-            return pyFloat.obj;
+            return py.create(numF / try py.as(f64, other));
         } else if (try py.PyLong.check(other)) {
-            const otherL: u64 = try py.PyLong.unchecked(other).as(u64);
-            const pyLong = try py.PyLong.create(self.num / otherL);
-            return pyLong.obj;
+            return py.create(self.num / try py.as(u64, other));
         } else if (try py.isinstance(other, try py.self(Self))) {
             const otherO: *Self = try py.as(*Self, other);
-            const obj = try py.init(Self, .{ .num = self.num / otherO.num });
-            return py.object(obj);
+            return py.object(try py.init(Self, .{ .num = self.num / otherO.num }));
         } else {
             return py.TypeError.raise("Unsupported number type for Operator division");
         }
