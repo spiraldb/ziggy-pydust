@@ -134,6 +134,14 @@ Static methods are similar to class methods but do not have access to the class 
 --8<-- "example/classes.zig:staticmethods"
 ```
 
+## Zig Only Methods
+
+Classes can define methods that are not exposed to python via `py.zig` wrapper
+
+```zig
+--8<-- "example/classes.zig:zigonly"
+```
+
 ## Dunder Methods
 
 Dunder methods, or "double underscore" methods, provide a mechanism for overriding builtin
