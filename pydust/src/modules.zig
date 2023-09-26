@@ -82,15 +82,11 @@ fn Slots(comptime definition: type) type {
                 .value = @ptrCast(@constCast(&Self.mod_exec)),
             }};
 
-            // Then we check to see if the user has created a manual exec method.
-            // This isn't really a Python dunder method, but it'll do for our API.
+            // Allow the user to add extra module initialization logic
             if (@hasDecl(definition, "__exec__")) {
-                // TODO(ngates): trampoline this.
-                const initFn = @field(definition, "__exec__");
-
                 slots_ = slots_ ++ .{ffi.PyModuleDef_Slot{
                     .slot = ffi.Py_mod_exec,
-                    .value = @ptrCast(@constCast(&initFn)),
+                    .value = @ptrCast(@constCast(&custom_mod_exec)),
                 }};
             }
 
@@ -99,21 +95,18 @@ fn Slots(comptime definition: type) type {
             break :blk slots_;
         };
 
+        fn custom_mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
+            const mod: py.PyModule = .{ .obj = .{ .py = pymodule } };
+            tramp.coerceError(definition.__exec__(mod)) catch return -1;
+            return 0;
+        }
+
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
             tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
             return 0;
         }
 
         inline fn mod_exec_internal(module: py.PyModule) !void {
-            // Initialize the state struct to default values
-            const state = try module.getState(definition);
-            if (@hasDecl(definition, "__new__")) {
-                const newFunc = @field(definition, "__new__");
-                state.* = try newFunc();
-            } else {
-                state.* = definition{};
-            }
-
             // Add attributes (including class definitions) to the module
             inline for (attrs.attributes) |attr| {
                 const obj = try attr.ctor(module);
@@ -140,6 +133,15 @@ fn Slots(comptime definition: type) type {
 
                 const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
                 try module.addObjectRef(name, submod);
+            }
+
+            // Finally, i Initialize the state struct to default values
+            const state = try module.getState(definition);
+            if (@hasDecl(definition, "__new__")) {
+                const newFunc = @field(definition, "__new__");
+                state.* = try newFunc();
+            } else {
+                state.* = definition{};
             }
         }
     };
