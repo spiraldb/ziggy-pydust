@@ -127,6 +127,27 @@ pub const Math = py.class(struct {
 });
 // --8<-- [end:staticmethods]
 
+// --8<-- [start:zigonly]
+pub const ZigOnlyMethod = py.class(struct {
+    const Self = @This();
+    number: i32,
+
+    pub fn __new__(args: struct { x: i32 }) Self {
+        return .{ .number = args.x };
+    }
+
+    pub usingnamespace py.zig(struct {
+        pub fn get_number(self: *const Self) i32 {
+            return self.number;
+        }
+    });
+
+    pub fn reexposed(self: *const Self) i32 {
+        return self.get_number();
+    }
+});
+// --8<-- [end:zigonly]
+
 comptime {
     py.rootmodule(@This());
 }

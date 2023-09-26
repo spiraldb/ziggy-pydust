@@ -348,7 +348,7 @@ pub fn Methods(comptime definition: type) type {
                 const value = @field(definition, decl.name);
                 const typeInfo = @typeInfo(@TypeOf(value));
 
-                if (typeInfo != .Fn or isReserved(decl.name)) {
+                if (typeInfo != .Fn or isReserved(decl.name) or State.isPrivate(&value)) {
                     continue;
                 }
                 mc += 1;
@@ -366,7 +366,7 @@ pub fn Methods(comptime definition: type) type {
                 const typeInfo = @typeInfo(@TypeOf(value));
 
                 // For now, we skip non-function declarations.
-                if (typeInfo != .Fn or isReserved(decl.name)) {
+                if (typeInfo != .Fn or isReserved(decl.name) or State.isPrivate(&value)) {
                     continue;
                 }
 

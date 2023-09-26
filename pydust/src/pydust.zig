@@ -11,7 +11,6 @@
 // limitations under the License.
 
 const std = @import("std");
-const builtins = @import("builtins.zig");
 const mem = @import("mem.zig");
 const State = @import("discovery.zig").State;
 const Module = @import("modules.zig").Module;
@@ -22,7 +21,7 @@ const funcs = @import("functions.zig");
 const tramp = @import("trampoline.zig");
 
 // Export some useful things for users
-pub usingnamespace builtins;
+pub usingnamespace @import("builtins.zig");
 pub usingnamespace @import("conversions.zig");
 pub usingnamespace types;
 pub const ffi = @import("ffi.zig");
@@ -110,6 +109,13 @@ pub fn module(comptime definition: type) @TypeOf(definition) {
 /// Register a struct as a Python class definition.
 pub fn class(comptime definition: type) @TypeOf(definition) {
     State.register(definition, .class);
+    return definition;
+}
+
+pub fn zig(comptime definition: type) @TypeOf(definition) {
+    for (@typeInfo(definition).Struct.decls) |decl| {
+        State.privateMethod(&@field(definition, decl.name));
+    }
     return definition;
 }
 
