@@ -187,6 +187,15 @@ pub const PydustStep = struct {
         );
         b.getInstallStep().dependOn(&install.step);
 
+        // Invoke stub generator on the emitted binary
+        const stubsGenerator = std.fs.path.join(self.allocator, &.{
+            std.fs.path.dirname(self.pydust_source_file.getPath()).?,
+            "../generate_stubs.py",
+        }) catch @panic("OOM");
+        const stubs = b.addSystemCommand(&.{ self.python_exe, stubsGenerator, options.name, "." });
+        stubs.step.dependOn(&install.step);
+        b.getInstallStep().dependOn(&stubs.step);
+
         // Configure a test runner for the module
         const libtest = b.addTest(.{
             .root_source_file = options.root_source_file,

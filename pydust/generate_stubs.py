@@ -1,6 +1,8 @@
 import argparse
+import importlib
 import inspect
 import os
+import sys
 from pathlib import Path
 
 import black
@@ -15,9 +17,17 @@ def do_indent(text: str, indent: str):
 
 def function(obj, indent, text_signature=None):
     if text_signature is None:
-        text_signature = (
-            "(" + ", ".join([f"{param.name}" for param in inspect.signature(obj).parameters.values()]) + ")"
-        )
+        try:
+            sig = inspect._signature_from_callable(
+                obj, follow_wrapper_chains=True, skip_bound_arg=False, sigcls=inspect.Signature, eval_str=False
+            )
+            text_signature = str(sig)
+        except:
+            text_signature = "(self)"
+
+    if isinstance(obj, staticmethod):
+        obj = obj.__func__
+
     string = ""
     string += f"{indent}def {obj.__name__}{text_signature}:\n"
     indent += INDENT
@@ -37,15 +47,6 @@ def member_sort(member):
     else:
         value = 1
     return value
-
-
-def fn_predicate(obj):
-    value = inspect.ismethoddescriptor(obj)
-    if value:
-        return obj.__text_signature__ and not obj.__name__.startswith("_")
-    if inspect.isgetsetdescriptor(obj):
-        return not obj.__name__.startswith("_")
-    return False
 
 
 def get_module_members(module):
@@ -79,15 +80,17 @@ def pyi_file(obj, indent=""):
         if obj.__doc__:
             body += f'{indent}"""\n{indent}{do_indent(obj.__doc__, indent)}\n{indent}"""\n'
 
-        fns = inspect.getmembers(obj, fn_predicate)
+        print(
+            inspect.signature(obj),
+            obj.__mro__,
+            obj.__text_signature__,
+            hasattr(obj, "__init__"),
+            hasattr(obj, "__new__"),
+        )
 
-        # Init
-        if obj.__text_signature__:
-            body += f"{indent}def __init__{obj.__text_signature__}:\n"
-            body += f"{indent+INDENT}pass\n"
-            body += "\n"
+        fns = [func for name, func in vars(obj).items() if name not in ["__doc__", "__module__"]]
 
-        for name, fn in fns:
+        for fn in fns:
             body += pyi_file(fn, indent=indent)
 
         if not body:
@@ -97,7 +100,6 @@ def pyi_file(obj, indent=""):
         string += "\n\n"
 
     elif inspect.isbuiltin(obj):
-        string += f"{indent}@staticmethod\n"
         string += function(obj, indent)
 
     elif inspect.ismethoddescriptor(obj):
@@ -107,6 +109,9 @@ def pyi_file(obj, indent=""):
         # TODO it would be interesing to add the setter maybe ?
         string += f"{indent}@property\n"
         string += function(obj, indent, text_signature="(self)")
+
+    elif inspect.ismemberdescriptor(obj):
+        string += f"{indent}{obj.__name__}: {type(obj.__objclass__().__getattribute__(obj.__name__)).__name__}"
     else:
         raise Exception(f"Object {obj} is not supported")
     return string
@@ -137,10 +142,17 @@ def do_black(content, is_pyi):
         return content
 
 
-def write(module, directory, origin):
-    submodules = [(name, member) for name, member in inspect.getmembers(module) if inspect.ismodule(member)]
+def simple_name(module_name: str) -> str:
+    return module_name.split(".")[-1]
 
-    filename = directory.joinpath("__init__.pyi")
+
+def module_dir(module_name: str) -> Path:
+    return Path(*module_name.split(".")[:-1])
+
+
+def write(module, directory, module_name):
+    name = simple_name(module_name)
+    filename = directory.joinpath(module_dir(module_name)).joinpath(name + ".pyi")
     pyi_content = pyi_file(module)
     pyi_content = do_black(pyi_content, is_pyi=True)
     os.makedirs(directory, exist_ok=True)
@@ -148,19 +160,31 @@ def write(module, directory, origin):
     with open(filename, "w") as f:
         f.write(pyi_content)
 
-    filename = directory.joinpath("__init__.py")
-    py_content = py_file(module, origin)
-    py_content = do_black(py_content, is_pyi=False)
-    os.makedirs(directory, exist_ok=True)
+    # filename = directory.joinpath("__init__.py")
+    # py_content = py_file(module, origin)
+    # py_content = do_black(py_content, is_pyi=False)
+    # os.makedirs(directory, exist_ok=True)
 
-    with open(filename, "w") as f:
-        f.write(py_content)
+    # with open(filename, "w") as f:
+    #     f.write(py_content)
 
-    for name, submodule in submodules:
-        write(submodule, directory.joinpath(name), f"{name}")
+    # submodules = [(name, member) for name, member in inspect.getmembers(module) if inspect.ismodule(member)]
+    # for name, submodule in submodules:
+    #     write(submodule, directory.joinpath(name), f"{name}")
 
 
 if __name__ == "__main__":
-    from example import classes
+    parser = argparse.ArgumentParser()
+    parser.add_argument("package_name")
+    parser.add_argument("destination")
+    args = parser.parse_args()
 
-    write(classes, Path("py_test/example/"), "example.classes")
+    module = None
+    try:
+        module = importlib.import_module(args.package_name)
+    except Exception as exc:
+        print("Not a valid python module, skipping...", args.package_name, exc)
+        sys.exit(0)
+
+    if module:
+        write(module, Path(args.destination).resolve(), args.package_name)
