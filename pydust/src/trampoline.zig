@@ -216,6 +216,7 @@ pub fn Trampoline(comptime T: type) type {
             // Early return to handle optionals
             if (typeInfo == .Optional) {
                 const value = object orelse return null;
+                if (py.is_none(value)) return null;
                 return @as(T, try Trampoline(typeInfo.Optional.child).unwrap(value));
             }
 
