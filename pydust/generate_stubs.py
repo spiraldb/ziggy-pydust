@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-# Adapted from https://github.com/huggingface/tokenizers/blob/18bd5e8f9d3aa56612b8aeba5d0d8821e16b3105/bindings/python/stub.py under Apache 2.0 license
+# Adapted from https://github.com/huggingface/tokenizers/blob/18bd5e8f9d3aa56612b8aeba5d0d8821e16b3105/bindings/python/stub.py under Apache 2.0 license # noqa: E501
 
 import argparse
 import importlib
@@ -40,7 +40,7 @@ def function(obj, indent, text_signature=None):
                     obj, follow_wrapper_chains=True, skip_bound_arg=False, sigcls=inspect.Signature, eval_str=False
                 )
             )
-        except:
+        except Exception:
             text_signature = "(self)"
 
     if isinstance(obj, staticmethod):
