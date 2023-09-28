@@ -353,21 +353,21 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
     return struct {
         const docLen = blk: {
             var size: usize = 0;
-            var sig: ?funcs.Signature = null;
+            var maybeSig: ?funcs.Signature = null;
             if (@hasDecl(definition, "__new__")) {
-                sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
+                maybeSig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
             } else if (@hasDecl(definition, "__init__")) {
-                sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition._init__)).Fn, &.{ py.PyObject, *definition, *const definition });
+                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition._init__)).Fn, &.{ py.PyObject, *definition, *const definition });
             }
 
-            if (sig) |eSig| {
+            if (maybeSig) |sig| {
                 const classSig: funcs.Signature = .{
                     .name = name,
-                    .selfParam = eSig.selfParam,
-                    .argsParam = eSig.argsParam,
-                    .returnType = eSig.returnType,
-                    .nargs = eSig.nargs,
-                    .nkwargs = eSig.nkwargs,
+                    .selfParam = sig.selfParam,
+                    .argsParam = sig.argsParam,
+                    .returnType = sig.returnType,
+                    .nargs = sig.nargs,
+                    .nkwargs = sig.nkwargs,
                 };
                 size += funcs.textSignature(classSig).len;
             }
@@ -381,21 +381,21 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
         const doc: [docLen:0]u8 = blk: {
             var userDoc: [docLen:0]u8 = undefined;
             var docOffset = 0;
-            var sig: ?funcs.Signature = null;
+            var maybeSig: ?funcs.Signature = null;
             if (@hasDecl(definition, "__new__")) {
-                sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
+                maybeSig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
             } else if (@hasDecl(definition, "__init__")) {
-                sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{ py.PyObject, *definition, *const definition });
+                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{ py.PyObject, *definition, *const definition });
             }
 
-            if (sig) |*eSig| {
+            if (maybeSig) |sig| {
                 const classSig: funcs.Signature = .{
                     .name = name,
-                    .selfParam = eSig.selfParam,
-                    .argsParam = eSig.argsParam,
-                    .returnType = eSig.returnType,
-                    .nargs = eSig.nargs,
-                    .nkwargs = eSig.nkwargs,
+                    .selfParam = sig.selfParam,
+                    .argsParam = sig.argsParam,
+                    .returnType = sig.returnType,
+                    .nargs = sig.nargs,
+                    .nkwargs = sig.nkwargs,
                 };
                 const sigText = funcs.textSignature(classSig);
                 @memcpy(userDoc[0..sigText.len], &sigText);
