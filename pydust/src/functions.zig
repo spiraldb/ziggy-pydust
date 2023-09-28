@@ -57,7 +57,7 @@ pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
     .{ "__ifloordiv__", ffi.Py_nb_inplace_floor_divide },
     .{ "__matmul__", ffi.Py_nb_matrix_multiply },
     .{ "__imatmul__", ffi.Py_nb_inplace_matrix_multiply },
-    .{ "__getitem__", ffi.Py_sq_item },
+    .{ "__getitem__", ffi.Py_mp_subscript },
 });
 pub const NBinaryOperators = BinaryOperators.kvs.len;
 
