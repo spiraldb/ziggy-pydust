@@ -130,6 +130,14 @@ pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, com
             return .{ .obj = obj };
         }
 
+        /// Optionally downcast the object if it is of this type.
+        pub fn checkedCast(obj: py.PyObject) ?Self {
+            if (PyCheck(obj.py) == 1) {
+                return .{ .obj = obj };
+            }
+            return null;
+        }
+
         /// Unchecked conversion from a PyObject.
         pub fn unchecked(obj: py.PyObject) Self {
             return .{ .obj = obj };
@@ -152,7 +160,11 @@ test "call" {
     defer py.finalize();
 
     const pow = try py.importFrom("math", "pow");
-    const result = try py.as(f32, try pow.call(.{ 2, 3 }, .{}));
+    const result = try pow.call(.{ 2, 3 }, .{});
 
-    try std.testing.expectEqual(@as(f32, 8.0), result);
+    if (py.PyFloat.checkedCast(result)) |f| {
+        try std.testing.expectEqual(f.as(f32), 8.0);
+    }
+
+    try std.testing.expectEqual(@as(f32, 8.0), try py.as(f32, result));
 }
