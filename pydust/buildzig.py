@@ -107,17 +107,20 @@ def generate_build_zig():
 
 def generate_pydust_build_zig():
     """Copy the supporting pydust.build.zig into the project directory."""
-    return open(os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig"), "rb").read()
+    return open(os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig")).read()
 
 
-def update_file(path, contents: typing.BinaryIO):
+def update_file(path, contents: TextIO):
     """Update a file only if the contents have changed.
 
     This helps ensure we don't unnecessarily invalidate timestamp based caches.
     """
-    if os.path.exists(path) and hashlib.sha1(open(path, "rb").read()).hexdigest() == hashlib.sha1(contents).hexdigest():
+    if (
+        os.path.exists(path)
+        and hashlib.sha1(open(path, "rb").read()).hexdigest() == hashlib.sha1(contents.encode("utf-8")).hexdigest()
+    ):
         return
-    with open(path, "wb+") as f:
+    with open(path, "w+") as f:
         f.write(contents)
 
 
