@@ -18,10 +18,13 @@ def do_indent(text: str, indent: str):
 def function(obj, indent, text_signature=None):
     if text_signature is None:
         try:
-            sig = inspect._signature_from_callable(
-                obj, follow_wrapper_chains=True, skip_bound_arg=False, sigcls=inspect.Signature, eval_str=False
+            # This is how `inspect.getfullargspec` gets signature but instead of the tuple it returns
+            #  we want to get the Signature object which handles string formatting for us
+            text_signature = str(
+                inspect._signature_from_callable(
+                    obj, follow_wrapper_chains=True, skip_bound_arg=False, sigcls=inspect.Signature, eval_str=False
+                )
             )
-            text_signature = str(sig)
         except:
             text_signature = "(self)"
 
@@ -80,18 +83,20 @@ def pyi_file(obj, indent=""):
         if obj.__doc__:
             body += f'{indent}"""\n{indent}{do_indent(obj.__doc__, indent)}\n{indent}"""\n'
 
-        print(
-            inspect.signature(obj),
-            obj.__mro__,
-            obj.__text_signature__,
-            hasattr(obj, "__init__"),
-            hasattr(obj, "__new__"),
-        )
+        if obj.__text_signature__:
+            body += f"{indent}def __init__{inspect.signature(obj)}:\n"
+            body += f"{indent+INDENT}pass\n"
+            body += "\n"
 
-        fns = [func for name, func in vars(obj).items() if name not in ["__doc__", "__module__"]]
+        if obj.__annotations__:
+            print("Annotations", obj.__annotations__)
 
-        for fn in fns:
-            body += pyi_file(fn, indent=indent)
+        members = [
+            func for name, func in vars(obj).items() if name not in ["__doc__", "__module__", "__new__", "__init__"]
+        ]
+
+        for member in members:
+            body += pyi_file(member, indent=indent)
 
         if not body:
             body += f"{indent}pass\n"
@@ -106,14 +111,16 @@ def pyi_file(obj, indent=""):
         string += function(obj, indent)
 
     elif inspect.isgetsetdescriptor(obj):
+        print("getsetdescr", obj, hasattr(obj, "__set__"), dir(obj.__objclass__))
         # TODO it would be interesing to add the setter maybe ?
         string += f"{indent}@property\n"
         string += function(obj, indent, text_signature="(self)")
 
     elif inspect.ismemberdescriptor(obj):
-        string += f"{indent}{obj.__name__}: {type(obj.__objclass__().__getattribute__(obj.__name__)).__name__}"
+        string += f"{indent}{obj.__name__}: ..."
     else:
-        raise Exception(f"Object {obj} is not supported")
+        pass
+        # raise Exception(f"Object {obj} is not supported")
     return string
 
 

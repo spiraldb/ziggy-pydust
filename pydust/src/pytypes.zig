@@ -43,7 +43,7 @@ pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
 
         const bases = Bases(definition);
         const attrs = Attributes(definition);
-        const slots = Slots(definition, qualifiedName);
+        const slots = Slots(definition, name);
 
         pub fn init(module: py.PyModule) PyError!py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;

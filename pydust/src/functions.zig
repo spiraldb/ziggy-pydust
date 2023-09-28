@@ -433,8 +433,12 @@ fn sigSize(comptime sig: Signature) usize {
 fn sigArgs(comptime sig: Signature) ![]const []const u8 {
     const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs * 2 + 3);
     var sigargs = ArgBuf.init(0) catch @compileError("OOM");
-    if (sig.selfParam) |_| {
-        try sigargs.append("$self");
+    if (sig.selfParam) |self| {
+        if (self == @TypeOf(py.PyObject)) {
+            try sigargs.append("$cls");
+        } else {
+            try sigargs.append("$self");
+        }
     }
 
     if (sig.argsParam) |Args| {
