@@ -137,7 +137,7 @@ def pyi_file(obj, name: str, indent="") -> str:
             class_body += append
 
         if not class_body:
-            class_body += f"{indent}pass\n"
+            class_body += f"{indent}...\n"
 
         result_content += class_body
         result_content += "\n\n"
