@@ -64,7 +64,7 @@ def generate_build_zig():
     """
     conf = config.load()
 
-    with io.BytesIO() as f:
+    with io.StringIO() as f:
         b = Writer(f)
 
         b.writeln('const std = @import("std");')
