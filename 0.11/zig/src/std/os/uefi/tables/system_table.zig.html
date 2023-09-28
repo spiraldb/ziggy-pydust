@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>os/uefi/tables/system_table.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> uefi = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>).os.uefi;</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> BootServices = uefi.tables.BootServices;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> ConfigurationTable = uefi.tables.ConfigurationTable;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> Handle = uefi.Handle;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> RuntimeServices = uefi.tables.RuntimeServices;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> SimpleTextInputProtocol = uefi.protocols.SimpleTextInputProtocol;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> SimpleTextOutputProtocol = uefi.protocols.SimpleTextOutputProtocol;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> TableHeader = uefi.tables.TableHeader;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-comment">/// The EFI System Table contains pointers to the runtime and boot services tables.</span></span>
+<span class="line" id="L11"><span class="tok-comment">///</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// As the system_table may grow with new UEFI versions, it is important to check hdr.header_size.</span></span>
+<span class="line" id="L13"><span class="tok-comment">///</span></span>
+<span class="line" id="L14"><span class="tok-comment">/// After successfully calling boot_services.exitBootServices, console_in_handle,</span></span>
+<span class="line" id="L15"><span class="tok-comment">/// con_in, console_out_handle, con_out, standard_error_handle, std_err, and</span></span>
+<span class="line" id="L16"><span class="tok-comment">/// boot_services should be set to null. After setting these attributes to null,</span></span>
+<span class="line" id="L17"><span class="tok-comment">/// hdr.crc32 must be recomputed.</span></span>
+<span class="line" id="L18"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> SystemTable = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L19">    hdr: TableHeader,</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">    <span class="tok-comment">/// A null-terminated string that identifies the vendor that produces the system firmware of the platform.</span></span>
+<span class="line" id="L22">    firmware_vendor: [*:<span class="tok-number">0</span>]<span class="tok-type">u16</span>,</span>
+<span class="line" id="L23">    firmware_revision: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L24">    console_in_handle: ?Handle,</span>
+<span class="line" id="L25">    con_in: ?*SimpleTextInputProtocol,</span>
+<span class="line" id="L26">    console_out_handle: ?Handle,</span>
+<span class="line" id="L27">    con_out: ?*SimpleTextOutputProtocol,</span>
+<span class="line" id="L28">    standard_error_handle: ?Handle,</span>
+<span class="line" id="L29">    std_err: ?*SimpleTextOutputProtocol,</span>
+<span class="line" id="L30">    runtime_services: *RuntimeServices,</span>
+<span class="line" id="L31">    boot_services: ?*BootServices,</span>
+<span class="line" id="L32">    number_of_table_entries: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L33">    configuration_table: [*]ConfigurationTable,</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> signature: <span class="tok-type">u64</span> = <span class="tok-number">0x5453595320494249</span>;</span>
+<span class="line" id="L36">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_1_02: <span class="tok-type">u32</span> = (<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">2</span>;</span>
+<span class="line" id="L37">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_1_10: <span class="tok-type">u32</span> = (<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">10</span>;</span>
+<span class="line" id="L38">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_00: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>);</span>
+<span class="line" id="L39">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_10: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">10</span>;</span>
+<span class="line" id="L40">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_20: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">20</span>;</span>
+<span class="line" id="L41">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_30: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">30</span>;</span>
+<span class="line" id="L42">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_31: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">31</span>;</span>
+<span class="line" id="L43">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_40: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">40</span>;</span>
+<span class="line" id="L44">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_50: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">50</span>;</span>
+<span class="line" id="L45">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_60: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">60</span>;</span>
+<span class="line" id="L46">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_70: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">70</span>;</span>
+<span class="line" id="L47">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> revision_2_80: <span class="tok-type">u32</span> = (<span class="tok-number">2</span> &lt;&lt; <span class="tok-number">16</span>) | <span class="tok-number">80</span>;</span>
+<span class="line" id="L48">};</span>
+<span class="line" id="L49"></span>
+</code></pre></body>
+</html>

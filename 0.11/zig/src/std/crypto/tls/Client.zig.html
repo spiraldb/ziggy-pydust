@@ -1,0 +1,1631 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/tls/Client.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> tls = std.crypto.tls;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> Client = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> net = std.net;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> Certificate = std.crypto.Certificate;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">const</span> max_ciphertext_len = tls.max_ciphertext_len;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> hkdfExpandLabel = tls.hkdfExpandLabel;</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> int2 = tls.int2;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> int3 = tls.int3;</span>
+<span class="line" id="L14"><span class="tok-kw">const</span> array = tls.array;</span>
+<span class="line" id="L15"><span class="tok-kw">const</span> enum_array = tls.enum_array;</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17">read_seq: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L18">write_seq: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L19"><span class="tok-comment">/// The starting index of cleartext bytes inside `partially_read_buffer`.</span></span>
+<span class="line" id="L20">partial_cleartext_idx: <span class="tok-type">u15</span>,</span>
+<span class="line" id="L21"><span class="tok-comment">/// The ending index of cleartext bytes inside `partially_read_buffer` as well</span></span>
+<span class="line" id="L22"><span class="tok-comment">/// as the starting index of ciphertext bytes.</span></span>
+<span class="line" id="L23">partial_ciphertext_idx: <span class="tok-type">u15</span>,</span>
+<span class="line" id="L24"><span class="tok-comment">/// The ending index of ciphertext bytes inside `partially_read_buffer`.</span></span>
+<span class="line" id="L25">partial_ciphertext_end: <span class="tok-type">u15</span>,</span>
+<span class="line" id="L26"><span class="tok-comment">/// When this is true, the stream may still not be at the end because there</span></span>
+<span class="line" id="L27"><span class="tok-comment">/// may be data in `partially_read_buffer`.</span></span>
+<span class="line" id="L28">received_close_notify: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L29"><span class="tok-comment">/// By default, reaching the end-of-stream when reading from the server will</span></span>
+<span class="line" id="L30"><span class="tok-comment">/// cause `error.TlsConnectionTruncated` to be returned, unless a close_notify</span></span>
+<span class="line" id="L31"><span class="tok-comment">/// message has been received. By setting this flag to `true`, instead, the</span></span>
+<span class="line" id="L32"><span class="tok-comment">/// end-of-stream will be forwarded to the application layer above TLS.</span></span>
+<span class="line" id="L33"><span class="tok-comment">/// This makes the application vulnerable to truncation attacks unless the</span></span>
+<span class="line" id="L34"><span class="tok-comment">/// application layer itself verifies that the amount of data received equals</span></span>
+<span class="line" id="L35"><span class="tok-comment">/// the amount of data expected, such as HTTP with the Content-Length header.</span></span>
+<span class="line" id="L36">allow_truncation_attacks: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L37">application_cipher: tls.ApplicationCipher,</span>
+<span class="line" id="L38"><span class="tok-comment">/// The size is enough to contain exactly one TLSCiphertext record.</span></span>
+<span class="line" id="L39"><span class="tok-comment">/// This buffer is segmented into four parts:</span></span>
+<span class="line" id="L40"><span class="tok-comment">/// 0. unused</span></span>
+<span class="line" id="L41"><span class="tok-comment">/// 1. cleartext</span></span>
+<span class="line" id="L42"><span class="tok-comment">/// 2. ciphertext</span></span>
+<span class="line" id="L43"><span class="tok-comment">/// 3. unused</span></span>
+<span class="line" id="L44"><span class="tok-comment">/// The fields `partial_cleartext_idx`, `partial_ciphertext_idx`, and</span></span>
+<span class="line" id="L45"><span class="tok-comment">/// `partial_ciphertext_end` describe the span of the segments.</span></span>
+<span class="line" id="L46">partially_read_buffer: [tls.max_ciphertext_record_len]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48"><span class="tok-comment">/// This is an example of the type that is needed by the read and write</span></span>
+<span class="line" id="L49"><span class="tok-comment">/// functions. It can have any fields but it must at least have these</span></span>
+<span class="line" id="L50"><span class="tok-comment">/// functions.</span></span>
+<span class="line" id="L51"><span class="tok-comment">///</span></span>
+<span class="line" id="L52"><span class="tok-comment">/// Note that `std.net.Stream` conforms to this interface.</span></span>
+<span class="line" id="L53"><span class="tok-comment">///</span></span>
+<span class="line" id="L54"><span class="tok-comment">/// This declaration serves as documentation only.</span></span>
+<span class="line" id="L55"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> StreamInterface = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L56">    <span class="tok-comment">/// Can be any error set.</span></span>
+<span class="line" id="L57">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ReadError = <span class="tok-kw">error</span>{};</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">    <span class="tok-comment">/// Returns the number of bytes read. The number read may be less than the</span></span>
+<span class="line" id="L60">    <span class="tok-comment">/// buffer space provided. End-of-stream is indicated by a return value of 0.</span></span>
+<span class="line" id="L61">    <span class="tok-comment">///</span></span>
+<span class="line" id="L62">    <span class="tok-comment">/// The `iovecs` parameter is mutable because so that function may to</span></span>
+<span class="line" id="L63">    <span class="tok-comment">/// mutate the fields in order to handle partial reads from the underlying</span></span>
+<span class="line" id="L64">    <span class="tok-comment">/// stream layer.</span></span>
+<span class="line" id="L65">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readv</span>(this: <span class="tok-builtin">@This</span>(), iovecs: []std.os.iovec) ReadError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L66">        _ = .{ this, iovecs };</span>
+<span class="line" id="L67">        <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;unimplemented&quot;</span>);</span>
+<span class="line" id="L68">    }</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">    <span class="tok-comment">/// Can be any error set.</span></span>
+<span class="line" id="L71">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> WriteError = <span class="tok-kw">error</span>{};</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-comment">/// Returns the number of bytes read, which may be less than the buffer</span></span>
+<span class="line" id="L74">    <span class="tok-comment">/// space provided. A short read does not indicate end-of-stream.</span></span>
+<span class="line" id="L75">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writev</span>(this: <span class="tok-builtin">@This</span>(), iovecs: []<span class="tok-kw">const</span> std.os.iovec_const) WriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L76">        _ = .{ this, iovecs };</span>
+<span class="line" id="L77">        <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;unimplemented&quot;</span>);</span>
+<span class="line" id="L78">    }</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">    <span class="tok-comment">/// Returns the number of bytes read, which may be less than the buffer</span></span>
+<span class="line" id="L81">    <span class="tok-comment">/// space provided, indicating end-of-stream.</span></span>
+<span class="line" id="L82">    <span class="tok-comment">/// The `iovecs` parameter is mutable in case this function needs to mutate</span></span>
+<span class="line" id="L83">    <span class="tok-comment">/// the fields in order to handle partial writes from the underlying layer.</span></span>
+<span class="line" id="L84">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writevAll</span>(this: <span class="tok-builtin">@This</span>(), iovecs: []std.os.iovec_const) WriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L85">        <span class="tok-comment">// This can be implemented in terms of writev, or specialized if desired.</span>
+</span>
+<span class="line" id="L86">        _ = .{ this, iovecs };</span>
+<span class="line" id="L87">        <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;unimplemented&quot;</span>);</span>
+<span class="line" id="L88">    }</span>
+<span class="line" id="L89">};</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">InitError</span>(<span class="tok-kw">comptime</span> Stream: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L92">    <span class="tok-kw">return</span> std.mem.Allocator.Error || Stream.WriteError || Stream.ReadError || tls.AlertDescription.Error || <span class="tok-kw">error</span>{</span>
+<span class="line" id="L93">        InsufficientEntropy,</span>
+<span class="line" id="L94">        DiskQuota,</span>
+<span class="line" id="L95">        LockViolation,</span>
+<span class="line" id="L96">        NotOpenForWriting,</span>
+<span class="line" id="L97">        TlsUnexpectedMessage,</span>
+<span class="line" id="L98">        TlsIllegalParameter,</span>
+<span class="line" id="L99">        TlsDecryptFailure,</span>
+<span class="line" id="L100">        TlsRecordOverflow,</span>
+<span class="line" id="L101">        TlsBadRecordMac,</span>
+<span class="line" id="L102">        CertificateFieldHasInvalidLength,</span>
+<span class="line" id="L103">        CertificateHostMismatch,</span>
+<span class="line" id="L104">        CertificatePublicKeyInvalid,</span>
+<span class="line" id="L105">        CertificateExpired,</span>
+<span class="line" id="L106">        CertificateFieldHasWrongDataType,</span>
+<span class="line" id="L107">        CertificateIssuerMismatch,</span>
+<span class="line" id="L108">        CertificateNotYetValid,</span>
+<span class="line" id="L109">        CertificateSignatureAlgorithmMismatch,</span>
+<span class="line" id="L110">        CertificateSignatureAlgorithmUnsupported,</span>
+<span class="line" id="L111">        CertificateSignatureInvalid,</span>
+<span class="line" id="L112">        CertificateSignatureInvalidLength,</span>
+<span class="line" id="L113">        CertificateSignatureNamedCurveUnsupported,</span>
+<span class="line" id="L114">        CertificateSignatureUnsupportedBitCount,</span>
+<span class="line" id="L115">        TlsCertificateNotVerified,</span>
+<span class="line" id="L116">        TlsBadSignatureScheme,</span>
+<span class="line" id="L117">        TlsBadRsaSignatureBitCount,</span>
+<span class="line" id="L118">        InvalidEncoding,</span>
+<span class="line" id="L119">        IdentityElement,</span>
+<span class="line" id="L120">        SignatureVerificationFailed,</span>
+<span class="line" id="L121">        TlsDecryptError,</span>
+<span class="line" id="L122">        TlsConnectionTruncated,</span>
+<span class="line" id="L123">        TlsDecodeError,</span>
+<span class="line" id="L124">        UnsupportedCertificateVersion,</span>
+<span class="line" id="L125">        CertificateTimeInvalid,</span>
+<span class="line" id="L126">        CertificateHasUnrecognizedObjectId,</span>
+<span class="line" id="L127">        CertificateHasInvalidBitString,</span>
+<span class="line" id="L128">        MessageTooLong,</span>
+<span class="line" id="L129">        NegativeIntoUnsigned,</span>
+<span class="line" id="L130">        TargetTooSmall,</span>
+<span class="line" id="L131">        BufferTooSmall,</span>
+<span class="line" id="L132">        InvalidSignature,</span>
+<span class="line" id="L133">        NotSquare,</span>
+<span class="line" id="L134">        NonCanonical,</span>
+<span class="line" id="L135">    };</span>
+<span class="line" id="L136">}</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138"><span class="tok-comment">/// Initiates a TLS handshake and establishes a TLSv1.3 session with `stream`, which</span></span>
+<span class="line" id="L139"><span class="tok-comment">/// must conform to `StreamInterface`.</span></span>
+<span class="line" id="L140"><span class="tok-comment">///</span></span>
+<span class="line" id="L141"><span class="tok-comment">/// `host` is only borrowed during this function call.</span></span>
+<span class="line" id="L142"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(stream: <span class="tok-kw">anytype</span>, ca_bundle: Certificate.Bundle, host: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) InitError(<span class="tok-builtin">@TypeOf</span>(stream))!Client {</span>
+<span class="line" id="L143">    <span class="tok-kw">const</span> host_len: <span class="tok-type">u16</span> = <span class="tok-builtin">@intCast</span>(host.len);</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145">    <span class="tok-kw">var</span> random_buffer: [<span class="tok-number">128</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L146">    crypto.random.bytes(&amp;random_buffer);</span>
+<span class="line" id="L147">    <span class="tok-kw">const</span> hello_rand = random_buffer[<span class="tok-number">0</span>..<span class="tok-number">32</span>].*;</span>
+<span class="line" id="L148">    <span class="tok-kw">const</span> legacy_session_id = random_buffer[<span class="tok-number">32</span>..<span class="tok-number">64</span>].*;</span>
+<span class="line" id="L149">    <span class="tok-kw">const</span> x25519_kp_seed = random_buffer[<span class="tok-number">64</span>..<span class="tok-number">96</span>].*;</span>
+<span class="line" id="L150">    <span class="tok-kw">const</span> secp256r1_kp_seed = random_buffer[<span class="tok-number">96</span>..<span class="tok-number">128</span>].*;</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">    <span class="tok-kw">const</span> x25519_kp = crypto.dh.X25519.KeyPair.create(x25519_kp_seed) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L153">        <span class="tok-comment">// Only possible to happen if the private key is all zeroes.</span>
+</span>
+<span class="line" id="L154">        <span class="tok-kw">error</span>.IdentityElement =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsufficientEntropy,</span>
+<span class="line" id="L155">    };</span>
+<span class="line" id="L156">    <span class="tok-kw">const</span> secp256r1_kp = crypto.sign.ecdsa.EcdsaP256Sha256.KeyPair.create(secp256r1_kp_seed) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L157">        <span class="tok-comment">// Only possible to happen if the private key is all zeroes.</span>
+</span>
+<span class="line" id="L158">        <span class="tok-kw">error</span>.IdentityElement =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsufficientEntropy,</span>
+<span class="line" id="L159">    };</span>
+<span class="line" id="L160">    <span class="tok-kw">const</span> kyber768_kp = crypto.kem.kyber_d00.Kyber768.KeyPair.create(<span class="tok-null">null</span>) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L161"></span>
+<span class="line" id="L162">    <span class="tok-kw">const</span> extensions_payload =</span>
+<span class="line" id="L163">        tls.extension(.supported_versions, [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L164">        <span class="tok-number">0x02</span>, <span class="tok-comment">// byte length of supported versions</span>
+</span>
+<span class="line" id="L165">        <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-comment">// TLS 1.3</span>
+</span>
+<span class="line" id="L166">    }) ++ tls.extension(.signature_algorithms, enum_array(tls.SignatureScheme, &amp;.{</span>
+<span class="line" id="L167">        .ecdsa_secp256r1_sha256,</span>
+<span class="line" id="L168">        .ecdsa_secp384r1_sha384,</span>
+<span class="line" id="L169">        .ecdsa_secp521r1_sha512,</span>
+<span class="line" id="L170">        .rsa_pss_rsae_sha256,</span>
+<span class="line" id="L171">        .rsa_pss_rsae_sha384,</span>
+<span class="line" id="L172">        .rsa_pss_rsae_sha512,</span>
+<span class="line" id="L173">        .rsa_pkcs1_sha256,</span>
+<span class="line" id="L174">        .rsa_pkcs1_sha384,</span>
+<span class="line" id="L175">        .rsa_pkcs1_sha512,</span>
+<span class="line" id="L176">        .ed25519,</span>
+<span class="line" id="L177">    })) ++ tls.extension(.supported_groups, enum_array(tls.NamedGroup, &amp;.{</span>
+<span class="line" id="L178">        .x25519_kyber768d00,</span>
+<span class="line" id="L179">        .secp256r1,</span>
+<span class="line" id="L180">        .x25519,</span>
+<span class="line" id="L181">    })) ++ tls.extension(</span>
+<span class="line" id="L182">        .key_share,</span>
+<span class="line" id="L183">        array(<span class="tok-number">1</span>, int2(<span class="tok-builtin">@intFromEnum</span>(tls.NamedGroup.x25519)) ++</span>
+<span class="line" id="L184">            array(<span class="tok-number">1</span>, x25519_kp.public_key) ++</span>
+<span class="line" id="L185">            int2(<span class="tok-builtin">@intFromEnum</span>(tls.NamedGroup.secp256r1)) ++</span>
+<span class="line" id="L186">            array(<span class="tok-number">1</span>, secp256r1_kp.public_key.toUncompressedSec1()) ++</span>
+<span class="line" id="L187">            int2(<span class="tok-builtin">@intFromEnum</span>(tls.NamedGroup.x25519_kyber768d00)) ++</span>
+<span class="line" id="L188">            array(<span class="tok-number">1</span>, x25519_kp.public_key ++ kyber768_kp.public_key.toBytes())),</span>
+<span class="line" id="L189">    ) ++</span>
+<span class="line" id="L190">        int2(<span class="tok-builtin">@intFromEnum</span>(tls.ExtensionType.server_name)) ++</span>
+<span class="line" id="L191">        int2(host_len + <span class="tok-number">5</span>) ++ <span class="tok-comment">// byte length of this extension payload</span>
+</span>
+<span class="line" id="L192">        int2(host_len + <span class="tok-number">3</span>) ++ <span class="tok-comment">// server_name_list byte count</span>
+</span>
+<span class="line" id="L193">        [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ++ <span class="tok-comment">// name_type</span>
+</span>
+<span class="line" id="L194">        int2(host_len);</span>
+<span class="line" id="L195"></span>
+<span class="line" id="L196">    <span class="tok-kw">const</span> extensions_header =</span>
+<span class="line" id="L197">        int2(<span class="tok-builtin">@intCast</span>(extensions_payload.len + host_len)) ++</span>
+<span class="line" id="L198">        extensions_payload;</span>
+<span class="line" id="L199"></span>
+<span class="line" id="L200">    <span class="tok-kw">const</span> legacy_compression_methods = <span class="tok-number">0x0100</span>;</span>
+<span class="line" id="L201"></span>
+<span class="line" id="L202">    <span class="tok-kw">const</span> client_hello =</span>
+<span class="line" id="L203">        int2(<span class="tok-builtin">@intFromEnum</span>(tls.ProtocolVersion.tls_1_2)) ++</span>
+<span class="line" id="L204">        hello_rand ++</span>
+<span class="line" id="L205">        [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">32</span>} ++ legacy_session_id ++</span>
+<span class="line" id="L206">        cipher_suites ++</span>
+<span class="line" id="L207">        int2(legacy_compression_methods) ++</span>
+<span class="line" id="L208">        extensions_header;</span>
+<span class="line" id="L209"></span>
+<span class="line" id="L210">    <span class="tok-kw">const</span> out_handshake =</span>
+<span class="line" id="L211">        [_]<span class="tok-type">u8</span>{<span class="tok-builtin">@intFromEnum</span>(tls.HandshakeType.client_hello)} ++</span>
+<span class="line" id="L212">        int3(<span class="tok-builtin">@intCast</span>(client_hello.len + host_len)) ++</span>
+<span class="line" id="L213">        client_hello;</span>
+<span class="line" id="L214"></span>
+<span class="line" id="L215">    <span class="tok-kw">const</span> plaintext_header = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L216">        <span class="tok-builtin">@intFromEnum</span>(tls.ContentType.handshake),</span>
+<span class="line" id="L217">        <span class="tok-number">0x03</span>, <span class="tok-number">0x01</span>, <span class="tok-comment">// legacy_record_version</span>
+</span>
+<span class="line" id="L218">    } ++ int2(<span class="tok-builtin">@intCast</span>(out_handshake.len + host_len)) ++ out_handshake;</span>
+<span class="line" id="L219"></span>
+<span class="line" id="L220">    {</span>
+<span class="line" id="L221">        <span class="tok-kw">var</span> iovecs = [_]std.os.iovec_const{</span>
+<span class="line" id="L222">            .{</span>
+<span class="line" id="L223">                .iov_base = &amp;plaintext_header,</span>
+<span class="line" id="L224">                .iov_len = plaintext_header.len,</span>
+<span class="line" id="L225">            },</span>
+<span class="line" id="L226">            .{</span>
+<span class="line" id="L227">                .iov_base = host.ptr,</span>
+<span class="line" id="L228">                .iov_len = host.len,</span>
+<span class="line" id="L229">            },</span>
+<span class="line" id="L230">        };</span>
+<span class="line" id="L231">        <span class="tok-kw">try</span> stream.writevAll(&amp;iovecs);</span>
+<span class="line" id="L232">    }</span>
+<span class="line" id="L233"></span>
+<span class="line" id="L234">    <span class="tok-kw">const</span> client_hello_bytes1 = plaintext_header[<span class="tok-number">5</span>..];</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236">    <span class="tok-kw">var</span> handshake_cipher: tls.HandshakeCipher = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L237">    <span class="tok-kw">var</span> handshake_buffer: [<span class="tok-number">8000</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L238">    <span class="tok-kw">var</span> d: tls.Decoder = .{ .buf = &amp;handshake_buffer };</span>
+<span class="line" id="L239">    {</span>
+<span class="line" id="L240">        <span class="tok-kw">try</span> d.readAtLeastOurAmt(stream, tls.record_header_len);</span>
+<span class="line" id="L241">        <span class="tok-kw">const</span> ct = d.decode(tls.ContentType);</span>
+<span class="line" id="L242">        d.skip(<span class="tok-number">2</span>); <span class="tok-comment">// legacy_record_version</span>
+</span>
+<span class="line" id="L243">        <span class="tok-kw">const</span> record_len = d.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L244">        <span class="tok-kw">try</span> d.readAtLeast(stream, record_len);</span>
+<span class="line" id="L245">        <span class="tok-kw">const</span> server_hello_fragment = d.buf[d.idx..][<span class="tok-number">0</span>..record_len];</span>
+<span class="line" id="L246">        <span class="tok-kw">var</span> ptd = <span class="tok-kw">try</span> d.sub(record_len);</span>
+<span class="line" id="L247">        <span class="tok-kw">switch</span> (ct) {</span>
+<span class="line" id="L248">            .alert =&gt; {</span>
+<span class="line" id="L249">                <span class="tok-kw">try</span> ptd.ensure(<span class="tok-number">2</span>);</span>
+<span class="line" id="L250">                <span class="tok-kw">const</span> level = ptd.decode(tls.AlertLevel);</span>
+<span class="line" id="L251">                <span class="tok-kw">const</span> desc = ptd.decode(tls.AlertDescription);</span>
+<span class="line" id="L252">                _ = level;</span>
+<span class="line" id="L253"></span>
+<span class="line" id="L254">                <span class="tok-comment">// if this isn't a error alert, then it's a closure alert, which makes no sense in a handshake</span>
+</span>
+<span class="line" id="L255">                <span class="tok-kw">try</span> desc.toError();</span>
+<span class="line" id="L256">                <span class="tok-comment">// TODO: handle server-side closures</span>
+</span>
+<span class="line" id="L257">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L258">            },</span>
+<span class="line" id="L259">            .handshake =&gt; {</span>
+<span class="line" id="L260">                <span class="tok-kw">try</span> ptd.ensure(<span class="tok-number">4</span>);</span>
+<span class="line" id="L261">                <span class="tok-kw">const</span> handshake_type = ptd.decode(tls.HandshakeType);</span>
+<span class="line" id="L262">                <span class="tok-kw">if</span> (handshake_type != .server_hello) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L263">                <span class="tok-kw">const</span> length = ptd.decode(<span class="tok-type">u24</span>);</span>
+<span class="line" id="L264">                <span class="tok-kw">var</span> hsd = <span class="tok-kw">try</span> ptd.sub(length);</span>
+<span class="line" id="L265">                <span class="tok-kw">try</span> hsd.ensure(<span class="tok-number">2</span> + <span class="tok-number">32</span> + <span class="tok-number">1</span> + <span class="tok-number">32</span> + <span class="tok-number">2</span> + <span class="tok-number">1</span> + <span class="tok-number">2</span>);</span>
+<span class="line" id="L266">                <span class="tok-kw">const</span> legacy_version = hsd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L267">                <span class="tok-kw">const</span> random = hsd.array(<span class="tok-number">32</span>);</span>
+<span class="line" id="L268">                <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, random, &amp;tls.hello_retry_request_sequence)) {</span>
+<span class="line" id="L269">                    <span class="tok-comment">// This is a HelloRetryRequest message. This client implementation</span>
+</span>
+<span class="line" id="L270">                    <span class="tok-comment">// does not expect to get one.</span>
+</span>
+<span class="line" id="L271">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L272">                }</span>
+<span class="line" id="L273">                <span class="tok-kw">const</span> legacy_session_id_echo_len = hsd.decode(<span class="tok-type">u8</span>);</span>
+<span class="line" id="L274">                <span class="tok-kw">if</span> (legacy_session_id_echo_len != <span class="tok-number">32</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L275">                <span class="tok-kw">const</span> legacy_session_id_echo = hsd.array(<span class="tok-number">32</span>);</span>
+<span class="line" id="L276">                <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, legacy_session_id_echo, &amp;legacy_session_id))</span>
+<span class="line" id="L277">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L278">                <span class="tok-kw">const</span> cipher_suite_tag = hsd.decode(tls.CipherSuite);</span>
+<span class="line" id="L279">                hsd.skip(<span class="tok-number">1</span>); <span class="tok-comment">// legacy_compression_method</span>
+</span>
+<span class="line" id="L280">                <span class="tok-kw">const</span> extensions_size = hsd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L281">                <span class="tok-kw">var</span> all_extd = <span class="tok-kw">try</span> hsd.sub(extensions_size);</span>
+<span class="line" id="L282">                <span class="tok-kw">var</span> supported_version: <span class="tok-type">u16</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L283">                <span class="tok-kw">var</span> shared_key: []<span class="tok-kw">const</span> <span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L284">                <span class="tok-kw">var</span> have_shared_key = <span class="tok-null">false</span>;</span>
+<span class="line" id="L285">                <span class="tok-kw">while</span> (!all_extd.eof()) {</span>
+<span class="line" id="L286">                    <span class="tok-kw">try</span> all_extd.ensure(<span class="tok-number">2</span> + <span class="tok-number">2</span>);</span>
+<span class="line" id="L287">                    <span class="tok-kw">const</span> et = all_extd.decode(tls.ExtensionType);</span>
+<span class="line" id="L288">                    <span class="tok-kw">const</span> ext_size = all_extd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L289">                    <span class="tok-kw">var</span> extd = <span class="tok-kw">try</span> all_extd.sub(ext_size);</span>
+<span class="line" id="L290">                    <span class="tok-kw">switch</span> (et) {</span>
+<span class="line" id="L291">                        .supported_versions =&gt; {</span>
+<span class="line" id="L292">                            <span class="tok-kw">if</span> (supported_version != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L293">                            <span class="tok-kw">try</span> extd.ensure(<span class="tok-number">2</span>);</span>
+<span class="line" id="L294">                            supported_version = extd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L295">                        },</span>
+<span class="line" id="L296">                        .key_share =&gt; {</span>
+<span class="line" id="L297">                            <span class="tok-kw">if</span> (have_shared_key) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L298">                            have_shared_key = <span class="tok-null">true</span>;</span>
+<span class="line" id="L299">                            <span class="tok-kw">try</span> extd.ensure(<span class="tok-number">4</span>);</span>
+<span class="line" id="L300">                            <span class="tok-kw">const</span> named_group = extd.decode(tls.NamedGroup);</span>
+<span class="line" id="L301">                            <span class="tok-kw">const</span> key_size = extd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L302">                            <span class="tok-kw">try</span> extd.ensure(key_size);</span>
+<span class="line" id="L303">                            <span class="tok-kw">switch</span> (named_group) {</span>
+<span class="line" id="L304">                                .x25519_kyber768d00 =&gt; {</span>
+<span class="line" id="L305">                                    <span class="tok-kw">const</span> xksl = crypto.dh.X25519.public_length;</span>
+<span class="line" id="L306">                                    <span class="tok-kw">const</span> hksl = xksl + crypto.kem.kyber_d00.Kyber768.ciphertext_length;</span>
+<span class="line" id="L307">                                    <span class="tok-kw">if</span> (key_size != hksl)</span>
+<span class="line" id="L308">                                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L309">                                    <span class="tok-kw">const</span> server_ks = extd.array(hksl);</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311">                                    shared_key = &amp;((crypto.dh.X25519.scalarmult(</span>
+<span class="line" id="L312">                                        x25519_kp.secret_key,</span>
+<span class="line" id="L313">                                        server_ks[<span class="tok-number">0</span>..xksl].*,</span>
+<span class="line" id="L314">                                    ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsDecryptFailure) ++ (kyber768_kp.secret_key.decaps(</span>
+<span class="line" id="L315">                                        server_ks[xksl..hksl],</span>
+<span class="line" id="L316">                                    ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsDecryptFailure));</span>
+<span class="line" id="L317">                                },</span>
+<span class="line" id="L318">                                .x25519 =&gt; {</span>
+<span class="line" id="L319">                                    <span class="tok-kw">const</span> ksl = crypto.dh.X25519.public_length;</span>
+<span class="line" id="L320">                                    <span class="tok-kw">if</span> (key_size != ksl) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L321">                                    <span class="tok-kw">const</span> server_pub_key = extd.array(ksl);</span>
+<span class="line" id="L322"></span>
+<span class="line" id="L323">                                    shared_key = &amp;(crypto.dh.X25519.scalarmult(</span>
+<span class="line" id="L324">                                        x25519_kp.secret_key,</span>
+<span class="line" id="L325">                                        server_pub_key.*,</span>
+<span class="line" id="L326">                                    ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsDecryptFailure);</span>
+<span class="line" id="L327">                                },</span>
+<span class="line" id="L328">                                .secp256r1 =&gt; {</span>
+<span class="line" id="L329">                                    <span class="tok-kw">const</span> server_pub_key = extd.slice(key_size);</span>
+<span class="line" id="L330"></span>
+<span class="line" id="L331">                                    <span class="tok-kw">const</span> PublicKey = crypto.sign.ecdsa.EcdsaP256Sha256.PublicKey;</span>
+<span class="line" id="L332">                                    <span class="tok-kw">const</span> pk = PublicKey.fromSec1(server_pub_key) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L333">                                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsDecryptFailure;</span>
+<span class="line" id="L334">                                    };</span>
+<span class="line" id="L335">                                    <span class="tok-kw">const</span> mul = pk.p.mulPublic(secp256r1_kp.secret_key.bytes, .Big) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L336">                                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsDecryptFailure;</span>
+<span class="line" id="L337">                                    };</span>
+<span class="line" id="L338">                                    shared_key = &amp;mul.affineCoordinates().x.toBytes(.Big);</span>
+<span class="line" id="L339">                                },</span>
+<span class="line" id="L340">                                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L341">                                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L342">                                },</span>
+<span class="line" id="L343">                            }</span>
+<span class="line" id="L344">                        },</span>
+<span class="line" id="L345">                        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L346">                    }</span>
+<span class="line" id="L347">                }</span>
+<span class="line" id="L348">                <span class="tok-kw">if</span> (!have_shared_key) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L349"></span>
+<span class="line" id="L350">                <span class="tok-kw">const</span> tls_version = <span class="tok-kw">if</span> (supported_version == <span class="tok-number">0</span>) legacy_version <span class="tok-kw">else</span> supported_version;</span>
+<span class="line" id="L351">                <span class="tok-kw">if</span> (tls_version != <span class="tok-builtin">@intFromEnum</span>(tls.ProtocolVersion.tls_1_3))</span>
+<span class="line" id="L352">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L353"></span>
+<span class="line" id="L354">                <span class="tok-kw">switch</span> (cipher_suite_tag) {</span>
+<span class="line" id="L355">                    <span class="tok-kw">inline</span> .AES_128_GCM_SHA256,</span>
+<span class="line" id="L356">                    .AES_256_GCM_SHA384,</span>
+<span class="line" id="L357">                    .CHACHA20_POLY1305_SHA256,</span>
+<span class="line" id="L358">                    .AEGIS_256_SHA384,</span>
+<span class="line" id="L359">                    .AEGIS_128L_SHA256,</span>
+<span class="line" id="L360">                    =&gt; |tag| {</span>
+<span class="line" id="L361">                        <span class="tok-kw">const</span> P = std.meta.TagPayloadByName(tls.HandshakeCipher, <span class="tok-builtin">@tagName</span>(tag));</span>
+<span class="line" id="L362">                        handshake_cipher = <span class="tok-builtin">@unionInit</span>(tls.HandshakeCipher, <span class="tok-builtin">@tagName</span>(tag), .{</span>
+<span class="line" id="L363">                            .handshake_secret = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L364">                            .master_secret = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L365">                            .client_handshake_key = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L366">                            .server_handshake_key = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L367">                            .client_finished_key = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L368">                            .server_finished_key = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L369">                            .client_handshake_iv = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L370">                            .server_handshake_iv = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L371">                            .transcript_hash = P.Hash.init(.{}),</span>
+<span class="line" id="L372">                        });</span>
+<span class="line" id="L373">                        <span class="tok-kw">const</span> p = &amp;<span class="tok-builtin">@field</span>(handshake_cipher, <span class="tok-builtin">@tagName</span>(tag));</span>
+<span class="line" id="L374">                        p.transcript_hash.update(client_hello_bytes1); <span class="tok-comment">// Client Hello part 1</span>
+</span>
+<span class="line" id="L375">                        p.transcript_hash.update(host); <span class="tok-comment">// Client Hello part 2</span>
+</span>
+<span class="line" id="L376">                        p.transcript_hash.update(server_hello_fragment);</span>
+<span class="line" id="L377">                        <span class="tok-kw">const</span> hello_hash = p.transcript_hash.peek();</span>
+<span class="line" id="L378">                        <span class="tok-kw">const</span> zeroes = [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** P.Hash.digest_length;</span>
+<span class="line" id="L379">                        <span class="tok-kw">const</span> early_secret = P.Hkdf.extract(&amp;[<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0</span>}, &amp;zeroes);</span>
+<span class="line" id="L380">                        <span class="tok-kw">const</span> empty_hash = tls.emptyHash(P.Hash);</span>
+<span class="line" id="L381">                        <span class="tok-kw">const</span> hs_derived_secret = hkdfExpandLabel(P.Hkdf, early_secret, <span class="tok-str">&quot;derived&quot;</span>, &amp;empty_hash, P.Hash.digest_length);</span>
+<span class="line" id="L382">                        p.handshake_secret = P.Hkdf.extract(&amp;hs_derived_secret, shared_key);</span>
+<span class="line" id="L383">                        <span class="tok-kw">const</span> ap_derived_secret = hkdfExpandLabel(P.Hkdf, p.handshake_secret, <span class="tok-str">&quot;derived&quot;</span>, &amp;empty_hash, P.Hash.digest_length);</span>
+<span class="line" id="L384">                        p.master_secret = P.Hkdf.extract(&amp;ap_derived_secret, &amp;zeroes);</span>
+<span class="line" id="L385">                        <span class="tok-kw">const</span> client_secret = hkdfExpandLabel(P.Hkdf, p.handshake_secret, <span class="tok-str">&quot;c hs traffic&quot;</span>, &amp;hello_hash, P.Hash.digest_length);</span>
+<span class="line" id="L386">                        <span class="tok-kw">const</span> server_secret = hkdfExpandLabel(P.Hkdf, p.handshake_secret, <span class="tok-str">&quot;s hs traffic&quot;</span>, &amp;hello_hash, P.Hash.digest_length);</span>
+<span class="line" id="L387">                        p.client_finished_key = hkdfExpandLabel(P.Hkdf, client_secret, <span class="tok-str">&quot;finished&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.Hmac.key_length);</span>
+<span class="line" id="L388">                        p.server_finished_key = hkdfExpandLabel(P.Hkdf, server_secret, <span class="tok-str">&quot;finished&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.Hmac.key_length);</span>
+<span class="line" id="L389">                        p.client_handshake_key = hkdfExpandLabel(P.Hkdf, client_secret, <span class="tok-str">&quot;key&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.key_length);</span>
+<span class="line" id="L390">                        p.server_handshake_key = hkdfExpandLabel(P.Hkdf, server_secret, <span class="tok-str">&quot;key&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.key_length);</span>
+<span class="line" id="L391">                        p.client_handshake_iv = hkdfExpandLabel(P.Hkdf, client_secret, <span class="tok-str">&quot;iv&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.nonce_length);</span>
+<span class="line" id="L392">                        p.server_handshake_iv = hkdfExpandLabel(P.Hkdf, server_secret, <span class="tok-str">&quot;iv&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.nonce_length);</span>
+<span class="line" id="L393">                    },</span>
+<span class="line" id="L394">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L395">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L396">                    },</span>
+<span class="line" id="L397">                }</span>
+<span class="line" id="L398">            },</span>
+<span class="line" id="L399">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage,</span>
+<span class="line" id="L400">        }</span>
+<span class="line" id="L401">    }</span>
+<span class="line" id="L402"></span>
+<span class="line" id="L403">    <span class="tok-comment">// This is used for two purposes:</span>
+</span>
+<span class="line" id="L404">    <span class="tok-comment">// * Detect whether a certificate is the first one presented, in which case</span>
+</span>
+<span class="line" id="L405">    <span class="tok-comment">//   we need to verify the host name.</span>
+</span>
+<span class="line" id="L406">    <span class="tok-comment">// * Flip back and forth between the two cleartext buffers in order to keep</span>
+</span>
+<span class="line" id="L407">    <span class="tok-comment">//   the previous certificate in memory so that it can be verified by the</span>
+</span>
+<span class="line" id="L408">    <span class="tok-comment">//   next one.</span>
+</span>
+<span class="line" id="L409">    <span class="tok-kw">var</span> cert_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L410">    <span class="tok-kw">var</span> read_seq: <span class="tok-type">u64</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L411">    <span class="tok-kw">var</span> prev_cert: Certificate.Parsed = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L412">    <span class="tok-comment">// Set to true once a trust chain has been established from the first</span>
+</span>
+<span class="line" id="L413">    <span class="tok-comment">// certificate to a root CA.</span>
+</span>
+<span class="line" id="L414">    <span class="tok-kw">const</span> HandshakeState = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L415">        <span class="tok-comment">/// In this state we expect only an encrypted_extensions message.</span></span>
+<span class="line" id="L416">        encrypted_extensions,</span>
+<span class="line" id="L417">        <span class="tok-comment">/// In this state we expect certificate messages.</span></span>
+<span class="line" id="L418">        certificate,</span>
+<span class="line" id="L419">        <span class="tok-comment">/// In this state we expect certificate or certificate_verify messages.</span></span>
+<span class="line" id="L420">        <span class="tok-comment">/// certificate messages are ignored since the trust chain is already</span></span>
+<span class="line" id="L421">        <span class="tok-comment">/// established.</span></span>
+<span class="line" id="L422">        trust_chain_established,</span>
+<span class="line" id="L423">        <span class="tok-comment">/// In this state, we expect only the finished message.</span></span>
+<span class="line" id="L424">        finished,</span>
+<span class="line" id="L425">    };</span>
+<span class="line" id="L426">    <span class="tok-kw">var</span> handshake_state: HandshakeState = .encrypted_extensions;</span>
+<span class="line" id="L427">    <span class="tok-kw">var</span> cleartext_bufs: [<span class="tok-number">2</span>][<span class="tok-number">8000</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L428">    <span class="tok-kw">var</span> main_cert_pub_key_algo: Certificate.AlgorithmCategory = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L429">    <span class="tok-kw">var</span> main_cert_pub_key_buf: [<span class="tok-number">600</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L430">    <span class="tok-kw">var</span> main_cert_pub_key_len: <span class="tok-type">u16</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L431">    <span class="tok-kw">const</span> now_sec = std.time.timestamp();</span>
+<span class="line" id="L432"></span>
+<span class="line" id="L433">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L434">        <span class="tok-kw">try</span> d.readAtLeastOurAmt(stream, tls.record_header_len);</span>
+<span class="line" id="L435">        <span class="tok-kw">const</span> record_header = d.buf[d.idx..][<span class="tok-number">0</span>..<span class="tok-number">5</span>];</span>
+<span class="line" id="L436">        <span class="tok-kw">const</span> ct = d.decode(tls.ContentType);</span>
+<span class="line" id="L437">        d.skip(<span class="tok-number">2</span>); <span class="tok-comment">// legacy_version</span>
+</span>
+<span class="line" id="L438">        <span class="tok-kw">const</span> record_len = d.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L439">        <span class="tok-kw">try</span> d.readAtLeast(stream, record_len);</span>
+<span class="line" id="L440">        <span class="tok-kw">var</span> record_decoder = <span class="tok-kw">try</span> d.sub(record_len);</span>
+<span class="line" id="L441">        <span class="tok-kw">switch</span> (ct) {</span>
+<span class="line" id="L442">            .change_cipher_spec =&gt; {</span>
+<span class="line" id="L443">                <span class="tok-kw">try</span> record_decoder.ensure(<span class="tok-number">1</span>);</span>
+<span class="line" id="L444">                <span class="tok-kw">if</span> (record_decoder.decode(<span class="tok-type">u8</span>) != <span class="tok-number">0x01</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L445">            },</span>
+<span class="line" id="L446">            .application_data =&gt; {</span>
+<span class="line" id="L447">                <span class="tok-kw">const</span> cleartext_buf = &amp;cleartext_bufs[cert_index % <span class="tok-number">2</span>];</span>
+<span class="line" id="L448"></span>
+<span class="line" id="L449">                <span class="tok-kw">const</span> cleartext = <span class="tok-kw">switch</span> (handshake_cipher) {</span>
+<span class="line" id="L450">                    <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| c: {</span>
+<span class="line" id="L451">                        <span class="tok-kw">const</span> P = <span class="tok-builtin">@TypeOf</span>(p.*);</span>
+<span class="line" id="L452">                        <span class="tok-kw">const</span> ciphertext_len = record_len - P.AEAD.tag_length;</span>
+<span class="line" id="L453">                        <span class="tok-kw">try</span> record_decoder.ensure(ciphertext_len + P.AEAD.tag_length);</span>
+<span class="line" id="L454">                        <span class="tok-kw">const</span> ciphertext = record_decoder.slice(ciphertext_len);</span>
+<span class="line" id="L455">                        <span class="tok-kw">if</span> (ciphertext.len &gt; cleartext_buf.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsRecordOverflow;</span>
+<span class="line" id="L456">                        <span class="tok-kw">const</span> cleartext = cleartext_buf[<span class="tok-number">0</span>..ciphertext.len];</span>
+<span class="line" id="L457">                        <span class="tok-kw">const</span> auth_tag = record_decoder.array(P.AEAD.tag_length).*;</span>
+<span class="line" id="L458">                        <span class="tok-kw">const</span> V = <span class="tok-builtin">@Vector</span>(P.AEAD.nonce_length, <span class="tok-type">u8</span>);</span>
+<span class="line" id="L459">                        <span class="tok-kw">const</span> pad = [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** (P.AEAD.nonce_length - <span class="tok-number">8</span>);</span>
+<span class="line" id="L460">                        <span class="tok-kw">const</span> operand: V = pad ++ <span class="tok-builtin">@as</span>([<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@bitCast</span>(big(read_seq)));</span>
+<span class="line" id="L461">                        read_seq += <span class="tok-number">1</span>;</span>
+<span class="line" id="L462">                        <span class="tok-kw">const</span> nonce = <span class="tok-builtin">@as</span>(V, p.server_handshake_iv) ^ operand;</span>
+<span class="line" id="L463">                        P.AEAD.decrypt(cleartext, ciphertext, auth_tag, record_header, nonce, p.server_handshake_key) <span class="tok-kw">catch</span></span>
+<span class="line" id="L464">                            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsBadRecordMac;</span>
+<span class="line" id="L465">                        <span class="tok-kw">break</span> :c cleartext;</span>
+<span class="line" id="L466">                    },</span>
+<span class="line" id="L467">                };</span>
+<span class="line" id="L468"></span>
+<span class="line" id="L469">                <span class="tok-kw">const</span> inner_ct: tls.ContentType = <span class="tok-builtin">@enumFromInt</span>(cleartext[cleartext.len - <span class="tok-number">1</span>]);</span>
+<span class="line" id="L470">                <span class="tok-kw">if</span> (inner_ct != .handshake) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L471"></span>
+<span class="line" id="L472">                <span class="tok-kw">var</span> ctd = tls.Decoder.fromTheirSlice(cleartext[<span class="tok-number">0</span> .. cleartext.len - <span class="tok-number">1</span>]);</span>
+<span class="line" id="L473">                <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L474">                    <span class="tok-kw">try</span> ctd.ensure(<span class="tok-number">4</span>);</span>
+<span class="line" id="L475">                    <span class="tok-kw">const</span> handshake_type = ctd.decode(tls.HandshakeType);</span>
+<span class="line" id="L476">                    <span class="tok-kw">const</span> handshake_len = ctd.decode(<span class="tok-type">u24</span>);</span>
+<span class="line" id="L477">                    <span class="tok-kw">var</span> hsd = <span class="tok-kw">try</span> ctd.sub(handshake_len);</span>
+<span class="line" id="L478">                    <span class="tok-kw">const</span> wrapped_handshake = ctd.buf[ctd.idx - handshake_len - <span class="tok-number">4</span> .. ctd.idx];</span>
+<span class="line" id="L479">                    <span class="tok-kw">const</span> handshake = ctd.buf[ctd.idx - handshake_len .. ctd.idx];</span>
+<span class="line" id="L480">                    <span class="tok-kw">switch</span> (handshake_type) {</span>
+<span class="line" id="L481">                        .encrypted_extensions =&gt; {</span>
+<span class="line" id="L482">                            <span class="tok-kw">if</span> (handshake_state != .encrypted_extensions) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L483">                            handshake_state = .certificate;</span>
+<span class="line" id="L484">                            <span class="tok-kw">switch</span> (handshake_cipher) {</span>
+<span class="line" id="L485">                                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| p.transcript_hash.update(wrapped_handshake),</span>
+<span class="line" id="L486">                            }</span>
+<span class="line" id="L487">                            <span class="tok-kw">try</span> hsd.ensure(<span class="tok-number">2</span>);</span>
+<span class="line" id="L488">                            <span class="tok-kw">const</span> total_ext_size = hsd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L489">                            <span class="tok-kw">var</span> all_extd = <span class="tok-kw">try</span> hsd.sub(total_ext_size);</span>
+<span class="line" id="L490">                            <span class="tok-kw">while</span> (!all_extd.eof()) {</span>
+<span class="line" id="L491">                                <span class="tok-kw">try</span> all_extd.ensure(<span class="tok-number">4</span>);</span>
+<span class="line" id="L492">                                <span class="tok-kw">const</span> et = all_extd.decode(tls.ExtensionType);</span>
+<span class="line" id="L493">                                <span class="tok-kw">const</span> ext_size = all_extd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L494">                                <span class="tok-kw">var</span> extd = <span class="tok-kw">try</span> all_extd.sub(ext_size);</span>
+<span class="line" id="L495">                                _ = extd;</span>
+<span class="line" id="L496">                                <span class="tok-kw">switch</span> (et) {</span>
+<span class="line" id="L497">                                    .server_name =&gt; {},</span>
+<span class="line" id="L498">                                    <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L499">                                }</span>
+<span class="line" id="L500">                            }</span>
+<span class="line" id="L501">                        },</span>
+<span class="line" id="L502">                        .certificate =&gt; cert: {</span>
+<span class="line" id="L503">                            <span class="tok-kw">switch</span> (handshake_cipher) {</span>
+<span class="line" id="L504">                                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| p.transcript_hash.update(wrapped_handshake),</span>
+<span class="line" id="L505">                            }</span>
+<span class="line" id="L506">                            <span class="tok-kw">switch</span> (handshake_state) {</span>
+<span class="line" id="L507">                                .certificate =&gt; {},</span>
+<span class="line" id="L508">                                .trust_chain_established =&gt; <span class="tok-kw">break</span> :cert,</span>
+<span class="line" id="L509">                                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage,</span>
+<span class="line" id="L510">                            }</span>
+<span class="line" id="L511">                            <span class="tok-kw">try</span> hsd.ensure(<span class="tok-number">1</span> + <span class="tok-number">4</span>);</span>
+<span class="line" id="L512">                            <span class="tok-kw">const</span> cert_req_ctx_len = hsd.decode(<span class="tok-type">u8</span>);</span>
+<span class="line" id="L513">                            <span class="tok-kw">if</span> (cert_req_ctx_len != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter;</span>
+<span class="line" id="L514">                            <span class="tok-kw">const</span> certs_size = hsd.decode(<span class="tok-type">u24</span>);</span>
+<span class="line" id="L515">                            <span class="tok-kw">var</span> certs_decoder = <span class="tok-kw">try</span> hsd.sub(certs_size);</span>
+<span class="line" id="L516">                            <span class="tok-kw">while</span> (!certs_decoder.eof()) {</span>
+<span class="line" id="L517">                                <span class="tok-kw">try</span> certs_decoder.ensure(<span class="tok-number">3</span>);</span>
+<span class="line" id="L518">                                <span class="tok-kw">const</span> cert_size = certs_decoder.decode(<span class="tok-type">u24</span>);</span>
+<span class="line" id="L519">                                <span class="tok-kw">var</span> certd = <span class="tok-kw">try</span> certs_decoder.sub(cert_size);</span>
+<span class="line" id="L520"></span>
+<span class="line" id="L521">                                <span class="tok-kw">const</span> subject_cert: Certificate = .{</span>
+<span class="line" id="L522">                                    .buffer = certd.buf,</span>
+<span class="line" id="L523">                                    .index = <span class="tok-builtin">@intCast</span>(certd.idx),</span>
+<span class="line" id="L524">                                };</span>
+<span class="line" id="L525">                                <span class="tok-kw">const</span> subject = <span class="tok-kw">try</span> subject_cert.parse();</span>
+<span class="line" id="L526">                                <span class="tok-kw">if</span> (cert_index == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L527">                                    <span class="tok-comment">// Verify the host on the first certificate.</span>
+</span>
+<span class="line" id="L528">                                    <span class="tok-kw">try</span> subject.verifyHostName(host);</span>
+<span class="line" id="L529"></span>
+<span class="line" id="L530">                                    <span class="tok-comment">// Keep track of the public key for the</span>
+</span>
+<span class="line" id="L531">                                    <span class="tok-comment">// certificate_verify message later.</span>
+</span>
+<span class="line" id="L532">                                    main_cert_pub_key_algo = subject.pub_key_algo;</span>
+<span class="line" id="L533">                                    <span class="tok-kw">const</span> pub_key = subject.pubKey();</span>
+<span class="line" id="L534">                                    <span class="tok-kw">if</span> (pub_key.len &gt; main_cert_pub_key_buf.len)</span>
+<span class="line" id="L535">                                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.CertificatePublicKeyInvalid;</span>
+<span class="line" id="L536">                                    <span class="tok-builtin">@memcpy</span>(main_cert_pub_key_buf[<span class="tok-number">0</span>..pub_key.len], pub_key);</span>
+<span class="line" id="L537">                                    main_cert_pub_key_len = <span class="tok-builtin">@intCast</span>(pub_key.len);</span>
+<span class="line" id="L538">                                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L539">                                    <span class="tok-kw">try</span> prev_cert.verify(subject, now_sec);</span>
+<span class="line" id="L540">                                }</span>
+<span class="line" id="L541"></span>
+<span class="line" id="L542">                                <span class="tok-kw">if</span> (ca_bundle.verify(subject, now_sec)) |_| {</span>
+<span class="line" id="L543">                                    handshake_state = .trust_chain_established;</span>
+<span class="line" id="L544">                                    <span class="tok-kw">break</span> :cert;</span>
+<span class="line" id="L545">                                } <span class="tok-kw">else</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L546">                                    <span class="tok-kw">error</span>.CertificateIssuerNotFound =&gt; {},</span>
+<span class="line" id="L547">                                    <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L548">                                }</span>
+<span class="line" id="L549"></span>
+<span class="line" id="L550">                                prev_cert = subject;</span>
+<span class="line" id="L551">                                cert_index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L552"></span>
+<span class="line" id="L553">                                <span class="tok-kw">try</span> certs_decoder.ensure(<span class="tok-number">2</span>);</span>
+<span class="line" id="L554">                                <span class="tok-kw">const</span> total_ext_size = certs_decoder.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L555">                                <span class="tok-kw">var</span> all_extd = <span class="tok-kw">try</span> certs_decoder.sub(total_ext_size);</span>
+<span class="line" id="L556">                                _ = all_extd;</span>
+<span class="line" id="L557">                            }</span>
+<span class="line" id="L558">                        },</span>
+<span class="line" id="L559">                        .certificate_verify =&gt; {</span>
+<span class="line" id="L560">                            <span class="tok-kw">switch</span> (handshake_state) {</span>
+<span class="line" id="L561">                                .trust_chain_established =&gt; handshake_state = .finished,</span>
+<span class="line" id="L562">                                .certificate =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsCertificateNotVerified,</span>
+<span class="line" id="L563">                                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage,</span>
+<span class="line" id="L564">                            }</span>
+<span class="line" id="L565"></span>
+<span class="line" id="L566">                            <span class="tok-kw">try</span> hsd.ensure(<span class="tok-number">4</span>);</span>
+<span class="line" id="L567">                            <span class="tok-kw">const</span> scheme = hsd.decode(tls.SignatureScheme);</span>
+<span class="line" id="L568">                            <span class="tok-kw">const</span> sig_len = hsd.decode(<span class="tok-type">u16</span>);</span>
+<span class="line" id="L569">                            <span class="tok-kw">try</span> hsd.ensure(sig_len);</span>
+<span class="line" id="L570">                            <span class="tok-kw">const</span> encoded_sig = hsd.slice(sig_len);</span>
+<span class="line" id="L571">                            <span class="tok-kw">const</span> max_digest_len = <span class="tok-number">64</span>;</span>
+<span class="line" id="L572">                            <span class="tok-kw">var</span> verify_buffer =</span>
+<span class="line" id="L573">                                ([<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0x20</span>} ** <span class="tok-number">64</span>) ++</span>
+<span class="line" id="L574">                                <span class="tok-str">&quot;TLS 1.3, server CertificateVerify\x00&quot;</span>.* ++</span>
+<span class="line" id="L575">                                <span class="tok-builtin">@as</span>([max_digest_len]<span class="tok-type">u8</span>, <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L576"></span>
+<span class="line" id="L577">                            <span class="tok-kw">const</span> verify_bytes = <span class="tok-kw">switch</span> (handshake_cipher) {</span>
+<span class="line" id="L578">                                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| v: {</span>
+<span class="line" id="L579">                                    <span class="tok-kw">const</span> transcript_digest = p.transcript_hash.peek();</span>
+<span class="line" id="L580">                                    verify_buffer[verify_buffer.len - max_digest_len ..][<span class="tok-number">0</span>..transcript_digest.len].* = transcript_digest;</span>
+<span class="line" id="L581">                                    p.transcript_hash.update(wrapped_handshake);</span>
+<span class="line" id="L582">                                    <span class="tok-kw">break</span> :v verify_buffer[<span class="tok-number">0</span> .. verify_buffer.len - max_digest_len + transcript_digest.len];</span>
+<span class="line" id="L583">                                },</span>
+<span class="line" id="L584">                            };</span>
+<span class="line" id="L585">                            <span class="tok-kw">const</span> main_cert_pub_key = main_cert_pub_key_buf[<span class="tok-number">0</span>..main_cert_pub_key_len];</span>
+<span class="line" id="L586"></span>
+<span class="line" id="L587">                            <span class="tok-kw">switch</span> (scheme) {</span>
+<span class="line" id="L588">                                <span class="tok-kw">inline</span> .ecdsa_secp256r1_sha256,</span>
+<span class="line" id="L589">                                .ecdsa_secp384r1_sha384,</span>
+<span class="line" id="L590">                                =&gt; |comptime_scheme| {</span>
+<span class="line" id="L591">                                    <span class="tok-kw">if</span> (main_cert_pub_key_algo != .X9_62_id_ecPublicKey)</span>
+<span class="line" id="L592">                                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsBadSignatureScheme;</span>
+<span class="line" id="L593">                                    <span class="tok-kw">const</span> Ecdsa = SchemeEcdsa(comptime_scheme);</span>
+<span class="line" id="L594">                                    <span class="tok-kw">const</span> sig = <span class="tok-kw">try</span> Ecdsa.Signature.fromDer(encoded_sig);</span>
+<span class="line" id="L595">                                    <span class="tok-kw">const</span> key = <span class="tok-kw">try</span> Ecdsa.PublicKey.fromSec1(main_cert_pub_key);</span>
+<span class="line" id="L596">                                    <span class="tok-kw">try</span> sig.verify(verify_bytes, key);</span>
+<span class="line" id="L597">                                },</span>
+<span class="line" id="L598">                                <span class="tok-kw">inline</span> .rsa_pss_rsae_sha256,</span>
+<span class="line" id="L599">                                .rsa_pss_rsae_sha384,</span>
+<span class="line" id="L600">                                .rsa_pss_rsae_sha512,</span>
+<span class="line" id="L601">                                =&gt; |comptime_scheme| {</span>
+<span class="line" id="L602">                                    <span class="tok-kw">if</span> (main_cert_pub_key_algo != .rsaEncryption)</span>
+<span class="line" id="L603">                                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsBadSignatureScheme;</span>
+<span class="line" id="L604"></span>
+<span class="line" id="L605">                                    <span class="tok-kw">const</span> Hash = SchemeHash(comptime_scheme);</span>
+<span class="line" id="L606">                                    <span class="tok-kw">const</span> rsa = Certificate.rsa;</span>
+<span class="line" id="L607">                                    <span class="tok-kw">const</span> components = <span class="tok-kw">try</span> rsa.PublicKey.parseDer(main_cert_pub_key);</span>
+<span class="line" id="L608">                                    <span class="tok-kw">const</span> exponent = components.exponent;</span>
+<span class="line" id="L609">                                    <span class="tok-kw">const</span> modulus = components.modulus;</span>
+<span class="line" id="L610">                                    <span class="tok-kw">switch</span> (modulus.len) {</span>
+<span class="line" id="L611">                                        <span class="tok-kw">inline</span> <span class="tok-number">128</span>, <span class="tok-number">256</span>, <span class="tok-number">512</span> =&gt; |modulus_len| {</span>
+<span class="line" id="L612">                                            <span class="tok-kw">const</span> key = <span class="tok-kw">try</span> rsa.PublicKey.fromBytes(exponent, modulus);</span>
+<span class="line" id="L613">                                            <span class="tok-kw">const</span> sig = rsa.PSSSignature.fromBytes(modulus_len, encoded_sig);</span>
+<span class="line" id="L614">                                            <span class="tok-kw">try</span> rsa.PSSSignature.verify(modulus_len, sig, verify_bytes, key, Hash);</span>
+<span class="line" id="L615">                                        },</span>
+<span class="line" id="L616">                                        <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L617">                                            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsBadRsaSignatureBitCount;</span>
+<span class="line" id="L618">                                        },</span>
+<span class="line" id="L619">                                    }</span>
+<span class="line" id="L620">                                },</span>
+<span class="line" id="L621">                                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L622">                                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsBadSignatureScheme;</span>
+<span class="line" id="L623">                                },</span>
+<span class="line" id="L624">                            }</span>
+<span class="line" id="L625">                        },</span>
+<span class="line" id="L626">                        .finished =&gt; {</span>
+<span class="line" id="L627">                            <span class="tok-kw">if</span> (handshake_state != .finished) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L628">                            <span class="tok-comment">// This message is to trick buggy proxies into behaving correctly.</span>
+</span>
+<span class="line" id="L629">                            <span class="tok-kw">const</span> client_change_cipher_spec_msg = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L630">                                <span class="tok-builtin">@intFromEnum</span>(tls.ContentType.change_cipher_spec),</span>
+<span class="line" id="L631">                                <span class="tok-number">0x03</span>, <span class="tok-number">0x03</span>, <span class="tok-comment">// legacy protocol version</span>
+</span>
+<span class="line" id="L632">                                <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-comment">// length</span>
+</span>
+<span class="line" id="L633">                                <span class="tok-number">0x01</span>,</span>
+<span class="line" id="L634">                            };</span>
+<span class="line" id="L635">                            <span class="tok-kw">const</span> app_cipher = <span class="tok-kw">switch</span> (handshake_cipher) {</span>
+<span class="line" id="L636">                                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p, tag| c: {</span>
+<span class="line" id="L637">                                    <span class="tok-kw">const</span> P = <span class="tok-builtin">@TypeOf</span>(p.*);</span>
+<span class="line" id="L638">                                    <span class="tok-kw">const</span> finished_digest = p.transcript_hash.peek();</span>
+<span class="line" id="L639">                                    p.transcript_hash.update(wrapped_handshake);</span>
+<span class="line" id="L640">                                    <span class="tok-kw">const</span> expected_server_verify_data = tls.hmac(P.Hmac, &amp;finished_digest, p.server_finished_key);</span>
+<span class="line" id="L641">                                    <span class="tok-kw">if</span> (!mem.eql(<span class="tok-type">u8</span>, &amp;expected_server_verify_data, handshake))</span>
+<span class="line" id="L642">                                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsDecryptError;</span>
+<span class="line" id="L643">                                    <span class="tok-kw">const</span> handshake_hash = p.transcript_hash.finalResult();</span>
+<span class="line" id="L644">                                    <span class="tok-kw">const</span> verify_data = tls.hmac(P.Hmac, &amp;handshake_hash, p.client_finished_key);</span>
+<span class="line" id="L645">                                    <span class="tok-kw">const</span> out_cleartext = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L646">                                        <span class="tok-builtin">@intFromEnum</span>(tls.HandshakeType.finished),</span>
+<span class="line" id="L647">                                        <span class="tok-number">0</span>, <span class="tok-number">0</span>, verify_data.len, <span class="tok-comment">// length</span>
+</span>
+<span class="line" id="L648">                                    } ++ verify_data ++ [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-builtin">@intFromEnum</span>(tls.ContentType.handshake)};</span>
+<span class="line" id="L649"></span>
+<span class="line" id="L650">                                    <span class="tok-kw">const</span> wrapped_len = out_cleartext.len + P.AEAD.tag_length;</span>
+<span class="line" id="L651"></span>
+<span class="line" id="L652">                                    <span class="tok-kw">var</span> finished_msg = [_]<span class="tok-type">u8</span>{</span>
+<span class="line" id="L653">                                        <span class="tok-builtin">@intFromEnum</span>(tls.ContentType.application_data),</span>
+<span class="line" id="L654">                                        <span class="tok-number">0x03</span>, <span class="tok-number">0x03</span>, <span class="tok-comment">// legacy protocol version</span>
+</span>
+<span class="line" id="L655">                                        <span class="tok-number">0</span>, wrapped_len, <span class="tok-comment">// byte length of encrypted record</span>
+</span>
+<span class="line" id="L656">                                    } ++ <span class="tok-builtin">@as</span>([wrapped_len]<span class="tok-type">u8</span>, <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L657"></span>
+<span class="line" id="L658">                                    <span class="tok-kw">const</span> ad = finished_msg[<span class="tok-number">0</span>..<span class="tok-number">5</span>];</span>
+<span class="line" id="L659">                                    <span class="tok-kw">const</span> ciphertext = finished_msg[<span class="tok-number">5</span>..][<span class="tok-number">0</span>..out_cleartext.len];</span>
+<span class="line" id="L660">                                    <span class="tok-kw">const</span> auth_tag = finished_msg[finished_msg.len - P.AEAD.tag_length ..];</span>
+<span class="line" id="L661">                                    <span class="tok-kw">const</span> nonce = p.client_handshake_iv;</span>
+<span class="line" id="L662">                                    P.AEAD.encrypt(ciphertext, auth_tag, &amp;out_cleartext, ad, nonce, p.client_handshake_key);</span>
+<span class="line" id="L663"></span>
+<span class="line" id="L664">                                    <span class="tok-kw">const</span> both_msgs = client_change_cipher_spec_msg ++ finished_msg;</span>
+<span class="line" id="L665">                                    <span class="tok-kw">try</span> stream.writeAll(&amp;both_msgs);</span>
+<span class="line" id="L666"></span>
+<span class="line" id="L667">                                    <span class="tok-kw">const</span> client_secret = hkdfExpandLabel(P.Hkdf, p.master_secret, <span class="tok-str">&quot;c ap traffic&quot;</span>, &amp;handshake_hash, P.Hash.digest_length);</span>
+<span class="line" id="L668">                                    <span class="tok-kw">const</span> server_secret = hkdfExpandLabel(P.Hkdf, p.master_secret, <span class="tok-str">&quot;s ap traffic&quot;</span>, &amp;handshake_hash, P.Hash.digest_length);</span>
+<span class="line" id="L669">                                    <span class="tok-kw">break</span> :c <span class="tok-builtin">@unionInit</span>(tls.ApplicationCipher, <span class="tok-builtin">@tagName</span>(tag), .{</span>
+<span class="line" id="L670">                                        .client_secret = client_secret,</span>
+<span class="line" id="L671">                                        .server_secret = server_secret,</span>
+<span class="line" id="L672">                                        .client_key = hkdfExpandLabel(P.Hkdf, client_secret, <span class="tok-str">&quot;key&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.key_length),</span>
+<span class="line" id="L673">                                        .server_key = hkdfExpandLabel(P.Hkdf, server_secret, <span class="tok-str">&quot;key&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.key_length),</span>
+<span class="line" id="L674">                                        .client_iv = hkdfExpandLabel(P.Hkdf, client_secret, <span class="tok-str">&quot;iv&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.nonce_length),</span>
+<span class="line" id="L675">                                        .server_iv = hkdfExpandLabel(P.Hkdf, server_secret, <span class="tok-str">&quot;iv&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.nonce_length),</span>
+<span class="line" id="L676">                                    });</span>
+<span class="line" id="L677">                                },</span>
+<span class="line" id="L678">                            };</span>
+<span class="line" id="L679">                            <span class="tok-kw">const</span> leftover = d.rest();</span>
+<span class="line" id="L680">                            <span class="tok-kw">var</span> client: Client = .{</span>
+<span class="line" id="L681">                                .read_seq = <span class="tok-number">0</span>,</span>
+<span class="line" id="L682">                                .write_seq = <span class="tok-number">0</span>,</span>
+<span class="line" id="L683">                                .partial_cleartext_idx = <span class="tok-number">0</span>,</span>
+<span class="line" id="L684">                                .partial_ciphertext_idx = <span class="tok-number">0</span>,</span>
+<span class="line" id="L685">                                .partial_ciphertext_end = <span class="tok-builtin">@intCast</span>(leftover.len),</span>
+<span class="line" id="L686">                                .received_close_notify = <span class="tok-null">false</span>,</span>
+<span class="line" id="L687">                                .application_cipher = app_cipher,</span>
+<span class="line" id="L688">                                .partially_read_buffer = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L689">                            };</span>
+<span class="line" id="L690">                            <span class="tok-builtin">@memcpy</span>(client.partially_read_buffer[<span class="tok-number">0</span>..leftover.len], leftover);</span>
+<span class="line" id="L691">                            <span class="tok-kw">return</span> client;</span>
+<span class="line" id="L692">                        },</span>
+<span class="line" id="L693">                        <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L694">                            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L695">                        },</span>
+<span class="line" id="L696">                    }</span>
+<span class="line" id="L697">                    <span class="tok-kw">if</span> (ctd.eof()) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L698">                }</span>
+<span class="line" id="L699">            },</span>
+<span class="line" id="L700">            <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L701">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L702">            },</span>
+<span class="line" id="L703">        }</span>
+<span class="line" id="L704">    }</span>
+<span class="line" id="L705">}</span>
+<span class="line" id="L706"></span>
+<span class="line" id="L707"><span class="tok-comment">/// Sends TLS-encrypted data to `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L708"><span class="tok-comment">/// Returns the number of plaintext bytes sent, which may be fewer than `bytes.len`.</span></span>
+<span class="line" id="L709"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L710">    <span class="tok-kw">return</span> writeEnd(c, stream, bytes, <span class="tok-null">false</span>);</span>
+<span class="line" id="L711">}</span>
+<span class="line" id="L712"></span>
+<span class="line" id="L713"><span class="tok-comment">/// Sends TLS-encrypted data to `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L714"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeAll</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L715">    <span class="tok-kw">var</span> index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L716">    <span class="tok-kw">while</span> (index &lt; bytes.len) {</span>
+<span class="line" id="L717">        index += <span class="tok-kw">try</span> c.write(stream, bytes[index..]);</span>
+<span class="line" id="L718">    }</span>
+<span class="line" id="L719">}</span>
+<span class="line" id="L720"></span>
+<span class="line" id="L721"><span class="tok-comment">/// Sends TLS-encrypted data to `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L722"><span class="tok-comment">/// If `end` is true, then this function additionally sends a `close_notify` alert,</span></span>
+<span class="line" id="L723"><span class="tok-comment">/// which is necessary for the server to distinguish between a properly finished</span></span>
+<span class="line" id="L724"><span class="tok-comment">/// TLS session, or a truncation attack.</span></span>
+<span class="line" id="L725"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeAllEnd</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, end: <span class="tok-type">bool</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L726">    <span class="tok-kw">var</span> index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L727">    <span class="tok-kw">while</span> (index &lt; bytes.len) {</span>
+<span class="line" id="L728">        index += <span class="tok-kw">try</span> c.writeEnd(stream, bytes[index..], end);</span>
+<span class="line" id="L729">    }</span>
+<span class="line" id="L730">}</span>
+<span class="line" id="L731"></span>
+<span class="line" id="L732"><span class="tok-comment">/// Sends TLS-encrypted data to `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L733"><span class="tok-comment">/// Returns the number of plaintext bytes sent, which may be fewer than `bytes.len`.</span></span>
+<span class="line" id="L734"><span class="tok-comment">/// If `end` is true, then this function additionally sends a `close_notify` alert,</span></span>
+<span class="line" id="L735"><span class="tok-comment">/// which is necessary for the server to distinguish between a properly finished</span></span>
+<span class="line" id="L736"><span class="tok-comment">/// TLS session, or a truncation attack.</span></span>
+<span class="line" id="L737"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeEnd</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, end: <span class="tok-type">bool</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L738">    <span class="tok-kw">var</span> ciphertext_buf: [tls.max_ciphertext_record_len * <span class="tok-number">4</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L739">    <span class="tok-kw">var</span> iovecs_buf: [<span class="tok-number">6</span>]std.os.iovec_const = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L740">    <span class="tok-kw">var</span> prepared = prepareCiphertextRecord(c, &amp;iovecs_buf, &amp;ciphertext_buf, bytes, .application_data);</span>
+<span class="line" id="L741">    <span class="tok-kw">if</span> (end) {</span>
+<span class="line" id="L742">        prepared.iovec_end += prepareCiphertextRecord(</span>
+<span class="line" id="L743">            c,</span>
+<span class="line" id="L744">            iovecs_buf[prepared.iovec_end..],</span>
+<span class="line" id="L745">            ciphertext_buf[prepared.ciphertext_end..],</span>
+<span class="line" id="L746">            &amp;tls.close_notify_alert,</span>
+<span class="line" id="L747">            .alert,</span>
+<span class="line" id="L748">        ).iovec_end;</span>
+<span class="line" id="L749">    }</span>
+<span class="line" id="L750"></span>
+<span class="line" id="L751">    <span class="tok-kw">const</span> iovec_end = prepared.iovec_end;</span>
+<span class="line" id="L752">    <span class="tok-kw">const</span> overhead_len = prepared.overhead_len;</span>
+<span class="line" id="L753"></span>
+<span class="line" id="L754">    <span class="tok-comment">// Ideally we would call writev exactly once here, however, we must ensure</span>
+</span>
+<span class="line" id="L755">    <span class="tok-comment">// that we don't return with a record partially written.</span>
+</span>
+<span class="line" id="L756">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L757">    <span class="tok-kw">var</span> total_amt: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L758">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L759">        <span class="tok-kw">var</span> amt = <span class="tok-kw">try</span> stream.writev(iovecs_buf[i..iovec_end]);</span>
+<span class="line" id="L760">        <span class="tok-kw">while</span> (amt &gt;= iovecs_buf[i].iov_len) {</span>
+<span class="line" id="L761">            <span class="tok-kw">const</span> encrypted_amt = iovecs_buf[i].iov_len;</span>
+<span class="line" id="L762">            total_amt += encrypted_amt - overhead_len;</span>
+<span class="line" id="L763">            amt -= encrypted_amt;</span>
+<span class="line" id="L764">            i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L765">            <span class="tok-comment">// Rely on the property that iovecs delineate records, meaning that</span>
+</span>
+<span class="line" id="L766">            <span class="tok-comment">// if amt equals zero here, we have fortunately found ourselves</span>
+</span>
+<span class="line" id="L767">            <span class="tok-comment">// with a short read that aligns at the record boundary.</span>
+</span>
+<span class="line" id="L768">            <span class="tok-kw">if</span> (i &gt;= iovec_end) <span class="tok-kw">return</span> total_amt;</span>
+<span class="line" id="L769">            <span class="tok-comment">// We also cannot return on a vector boundary if the final close_notify is</span>
+</span>
+<span class="line" id="L770">            <span class="tok-comment">// not sent; otherwise the caller would not know to retry the call.</span>
+</span>
+<span class="line" id="L771">            <span class="tok-kw">if</span> (amt == <span class="tok-number">0</span> <span class="tok-kw">and</span> (!end <span class="tok-kw">or</span> i &lt; iovec_end - <span class="tok-number">1</span>)) <span class="tok-kw">return</span> total_amt;</span>
+<span class="line" id="L772">        }</span>
+<span class="line" id="L773">        iovecs_buf[i].iov_base += amt;</span>
+<span class="line" id="L774">        iovecs_buf[i].iov_len -= amt;</span>
+<span class="line" id="L775">    }</span>
+<span class="line" id="L776">}</span>
+<span class="line" id="L777"></span>
+<span class="line" id="L778"><span class="tok-kw">fn</span> <span class="tok-fn">prepareCiphertextRecord</span>(</span>
+<span class="line" id="L779">    c: *Client,</span>
+<span class="line" id="L780">    iovecs: []std.os.iovec_const,</span>
+<span class="line" id="L781">    ciphertext_buf: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L782">    bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L783">    inner_content_type: tls.ContentType,</span>
+<span class="line" id="L784">) <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L785">    iovec_end: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L786">    ciphertext_end: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L787">    <span class="tok-comment">/// How many bytes are taken up by overhead per record.</span></span>
+<span class="line" id="L788">    overhead_len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L789">} {</span>
+<span class="line" id="L790">    <span class="tok-comment">// Due to the trailing inner content type byte in the ciphertext, we need</span>
+</span>
+<span class="line" id="L791">    <span class="tok-comment">// an additional buffer for storing the cleartext into before encrypting.</span>
+</span>
+<span class="line" id="L792">    <span class="tok-kw">var</span> cleartext_buf: [max_ciphertext_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L793">    <span class="tok-kw">var</span> ciphertext_end: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L794">    <span class="tok-kw">var</span> iovec_end: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L795">    <span class="tok-kw">var</span> bytes_i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L796">    <span class="tok-kw">switch</span> (c.application_cipher) {</span>
+<span class="line" id="L797">        <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| {</span>
+<span class="line" id="L798">            <span class="tok-kw">const</span> P = <span class="tok-builtin">@TypeOf</span>(p.*);</span>
+<span class="line" id="L799">            <span class="tok-kw">const</span> V = <span class="tok-builtin">@Vector</span>(P.AEAD.nonce_length, <span class="tok-type">u8</span>);</span>
+<span class="line" id="L800">            <span class="tok-kw">const</span> overhead_len = tls.record_header_len + P.AEAD.tag_length + <span class="tok-number">1</span>;</span>
+<span class="line" id="L801">            <span class="tok-kw">const</span> close_notify_alert_reserved = tls.close_notify_alert.len + overhead_len;</span>
+<span class="line" id="L802">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L803">                <span class="tok-kw">const</span> encrypted_content_len: <span class="tok-type">u16</span> = <span class="tok-builtin">@intCast</span>(<span class="tok-builtin">@min</span>(</span>
+<span class="line" id="L804">                    <span class="tok-builtin">@min</span>(bytes.len - bytes_i, max_ciphertext_len - <span class="tok-number">1</span>),</span>
+<span class="line" id="L805">                    ciphertext_buf.len - close_notify_alert_reserved -</span>
+<span class="line" id="L806">                        overhead_len - ciphertext_end,</span>
+<span class="line" id="L807">                ));</span>
+<span class="line" id="L808">                <span class="tok-kw">if</span> (encrypted_content_len == <span class="tok-number">0</span>) <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L809">                    .iovec_end = iovec_end,</span>
+<span class="line" id="L810">                    .ciphertext_end = ciphertext_end,</span>
+<span class="line" id="L811">                    .overhead_len = overhead_len,</span>
+<span class="line" id="L812">                };</span>
+<span class="line" id="L813"></span>
+<span class="line" id="L814">                <span class="tok-builtin">@memcpy</span>(cleartext_buf[<span class="tok-number">0</span>..encrypted_content_len], bytes[bytes_i..][<span class="tok-number">0</span>..encrypted_content_len]);</span>
+<span class="line" id="L815">                cleartext_buf[encrypted_content_len] = <span class="tok-builtin">@intFromEnum</span>(inner_content_type);</span>
+<span class="line" id="L816">                bytes_i += encrypted_content_len;</span>
+<span class="line" id="L817">                <span class="tok-kw">const</span> ciphertext_len = encrypted_content_len + <span class="tok-number">1</span>;</span>
+<span class="line" id="L818">                <span class="tok-kw">const</span> cleartext = cleartext_buf[<span class="tok-number">0</span>..ciphertext_len];</span>
+<span class="line" id="L819"></span>
+<span class="line" id="L820">                <span class="tok-kw">const</span> record_start = ciphertext_end;</span>
+<span class="line" id="L821">                <span class="tok-kw">const</span> ad = ciphertext_buf[ciphertext_end..][<span class="tok-number">0</span>..<span class="tok-number">5</span>];</span>
+<span class="line" id="L822">                ad.* =</span>
+<span class="line" id="L823">                    [_]<span class="tok-type">u8</span>{<span class="tok-builtin">@intFromEnum</span>(tls.ContentType.application_data)} ++</span>
+<span class="line" id="L824">                    int2(<span class="tok-builtin">@intFromEnum</span>(tls.ProtocolVersion.tls_1_2)) ++</span>
+<span class="line" id="L825">                    int2(ciphertext_len + P.AEAD.tag_length);</span>
+<span class="line" id="L826">                ciphertext_end += ad.len;</span>
+<span class="line" id="L827">                <span class="tok-kw">const</span> ciphertext = ciphertext_buf[ciphertext_end..][<span class="tok-number">0</span>..ciphertext_len];</span>
+<span class="line" id="L828">                ciphertext_end += ciphertext_len;</span>
+<span class="line" id="L829">                <span class="tok-kw">const</span> auth_tag = ciphertext_buf[ciphertext_end..][<span class="tok-number">0</span>..P.AEAD.tag_length];</span>
+<span class="line" id="L830">                ciphertext_end += auth_tag.len;</span>
+<span class="line" id="L831">                <span class="tok-kw">const</span> pad = [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** (P.AEAD.nonce_length - <span class="tok-number">8</span>);</span>
+<span class="line" id="L832">                <span class="tok-kw">const</span> operand: V = pad ++ <span class="tok-builtin">@as</span>([<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@bitCast</span>(big(c.write_seq)));</span>
+<span class="line" id="L833">                c.write_seq += <span class="tok-number">1</span>; <span class="tok-comment">// TODO send key_update on overflow</span>
+</span>
+<span class="line" id="L834">                <span class="tok-kw">const</span> nonce = <span class="tok-builtin">@as</span>(V, p.client_iv) ^ operand;</span>
+<span class="line" id="L835">                P.AEAD.encrypt(ciphertext, auth_tag, cleartext, ad, nonce, p.client_key);</span>
+<span class="line" id="L836"></span>
+<span class="line" id="L837">                <span class="tok-kw">const</span> record = ciphertext_buf[record_start..ciphertext_end];</span>
+<span class="line" id="L838">                iovecs[iovec_end] = .{</span>
+<span class="line" id="L839">                    .iov_base = record.ptr,</span>
+<span class="line" id="L840">                    .iov_len = record.len,</span>
+<span class="line" id="L841">                };</span>
+<span class="line" id="L842">                iovec_end += <span class="tok-number">1</span>;</span>
+<span class="line" id="L843">            }</span>
+<span class="line" id="L844">        },</span>
+<span class="line" id="L845">    }</span>
+<span class="line" id="L846">}</span>
+<span class="line" id="L847"></span>
+<span class="line" id="L848"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eof</span>(c: Client) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L849">    <span class="tok-kw">return</span> c.received_close_notify <span class="tok-kw">and</span></span>
+<span class="line" id="L850">        c.partial_cleartext_idx &gt;= c.partial_ciphertext_idx <span class="tok-kw">and</span></span>
+<span class="line" id="L851">        c.partial_ciphertext_idx &gt;= c.partial_ciphertext_end;</span>
+<span class="line" id="L852">}</span>
+<span class="line" id="L853"></span>
+<span class="line" id="L854"><span class="tok-comment">/// Receives TLS-encrypted data from `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L855"><span class="tok-comment">/// Returns the number of bytes read, calling the underlying read function the</span></span>
+<span class="line" id="L856"><span class="tok-comment">/// minimal number of times until the buffer has at least `len` bytes filled.</span></span>
+<span class="line" id="L857"><span class="tok-comment">/// If the number read is less than `len` it means the stream reached the end.</span></span>
+<span class="line" id="L858"><span class="tok-comment">/// Reaching the end of the stream is not an error condition.</span></span>
+<span class="line" id="L859"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readAtLeast</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, buffer: []<span class="tok-type">u8</span>, len: <span class="tok-type">usize</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L860">    <span class="tok-kw">var</span> iovecs = [<span class="tok-number">1</span>]std.os.iovec{.{ .iov_base = buffer.ptr, .iov_len = buffer.len }};</span>
+<span class="line" id="L861">    <span class="tok-kw">return</span> readvAtLeast(c, stream, &amp;iovecs, len);</span>
+<span class="line" id="L862">}</span>
+<span class="line" id="L863"></span>
+<span class="line" id="L864"><span class="tok-comment">/// Receives TLS-encrypted data from `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L865"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, buffer: []<span class="tok-type">u8</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L866">    <span class="tok-kw">return</span> readAtLeast(c, stream, buffer, <span class="tok-number">1</span>);</span>
+<span class="line" id="L867">}</span>
+<span class="line" id="L868"></span>
+<span class="line" id="L869"><span class="tok-comment">/// Receives TLS-encrypted data from `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L870"><span class="tok-comment">/// Returns the number of bytes read. If the number read is smaller than</span></span>
+<span class="line" id="L871"><span class="tok-comment">/// `buffer.len`, it means the stream reached the end. Reaching the end of the</span></span>
+<span class="line" id="L872"><span class="tok-comment">/// stream is not an error condition.</span></span>
+<span class="line" id="L873"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readAll</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, buffer: []<span class="tok-type">u8</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L874">    <span class="tok-kw">return</span> readAtLeast(c, stream, buffer, buffer.len);</span>
+<span class="line" id="L875">}</span>
+<span class="line" id="L876"></span>
+<span class="line" id="L877"><span class="tok-comment">/// Receives TLS-encrypted data from `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L878"><span class="tok-comment">/// Returns the number of bytes read. If the number read is less than the space</span></span>
+<span class="line" id="L879"><span class="tok-comment">/// provided it means the stream reached the end. Reaching the end of the</span></span>
+<span class="line" id="L880"><span class="tok-comment">/// stream is not an error condition.</span></span>
+<span class="line" id="L881"><span class="tok-comment">/// The `iovecs` parameter is mutable because this function needs to mutate the fields in</span></span>
+<span class="line" id="L882"><span class="tok-comment">/// order to handle partial reads from the underlying stream layer.</span></span>
+<span class="line" id="L883"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readv</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, iovecs: []std.os.iovec) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L884">    <span class="tok-kw">return</span> readvAtLeast(c, stream, iovecs);</span>
+<span class="line" id="L885">}</span>
+<span class="line" id="L886"></span>
+<span class="line" id="L887"><span class="tok-comment">/// Receives TLS-encrypted data from `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L888"><span class="tok-comment">/// Returns the number of bytes read, calling the underlying read function the</span></span>
+<span class="line" id="L889"><span class="tok-comment">/// minimal number of times until the iovecs have at least `len` bytes filled.</span></span>
+<span class="line" id="L890"><span class="tok-comment">/// If the number read is less than `len` it means the stream reached the end.</span></span>
+<span class="line" id="L891"><span class="tok-comment">/// Reaching the end of the stream is not an error condition.</span></span>
+<span class="line" id="L892"><span class="tok-comment">/// The `iovecs` parameter is mutable because this function needs to mutate the fields in</span></span>
+<span class="line" id="L893"><span class="tok-comment">/// order to handle partial reads from the underlying stream layer.</span></span>
+<span class="line" id="L894"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readvAtLeast</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, iovecs: []std.os.iovec, len: <span class="tok-type">usize</span>) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L895">    <span class="tok-kw">if</span> (c.eof()) <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L896"></span>
+<span class="line" id="L897">    <span class="tok-kw">var</span> off_i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L898">    <span class="tok-kw">var</span> vec_i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L899">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L900">        <span class="tok-kw">var</span> amt = <span class="tok-kw">try</span> c.readvAdvanced(stream, iovecs[vec_i..]);</span>
+<span class="line" id="L901">        off_i += amt;</span>
+<span class="line" id="L902">        <span class="tok-kw">if</span> (c.eof() <span class="tok-kw">or</span> off_i &gt;= len) <span class="tok-kw">return</span> off_i;</span>
+<span class="line" id="L903">        <span class="tok-kw">while</span> (amt &gt;= iovecs[vec_i].iov_len) {</span>
+<span class="line" id="L904">            amt -= iovecs[vec_i].iov_len;</span>
+<span class="line" id="L905">            vec_i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L906">        }</span>
+<span class="line" id="L907">        iovecs[vec_i].iov_base += amt;</span>
+<span class="line" id="L908">        iovecs[vec_i].iov_len -= amt;</span>
+<span class="line" id="L909">    }</span>
+<span class="line" id="L910">}</span>
+<span class="line" id="L911"></span>
+<span class="line" id="L912"><span class="tok-comment">/// Receives TLS-encrypted data from `stream`, which must conform to `StreamInterface`.</span></span>
+<span class="line" id="L913"><span class="tok-comment">/// Returns number of bytes that have been read, populated inside `iovecs`. A</span></span>
+<span class="line" id="L914"><span class="tok-comment">/// return value of zero bytes does not mean end of stream. Instead, check the `eof()`</span></span>
+<span class="line" id="L915"><span class="tok-comment">/// for the end of stream. The `eof()` may be true after any call to</span></span>
+<span class="line" id="L916"><span class="tok-comment">/// `read`, including when greater than zero bytes are returned, and this</span></span>
+<span class="line" id="L917"><span class="tok-comment">/// function asserts that `eof()` is `false`.</span></span>
+<span class="line" id="L918"><span class="tok-comment">/// See `readv` for a higher level function that has the same, familiar API as</span></span>
+<span class="line" id="L919"><span class="tok-comment">/// other read functions, such as `std.fs.File.read`.</span></span>
+<span class="line" id="L920"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readvAdvanced</span>(c: *Client, stream: <span class="tok-kw">anytype</span>, iovecs: []<span class="tok-kw">const</span> std.os.iovec) !<span class="tok-type">usize</span> {</span>
+<span class="line" id="L921">    <span class="tok-kw">var</span> vp: VecPut = .{ .iovecs = iovecs };</span>
+<span class="line" id="L922"></span>
+<span class="line" id="L923">    <span class="tok-comment">// Give away the buffered cleartext we have, if any.</span>
+</span>
+<span class="line" id="L924">    <span class="tok-kw">const</span> partial_cleartext = c.partially_read_buffer[c.partial_cleartext_idx..c.partial_ciphertext_idx];</span>
+<span class="line" id="L925">    <span class="tok-kw">if</span> (partial_cleartext.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L926">        <span class="tok-kw">const</span> amt: <span class="tok-type">u15</span> = <span class="tok-builtin">@intCast</span>(vp.put(partial_cleartext));</span>
+<span class="line" id="L927">        c.partial_cleartext_idx += amt;</span>
+<span class="line" id="L928"></span>
+<span class="line" id="L929">        <span class="tok-kw">if</span> (c.partial_cleartext_idx == c.partial_ciphertext_idx <span class="tok-kw">and</span></span>
+<span class="line" id="L930">            c.partial_ciphertext_end == c.partial_ciphertext_idx)</span>
+<span class="line" id="L931">        {</span>
+<span class="line" id="L932">            <span class="tok-comment">// The buffer is now empty.</span>
+</span>
+<span class="line" id="L933">            c.partial_cleartext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L934">            c.partial_ciphertext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L935">            c.partial_ciphertext_end = <span class="tok-number">0</span>;</span>
+<span class="line" id="L936">        }</span>
+<span class="line" id="L937"></span>
+<span class="line" id="L938">        <span class="tok-kw">if</span> (c.received_close_notify) {</span>
+<span class="line" id="L939">            c.partial_ciphertext_end = <span class="tok-number">0</span>;</span>
+<span class="line" id="L940">            assert(vp.total == amt);</span>
+<span class="line" id="L941">            <span class="tok-kw">return</span> amt;</span>
+<span class="line" id="L942">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (amt &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L943">            <span class="tok-comment">// We don't need more data, so don't call read.</span>
+</span>
+<span class="line" id="L944">            assert(vp.total == amt);</span>
+<span class="line" id="L945">            <span class="tok-kw">return</span> amt;</span>
+<span class="line" id="L946">        }</span>
+<span class="line" id="L947">    }</span>
+<span class="line" id="L948"></span>
+<span class="line" id="L949">    assert(!c.received_close_notify);</span>
+<span class="line" id="L950"></span>
+<span class="line" id="L951">    <span class="tok-comment">// Ideally, this buffer would never be used. It is needed when `iovecs` are</span>
+</span>
+<span class="line" id="L952">    <span class="tok-comment">// too small to fit the cleartext, which may be as large as `max_ciphertext_len`.</span>
+</span>
+<span class="line" id="L953">    <span class="tok-kw">var</span> cleartext_stack_buffer: [max_ciphertext_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L954">    <span class="tok-comment">// Temporarily stores ciphertext before decrypting it and giving it to `iovecs`.</span>
+</span>
+<span class="line" id="L955">    <span class="tok-kw">var</span> in_stack_buffer: [max_ciphertext_len * <span class="tok-number">4</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L956">    <span class="tok-comment">// How many bytes left in the user's buffer.</span>
+</span>
+<span class="line" id="L957">    <span class="tok-kw">const</span> free_size = vp.freeSize();</span>
+<span class="line" id="L958">    <span class="tok-comment">// The amount of the user's buffer that we need to repurpose for storing</span>
+</span>
+<span class="line" id="L959">    <span class="tok-comment">// ciphertext. The end of the buffer will be used for such purposes.</span>
+</span>
+<span class="line" id="L960">    <span class="tok-kw">const</span> ciphertext_buf_len = (free_size / <span class="tok-number">2</span>) -| in_stack_buffer.len;</span>
+<span class="line" id="L961">    <span class="tok-comment">// The amount of the user's buffer that will be used to give cleartext. The</span>
+</span>
+<span class="line" id="L962">    <span class="tok-comment">// beginning of the buffer will be used for such purposes.</span>
+</span>
+<span class="line" id="L963">    <span class="tok-kw">const</span> cleartext_buf_len = free_size - ciphertext_buf_len;</span>
+<span class="line" id="L964"></span>
+<span class="line" id="L965">    <span class="tok-comment">// Recoup `partially_read_buffer space`. This is necessary because it is assumed</span>
+</span>
+<span class="line" id="L966">    <span class="tok-comment">// below that `frag0` is big enough to hold at least one record.</span>
+</span>
+<span class="line" id="L967">    limitedOverlapCopy(c.partially_read_buffer[<span class="tok-number">0</span>..c.partial_ciphertext_end], c.partial_ciphertext_idx);</span>
+<span class="line" id="L968">    c.partial_ciphertext_end -= c.partial_ciphertext_idx;</span>
+<span class="line" id="L969">    c.partial_ciphertext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L970">    c.partial_cleartext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L971">    <span class="tok-kw">const</span> first_iov = c.partially_read_buffer[c.partial_ciphertext_end..];</span>
+<span class="line" id="L972"></span>
+<span class="line" id="L973">    <span class="tok-kw">var</span> ask_iovecs_buf: [<span class="tok-number">2</span>]std.os.iovec = .{</span>
+<span class="line" id="L974">        .{</span>
+<span class="line" id="L975">            .iov_base = first_iov.ptr,</span>
+<span class="line" id="L976">            .iov_len = first_iov.len,</span>
+<span class="line" id="L977">        },</span>
+<span class="line" id="L978">        .{</span>
+<span class="line" id="L979">            .iov_base = &amp;in_stack_buffer,</span>
+<span class="line" id="L980">            .iov_len = in_stack_buffer.len,</span>
+<span class="line" id="L981">        },</span>
+<span class="line" id="L982">    };</span>
+<span class="line" id="L983"></span>
+<span class="line" id="L984">    <span class="tok-comment">// Cleartext capacity of output buffer, in records. Minimum one full record.</span>
+</span>
+<span class="line" id="L985">    <span class="tok-kw">const</span> buf_cap = <span class="tok-builtin">@max</span>(cleartext_buf_len / max_ciphertext_len, <span class="tok-number">1</span>);</span>
+<span class="line" id="L986">    <span class="tok-kw">const</span> wanted_read_len = buf_cap * (max_ciphertext_len + tls.record_header_len);</span>
+<span class="line" id="L987">    <span class="tok-kw">const</span> ask_len = <span class="tok-builtin">@max</span>(wanted_read_len, cleartext_stack_buffer.len);</span>
+<span class="line" id="L988">    <span class="tok-kw">const</span> ask_iovecs = limitVecs(&amp;ask_iovecs_buf, ask_len);</span>
+<span class="line" id="L989">    <span class="tok-kw">const</span> actual_read_len = <span class="tok-kw">try</span> stream.readv(ask_iovecs);</span>
+<span class="line" id="L990">    <span class="tok-kw">if</span> (actual_read_len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L991">        <span class="tok-comment">// This is either a truncation attack, a bug in the server, or an</span>
+</span>
+<span class="line" id="L992">        <span class="tok-comment">// intentional omission of the close_notify message due to truncation</span>
+</span>
+<span class="line" id="L993">        <span class="tok-comment">// detection handled above the TLS layer.</span>
+</span>
+<span class="line" id="L994">        <span class="tok-kw">if</span> (c.allow_truncation_attacks) {</span>
+<span class="line" id="L995">            c.received_close_notify = <span class="tok-null">true</span>;</span>
+<span class="line" id="L996">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L997">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsConnectionTruncated;</span>
+<span class="line" id="L998">        }</span>
+<span class="line" id="L999">    }</span>
+<span class="line" id="L1000"></span>
+<span class="line" id="L1001">    <span class="tok-comment">// There might be more bytes inside `in_stack_buffer` that need to be processed,</span>
+</span>
+<span class="line" id="L1002">    <span class="tok-comment">// but at least frag0 will have one complete ciphertext record.</span>
+</span>
+<span class="line" id="L1003">    <span class="tok-kw">const</span> frag0_end = <span class="tok-builtin">@min</span>(c.partially_read_buffer.len, c.partial_ciphertext_end + actual_read_len);</span>
+<span class="line" id="L1004">    <span class="tok-kw">const</span> frag0 = c.partially_read_buffer[c.partial_ciphertext_idx..frag0_end];</span>
+<span class="line" id="L1005">    <span class="tok-kw">var</span> frag1 = in_stack_buffer[<span class="tok-number">0</span>..actual_read_len -| first_iov.len];</span>
+<span class="line" id="L1006">    <span class="tok-comment">// We need to decipher frag0 and frag1 but there may be a ciphertext record</span>
+</span>
+<span class="line" id="L1007">    <span class="tok-comment">// straddling the boundary. We can handle this with two memcpy() calls to</span>
+</span>
+<span class="line" id="L1008">    <span class="tok-comment">// assemble the straddling record in between handling the two sides.</span>
+</span>
+<span class="line" id="L1009">    <span class="tok-kw">var</span> frag = frag0;</span>
+<span class="line" id="L1010">    <span class="tok-kw">var</span> in: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1011">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1012">        <span class="tok-kw">if</span> (in == frag.len) {</span>
+<span class="line" id="L1013">            <span class="tok-comment">// Perfect split.</span>
+</span>
+<span class="line" id="L1014">            <span class="tok-kw">if</span> (frag.ptr == frag1.ptr) {</span>
+<span class="line" id="L1015">                c.partial_ciphertext_end = c.partial_ciphertext_idx;</span>
+<span class="line" id="L1016">                <span class="tok-kw">return</span> vp.total;</span>
+<span class="line" id="L1017">            }</span>
+<span class="line" id="L1018">            frag = frag1;</span>
+<span class="line" id="L1019">            in = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1020">            <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1021">        }</span>
+<span class="line" id="L1022"></span>
+<span class="line" id="L1023">        <span class="tok-kw">if</span> (in + tls.record_header_len &gt; frag.len) {</span>
+<span class="line" id="L1024">            <span class="tok-kw">if</span> (frag.ptr == frag1.ptr)</span>
+<span class="line" id="L1025">                <span class="tok-kw">return</span> finishRead(c, frag, in, vp.total);</span>
+<span class="line" id="L1026"></span>
+<span class="line" id="L1027">            <span class="tok-kw">const</span> first = frag[in..];</span>
+<span class="line" id="L1028"></span>
+<span class="line" id="L1029">            <span class="tok-kw">if</span> (frag1.len &lt; tls.record_header_len)</span>
+<span class="line" id="L1030">                <span class="tok-kw">return</span> finishRead2(c, first, frag1, vp.total);</span>
+<span class="line" id="L1031"></span>
+<span class="line" id="L1032">            <span class="tok-comment">// A record straddles the two fragments. Copy into the now-empty first fragment.</span>
+</span>
+<span class="line" id="L1033">            <span class="tok-kw">const</span> record_len_byte_0: <span class="tok-type">u16</span> = straddleByte(frag, frag1, in + <span class="tok-number">3</span>);</span>
+<span class="line" id="L1034">            <span class="tok-kw">const</span> record_len_byte_1: <span class="tok-type">u16</span> = straddleByte(frag, frag1, in + <span class="tok-number">4</span>);</span>
+<span class="line" id="L1035">            <span class="tok-kw">const</span> record_len = (record_len_byte_0 &lt;&lt; <span class="tok-number">8</span>) | record_len_byte_1;</span>
+<span class="line" id="L1036">            <span class="tok-kw">if</span> (record_len &gt; max_ciphertext_len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsRecordOverflow;</span>
+<span class="line" id="L1037"></span>
+<span class="line" id="L1038">            <span class="tok-kw">const</span> full_record_len = record_len + tls.record_header_len;</span>
+<span class="line" id="L1039">            <span class="tok-kw">const</span> second_len = full_record_len - first.len;</span>
+<span class="line" id="L1040">            <span class="tok-kw">if</span> (frag1.len &lt; second_len)</span>
+<span class="line" id="L1041">                <span class="tok-kw">return</span> finishRead2(c, first, frag1, vp.total);</span>
+<span class="line" id="L1042"></span>
+<span class="line" id="L1043">            limitedOverlapCopy(frag, in);</span>
+<span class="line" id="L1044">            <span class="tok-builtin">@memcpy</span>(frag[first.len..][<span class="tok-number">0</span>..second_len], frag1[<span class="tok-number">0</span>..second_len]);</span>
+<span class="line" id="L1045">            frag = frag[<span class="tok-number">0</span>..full_record_len];</span>
+<span class="line" id="L1046">            frag1 = frag1[second_len..];</span>
+<span class="line" id="L1047">            in = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1048">            <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1049">        }</span>
+<span class="line" id="L1050">        <span class="tok-kw">const</span> ct: tls.ContentType = <span class="tok-builtin">@enumFromInt</span>(frag[in]);</span>
+<span class="line" id="L1051">        in += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1052">        <span class="tok-kw">const</span> legacy_version = mem.readIntBig(<span class="tok-type">u16</span>, frag[in..][<span class="tok-number">0</span>..<span class="tok-number">2</span>]);</span>
+<span class="line" id="L1053">        in += <span class="tok-number">2</span>;</span>
+<span class="line" id="L1054">        _ = legacy_version;</span>
+<span class="line" id="L1055">        <span class="tok-kw">const</span> record_len = mem.readIntBig(<span class="tok-type">u16</span>, frag[in..][<span class="tok-number">0</span>..<span class="tok-number">2</span>]);</span>
+<span class="line" id="L1056">        <span class="tok-kw">if</span> (record_len &gt; max_ciphertext_len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsRecordOverflow;</span>
+<span class="line" id="L1057">        in += <span class="tok-number">2</span>;</span>
+<span class="line" id="L1058">        <span class="tok-kw">const</span> end = in + record_len;</span>
+<span class="line" id="L1059">        <span class="tok-kw">if</span> (end &gt; frag.len) {</span>
+<span class="line" id="L1060">            <span class="tok-comment">// We need the record header on the next iteration of the loop.</span>
+</span>
+<span class="line" id="L1061">            in -= tls.record_header_len;</span>
+<span class="line" id="L1062"></span>
+<span class="line" id="L1063">            <span class="tok-kw">if</span> (frag.ptr == frag1.ptr)</span>
+<span class="line" id="L1064">                <span class="tok-kw">return</span> finishRead(c, frag, in, vp.total);</span>
+<span class="line" id="L1065"></span>
+<span class="line" id="L1066">            <span class="tok-comment">// A record straddles the two fragments. Copy into the now-empty first fragment.</span>
+</span>
+<span class="line" id="L1067">            <span class="tok-kw">const</span> first = frag[in..];</span>
+<span class="line" id="L1068">            <span class="tok-kw">const</span> full_record_len = record_len + tls.record_header_len;</span>
+<span class="line" id="L1069">            <span class="tok-kw">const</span> second_len = full_record_len - first.len;</span>
+<span class="line" id="L1070">            <span class="tok-kw">if</span> (frag1.len &lt; second_len)</span>
+<span class="line" id="L1071">                <span class="tok-kw">return</span> finishRead2(c, first, frag1, vp.total);</span>
+<span class="line" id="L1072"></span>
+<span class="line" id="L1073">            limitedOverlapCopy(frag, in);</span>
+<span class="line" id="L1074">            <span class="tok-builtin">@memcpy</span>(frag[first.len..][<span class="tok-number">0</span>..second_len], frag1[<span class="tok-number">0</span>..second_len]);</span>
+<span class="line" id="L1075">            frag = frag[<span class="tok-number">0</span>..full_record_len];</span>
+<span class="line" id="L1076">            frag1 = frag1[second_len..];</span>
+<span class="line" id="L1077">            in = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1078">            <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1079">        }</span>
+<span class="line" id="L1080">        <span class="tok-kw">switch</span> (ct) {</span>
+<span class="line" id="L1081">            .alert =&gt; {</span>
+<span class="line" id="L1082">                <span class="tok-kw">if</span> (in + <span class="tok-number">2</span> &gt; frag.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsDecodeError;</span>
+<span class="line" id="L1083">                <span class="tok-kw">const</span> level: tls.AlertLevel = <span class="tok-builtin">@enumFromInt</span>(frag[in]);</span>
+<span class="line" id="L1084">                <span class="tok-kw">const</span> desc: tls.AlertDescription = <span class="tok-builtin">@enumFromInt</span>(frag[in + <span class="tok-number">1</span>]);</span>
+<span class="line" id="L1085">                _ = level;</span>
+<span class="line" id="L1086"></span>
+<span class="line" id="L1087">                <span class="tok-kw">try</span> desc.toError();</span>
+<span class="line" id="L1088">                <span class="tok-comment">// TODO: handle server-side closures</span>
+</span>
+<span class="line" id="L1089">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L1090">            },</span>
+<span class="line" id="L1091">            .application_data =&gt; {</span>
+<span class="line" id="L1092">                <span class="tok-kw">const</span> cleartext = <span class="tok-kw">switch</span> (c.application_cipher) {</span>
+<span class="line" id="L1093">                    <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| c: {</span>
+<span class="line" id="L1094">                        <span class="tok-kw">const</span> P = <span class="tok-builtin">@TypeOf</span>(p.*);</span>
+<span class="line" id="L1095">                        <span class="tok-kw">const</span> V = <span class="tok-builtin">@Vector</span>(P.AEAD.nonce_length, <span class="tok-type">u8</span>);</span>
+<span class="line" id="L1096">                        <span class="tok-kw">const</span> ad = frag[in - <span class="tok-number">5</span> ..][<span class="tok-number">0</span>..<span class="tok-number">5</span>];</span>
+<span class="line" id="L1097">                        <span class="tok-kw">const</span> ciphertext_len = record_len - P.AEAD.tag_length;</span>
+<span class="line" id="L1098">                        <span class="tok-kw">const</span> ciphertext = frag[in..][<span class="tok-number">0</span>..ciphertext_len];</span>
+<span class="line" id="L1099">                        in += ciphertext_len;</span>
+<span class="line" id="L1100">                        <span class="tok-kw">const</span> auth_tag = frag[in..][<span class="tok-number">0</span>..P.AEAD.tag_length].*;</span>
+<span class="line" id="L1101">                        <span class="tok-kw">const</span> pad = [<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** (P.AEAD.nonce_length - <span class="tok-number">8</span>);</span>
+<span class="line" id="L1102">                        <span class="tok-kw">const</span> operand: V = pad ++ <span class="tok-builtin">@as</span>([<span class="tok-number">8</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@bitCast</span>(big(c.read_seq)));</span>
+<span class="line" id="L1103">                        <span class="tok-kw">const</span> nonce: [P.AEAD.nonce_length]<span class="tok-type">u8</span> = <span class="tok-builtin">@as</span>(V, p.server_iv) ^ operand;</span>
+<span class="line" id="L1104">                        <span class="tok-kw">const</span> out_buf = vp.peek();</span>
+<span class="line" id="L1105">                        <span class="tok-kw">const</span> cleartext_buf = <span class="tok-kw">if</span> (ciphertext.len &lt;= out_buf.len)</span>
+<span class="line" id="L1106">                            out_buf</span>
+<span class="line" id="L1107">                        <span class="tok-kw">else</span></span>
+<span class="line" id="L1108">                            &amp;cleartext_stack_buffer;</span>
+<span class="line" id="L1109">                        <span class="tok-kw">const</span> cleartext = cleartext_buf[<span class="tok-number">0</span>..ciphertext.len];</span>
+<span class="line" id="L1110">                        P.AEAD.decrypt(cleartext, ciphertext, auth_tag, ad, nonce, p.server_key) <span class="tok-kw">catch</span></span>
+<span class="line" id="L1111">                            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsBadRecordMac;</span>
+<span class="line" id="L1112">                        <span class="tok-kw">break</span> :c cleartext;</span>
+<span class="line" id="L1113">                    },</span>
+<span class="line" id="L1114">                };</span>
+<span class="line" id="L1115"></span>
+<span class="line" id="L1116">                c.read_seq = <span class="tok-kw">try</span> std.math.add(<span class="tok-type">u64</span>, c.read_seq, <span class="tok-number">1</span>);</span>
+<span class="line" id="L1117"></span>
+<span class="line" id="L1118">                <span class="tok-kw">const</span> inner_ct: tls.ContentType = <span class="tok-builtin">@enumFromInt</span>(cleartext[cleartext.len - <span class="tok-number">1</span>]);</span>
+<span class="line" id="L1119">                <span class="tok-kw">switch</span> (inner_ct) {</span>
+<span class="line" id="L1120">                    .alert =&gt; {</span>
+<span class="line" id="L1121">                        <span class="tok-kw">const</span> level: tls.AlertLevel = <span class="tok-builtin">@enumFromInt</span>(cleartext[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L1122">                        <span class="tok-kw">const</span> desc: tls.AlertDescription = <span class="tok-builtin">@enumFromInt</span>(cleartext[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L1123">                        <span class="tok-kw">if</span> (desc == .close_notify) {</span>
+<span class="line" id="L1124">                            c.received_close_notify = <span class="tok-null">true</span>;</span>
+<span class="line" id="L1125">                            c.partial_ciphertext_end = c.partial_ciphertext_idx;</span>
+<span class="line" id="L1126">                            <span class="tok-kw">return</span> vp.total;</span>
+<span class="line" id="L1127">                        }</span>
+<span class="line" id="L1128">                        _ = level;</span>
+<span class="line" id="L1129"></span>
+<span class="line" id="L1130">                        <span class="tok-kw">try</span> desc.toError();</span>
+<span class="line" id="L1131">                        <span class="tok-comment">// TODO: handle server-side closures</span>
+</span>
+<span class="line" id="L1132">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L1133">                    },</span>
+<span class="line" id="L1134">                    .handshake =&gt; {</span>
+<span class="line" id="L1135">                        <span class="tok-kw">var</span> ct_i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1136">                        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1137">                            <span class="tok-kw">const</span> handshake_type: tls.HandshakeType = <span class="tok-builtin">@enumFromInt</span>(cleartext[ct_i]);</span>
+<span class="line" id="L1138">                            ct_i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1139">                            <span class="tok-kw">const</span> handshake_len = mem.readIntBig(<span class="tok-type">u24</span>, cleartext[ct_i..][<span class="tok-number">0</span>..<span class="tok-number">3</span>]);</span>
+<span class="line" id="L1140">                            ct_i += <span class="tok-number">3</span>;</span>
+<span class="line" id="L1141">                            <span class="tok-kw">const</span> next_handshake_i = ct_i + handshake_len;</span>
+<span class="line" id="L1142">                            <span class="tok-kw">if</span> (next_handshake_i &gt; cleartext.len - <span class="tok-number">1</span>)</span>
+<span class="line" id="L1143">                                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsBadLength;</span>
+<span class="line" id="L1144">                            <span class="tok-kw">const</span> handshake = cleartext[ct_i..next_handshake_i];</span>
+<span class="line" id="L1145">                            <span class="tok-kw">switch</span> (handshake_type) {</span>
+<span class="line" id="L1146">                                .new_session_ticket =&gt; {</span>
+<span class="line" id="L1147">                                    <span class="tok-comment">// This client implementation ignores new session tickets.</span>
+</span>
+<span class="line" id="L1148">                                },</span>
+<span class="line" id="L1149">                                .key_update =&gt; {</span>
+<span class="line" id="L1150">                                    <span class="tok-kw">switch</span> (c.application_cipher) {</span>
+<span class="line" id="L1151">                                        <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| {</span>
+<span class="line" id="L1152">                                            <span class="tok-kw">const</span> P = <span class="tok-builtin">@TypeOf</span>(p.*);</span>
+<span class="line" id="L1153">                                            <span class="tok-kw">const</span> server_secret = hkdfExpandLabel(P.Hkdf, p.server_secret, <span class="tok-str">&quot;traffic upd&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.Hash.digest_length);</span>
+<span class="line" id="L1154">                                            p.server_secret = server_secret;</span>
+<span class="line" id="L1155">                                            p.server_key = hkdfExpandLabel(P.Hkdf, server_secret, <span class="tok-str">&quot;key&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.key_length);</span>
+<span class="line" id="L1156">                                            p.server_iv = hkdfExpandLabel(P.Hkdf, server_secret, <span class="tok-str">&quot;iv&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.nonce_length);</span>
+<span class="line" id="L1157">                                        },</span>
+<span class="line" id="L1158">                                    }</span>
+<span class="line" id="L1159">                                    c.read_seq = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1160"></span>
+<span class="line" id="L1161">                                    <span class="tok-kw">switch</span> (<span class="tok-builtin">@as</span>(tls.KeyUpdateRequest, <span class="tok-builtin">@enumFromInt</span>(handshake[<span class="tok-number">0</span>]))) {</span>
+<span class="line" id="L1162">                                        .update_requested =&gt; {</span>
+<span class="line" id="L1163">                                            <span class="tok-kw">switch</span> (c.application_cipher) {</span>
+<span class="line" id="L1164">                                                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |*p| {</span>
+<span class="line" id="L1165">                                                    <span class="tok-kw">const</span> P = <span class="tok-builtin">@TypeOf</span>(p.*);</span>
+<span class="line" id="L1166">                                                    <span class="tok-kw">const</span> client_secret = hkdfExpandLabel(P.Hkdf, p.client_secret, <span class="tok-str">&quot;traffic upd&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.Hash.digest_length);</span>
+<span class="line" id="L1167">                                                    p.client_secret = client_secret;</span>
+<span class="line" id="L1168">                                                    p.client_key = hkdfExpandLabel(P.Hkdf, client_secret, <span class="tok-str">&quot;key&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.key_length);</span>
+<span class="line" id="L1169">                                                    p.client_iv = hkdfExpandLabel(P.Hkdf, client_secret, <span class="tok-str">&quot;iv&quot;</span>, <span class="tok-str">&quot;&quot;</span>, P.AEAD.nonce_length);</span>
+<span class="line" id="L1170">                                                },</span>
+<span class="line" id="L1171">                                            }</span>
+<span class="line" id="L1172">                                            c.write_seq = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1173">                                        },</span>
+<span class="line" id="L1174">                                        .update_not_requested =&gt; {},</span>
+<span class="line" id="L1175">                                        _ =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsIllegalParameter,</span>
+<span class="line" id="L1176">                                    }</span>
+<span class="line" id="L1177">                                },</span>
+<span class="line" id="L1178">                                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1179">                                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L1180">                                },</span>
+<span class="line" id="L1181">                            }</span>
+<span class="line" id="L1182">                            ct_i = next_handshake_i;</span>
+<span class="line" id="L1183">                            <span class="tok-kw">if</span> (ct_i &gt;= cleartext.len - <span class="tok-number">1</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1184">                        }</span>
+<span class="line" id="L1185">                    },</span>
+<span class="line" id="L1186">                    .application_data =&gt; {</span>
+<span class="line" id="L1187">                        <span class="tok-comment">// Determine whether the output buffer or a stack</span>
+</span>
+<span class="line" id="L1188">                        <span class="tok-comment">// buffer was used for storing the cleartext.</span>
+</span>
+<span class="line" id="L1189">                        <span class="tok-kw">if</span> (cleartext.ptr == &amp;cleartext_stack_buffer) {</span>
+<span class="line" id="L1190">                            <span class="tok-comment">// Stack buffer was used, so we must copy to the output buffer.</span>
+</span>
+<span class="line" id="L1191">                            <span class="tok-kw">const</span> msg = cleartext[<span class="tok-number">0</span> .. cleartext.len - <span class="tok-number">1</span>];</span>
+<span class="line" id="L1192">                            <span class="tok-kw">if</span> (c.partial_ciphertext_idx &gt; c.partial_cleartext_idx) {</span>
+<span class="line" id="L1193">                                <span class="tok-comment">// We have already run out of room in iovecs. Continue</span>
+</span>
+<span class="line" id="L1194">                                <span class="tok-comment">// appending to `partially_read_buffer`.</span>
+</span>
+<span class="line" id="L1195">                                <span class="tok-builtin">@memcpy</span>(</span>
+<span class="line" id="L1196">                                    c.partially_read_buffer[c.partial_ciphertext_idx..][<span class="tok-number">0</span>..msg.len],</span>
+<span class="line" id="L1197">                                    msg,</span>
+<span class="line" id="L1198">                                );</span>
+<span class="line" id="L1199">                                c.partial_ciphertext_idx = <span class="tok-builtin">@intCast</span>(c.partial_ciphertext_idx + msg.len);</span>
+<span class="line" id="L1200">                            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1201">                                <span class="tok-kw">const</span> amt = vp.put(msg);</span>
+<span class="line" id="L1202">                                <span class="tok-kw">if</span> (amt &lt; msg.len) {</span>
+<span class="line" id="L1203">                                    <span class="tok-kw">const</span> rest = msg[amt..];</span>
+<span class="line" id="L1204">                                    c.partial_cleartext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1205">                                    c.partial_ciphertext_idx = <span class="tok-builtin">@intCast</span>(rest.len);</span>
+<span class="line" id="L1206">                                    <span class="tok-builtin">@memcpy</span>(c.partially_read_buffer[<span class="tok-number">0</span>..rest.len], rest);</span>
+<span class="line" id="L1207">                                }</span>
+<span class="line" id="L1208">                            }</span>
+<span class="line" id="L1209">                        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1210">                            <span class="tok-comment">// Output buffer was used directly which means no</span>
+</span>
+<span class="line" id="L1211">                            <span class="tok-comment">// memory copying needs to occur, and we can move</span>
+</span>
+<span class="line" id="L1212">                            <span class="tok-comment">// on to the next ciphertext record.</span>
+</span>
+<span class="line" id="L1213">                            vp.next(cleartext.len - <span class="tok-number">1</span>);</span>
+<span class="line" id="L1214">                        }</span>
+<span class="line" id="L1215">                    },</span>
+<span class="line" id="L1216">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1217">                        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L1218">                    },</span>
+<span class="line" id="L1219">                }</span>
+<span class="line" id="L1220">            },</span>
+<span class="line" id="L1221">            <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1222">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.TlsUnexpectedMessage;</span>
+<span class="line" id="L1223">            },</span>
+<span class="line" id="L1224">        }</span>
+<span class="line" id="L1225">        in = end;</span>
+<span class="line" id="L1226">    }</span>
+<span class="line" id="L1227">}</span>
+<span class="line" id="L1228"></span>
+<span class="line" id="L1229"><span class="tok-kw">fn</span> <span class="tok-fn">finishRead</span>(c: *Client, frag: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, in: <span class="tok-type">usize</span>, out: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1230">    <span class="tok-kw">const</span> saved_buf = frag[in..];</span>
+<span class="line" id="L1231">    <span class="tok-kw">if</span> (c.partial_ciphertext_idx &gt; c.partial_cleartext_idx) {</span>
+<span class="line" id="L1232">        <span class="tok-comment">// There is cleartext at the beginning already which we need to preserve.</span>
+</span>
+<span class="line" id="L1233">        c.partial_ciphertext_end = <span class="tok-builtin">@intCast</span>(c.partial_ciphertext_idx + saved_buf.len);</span>
+<span class="line" id="L1234">        <span class="tok-builtin">@memcpy</span>(c.partially_read_buffer[c.partial_ciphertext_idx..][<span class="tok-number">0</span>..saved_buf.len], saved_buf);</span>
+<span class="line" id="L1235">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1236">        c.partial_cleartext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1237">        c.partial_ciphertext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1238">        c.partial_ciphertext_end = <span class="tok-builtin">@intCast</span>(saved_buf.len);</span>
+<span class="line" id="L1239">        <span class="tok-builtin">@memcpy</span>(c.partially_read_buffer[<span class="tok-number">0</span>..saved_buf.len], saved_buf);</span>
+<span class="line" id="L1240">    }</span>
+<span class="line" id="L1241">    <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L1242">}</span>
+<span class="line" id="L1243"></span>
+<span class="line" id="L1244"><span class="tok-comment">/// Note that `first` usually overlaps with `c.partially_read_buffer`.</span></span>
+<span class="line" id="L1245"><span class="tok-kw">fn</span> <span class="tok-fn">finishRead2</span>(c: *Client, first: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, frag1: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, out: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1246">    <span class="tok-kw">if</span> (c.partial_ciphertext_idx &gt; c.partial_cleartext_idx) {</span>
+<span class="line" id="L1247">        <span class="tok-comment">// There is cleartext at the beginning already which we need to preserve.</span>
+</span>
+<span class="line" id="L1248">        c.partial_ciphertext_end = <span class="tok-builtin">@intCast</span>(c.partial_ciphertext_idx + first.len + frag1.len);</span>
+<span class="line" id="L1249">        <span class="tok-comment">// TODO: eliminate this call to copyForwards</span>
+</span>
+<span class="line" id="L1250">        std.mem.copyForwards(<span class="tok-type">u8</span>, c.partially_read_buffer[c.partial_ciphertext_idx..][<span class="tok-number">0</span>..first.len], first);</span>
+<span class="line" id="L1251">        <span class="tok-builtin">@memcpy</span>(c.partially_read_buffer[c.partial_ciphertext_idx + first.len ..][<span class="tok-number">0</span>..frag1.len], frag1);</span>
+<span class="line" id="L1252">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1253">        c.partial_cleartext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1254">        c.partial_ciphertext_idx = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1255">        c.partial_ciphertext_end = <span class="tok-builtin">@intCast</span>(first.len + frag1.len);</span>
+<span class="line" id="L1256">        <span class="tok-comment">// TODO: eliminate this call to copyForwards</span>
+</span>
+<span class="line" id="L1257">        std.mem.copyForwards(<span class="tok-type">u8</span>, c.partially_read_buffer[<span class="tok-number">0</span>..first.len], first);</span>
+<span class="line" id="L1258">        <span class="tok-builtin">@memcpy</span>(c.partially_read_buffer[first.len..][<span class="tok-number">0</span>..frag1.len], frag1);</span>
+<span class="line" id="L1259">    }</span>
+<span class="line" id="L1260">    <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L1261">}</span>
+<span class="line" id="L1262"></span>
+<span class="line" id="L1263"><span class="tok-kw">fn</span> <span class="tok-fn">limitedOverlapCopy</span>(frag: []<span class="tok-type">u8</span>, in: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1264">    <span class="tok-kw">const</span> first = frag[in..];</span>
+<span class="line" id="L1265">    <span class="tok-kw">if</span> (first.len &lt;= in) {</span>
+<span class="line" id="L1266">        <span class="tok-comment">// A single, non-overlapping memcpy suffices.</span>
+</span>
+<span class="line" id="L1267">        <span class="tok-builtin">@memcpy</span>(frag[<span class="tok-number">0</span>..first.len], first);</span>
+<span class="line" id="L1268">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1269">        <span class="tok-comment">// One memcpy call would overlap, so just do this instead.</span>
+</span>
+<span class="line" id="L1270">        std.mem.copyForwards(<span class="tok-type">u8</span>, frag, first);</span>
+<span class="line" id="L1271">    }</span>
+<span class="line" id="L1272">}</span>
+<span class="line" id="L1273"></span>
+<span class="line" id="L1274"><span class="tok-kw">fn</span> <span class="tok-fn">straddleByte</span>(s1: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, s2: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, index: <span class="tok-type">usize</span>) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L1275">    <span class="tok-kw">if</span> (index &lt; s1.len) {</span>
+<span class="line" id="L1276">        <span class="tok-kw">return</span> s1[index];</span>
+<span class="line" id="L1277">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1278">        <span class="tok-kw">return</span> s2[index - s1.len];</span>
+<span class="line" id="L1279">    }</span>
+<span class="line" id="L1280">}</span>
+<span class="line" id="L1281"></span>
+<span class="line" id="L1282"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L1283"><span class="tok-kw">const</span> native_endian = builtin.cpu.arch.endian();</span>
+<span class="line" id="L1284"></span>
+<span class="line" id="L1285"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">big</span>(x: <span class="tok-kw">anytype</span>) <span class="tok-builtin">@TypeOf</span>(x) {</span>
+<span class="line" id="L1286">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (native_endian) {</span>
+<span class="line" id="L1287">        .Big =&gt; x,</span>
+<span class="line" id="L1288">        .Little =&gt; <span class="tok-builtin">@byteSwap</span>(x),</span>
+<span class="line" id="L1289">    };</span>
+<span class="line" id="L1290">}</span>
+<span class="line" id="L1291"></span>
+<span class="line" id="L1292"><span class="tok-kw">fn</span> <span class="tok-fn">SchemeEcdsa</span>(<span class="tok-kw">comptime</span> scheme: tls.SignatureScheme) <span class="tok-type">type</span> {</span>
+<span class="line" id="L1293">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (scheme) {</span>
+<span class="line" id="L1294">        .ecdsa_secp256r1_sha256 =&gt; crypto.sign.ecdsa.EcdsaP256Sha256,</span>
+<span class="line" id="L1295">        .ecdsa_secp384r1_sha384 =&gt; crypto.sign.ecdsa.EcdsaP384Sha384,</span>
+<span class="line" id="L1296">        .ecdsa_secp521r1_sha512 =&gt; crypto.sign.ecdsa.EcdsaP512Sha512,</span>
+<span class="line" id="L1297">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;bad scheme&quot;</span>),</span>
+<span class="line" id="L1298">    };</span>
+<span class="line" id="L1299">}</span>
+<span class="line" id="L1300"></span>
+<span class="line" id="L1301"><span class="tok-kw">fn</span> <span class="tok-fn">SchemeHash</span>(<span class="tok-kw">comptime</span> scheme: tls.SignatureScheme) <span class="tok-type">type</span> {</span>
+<span class="line" id="L1302">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (scheme) {</span>
+<span class="line" id="L1303">        .rsa_pss_rsae_sha256 =&gt; crypto.hash.sha2.Sha256,</span>
+<span class="line" id="L1304">        .rsa_pss_rsae_sha384 =&gt; crypto.hash.sha2.Sha384,</span>
+<span class="line" id="L1305">        .rsa_pss_rsae_sha512 =&gt; crypto.hash.sha2.Sha512,</span>
+<span class="line" id="L1306">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;bad scheme&quot;</span>),</span>
+<span class="line" id="L1307">    };</span>
+<span class="line" id="L1308">}</span>
+<span class="line" id="L1309"></span>
+<span class="line" id="L1310"><span class="tok-comment">/// Abstraction for sending multiple byte buffers to a slice of iovecs.</span></span>
+<span class="line" id="L1311"><span class="tok-kw">const</span> VecPut = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1312">    iovecs: []<span class="tok-kw">const</span> std.os.iovec,</span>
+<span class="line" id="L1313">    idx: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1314">    off: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1315">    total: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1316"></span>
+<span class="line" id="L1317">    <span class="tok-comment">/// Returns the amount actually put which is always equal to bytes.len</span></span>
+<span class="line" id="L1318">    <span class="tok-comment">/// unless the vectors ran out of space.</span></span>
+<span class="line" id="L1319">    <span class="tok-kw">fn</span> <span class="tok-fn">put</span>(vp: *VecPut, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1320">        <span class="tok-kw">if</span> (vp.idx &gt;= vp.iovecs.len) <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L1321">        <span class="tok-kw">var</span> bytes_i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1322">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1323">            <span class="tok-kw">const</span> v = vp.iovecs[vp.idx];</span>
+<span class="line" id="L1324">            <span class="tok-kw">const</span> dest = v.iov_base[vp.off..v.iov_len];</span>
+<span class="line" id="L1325">            <span class="tok-kw">const</span> src = bytes[bytes_i..][<span class="tok-number">0</span>..<span class="tok-builtin">@min</span>(dest.len, bytes.len - bytes_i)];</span>
+<span class="line" id="L1326">            <span class="tok-builtin">@memcpy</span>(dest[<span class="tok-number">0</span>..src.len], src);</span>
+<span class="line" id="L1327">            bytes_i += src.len;</span>
+<span class="line" id="L1328">            vp.off += src.len;</span>
+<span class="line" id="L1329">            <span class="tok-kw">if</span> (vp.off &gt;= v.iov_len) {</span>
+<span class="line" id="L1330">                vp.off = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1331">                vp.idx += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1332">                <span class="tok-kw">if</span> (vp.idx &gt;= vp.iovecs.len) {</span>
+<span class="line" id="L1333">                    vp.total += bytes_i;</span>
+<span class="line" id="L1334">                    <span class="tok-kw">return</span> bytes_i;</span>
+<span class="line" id="L1335">                }</span>
+<span class="line" id="L1336">            }</span>
+<span class="line" id="L1337">            <span class="tok-kw">if</span> (bytes_i &gt;= bytes.len) {</span>
+<span class="line" id="L1338">                vp.total += bytes_i;</span>
+<span class="line" id="L1339">                <span class="tok-kw">return</span> bytes_i;</span>
+<span class="line" id="L1340">            }</span>
+<span class="line" id="L1341">        }</span>
+<span class="line" id="L1342">    }</span>
+<span class="line" id="L1343"></span>
+<span class="line" id="L1344">    <span class="tok-comment">/// Returns the next buffer that consecutive bytes can go into.</span></span>
+<span class="line" id="L1345">    <span class="tok-kw">fn</span> <span class="tok-fn">peek</span>(vp: VecPut) []<span class="tok-type">u8</span> {</span>
+<span class="line" id="L1346">        <span class="tok-kw">if</span> (vp.idx &gt;= vp.iovecs.len) <span class="tok-kw">return</span> &amp;.{};</span>
+<span class="line" id="L1347">        <span class="tok-kw">const</span> v = vp.iovecs[vp.idx];</span>
+<span class="line" id="L1348">        <span class="tok-kw">return</span> v.iov_base[vp.off..v.iov_len];</span>
+<span class="line" id="L1349">    }</span>
+<span class="line" id="L1350"></span>
+<span class="line" id="L1351">    <span class="tok-comment">// After writing to the result of peek(), one can call next() to</span>
+</span>
+<span class="line" id="L1352">    <span class="tok-comment">// advance the cursor.</span>
+</span>
+<span class="line" id="L1353">    <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(vp: *VecPut, len: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1354">        vp.total += len;</span>
+<span class="line" id="L1355">        vp.off += len;</span>
+<span class="line" id="L1356">        <span class="tok-kw">if</span> (vp.off &gt;= vp.iovecs[vp.idx].iov_len) {</span>
+<span class="line" id="L1357">            vp.off = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1358">            vp.idx += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1359">        }</span>
+<span class="line" id="L1360">    }</span>
+<span class="line" id="L1361"></span>
+<span class="line" id="L1362">    <span class="tok-kw">fn</span> <span class="tok-fn">freeSize</span>(vp: VecPut) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1363">        <span class="tok-kw">if</span> (vp.idx &gt;= vp.iovecs.len) <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L1364">        <span class="tok-kw">var</span> total: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1365">        total += vp.iovecs[vp.idx].iov_len - vp.off;</span>
+<span class="line" id="L1366">        <span class="tok-kw">if</span> (vp.idx + <span class="tok-number">1</span> &gt;= vp.iovecs.len) <span class="tok-kw">return</span> total;</span>
+<span class="line" id="L1367">        <span class="tok-kw">for</span> (vp.iovecs[vp.idx + <span class="tok-number">1</span> ..]) |v| total += v.iov_len;</span>
+<span class="line" id="L1368">        <span class="tok-kw">return</span> total;</span>
+<span class="line" id="L1369">    }</span>
+<span class="line" id="L1370">};</span>
+<span class="line" id="L1371"></span>
+<span class="line" id="L1372"><span class="tok-comment">/// Limit iovecs to a specific byte size.</span></span>
+<span class="line" id="L1373"><span class="tok-kw">fn</span> <span class="tok-fn">limitVecs</span>(iovecs: []std.os.iovec, len: <span class="tok-type">usize</span>) []std.os.iovec {</span>
+<span class="line" id="L1374">    <span class="tok-kw">var</span> bytes_left: <span class="tok-type">usize</span> = len;</span>
+<span class="line" id="L1375">    <span class="tok-kw">for</span> (iovecs, <span class="tok-number">0</span>..) |*iovec, vec_i| {</span>
+<span class="line" id="L1376">        <span class="tok-kw">if</span> (bytes_left &lt;= iovec.iov_len) {</span>
+<span class="line" id="L1377">            iovec.iov_len = bytes_left;</span>
+<span class="line" id="L1378">            <span class="tok-kw">return</span> iovecs[<span class="tok-number">0</span> .. vec_i + <span class="tok-number">1</span>];</span>
+<span class="line" id="L1379">        }</span>
+<span class="line" id="L1380">        bytes_left -= iovec.iov_len;</span>
+<span class="line" id="L1381">    }</span>
+<span class="line" id="L1382">    <span class="tok-kw">return</span> iovecs;</span>
+<span class="line" id="L1383">}</span>
+<span class="line" id="L1384"></span>
+<span class="line" id="L1385"><span class="tok-comment">/// The priority order here is chosen based on what crypto algorithms Zig has</span></span>
+<span class="line" id="L1386"><span class="tok-comment">/// available in the standard library as well as what is faster. Following are</span></span>
+<span class="line" id="L1387"><span class="tok-comment">/// a few data points on the relative performance of these algorithms.</span></span>
+<span class="line" id="L1388"><span class="tok-comment">///</span></span>
+<span class="line" id="L1389"><span class="tok-comment">/// Measurement taken with 0.11.0-dev.810+c2f5848fe</span></span>
+<span class="line" id="L1390"><span class="tok-comment">/// on x86_64-linux Intel(R) Core(TM) i9-9980HK CPU @ 2.40GHz:</span></span>
+<span class="line" id="L1391"><span class="tok-comment">/// zig run .lib/std/crypto/benchmark.zig -OReleaseFast</span></span>
+<span class="line" id="L1392"><span class="tok-comment">///       aegis-128l:      15382 MiB/s</span></span>
+<span class="line" id="L1393"><span class="tok-comment">///        aegis-256:       9553 MiB/s</span></span>
+<span class="line" id="L1394"><span class="tok-comment">///       aes128-gcm:       3721 MiB/s</span></span>
+<span class="line" id="L1395"><span class="tok-comment">///       aes256-gcm:       3010 MiB/s</span></span>
+<span class="line" id="L1396"><span class="tok-comment">/// chacha20Poly1305:        597 MiB/s</span></span>
+<span class="line" id="L1397"><span class="tok-comment">///</span></span>
+<span class="line" id="L1398"><span class="tok-comment">/// Measurement taken with 0.11.0-dev.810+c2f5848fe</span></span>
+<span class="line" id="L1399"><span class="tok-comment">/// on x86_64-linux Intel(R) Core(TM) i9-9980HK CPU @ 2.40GHz:</span></span>
+<span class="line" id="L1400"><span class="tok-comment">/// zig run .lib/std/crypto/benchmark.zig -OReleaseFast -mcpu=baseline</span></span>
+<span class="line" id="L1401"><span class="tok-comment">///       aegis-128l:        629 MiB/s</span></span>
+<span class="line" id="L1402"><span class="tok-comment">/// chacha20Poly1305:        529 MiB/s</span></span>
+<span class="line" id="L1403"><span class="tok-comment">///        aegis-256:        461 MiB/s</span></span>
+<span class="line" id="L1404"><span class="tok-comment">///       aes128-gcm:        138 MiB/s</span></span>
+<span class="line" id="L1405"><span class="tok-comment">///       aes256-gcm:        120 MiB/s</span></span>
+<span class="line" id="L1406"><span class="tok-kw">const</span> cipher_suites = <span class="tok-kw">if</span> (crypto.core.aes.has_hardware_support)</span>
+<span class="line" id="L1407">    enum_array(tls.CipherSuite, &amp;.{</span>
+<span class="line" id="L1408">        .AEGIS_128L_SHA256,</span>
+<span class="line" id="L1409">        .AEGIS_256_SHA384,</span>
+<span class="line" id="L1410">        .AES_128_GCM_SHA256,</span>
+<span class="line" id="L1411">        .AES_256_GCM_SHA384,</span>
+<span class="line" id="L1412">        .CHACHA20_POLY1305_SHA256,</span>
+<span class="line" id="L1413">    })</span>
+<span class="line" id="L1414"><span class="tok-kw">else</span></span>
+<span class="line" id="L1415">    enum_array(tls.CipherSuite, &amp;.{</span>
+<span class="line" id="L1416">        .CHACHA20_POLY1305_SHA256,</span>
+<span class="line" id="L1417">        .AEGIS_128L_SHA256,</span>
+<span class="line" id="L1418">        .AEGIS_256_SHA384,</span>
+<span class="line" id="L1419">        .AES_128_GCM_SHA256,</span>
+<span class="line" id="L1420">        .AES_256_GCM_SHA384,</span>
+<span class="line" id="L1421">    });</span>
+<span class="line" id="L1422"></span>
+<span class="line" id="L1423"><span class="tok-kw">test</span> {</span>
+<span class="line" id="L1424">    _ = StreamInterface;</span>
+<span class="line" id="L1425">}</span>
+<span class="line" id="L1426"></span>
+</code></pre></body>
+</html>

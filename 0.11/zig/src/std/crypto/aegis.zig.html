@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/aegis.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! AEGIS is a very fast authenticated encryption system built on top of the core AES function.</span></span>
+<span class="line" id="L2"><span class="tok-comment">//!</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! The AEGIS-128L variant has a 128 bit key, a 128 bit nonce, and processes 256 bit message blocks.</span></span>
+<span class="line" id="L4"><span class="tok-comment">//! The AEGIS-256  variant has a 256 bit key, a 256 bit nonce, and processes 128 bit message blocks.</span></span>
+<span class="line" id="L5"><span class="tok-comment">//!</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! The AEGIS cipher family offers performance that significantly exceeds that of AES-GCM with</span></span>
+<span class="line" id="L7"><span class="tok-comment">//! hardware support for parallelizable AES block encryption.</span></span>
+<span class="line" id="L8"><span class="tok-comment">//!</span></span>
+<span class="line" id="L9"><span class="tok-comment">//! Unlike with AES-GCM, nonces can be safely chosen at random with no practical limit when using AEGIS-256.</span></span>
+<span class="line" id="L10"><span class="tok-comment">//! AEGIS-128L also allows for more messages to be safely encrypted when using random nonces.</span></span>
+<span class="line" id="L11"><span class="tok-comment">//!</span></span>
+<span class="line" id="L12"><span class="tok-comment">//! AEGIS is believed to be key-committing, making it a safer choice than most other AEADs</span></span>
+<span class="line" id="L13"><span class="tok-comment">//! when the key has low entropy, or can be controlled by an attacker.</span></span>
+<span class="line" id="L14"><span class="tok-comment">//!</span></span>
+<span class="line" id="L15"><span class="tok-comment">//! Finally, leaking the state does not leak the key.</span></span>
+<span class="line" id="L16"><span class="tok-comment">//!</span></span>
+<span class="line" id="L17"><span class="tok-comment">//! https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/</span></span>
+<span class="line" id="L18"></span>
+<span class="line" id="L19"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L20"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L21"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L22"><span class="tok-kw">const</span> AesBlock = std.crypto.core.aes.Block;</span>
+<span class="line" id="L23"><span class="tok-kw">const</span> AuthenticationError = std.crypto.errors.AuthenticationError;</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25"><span class="tok-comment">/// AEGIS-128L with a 128-bit authentication tag.</span></span>
+<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis128L = Aegis128LGeneric(<span class="tok-number">128</span>);</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28"><span class="tok-comment">/// AEGIS-128L with a 256-bit authentication tag.</span></span>
+<span class="line" id="L29"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis128L_256 = Aegis128LGeneric(<span class="tok-number">256</span>);</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31"><span class="tok-comment">/// AEGIS-256 with a 128-bit authentication tag.</span></span>
+<span class="line" id="L32"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis256 = Aegis256Generic(<span class="tok-number">128</span>);</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34"><span class="tok-comment">/// AEGIS-256 with a 256-bit authentication tag.</span></span>
+<span class="line" id="L35"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis256_256 = Aegis256Generic(<span class="tok-number">256</span>);</span>
+<span class="line" id="L36"></span>
+<span class="line" id="L37"><span class="tok-kw">const</span> State128L = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L38">    blocks: [<span class="tok-number">8</span>]AesBlock,</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40">    <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(key: [<span class="tok-number">16</span>]<span class="tok-type">u8</span>, nonce: [<span class="tok-number">16</span>]<span class="tok-type">u8</span>) State128L {</span>
+<span class="line" id="L41">        <span class="tok-kw">const</span> c1 = AesBlock.fromBytes(&amp;[<span class="tok-number">16</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0xdb</span>, <span class="tok-number">0x3d</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x6d</span>, <span class="tok-number">0xc2</span>, <span class="tok-number">0x2f</span>, <span class="tok-number">0xf1</span>, <span class="tok-number">0x20</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x31</span>, <span class="tok-number">0x42</span>, <span class="tok-number">0x73</span>, <span class="tok-number">0xb5</span>, <span class="tok-number">0x28</span>, <span class="tok-number">0xdd</span> });</span>
+<span class="line" id="L42">        <span class="tok-kw">const</span> c2 = AesBlock.fromBytes(&amp;[<span class="tok-number">16</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x0</span>, <span class="tok-number">0x1</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x22</span>, <span class="tok-number">0x37</span>, <span class="tok-number">0x59</span>, <span class="tok-number">0x90</span>, <span class="tok-number">0xe9</span>, <span class="tok-number">0x79</span>, <span class="tok-number">0x62</span> });</span>
+<span class="line" id="L43">        <span class="tok-kw">const</span> key_block = AesBlock.fromBytes(&amp;key);</span>
+<span class="line" id="L44">        <span class="tok-kw">const</span> nonce_block = AesBlock.fromBytes(&amp;nonce);</span>
+<span class="line" id="L45">        <span class="tok-kw">const</span> blocks = [<span class="tok-number">8</span>]AesBlock{</span>
+<span class="line" id="L46">            key_block.xorBlocks(nonce_block),</span>
+<span class="line" id="L47">            c1,</span>
+<span class="line" id="L48">            c2,</span>
+<span class="line" id="L49">            c1,</span>
+<span class="line" id="L50">            key_block.xorBlocks(nonce_block),</span>
+<span class="line" id="L51">            key_block.xorBlocks(c2),</span>
+<span class="line" id="L52">            key_block.xorBlocks(c1),</span>
+<span class="line" id="L53">            key_block.xorBlocks(c2),</span>
+<span class="line" id="L54">        };</span>
+<span class="line" id="L55">        <span class="tok-kw">var</span> state = State128L{ .blocks = blocks };</span>
+<span class="line" id="L56">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L57">        <span class="tok-kw">while</span> (i &lt; <span class="tok-number">10</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L58">            state.update(nonce_block, key_block);</span>
+<span class="line" id="L59">        }</span>
+<span class="line" id="L60">        <span class="tok-kw">return</span> state;</span>
+<span class="line" id="L61">    }</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">update</span>(state: *State128L, d1: AesBlock, d2: AesBlock) <span class="tok-type">void</span> {</span>
+<span class="line" id="L64">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L65">        <span class="tok-kw">const</span> tmp = blocks[<span class="tok-number">7</span>];</span>
+<span class="line" id="L66">        <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">7</span>;</span>
+<span class="line" id="L67">        <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (i &gt; <span class="tok-number">0</span>) : (i -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L68">            blocks[i] = blocks[i - <span class="tok-number">1</span>].encrypt(blocks[i]);</span>
+<span class="line" id="L69">        }</span>
+<span class="line" id="L70">        blocks[<span class="tok-number">0</span>] = tmp.encrypt(blocks[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L71">        blocks[<span class="tok-number">0</span>] = blocks[<span class="tok-number">0</span>].xorBlocks(d1);</span>
+<span class="line" id="L72">        blocks[<span class="tok-number">4</span>] = blocks[<span class="tok-number">4</span>].xorBlocks(d2);</span>
+<span class="line" id="L73">    }</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75">    <span class="tok-kw">fn</span> <span class="tok-fn">absorb</span>(state: *State128L, src: *<span class="tok-kw">const</span> [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L76">        <span class="tok-kw">const</span> msg0 = AesBlock.fromBytes(src[<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L77">        <span class="tok-kw">const</span> msg1 = AesBlock.fromBytes(src[<span class="tok-number">16</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L78">        state.update(msg0, msg1);</span>
+<span class="line" id="L79">    }</span>
+<span class="line" id="L80"></span>
+<span class="line" id="L81">    <span class="tok-kw">fn</span> <span class="tok-fn">enc</span>(state: *State128L, dst: *[<span class="tok-number">32</span>]<span class="tok-type">u8</span>, src: *<span class="tok-kw">const</span> [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L82">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L83">        <span class="tok-kw">const</span> msg0 = AesBlock.fromBytes(src[<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L84">        <span class="tok-kw">const</span> msg1 = AesBlock.fromBytes(src[<span class="tok-number">16</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L85">        <span class="tok-kw">var</span> tmp0 = msg0.xorBlocks(blocks[<span class="tok-number">6</span>]).xorBlocks(blocks[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L86">        <span class="tok-kw">var</span> tmp1 = msg1.xorBlocks(blocks[<span class="tok-number">2</span>]).xorBlocks(blocks[<span class="tok-number">5</span>]);</span>
+<span class="line" id="L87">        tmp0 = tmp0.xorBlocks(blocks[<span class="tok-number">2</span>].andBlocks(blocks[<span class="tok-number">3</span>]));</span>
+<span class="line" id="L88">        tmp1 = tmp1.xorBlocks(blocks[<span class="tok-number">6</span>].andBlocks(blocks[<span class="tok-number">7</span>]));</span>
+<span class="line" id="L89">        dst[<span class="tok-number">0</span>..<span class="tok-number">16</span>].* = tmp0.toBytes();</span>
+<span class="line" id="L90">        dst[<span class="tok-number">16</span>..<span class="tok-number">32</span>].* = tmp1.toBytes();</span>
+<span class="line" id="L91">        state.update(msg0, msg1);</span>
+<span class="line" id="L92">    }</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94">    <span class="tok-kw">fn</span> <span class="tok-fn">dec</span>(state: *State128L, dst: *[<span class="tok-number">32</span>]<span class="tok-type">u8</span>, src: *<span class="tok-kw">const</span> [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L95">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L96">        <span class="tok-kw">var</span> msg0 = AesBlock.fromBytes(src[<span class="tok-number">0</span>..<span class="tok-number">16</span>]).xorBlocks(blocks[<span class="tok-number">6</span>]).xorBlocks(blocks[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L97">        <span class="tok-kw">var</span> msg1 = AesBlock.fromBytes(src[<span class="tok-number">16</span>..<span class="tok-number">32</span>]).xorBlocks(blocks[<span class="tok-number">2</span>]).xorBlocks(blocks[<span class="tok-number">5</span>]);</span>
+<span class="line" id="L98">        msg0 = msg0.xorBlocks(blocks[<span class="tok-number">2</span>].andBlocks(blocks[<span class="tok-number">3</span>]));</span>
+<span class="line" id="L99">        msg1 = msg1.xorBlocks(blocks[<span class="tok-number">6</span>].andBlocks(blocks[<span class="tok-number">7</span>]));</span>
+<span class="line" id="L100">        dst[<span class="tok-number">0</span>..<span class="tok-number">16</span>].* = msg0.toBytes();</span>
+<span class="line" id="L101">        dst[<span class="tok-number">16</span>..<span class="tok-number">32</span>].* = msg1.toBytes();</span>
+<span class="line" id="L102">        state.update(msg0, msg1);</span>
+<span class="line" id="L103">    }</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">    <span class="tok-kw">fn</span> <span class="tok-fn">mac</span>(state: *State128L, <span class="tok-kw">comptime</span> tag_bits: <span class="tok-type">u9</span>, adlen: <span class="tok-type">usize</span>, mlen: <span class="tok-type">usize</span>) [tag_bits / <span class="tok-number">8</span>]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L106">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L107">        <span class="tok-kw">var</span> sizes: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L108">        mem.writeIntLittle(<span class="tok-type">u64</span>, sizes[<span class="tok-number">0</span>..<span class="tok-number">8</span>], adlen * <span class="tok-number">8</span>);</span>
+<span class="line" id="L109">        mem.writeIntLittle(<span class="tok-type">u64</span>, sizes[<span class="tok-number">8</span>..<span class="tok-number">16</span>], mlen * <span class="tok-number">8</span>);</span>
+<span class="line" id="L110">        <span class="tok-kw">const</span> tmp = AesBlock.fromBytes(&amp;sizes).xorBlocks(blocks[<span class="tok-number">2</span>]);</span>
+<span class="line" id="L111">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L112">        <span class="tok-kw">while</span> (i &lt; <span class="tok-number">7</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L113">            state.update(tmp, tmp);</span>
+<span class="line" id="L114">        }</span>
+<span class="line" id="L115">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (tag_bits) {</span>
+<span class="line" id="L116">            <span class="tok-number">128</span> =&gt; blocks[<span class="tok-number">0</span>].xorBlocks(blocks[<span class="tok-number">1</span>]).xorBlocks(blocks[<span class="tok-number">2</span>]).xorBlocks(blocks[<span class="tok-number">3</span>])</span>
+<span class="line" id="L117">                .xorBlocks(blocks[<span class="tok-number">4</span>]).xorBlocks(blocks[<span class="tok-number">5</span>]).xorBlocks(blocks[<span class="tok-number">6</span>]).toBytes(),</span>
+<span class="line" id="L118">            <span class="tok-number">256</span> =&gt; tag: {</span>
+<span class="line" id="L119">                <span class="tok-kw">const</span> t1 = blocks[<span class="tok-number">0</span>].xorBlocks(blocks[<span class="tok-number">1</span>]).xorBlocks(blocks[<span class="tok-number">2</span>]).xorBlocks(blocks[<span class="tok-number">3</span>]);</span>
+<span class="line" id="L120">                <span class="tok-kw">const</span> t2 = blocks[<span class="tok-number">4</span>].xorBlocks(blocks[<span class="tok-number">5</span>]).xorBlocks(blocks[<span class="tok-number">6</span>]).xorBlocks(blocks[<span class="tok-number">7</span>]);</span>
+<span class="line" id="L121">                <span class="tok-kw">break</span> :tag t1.toBytes() ++ t2.toBytes();</span>
+<span class="line" id="L122">            },</span>
+<span class="line" id="L123">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L124">        };</span>
+<span class="line" id="L125">    }</span>
+<span class="line" id="L126">};</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128"><span class="tok-kw">fn</span> <span class="tok-fn">Aegis128LGeneric</span>(<span class="tok-kw">comptime</span> tag_bits: <span class="tok-type">u9</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L129">    <span class="tok-kw">comptime</span> assert(tag_bits == <span class="tok-number">128</span> <span class="tok-kw">or</span> tag_bits == <span class="tok-number">256</span>); <span class="tok-comment">// tag must be 128 or 256 bits</span>
+</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L132">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> tag_length = tag_bits / <span class="tok-number">8</span>;</span>
+<span class="line" id="L133">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> nonce_length = <span class="tok-number">16</span>;</span>
+<span class="line" id="L134">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> key_length = <span class="tok-number">16</span>;</span>
+<span class="line" id="L135">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L136"></span>
+<span class="line" id="L137">        <span class="tok-kw">const</span> State = State128L;</span>
+<span class="line" id="L138"></span>
+<span class="line" id="L139">        <span class="tok-comment">/// c: ciphertext: output buffer should be of size m.len</span></span>
+<span class="line" id="L140">        <span class="tok-comment">/// tag: authentication tag: output MAC</span></span>
+<span class="line" id="L141">        <span class="tok-comment">/// m: message</span></span>
+<span class="line" id="L142">        <span class="tok-comment">/// ad: Associated Data</span></span>
+<span class="line" id="L143">        <span class="tok-comment">/// npub: public nonce</span></span>
+<span class="line" id="L144">        <span class="tok-comment">/// k: private key</span></span>
+<span class="line" id="L145">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">encrypt</span>(c: []<span class="tok-type">u8</span>, tag: *[tag_length]<span class="tok-type">u8</span>, m: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, ad: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, npub: [nonce_length]<span class="tok-type">u8</span>, key: [key_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L146">            assert(c.len == m.len);</span>
+<span class="line" id="L147">            <span class="tok-kw">var</span> state = State128L.init(key, npub);</span>
+<span class="line" id="L148">            <span class="tok-kw">var</span> src: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L149">            <span class="tok-kw">var</span> dst: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L150">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L151">            <span class="tok-kw">while</span> (i + <span class="tok-number">32</span> &lt;= ad.len) : (i += <span class="tok-number">32</span>) {</span>
+<span class="line" id="L152">                state.absorb(ad[i..][<span class="tok-number">0</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L153">            }</span>
+<span class="line" id="L154">            <span class="tok-kw">if</span> (ad.len % <span class="tok-number">32</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L155">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L156">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. ad.len % <span class="tok-number">32</span>], ad[i..][<span class="tok-number">0</span> .. ad.len % <span class="tok-number">32</span>]);</span>
+<span class="line" id="L157">                state.absorb(&amp;src);</span>
+<span class="line" id="L158">            }</span>
+<span class="line" id="L159">            i = <span class="tok-number">0</span>;</span>
+<span class="line" id="L160">            <span class="tok-kw">while</span> (i + <span class="tok-number">32</span> &lt;= m.len) : (i += <span class="tok-number">32</span>) {</span>
+<span class="line" id="L161">                state.enc(c[i..][<span class="tok-number">0</span>..<span class="tok-number">32</span>], m[i..][<span class="tok-number">0</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L162">            }</span>
+<span class="line" id="L163">            <span class="tok-kw">if</span> (m.len % <span class="tok-number">32</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L164">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L165">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>], m[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>]);</span>
+<span class="line" id="L166">                state.enc(&amp;dst, &amp;src);</span>
+<span class="line" id="L167">                <span class="tok-builtin">@memcpy</span>(c[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>], dst[<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>]);</span>
+<span class="line" id="L168">            }</span>
+<span class="line" id="L169">            tag.* = state.mac(tag_bits, ad.len, m.len);</span>
+<span class="line" id="L170">        }</span>
+<span class="line" id="L171"></span>
+<span class="line" id="L172">        <span class="tok-comment">/// m: message: output buffer should be of size c.len</span></span>
+<span class="line" id="L173">        <span class="tok-comment">/// c: ciphertext</span></span>
+<span class="line" id="L174">        <span class="tok-comment">/// tag: authentication tag</span></span>
+<span class="line" id="L175">        <span class="tok-comment">/// ad: Associated Data</span></span>
+<span class="line" id="L176">        <span class="tok-comment">/// npub: public nonce</span></span>
+<span class="line" id="L177">        <span class="tok-comment">/// k: private key</span></span>
+<span class="line" id="L178">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decrypt</span>(m: []<span class="tok-type">u8</span>, c: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, tag: [tag_length]<span class="tok-type">u8</span>, ad: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, npub: [nonce_length]<span class="tok-type">u8</span>, key: [key_length]<span class="tok-type">u8</span>) AuthenticationError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L179">            assert(c.len == m.len);</span>
+<span class="line" id="L180">            <span class="tok-kw">var</span> state = State128L.init(key, npub);</span>
+<span class="line" id="L181">            <span class="tok-kw">var</span> src: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L182">            <span class="tok-kw">var</span> dst: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L183">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L184">            <span class="tok-kw">while</span> (i + <span class="tok-number">32</span> &lt;= ad.len) : (i += <span class="tok-number">32</span>) {</span>
+<span class="line" id="L185">                state.absorb(ad[i..][<span class="tok-number">0</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L186">            }</span>
+<span class="line" id="L187">            <span class="tok-kw">if</span> (ad.len % <span class="tok-number">32</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L188">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L189">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. ad.len % <span class="tok-number">32</span>], ad[i..][<span class="tok-number">0</span> .. ad.len % <span class="tok-number">32</span>]);</span>
+<span class="line" id="L190">                state.absorb(&amp;src);</span>
+<span class="line" id="L191">            }</span>
+<span class="line" id="L192">            i = <span class="tok-number">0</span>;</span>
+<span class="line" id="L193">            <span class="tok-kw">while</span> (i + <span class="tok-number">32</span> &lt;= m.len) : (i += <span class="tok-number">32</span>) {</span>
+<span class="line" id="L194">                state.dec(m[i..][<span class="tok-number">0</span>..<span class="tok-number">32</span>], c[i..][<span class="tok-number">0</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L195">            }</span>
+<span class="line" id="L196">            <span class="tok-kw">if</span> (m.len % <span class="tok-number">32</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L197">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L198">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>], c[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>]);</span>
+<span class="line" id="L199">                state.dec(&amp;dst, &amp;src);</span>
+<span class="line" id="L200">                <span class="tok-builtin">@memcpy</span>(m[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>], dst[<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>]);</span>
+<span class="line" id="L201">                <span class="tok-builtin">@memset</span>(dst[<span class="tok-number">0</span> .. m.len % <span class="tok-number">32</span>], <span class="tok-number">0</span>);</span>
+<span class="line" id="L202">                <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L203">                blocks[<span class="tok-number">0</span>] = blocks[<span class="tok-number">0</span>].xorBlocks(AesBlock.fromBytes(dst[<span class="tok-number">0</span>..<span class="tok-number">16</span>]));</span>
+<span class="line" id="L204">                blocks[<span class="tok-number">4</span>] = blocks[<span class="tok-number">4</span>].xorBlocks(AesBlock.fromBytes(dst[<span class="tok-number">16</span>..<span class="tok-number">32</span>]));</span>
+<span class="line" id="L205">            }</span>
+<span class="line" id="L206">            <span class="tok-kw">const</span> computed_tag = state.mac(tag_bits, ad.len, m.len);</span>
+<span class="line" id="L207">            <span class="tok-kw">var</span> acc: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L208">            <span class="tok-kw">for</span> (computed_tag, <span class="tok-number">0</span>..) |_, j| {</span>
+<span class="line" id="L209">                acc |= (computed_tag[j] ^ tag[j]);</span>
+<span class="line" id="L210">            }</span>
+<span class="line" id="L211">            <span class="tok-kw">if</span> (acc != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L212">                <span class="tok-builtin">@memset</span>(m, <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L213">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.AuthenticationFailed;</span>
+<span class="line" id="L214">            }</span>
+<span class="line" id="L215">        }</span>
+<span class="line" id="L216">    };</span>
+<span class="line" id="L217">}</span>
+<span class="line" id="L218"></span>
+<span class="line" id="L219"><span class="tok-kw">const</span> State256 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L220">    blocks: [<span class="tok-number">6</span>]AesBlock,</span>
+<span class="line" id="L221"></span>
+<span class="line" id="L222">    <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(key: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>, nonce: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) State256 {</span>
+<span class="line" id="L223">        <span class="tok-kw">const</span> c1 = AesBlock.fromBytes(&amp;[<span class="tok-number">16</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0xdb</span>, <span class="tok-number">0x3d</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x6d</span>, <span class="tok-number">0xc2</span>, <span class="tok-number">0x2f</span>, <span class="tok-number">0xf1</span>, <span class="tok-number">0x20</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x31</span>, <span class="tok-number">0x42</span>, <span class="tok-number">0x73</span>, <span class="tok-number">0xb5</span>, <span class="tok-number">0x28</span>, <span class="tok-number">0xdd</span> });</span>
+<span class="line" id="L224">        <span class="tok-kw">const</span> c2 = AesBlock.fromBytes(&amp;[<span class="tok-number">16</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x0</span>, <span class="tok-number">0x1</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x22</span>, <span class="tok-number">0x37</span>, <span class="tok-number">0x59</span>, <span class="tok-number">0x90</span>, <span class="tok-number">0xe9</span>, <span class="tok-number">0x79</span>, <span class="tok-number">0x62</span> });</span>
+<span class="line" id="L225">        <span class="tok-kw">const</span> key_block1 = AesBlock.fromBytes(key[<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L226">        <span class="tok-kw">const</span> key_block2 = AesBlock.fromBytes(key[<span class="tok-number">16</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L227">        <span class="tok-kw">const</span> nonce_block1 = AesBlock.fromBytes(nonce[<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L228">        <span class="tok-kw">const</span> nonce_block2 = AesBlock.fromBytes(nonce[<span class="tok-number">16</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L229">        <span class="tok-kw">const</span> kxn1 = key_block1.xorBlocks(nonce_block1);</span>
+<span class="line" id="L230">        <span class="tok-kw">const</span> kxn2 = key_block2.xorBlocks(nonce_block2);</span>
+<span class="line" id="L231">        <span class="tok-kw">const</span> blocks = [<span class="tok-number">6</span>]AesBlock{</span>
+<span class="line" id="L232">            kxn1,</span>
+<span class="line" id="L233">            kxn2,</span>
+<span class="line" id="L234">            c1,</span>
+<span class="line" id="L235">            c2,</span>
+<span class="line" id="L236">            key_block1.xorBlocks(c2),</span>
+<span class="line" id="L237">            key_block2.xorBlocks(c1),</span>
+<span class="line" id="L238">        };</span>
+<span class="line" id="L239">        <span class="tok-kw">var</span> state = State256{ .blocks = blocks };</span>
+<span class="line" id="L240">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L241">        <span class="tok-kw">while</span> (i &lt; <span class="tok-number">4</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L242">            state.update(key_block1);</span>
+<span class="line" id="L243">            state.update(key_block2);</span>
+<span class="line" id="L244">            state.update(kxn1);</span>
+<span class="line" id="L245">            state.update(kxn2);</span>
+<span class="line" id="L246">        }</span>
+<span class="line" id="L247">        <span class="tok-kw">return</span> state;</span>
+<span class="line" id="L248">    }</span>
+<span class="line" id="L249"></span>
+<span class="line" id="L250">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">update</span>(state: *State256, d: AesBlock) <span class="tok-type">void</span> {</span>
+<span class="line" id="L251">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L252">        <span class="tok-kw">const</span> tmp = blocks[<span class="tok-number">5</span>].encrypt(blocks[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L253">        <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">5</span>;</span>
+<span class="line" id="L254">        <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (i &gt; <span class="tok-number">0</span>) : (i -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L255">            blocks[i] = blocks[i - <span class="tok-number">1</span>].encrypt(blocks[i]);</span>
+<span class="line" id="L256">        }</span>
+<span class="line" id="L257">        blocks[<span class="tok-number">0</span>] = tmp.xorBlocks(d);</span>
+<span class="line" id="L258">    }</span>
+<span class="line" id="L259"></span>
+<span class="line" id="L260">    <span class="tok-kw">fn</span> <span class="tok-fn">absorb</span>(state: *State256, src: *<span class="tok-kw">const</span> [<span class="tok-number">16</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L261">        <span class="tok-kw">const</span> msg = AesBlock.fromBytes(src);</span>
+<span class="line" id="L262">        state.update(msg);</span>
+<span class="line" id="L263">    }</span>
+<span class="line" id="L264"></span>
+<span class="line" id="L265">    <span class="tok-kw">fn</span> <span class="tok-fn">enc</span>(state: *State256, dst: *[<span class="tok-number">16</span>]<span class="tok-type">u8</span>, src: *<span class="tok-kw">const</span> [<span class="tok-number">16</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L266">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L267">        <span class="tok-kw">const</span> msg = AesBlock.fromBytes(src);</span>
+<span class="line" id="L268">        <span class="tok-kw">var</span> tmp = msg.xorBlocks(blocks[<span class="tok-number">5</span>]).xorBlocks(blocks[<span class="tok-number">4</span>]).xorBlocks(blocks[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L269">        tmp = tmp.xorBlocks(blocks[<span class="tok-number">2</span>].andBlocks(blocks[<span class="tok-number">3</span>]));</span>
+<span class="line" id="L270">        dst.* = tmp.toBytes();</span>
+<span class="line" id="L271">        state.update(msg);</span>
+<span class="line" id="L272">    }</span>
+<span class="line" id="L273"></span>
+<span class="line" id="L274">    <span class="tok-kw">fn</span> <span class="tok-fn">dec</span>(state: *State256, dst: *[<span class="tok-number">16</span>]<span class="tok-type">u8</span>, src: *<span class="tok-kw">const</span> [<span class="tok-number">16</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L275">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L276">        <span class="tok-kw">var</span> msg = AesBlock.fromBytes(src).xorBlocks(blocks[<span class="tok-number">5</span>]).xorBlocks(blocks[<span class="tok-number">4</span>]).xorBlocks(blocks[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L277">        msg = msg.xorBlocks(blocks[<span class="tok-number">2</span>].andBlocks(blocks[<span class="tok-number">3</span>]));</span>
+<span class="line" id="L278">        dst.* = msg.toBytes();</span>
+<span class="line" id="L279">        state.update(msg);</span>
+<span class="line" id="L280">    }</span>
+<span class="line" id="L281"></span>
+<span class="line" id="L282">    <span class="tok-kw">fn</span> <span class="tok-fn">mac</span>(state: *State256, <span class="tok-kw">comptime</span> tag_bits: <span class="tok-type">u9</span>, adlen: <span class="tok-type">usize</span>, mlen: <span class="tok-type">usize</span>) [tag_bits / <span class="tok-number">8</span>]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L283">        <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L284">        <span class="tok-kw">var</span> sizes: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L285">        mem.writeIntLittle(<span class="tok-type">u64</span>, sizes[<span class="tok-number">0</span>..<span class="tok-number">8</span>], adlen * <span class="tok-number">8</span>);</span>
+<span class="line" id="L286">        mem.writeIntLittle(<span class="tok-type">u64</span>, sizes[<span class="tok-number">8</span>..<span class="tok-number">16</span>], mlen * <span class="tok-number">8</span>);</span>
+<span class="line" id="L287">        <span class="tok-kw">const</span> tmp = AesBlock.fromBytes(&amp;sizes).xorBlocks(blocks[<span class="tok-number">3</span>]);</span>
+<span class="line" id="L288">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L289">        <span class="tok-kw">while</span> (i &lt; <span class="tok-number">7</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L290">            state.update(tmp);</span>
+<span class="line" id="L291">        }</span>
+<span class="line" id="L292">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (tag_bits) {</span>
+<span class="line" id="L293">            <span class="tok-number">128</span> =&gt; blocks[<span class="tok-number">0</span>].xorBlocks(blocks[<span class="tok-number">1</span>]).xorBlocks(blocks[<span class="tok-number">2</span>]).xorBlocks(blocks[<span class="tok-number">3</span>])</span>
+<span class="line" id="L294">                .xorBlocks(blocks[<span class="tok-number">4</span>]).xorBlocks(blocks[<span class="tok-number">5</span>]).toBytes(),</span>
+<span class="line" id="L295">            <span class="tok-number">256</span> =&gt; tag: {</span>
+<span class="line" id="L296">                <span class="tok-kw">const</span> t1 = blocks[<span class="tok-number">0</span>].xorBlocks(blocks[<span class="tok-number">1</span>]).xorBlocks(blocks[<span class="tok-number">2</span>]);</span>
+<span class="line" id="L297">                <span class="tok-kw">const</span> t2 = blocks[<span class="tok-number">3</span>].xorBlocks(blocks[<span class="tok-number">4</span>]).xorBlocks(blocks[<span class="tok-number">5</span>]);</span>
+<span class="line" id="L298">                <span class="tok-kw">break</span> :tag t1.toBytes() ++ t2.toBytes();</span>
+<span class="line" id="L299">            },</span>
+<span class="line" id="L300">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L301">        };</span>
+<span class="line" id="L302">    }</span>
+<span class="line" id="L303">};</span>
+<span class="line" id="L304"></span>
+<span class="line" id="L305"><span class="tok-comment">/// AEGIS is a very fast authenticated encryption system built on top of the core AES function.</span></span>
+<span class="line" id="L306"><span class="tok-comment">///</span></span>
+<span class="line" id="L307"><span class="tok-comment">/// The 256 bit variant of AEGIS has a 256 bit key, a 256 bit nonce, and processes 128 bit message blocks.</span></span>
+<span class="line" id="L308"><span class="tok-comment">///</span></span>
+<span class="line" id="L309"><span class="tok-comment">/// https://datatracker.ietf.org/doc/draft-irtf-cfrg-aegis-aead/</span></span>
+<span class="line" id="L310"><span class="tok-kw">fn</span> <span class="tok-fn">Aegis256Generic</span>(<span class="tok-kw">comptime</span> tag_bits: <span class="tok-type">u9</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L311">    <span class="tok-kw">comptime</span> assert(tag_bits == <span class="tok-number">128</span> <span class="tok-kw">or</span> tag_bits == <span class="tok-number">256</span>); <span class="tok-comment">// tag must be 128 or 256 bits</span>
+</span>
+<span class="line" id="L312"></span>
+<span class="line" id="L313">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L314">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> tag_length = tag_bits / <span class="tok-number">8</span>;</span>
+<span class="line" id="L315">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> nonce_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L316">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> key_length = <span class="tok-number">32</span>;</span>
+<span class="line" id="L317">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_length = <span class="tok-number">16</span>;</span>
+<span class="line" id="L318"></span>
+<span class="line" id="L319">        <span class="tok-kw">const</span> State = State256;</span>
+<span class="line" id="L320"></span>
+<span class="line" id="L321">        <span class="tok-comment">/// c: ciphertext: output buffer should be of size m.len</span></span>
+<span class="line" id="L322">        <span class="tok-comment">/// tag: authentication tag: output MAC</span></span>
+<span class="line" id="L323">        <span class="tok-comment">/// m: message</span></span>
+<span class="line" id="L324">        <span class="tok-comment">/// ad: Associated Data</span></span>
+<span class="line" id="L325">        <span class="tok-comment">/// npub: public nonce</span></span>
+<span class="line" id="L326">        <span class="tok-comment">/// k: private key</span></span>
+<span class="line" id="L327">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">encrypt</span>(c: []<span class="tok-type">u8</span>, tag: *[tag_length]<span class="tok-type">u8</span>, m: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, ad: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, npub: [nonce_length]<span class="tok-type">u8</span>, key: [key_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L328">            assert(c.len == m.len);</span>
+<span class="line" id="L329">            <span class="tok-kw">var</span> state = State256.init(key, npub);</span>
+<span class="line" id="L330">            <span class="tok-kw">var</span> src: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L331">            <span class="tok-kw">var</span> dst: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L332">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L333">            <span class="tok-kw">while</span> (i + <span class="tok-number">16</span> &lt;= ad.len) : (i += <span class="tok-number">16</span>) {</span>
+<span class="line" id="L334">                state.enc(&amp;dst, ad[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L335">            }</span>
+<span class="line" id="L336">            <span class="tok-kw">if</span> (ad.len % <span class="tok-number">16</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L337">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L338">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. ad.len % <span class="tok-number">16</span>], ad[i..][<span class="tok-number">0</span> .. ad.len % <span class="tok-number">16</span>]);</span>
+<span class="line" id="L339">                state.enc(&amp;dst, &amp;src);</span>
+<span class="line" id="L340">            }</span>
+<span class="line" id="L341">            i = <span class="tok-number">0</span>;</span>
+<span class="line" id="L342">            <span class="tok-kw">while</span> (i + <span class="tok-number">16</span> &lt;= m.len) : (i += <span class="tok-number">16</span>) {</span>
+<span class="line" id="L343">                state.enc(c[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], m[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L344">            }</span>
+<span class="line" id="L345">            <span class="tok-kw">if</span> (m.len % <span class="tok-number">16</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L346">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L347">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>], m[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>]);</span>
+<span class="line" id="L348">                state.enc(&amp;dst, &amp;src);</span>
+<span class="line" id="L349">                <span class="tok-builtin">@memcpy</span>(c[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>], dst[<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>]);</span>
+<span class="line" id="L350">            }</span>
+<span class="line" id="L351">            tag.* = state.mac(tag_bits, ad.len, m.len);</span>
+<span class="line" id="L352">        }</span>
+<span class="line" id="L353"></span>
+<span class="line" id="L354">        <span class="tok-comment">/// m: message: output buffer should be of size c.len</span></span>
+<span class="line" id="L355">        <span class="tok-comment">/// c: ciphertext</span></span>
+<span class="line" id="L356">        <span class="tok-comment">/// tag: authentication tag</span></span>
+<span class="line" id="L357">        <span class="tok-comment">/// ad: Associated Data</span></span>
+<span class="line" id="L358">        <span class="tok-comment">/// npub: public nonce</span></span>
+<span class="line" id="L359">        <span class="tok-comment">/// k: private key</span></span>
+<span class="line" id="L360">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decrypt</span>(m: []<span class="tok-type">u8</span>, c: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, tag: [tag_length]<span class="tok-type">u8</span>, ad: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, npub: [nonce_length]<span class="tok-type">u8</span>, key: [key_length]<span class="tok-type">u8</span>) AuthenticationError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L361">            assert(c.len == m.len);</span>
+<span class="line" id="L362">            <span class="tok-kw">var</span> state = State256.init(key, npub);</span>
+<span class="line" id="L363">            <span class="tok-kw">var</span> src: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L364">            <span class="tok-kw">var</span> dst: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L365">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L366">            <span class="tok-kw">while</span> (i + <span class="tok-number">16</span> &lt;= ad.len) : (i += <span class="tok-number">16</span>) {</span>
+<span class="line" id="L367">                state.enc(&amp;dst, ad[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L368">            }</span>
+<span class="line" id="L369">            <span class="tok-kw">if</span> (ad.len % <span class="tok-number">16</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L370">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L371">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. ad.len % <span class="tok-number">16</span>], ad[i..][<span class="tok-number">0</span> .. ad.len % <span class="tok-number">16</span>]);</span>
+<span class="line" id="L372">                state.enc(&amp;dst, &amp;src);</span>
+<span class="line" id="L373">            }</span>
+<span class="line" id="L374">            i = <span class="tok-number">0</span>;</span>
+<span class="line" id="L375">            <span class="tok-kw">while</span> (i + <span class="tok-number">16</span> &lt;= m.len) : (i += <span class="tok-number">16</span>) {</span>
+<span class="line" id="L376">                state.dec(m[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], c[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L377">            }</span>
+<span class="line" id="L378">            <span class="tok-kw">if</span> (m.len % <span class="tok-number">16</span> != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L379">                <span class="tok-builtin">@memset</span>(src[<span class="tok-number">0</span>..], <span class="tok-number">0</span>);</span>
+<span class="line" id="L380">                <span class="tok-builtin">@memcpy</span>(src[<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>], c[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>]);</span>
+<span class="line" id="L381">                state.dec(&amp;dst, &amp;src);</span>
+<span class="line" id="L382">                <span class="tok-builtin">@memcpy</span>(m[i..][<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>], dst[<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>]);</span>
+<span class="line" id="L383">                <span class="tok-builtin">@memset</span>(dst[<span class="tok-number">0</span> .. m.len % <span class="tok-number">16</span>], <span class="tok-number">0</span>);</span>
+<span class="line" id="L384">                <span class="tok-kw">const</span> blocks = &amp;state.blocks;</span>
+<span class="line" id="L385">                blocks[<span class="tok-number">0</span>] = blocks[<span class="tok-number">0</span>].xorBlocks(AesBlock.fromBytes(&amp;dst));</span>
+<span class="line" id="L386">            }</span>
+<span class="line" id="L387">            <span class="tok-kw">const</span> computed_tag = state.mac(tag_bits, ad.len, m.len);</span>
+<span class="line" id="L388">            <span class="tok-kw">var</span> acc: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L389">            <span class="tok-kw">for</span> (computed_tag, <span class="tok-number">0</span>..) |_, j| {</span>
+<span class="line" id="L390">                acc |= (computed_tag[j] ^ tag[j]);</span>
+<span class="line" id="L391">            }</span>
+<span class="line" id="L392">            <span class="tok-kw">if</span> (acc != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L393">                <span class="tok-builtin">@memset</span>(m, <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L394">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.AuthenticationFailed;</span>
+<span class="line" id="L395">            }</span>
+<span class="line" id="L396">        }</span>
+<span class="line" id="L397">    };</span>
+<span class="line" id="L398">}</span>
+<span class="line" id="L399"></span>
+<span class="line" id="L400"><span class="tok-comment">/// The `Aegis128LMac` message authentication function outputs 256 bit tags.</span></span>
+<span class="line" id="L401"><span class="tok-comment">/// In addition to being extremely fast, its large state, non-linearity</span></span>
+<span class="line" id="L402"><span class="tok-comment">/// and non-invertibility provides the following properties:</span></span>
+<span class="line" id="L403"><span class="tok-comment">/// - 128 bit security, stronger than GHash/Polyval/Poly1305.</span></span>
+<span class="line" id="L404"><span class="tok-comment">/// - Recovering the secret key from the state would require ~2^128 attempts,</span></span>
+<span class="line" id="L405"><span class="tok-comment">///   which is infeasible for any practical adversary.</span></span>
+<span class="line" id="L406"><span class="tok-comment">/// - It has a large security margin against internal collisions.</span></span>
+<span class="line" id="L407"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis128LMac = AegisMac(Aegis128L_256);</span>
+<span class="line" id="L408"></span>
+<span class="line" id="L409"><span class="tok-comment">/// The `Aegis256Mac` message authentication function has a 256-bit key size,</span></span>
+<span class="line" id="L410"><span class="tok-comment">/// and outputs 256 bit tags. Unless theoretical multi-target attacks are a</span></span>
+<span class="line" id="L411"><span class="tok-comment">/// concern, the AEGIS-128L variant should be preferred.</span></span>
+<span class="line" id="L412"><span class="tok-comment">/// AEGIS' large state, non-linearity and non-invertibility provides the</span></span>
+<span class="line" id="L413"><span class="tok-comment">/// following properties:</span></span>
+<span class="line" id="L414"><span class="tok-comment">/// - More than 128 bit security against forgery.</span></span>
+<span class="line" id="L415"><span class="tok-comment">/// - Recovering the secret key from the state would require ~2^256 attempts,</span></span>
+<span class="line" id="L416"><span class="tok-comment">///   which is infeasible for any practical adversary.</span></span>
+<span class="line" id="L417"><span class="tok-comment">/// - It has a large security margin against internal collisions.</span></span>
+<span class="line" id="L418"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis256Mac = AegisMac(Aegis256_256);</span>
+<span class="line" id="L419"></span>
+<span class="line" id="L420"><span class="tok-comment">/// Aegis128L MAC with a 128-bit output.</span></span>
+<span class="line" id="L421"><span class="tok-comment">/// A MAC with a 128-bit output is not safe unless the number of messages</span></span>
+<span class="line" id="L422"><span class="tok-comment">/// authenticated with the same key remains small.</span></span>
+<span class="line" id="L423"><span class="tok-comment">/// After 2^48 messages, the probability of a collision is already ~ 2^-33.</span></span>
+<span class="line" id="L424"><span class="tok-comment">/// If unsure, use the  Aegis128LMac type, that has a 256 bit output.</span></span>
+<span class="line" id="L425"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis128LMac_128 = AegisMac(Aegis128L);</span>
+<span class="line" id="L426"></span>
+<span class="line" id="L427"><span class="tok-comment">/// Aegis256 MAC with a 128-bit output.</span></span>
+<span class="line" id="L428"><span class="tok-comment">/// A MAC with a 128-bit output is not safe unless the number of messages</span></span>
+<span class="line" id="L429"><span class="tok-comment">/// authenticated with the same key remains small.</span></span>
+<span class="line" id="L430"><span class="tok-comment">/// After 2^48 messages, the probability of a collision is already ~ 2^-33.</span></span>
+<span class="line" id="L431"><span class="tok-comment">/// If unsure, use the  Aegis256Mac type, that has a 256 bit output.</span></span>
+<span class="line" id="L432"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Aegis256Mac_128 = AegisMac(Aegis256);</span>
+<span class="line" id="L433"></span>
+<span class="line" id="L434"><span class="tok-kw">fn</span> <span class="tok-fn">AegisMac</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L435">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L436">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L437"></span>
+<span class="line" id="L438">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> mac_length = T.tag_length;</span>
+<span class="line" id="L439">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> key_length = T.key_length;</span>
+<span class="line" id="L440">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_length = T.block_length;</span>
+<span class="line" id="L441"></span>
+<span class="line" id="L442">        state: T.State,</span>
+<span class="line" id="L443">        buf: [block_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L444">        off: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L445">        msg_len: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L446"></span>
+<span class="line" id="L447">        <span class="tok-comment">/// Initialize a state for the MAC function</span></span>
+<span class="line" id="L448">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(key: *<span class="tok-kw">const</span> [key_length]<span class="tok-type">u8</span>) Self {</span>
+<span class="line" id="L449">            <span class="tok-kw">const</span> nonce = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** T.nonce_length;</span>
+<span class="line" id="L450">            <span class="tok-kw">return</span> Self{</span>
+<span class="line" id="L451">                .state = T.State.init(key.*, nonce),</span>
+<span class="line" id="L452">            };</span>
+<span class="line" id="L453">        }</span>
+<span class="line" id="L454"></span>
+<span class="line" id="L455">        <span class="tok-comment">/// Add data to the state</span></span>
+<span class="line" id="L456">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">update</span>(self: *Self, b: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L457">            self.msg_len += b.len;</span>
+<span class="line" id="L458"></span>
+<span class="line" id="L459">            <span class="tok-kw">const</span> len_partial = <span class="tok-builtin">@min</span>(b.len, block_length - self.off);</span>
+<span class="line" id="L460">            <span class="tok-builtin">@memcpy</span>(self.buf[self.off..][<span class="tok-number">0</span>..len_partial], b[<span class="tok-number">0</span>..len_partial]);</span>
+<span class="line" id="L461">            self.off += len_partial;</span>
+<span class="line" id="L462">            <span class="tok-kw">if</span> (self.off &lt; block_length) {</span>
+<span class="line" id="L463">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L464">            }</span>
+<span class="line" id="L465">            self.state.absorb(&amp;self.buf);</span>
+<span class="line" id="L466"></span>
+<span class="line" id="L467">            <span class="tok-kw">var</span> i = len_partial;</span>
+<span class="line" id="L468">            self.off = <span class="tok-number">0</span>;</span>
+<span class="line" id="L469">            <span class="tok-kw">while</span> (i + block_length &lt;= b.len) : (i += block_length) {</span>
+<span class="line" id="L470">                self.state.absorb(b[i..][<span class="tok-number">0</span>..block_length]);</span>
+<span class="line" id="L471">            }</span>
+<span class="line" id="L472">            <span class="tok-kw">if</span> (i != b.len) {</span>
+<span class="line" id="L473">                self.off = b.len - i;</span>
+<span class="line" id="L474">                <span class="tok-builtin">@memcpy</span>(self.buf[<span class="tok-number">0</span>..self.off], b[i..]);</span>
+<span class="line" id="L475">            }</span>
+<span class="line" id="L476">        }</span>
+<span class="line" id="L477"></span>
+<span class="line" id="L478">        <span class="tok-comment">/// Return an authentication tag for the current state</span></span>
+<span class="line" id="L479">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">final</span>(self: *Self, out: *[mac_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L480">            <span class="tok-kw">if</span> (self.off &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L481">                <span class="tok-kw">var</span> pad = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** block_length;</span>
+<span class="line" id="L482">                <span class="tok-builtin">@memcpy</span>(pad[<span class="tok-number">0</span>..self.off], self.buf[<span class="tok-number">0</span>..self.off]);</span>
+<span class="line" id="L483">                self.state.absorb(&amp;pad);</span>
+<span class="line" id="L484">            }</span>
+<span class="line" id="L485">            out.* = self.state.mac(T.tag_length * <span class="tok-number">8</span>, self.msg_len, <span class="tok-number">0</span>);</span>
+<span class="line" id="L486">        }</span>
+<span class="line" id="L487"></span>
+<span class="line" id="L488">        <span class="tok-comment">/// Return an authentication tag for a message and a key</span></span>
+<span class="line" id="L489">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(out: *[mac_length]<span class="tok-type">u8</span>, msg: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, key: *<span class="tok-kw">const</span> [key_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L490">            <span class="tok-kw">var</span> ctx = Self.init(key);</span>
+<span class="line" id="L491">            ctx.update(msg);</span>
+<span class="line" id="L492">            ctx.final(out);</span>
+<span class="line" id="L493">        }</span>
+<span class="line" id="L494"></span>
+<span class="line" id="L495">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">error</span>{};</span>
+<span class="line" id="L496">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Writer = std.io.Writer(*Self, Error, write);</span>
+<span class="line" id="L497"></span>
+<span class="line" id="L498">        <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(self: *Self, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Error!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L499">            self.update(bytes);</span>
+<span class="line" id="L500">            <span class="tok-kw">return</span> bytes.len;</span>
+<span class="line" id="L501">        }</span>
+<span class="line" id="L502"></span>
+<span class="line" id="L503">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writer</span>(self: *Self) Writer {</span>
+<span class="line" id="L504">            <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L505">        }</span>
+<span class="line" id="L506">    };</span>
+<span class="line" id="L507">}</span>
+<span class="line" id="L508"></span>
+<span class="line" id="L509"><span class="tok-kw">const</span> htest = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;test.zig&quot;</span>);</span>
+<span class="line" id="L510"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L511"></span>
+<span class="line" id="L512"><span class="tok-kw">test</span> <span class="tok-str">&quot;Aegis128L test vector 1&quot;</span> {</span>
+<span class="line" id="L513">    <span class="tok-kw">const</span> key: [Aegis128L.key_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x10</span>, <span class="tok-number">0x01</span> } ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">14</span>;</span>
+<span class="line" id="L514">    <span class="tok-kw">const</span> nonce: [Aegis128L.nonce_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x10</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x02</span> } ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">13</span>;</span>
+<span class="line" id="L515">    <span class="tok-kw">const</span> ad = [<span class="tok-number">8</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0x07</span> };</span>
+<span class="line" id="L516">    <span class="tok-kw">const</span> m = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x0a</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x0c</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0x0e</span>, <span class="tok-number">0x0f</span>, <span class="tok-number">0x10</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x12</span>, <span class="tok-number">0x13</span>, <span class="tok-number">0x14</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x19</span>, <span class="tok-number">0x1a</span>, <span class="tok-number">0x1b</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x1d</span>, <span class="tok-number">0x1e</span>, <span class="tok-number">0x1f</span> };</span>
+<span class="line" id="L517">    <span class="tok-kw">var</span> c: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L518">    <span class="tok-kw">var</span> m2: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L519">    <span class="tok-kw">var</span> tag: [Aegis128L.tag_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L520"></span>
+<span class="line" id="L521">    Aegis128L.encrypt(&amp;c, &amp;tag, &amp;m, &amp;ad, nonce, key);</span>
+<span class="line" id="L522">    <span class="tok-kw">try</span> Aegis128L.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key);</span>
+<span class="line" id="L523">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;m, &amp;m2);</span>
+<span class="line" id="L524"></span>
+<span class="line" id="L525">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;79d94593d8c2119d7e8fd9b8fc77845c5c077a05b2528b6ac54b563aed8efe84&quot;</span>, &amp;c);</span>
+<span class="line" id="L526">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;cc6f3372f6aa1bb82388d695c3962d9a&quot;</span>, &amp;tag);</span>
+<span class="line" id="L527"></span>
+<span class="line" id="L528">    c[<span class="tok-number">0</span>] +%= <span class="tok-number">1</span>;</span>
+<span class="line" id="L529">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.AuthenticationFailed, Aegis128L.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key));</span>
+<span class="line" id="L530">    c[<span class="tok-number">0</span>] -%= <span class="tok-number">1</span>;</span>
+<span class="line" id="L531">    tag[<span class="tok-number">0</span>] +%= <span class="tok-number">1</span>;</span>
+<span class="line" id="L532">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.AuthenticationFailed, Aegis128L.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key));</span>
+<span class="line" id="L533">}</span>
+<span class="line" id="L534"></span>
+<span class="line" id="L535"><span class="tok-kw">test</span> <span class="tok-str">&quot;Aegis128L test vector 2&quot;</span> {</span>
+<span class="line" id="L536">    <span class="tok-kw">const</span> key: [Aegis128L.key_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L537">    <span class="tok-kw">const</span> nonce: [Aegis128L.nonce_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L538">    <span class="tok-kw">const</span> ad = [_]<span class="tok-type">u8</span>{};</span>
+<span class="line" id="L539">    <span class="tok-kw">const</span> m = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L540">    <span class="tok-kw">var</span> c: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L541">    <span class="tok-kw">var</span> m2: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L542">    <span class="tok-kw">var</span> tag: [Aegis128L.tag_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L543"></span>
+<span class="line" id="L544">    Aegis128L.encrypt(&amp;c, &amp;tag, &amp;m, &amp;ad, nonce, key);</span>
+<span class="line" id="L545">    <span class="tok-kw">try</span> Aegis128L.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key);</span>
+<span class="line" id="L546">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;m, &amp;m2);</span>
+<span class="line" id="L547"></span>
+<span class="line" id="L548">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;41de9000a7b5e40e2d68bb64d99ebb19&quot;</span>, &amp;c);</span>
+<span class="line" id="L549">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;f4d997cc9b94227ada4fe4165422b1c8&quot;</span>, &amp;tag);</span>
+<span class="line" id="L550">}</span>
+<span class="line" id="L551"></span>
+<span class="line" id="L552"><span class="tok-kw">test</span> <span class="tok-str">&quot;Aegis128L test vector 3&quot;</span> {</span>
+<span class="line" id="L553">    <span class="tok-kw">const</span> key: [Aegis128L.key_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L554">    <span class="tok-kw">const</span> nonce: [Aegis128L.nonce_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L555">    <span class="tok-kw">const</span> ad = [_]<span class="tok-type">u8</span>{};</span>
+<span class="line" id="L556">    <span class="tok-kw">const</span> m = [_]<span class="tok-type">u8</span>{};</span>
+<span class="line" id="L557">    <span class="tok-kw">var</span> c: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L558">    <span class="tok-kw">var</span> m2: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L559">    <span class="tok-kw">var</span> tag: [Aegis128L.tag_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L560"></span>
+<span class="line" id="L561">    Aegis128L.encrypt(&amp;c, &amp;tag, &amp;m, &amp;ad, nonce, key);</span>
+<span class="line" id="L562">    <span class="tok-kw">try</span> Aegis128L.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key);</span>
+<span class="line" id="L563">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;m, &amp;m2);</span>
+<span class="line" id="L564"></span>
+<span class="line" id="L565">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;83cc600dc4e3e7e62d4055826174f149&quot;</span>, &amp;tag);</span>
+<span class="line" id="L566">}</span>
+<span class="line" id="L567"></span>
+<span class="line" id="L568"><span class="tok-kw">test</span> <span class="tok-str">&quot;Aegis256 test vector 1&quot;</span> {</span>
+<span class="line" id="L569">    <span class="tok-kw">const</span> key: [Aegis256.key_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x10</span>, <span class="tok-number">0x01</span> } ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">30</span>;</span>
+<span class="line" id="L570">    <span class="tok-kw">const</span> nonce: [Aegis256.nonce_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0x10</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x02</span> } ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">29</span>;</span>
+<span class="line" id="L571">    <span class="tok-kw">const</span> ad = [<span class="tok-number">8</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0x07</span> };</span>
+<span class="line" id="L572">    <span class="tok-kw">const</span> m = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">0x00</span>, <span class="tok-number">0x01</span>, <span class="tok-number">0x02</span>, <span class="tok-number">0x03</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x06</span>, <span class="tok-number">0x07</span>, <span class="tok-number">0x08</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x0a</span>, <span class="tok-number">0x0b</span>, <span class="tok-number">0x0c</span>, <span class="tok-number">0x0d</span>, <span class="tok-number">0x0e</span>, <span class="tok-number">0x0f</span>, <span class="tok-number">0x10</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x12</span>, <span class="tok-number">0x13</span>, <span class="tok-number">0x14</span>, <span class="tok-number">0x15</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x17</span>, <span class="tok-number">0x18</span>, <span class="tok-number">0x19</span>, <span class="tok-number">0x1a</span>, <span class="tok-number">0x1b</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x1d</span>, <span class="tok-number">0x1e</span>, <span class="tok-number">0x1f</span> };</span>
+<span class="line" id="L573">    <span class="tok-kw">var</span> c: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L574">    <span class="tok-kw">var</span> m2: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L575">    <span class="tok-kw">var</span> tag: [Aegis256.tag_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L576"></span>
+<span class="line" id="L577">    Aegis256.encrypt(&amp;c, &amp;tag, &amp;m, &amp;ad, nonce, key);</span>
+<span class="line" id="L578">    <span class="tok-kw">try</span> Aegis256.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key);</span>
+<span class="line" id="L579">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;m, &amp;m2);</span>
+<span class="line" id="L580"></span>
+<span class="line" id="L581">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;f373079ed84b2709faee373584585d60accd191db310ef5d8b11833df9dec711&quot;</span>, &amp;c);</span>
+<span class="line" id="L582">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;8d86f91ee606e9ff26a01b64ccbdd91d&quot;</span>, &amp;tag);</span>
+<span class="line" id="L583"></span>
+<span class="line" id="L584">    c[<span class="tok-number">0</span>] +%= <span class="tok-number">1</span>;</span>
+<span class="line" id="L585">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.AuthenticationFailed, Aegis256.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key));</span>
+<span class="line" id="L586">    c[<span class="tok-number">0</span>] -%= <span class="tok-number">1</span>;</span>
+<span class="line" id="L587">    tag[<span class="tok-number">0</span>] +%= <span class="tok-number">1</span>;</span>
+<span class="line" id="L588">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.AuthenticationFailed, Aegis256.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key));</span>
+<span class="line" id="L589">}</span>
+<span class="line" id="L590"></span>
+<span class="line" id="L591"><span class="tok-kw">test</span> <span class="tok-str">&quot;Aegis256 test vector 2&quot;</span> {</span>
+<span class="line" id="L592">    <span class="tok-kw">const</span> key: [Aegis256.key_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">32</span>;</span>
+<span class="line" id="L593">    <span class="tok-kw">const</span> nonce: [Aegis256.nonce_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">32</span>;</span>
+<span class="line" id="L594">    <span class="tok-kw">const</span> ad = [_]<span class="tok-type">u8</span>{};</span>
+<span class="line" id="L595">    <span class="tok-kw">const</span> m = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L596">    <span class="tok-kw">var</span> c: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L597">    <span class="tok-kw">var</span> m2: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L598">    <span class="tok-kw">var</span> tag: [Aegis256.tag_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L599"></span>
+<span class="line" id="L600">    Aegis256.encrypt(&amp;c, &amp;tag, &amp;m, &amp;ad, nonce, key);</span>
+<span class="line" id="L601">    <span class="tok-kw">try</span> Aegis256.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key);</span>
+<span class="line" id="L602">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;m, &amp;m2);</span>
+<span class="line" id="L603"></span>
+<span class="line" id="L604">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;b98f03a947807713d75a4fff9fc277a6&quot;</span>, &amp;c);</span>
+<span class="line" id="L605">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;478f3b50dc478ef7d5cf2d0f7cc13180&quot;</span>, &amp;tag);</span>
+<span class="line" id="L606">}</span>
+<span class="line" id="L607"></span>
+<span class="line" id="L608"><span class="tok-kw">test</span> <span class="tok-str">&quot;Aegis256 test vector 3&quot;</span> {</span>
+<span class="line" id="L609">    <span class="tok-kw">const</span> key: [Aegis256.key_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">32</span>;</span>
+<span class="line" id="L610">    <span class="tok-kw">const</span> nonce: [Aegis256.nonce_length]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** <span class="tok-number">32</span>;</span>
+<span class="line" id="L611">    <span class="tok-kw">const</span> ad = [_]<span class="tok-type">u8</span>{};</span>
+<span class="line" id="L612">    <span class="tok-kw">const</span> m = [_]<span class="tok-type">u8</span>{};</span>
+<span class="line" id="L613">    <span class="tok-kw">var</span> c: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L614">    <span class="tok-kw">var</span> m2: [m.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L615">    <span class="tok-kw">var</span> tag: [Aegis256.tag_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L616"></span>
+<span class="line" id="L617">    Aegis256.encrypt(&amp;c, &amp;tag, &amp;m, &amp;ad, nonce, key);</span>
+<span class="line" id="L618">    <span class="tok-kw">try</span> Aegis256.decrypt(&amp;m2, &amp;c, tag, &amp;ad, nonce, key);</span>
+<span class="line" id="L619">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;m, &amp;m2);</span>
+<span class="line" id="L620"></span>
+<span class="line" id="L621">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;f7a0878f68bd083e8065354071fc27c3&quot;</span>, &amp;tag);</span>
+<span class="line" id="L622">}</span>
+<span class="line" id="L623"></span>
+<span class="line" id="L624"><span class="tok-kw">test</span> <span class="tok-str">&quot;Aegis MAC&quot;</span> {</span>
+<span class="line" id="L625">    <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** Aegis128LMac.key_length;</span>
+<span class="line" id="L626">    <span class="tok-kw">var</span> msg: [<span class="tok-number">64</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L627">    <span class="tok-kw">for</span> (&amp;msg, <span class="tok-number">0</span>..) |*m, i| {</span>
+<span class="line" id="L628">        m.* = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(i));</span>
+<span class="line" id="L629">    }</span>
+<span class="line" id="L630">    <span class="tok-kw">const</span> st_init = Aegis128LMac.init(&amp;key);</span>
+<span class="line" id="L631">    <span class="tok-kw">var</span> st = st_init;</span>
+<span class="line" id="L632">    <span class="tok-kw">var</span> tag: [Aegis128LMac.mac_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L633"></span>
+<span class="line" id="L634">    st.update(msg[<span class="tok-number">0</span>..<span class="tok-number">32</span>]);</span>
+<span class="line" id="L635">    st.update(msg[<span class="tok-number">32</span>..]);</span>
+<span class="line" id="L636">    st.final(&amp;tag);</span>
+<span class="line" id="L637">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;f8840849602738d81037cbaa0f584ea95759e2ac60263ce77346bcdc79fe4319&quot;</span>, &amp;tag);</span>
+<span class="line" id="L638"></span>
+<span class="line" id="L639">    st = st_init;</span>
+<span class="line" id="L640">    st.update(msg[<span class="tok-number">0</span>..<span class="tok-number">31</span>]);</span>
+<span class="line" id="L641">    st.update(msg[<span class="tok-number">31</span>..]);</span>
+<span class="line" id="L642">    st.final(&amp;tag);</span>
+<span class="line" id="L643">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;f8840849602738d81037cbaa0f584ea95759e2ac60263ce77346bcdc79fe4319&quot;</span>, &amp;tag);</span>
+<span class="line" id="L644"></span>
+<span class="line" id="L645">    st = st_init;</span>
+<span class="line" id="L646">    st.update(msg[<span class="tok-number">0</span>..<span class="tok-number">14</span>]);</span>
+<span class="line" id="L647">    st.update(msg[<span class="tok-number">14</span>..<span class="tok-number">30</span>]);</span>
+<span class="line" id="L648">    st.update(msg[<span class="tok-number">30</span>..]);</span>
+<span class="line" id="L649">    st.final(&amp;tag);</span>
+<span class="line" id="L650">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;f8840849602738d81037cbaa0f584ea95759e2ac60263ce77346bcdc79fe4319&quot;</span>, &amp;tag);</span>
+<span class="line" id="L651"></span>
+<span class="line" id="L652">    <span class="tok-kw">var</span> empty: [<span class="tok-number">0</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L653">    <span class="tok-kw">const</span> nonce = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x00</span>} ** Aegis128L_256.nonce_length;</span>
+<span class="line" id="L654">    Aegis128L_256.encrypt(&amp;empty, &amp;tag, &amp;empty, &amp;msg, nonce, key);</span>
+<span class="line" id="L655">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;f8840849602738d81037cbaa0f584ea95759e2ac60263ce77346bcdc79fe4319&quot;</span>, &amp;tag);</span>
+<span class="line" id="L656"></span>
+<span class="line" id="L657">    <span class="tok-comment">// An update whose size is not a multiple of the block size</span>
+</span>
+<span class="line" id="L658">    st = st_init;</span>
+<span class="line" id="L659">    st.update(msg[<span class="tok-number">0</span>..<span class="tok-number">33</span>]);</span>
+<span class="line" id="L660">    st.final(&amp;tag);</span>
+<span class="line" id="L661">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;c7cf649a844c1a6676cf6d91b1658e0aee54a4da330b0a8d3bc7ea4067551d1b&quot;</span>, &amp;tag);</span>
+<span class="line" id="L662">}</span>
+<span class="line" id="L663"></span>
+</code></pre></body>
+</html>

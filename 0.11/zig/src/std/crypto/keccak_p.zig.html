@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/keccak_p.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-comment">/// The Keccak-f permutation.</span></span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">KeccakF</span>(<span class="tok-kw">comptime</span> f: <span class="tok-type">u11</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L8">    <span class="tok-kw">comptime</span> assert(f &gt; <span class="tok-number">200</span> <span class="tok-kw">and</span> f &lt;= <span class="tok-number">1600</span> <span class="tok-kw">and</span> f % <span class="tok-number">200</span> == <span class="tok-number">0</span>); <span class="tok-comment">// invalid bit size</span>
+</span>
+<span class="line" id="L9">    <span class="tok-kw">const</span> T = std.meta.Int(.unsigned, f / <span class="tok-number">25</span>);</span>
+<span class="line" id="L10">    <span class="tok-kw">const</span> Block = [<span class="tok-number">25</span>]T;</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12">    <span class="tok-kw">const</span> PI = [_]<span class="tok-type">u5</span>{</span>
+<span class="line" id="L13">        <span class="tok-number">10</span>, <span class="tok-number">7</span>, <span class="tok-number">11</span>, <span class="tok-number">17</span>, <span class="tok-number">18</span>, <span class="tok-number">3</span>, <span class="tok-number">5</span>, <span class="tok-number">16</span>, <span class="tok-number">8</span>, <span class="tok-number">21</span>, <span class="tok-number">24</span>, <span class="tok-number">4</span>, <span class="tok-number">15</span>, <span class="tok-number">23</span>, <span class="tok-number">19</span>, <span class="tok-number">13</span>, <span class="tok-number">12</span>, <span class="tok-number">2</span>, <span class="tok-number">20</span>, <span class="tok-number">14</span>, <span class="tok-number">22</span>, <span class="tok-number">9</span>, <span class="tok-number">6</span>, <span class="tok-number">1</span>,</span>
+<span class="line" id="L14">    };</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L17">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L18"></span>
+<span class="line" id="L19">        <span class="tok-comment">/// Number of bytes in the state.</span></span>
+<span class="line" id="L20">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_bytes = f / <span class="tok-number">8</span>;</span>
+<span class="line" id="L21"></span>
+<span class="line" id="L22">        <span class="tok-comment">/// Maximum number of rounds for the given f parameter.</span></span>
+<span class="line" id="L23">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> max_rounds = <span class="tok-number">12</span> + <span class="tok-number">2</span> * math.log2(f / <span class="tok-number">25</span>);</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">        <span class="tok-comment">// Round constants</span>
+</span>
+<span class="line" id="L26">        <span class="tok-kw">const</span> RC = rc: {</span>
+<span class="line" id="L27">            <span class="tok-kw">const</span> RC64 = [_]<span class="tok-type">u64</span>{</span>
+<span class="line" id="L28">                <span class="tok-number">0x0000000000000001</span>, <span class="tok-number">0x0000000000008082</span>, <span class="tok-number">0x800000000000808a</span>, <span class="tok-number">0x8000000080008000</span>,</span>
+<span class="line" id="L29">                <span class="tok-number">0x000000000000808b</span>, <span class="tok-number">0x0000000080000001</span>, <span class="tok-number">0x8000000080008081</span>, <span class="tok-number">0x8000000000008009</span>,</span>
+<span class="line" id="L30">                <span class="tok-number">0x000000000000008a</span>, <span class="tok-number">0x0000000000000088</span>, <span class="tok-number">0x0000000080008009</span>, <span class="tok-number">0x000000008000000a</span>,</span>
+<span class="line" id="L31">                <span class="tok-number">0x000000008000808b</span>, <span class="tok-number">0x800000000000008b</span>, <span class="tok-number">0x8000000000008089</span>, <span class="tok-number">0x8000000000008003</span>,</span>
+<span class="line" id="L32">                <span class="tok-number">0x8000000000008002</span>, <span class="tok-number">0x8000000000000080</span>, <span class="tok-number">0x000000000000800a</span>, <span class="tok-number">0x800000008000000a</span>,</span>
+<span class="line" id="L33">                <span class="tok-number">0x8000000080008081</span>, <span class="tok-number">0x8000000000008080</span>, <span class="tok-number">0x0000000080000001</span>, <span class="tok-number">0x8000000080008008</span>,</span>
+<span class="line" id="L34">            };</span>
+<span class="line" id="L35">            <span class="tok-kw">var</span> rc: [max_rounds]T = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L36">            <span class="tok-kw">for</span> (&amp;rc, RC64[<span class="tok-number">0</span>..max_rounds]) |*t, c| t.* = <span class="tok-builtin">@as</span>(T, <span class="tok-builtin">@truncate</span>(c));</span>
+<span class="line" id="L37">            <span class="tok-kw">break</span> :rc rc;</span>
+<span class="line" id="L38">        };</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40">        st: Block = [_]T{<span class="tok-number">0</span>} ** <span class="tok-number">25</span>,</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42">        <span class="tok-comment">/// Initialize the state from a slice of bytes.</span></span>
+<span class="line" id="L43">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(bytes: [block_bytes]<span class="tok-type">u8</span>) Self {</span>
+<span class="line" id="L44">            <span class="tok-kw">var</span> self: Self = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L45">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (&amp;self.st, <span class="tok-number">0</span>..) |*r, i| {</span>
+<span class="line" id="L46">                r.* = mem.readIntLittle(T, bytes[<span class="tok-builtin">@sizeOf</span>(T) * i ..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L47">            }</span>
+<span class="line" id="L48">            <span class="tok-kw">return</span> self;</span>
+<span class="line" id="L49">        }</span>
+<span class="line" id="L50"></span>
+<span class="line" id="L51">        <span class="tok-comment">/// A representation of the state as bytes. The byte order is architecture-dependent.</span></span>
+<span class="line" id="L52">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">asBytes</span>(self: *Self) *[block_bytes]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L53">            <span class="tok-kw">return</span> mem.asBytes(&amp;self.st);</span>
+<span class="line" id="L54">        }</span>
+<span class="line" id="L55"></span>
+<span class="line" id="L56">        <span class="tok-comment">/// Byte-swap the entire state if the architecture doesn't match the required endianness.</span></span>
+<span class="line" id="L57">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">endianSwap</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L58">            <span class="tok-kw">for</span> (&amp;self.st) |*w| {</span>
+<span class="line" id="L59">                w.* = mem.littleToNative(T, w.*);</span>
+<span class="line" id="L60">            }</span>
+<span class="line" id="L61">        }</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">        <span class="tok-comment">/// Set bytes starting at the beginning of the state.</span></span>
+<span class="line" id="L64">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setBytes</span>(self: *Self, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L65">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L66">            <span class="tok-kw">while</span> (i + <span class="tok-builtin">@sizeOf</span>(T) &lt;= bytes.len) : (i += <span class="tok-builtin">@sizeOf</span>(T)) {</span>
+<span class="line" id="L67">                self.st[i / <span class="tok-builtin">@sizeOf</span>(T)] = mem.readIntLittle(T, bytes[i..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L68">            }</span>
+<span class="line" id="L69">            <span class="tok-kw">if</span> (i &lt; bytes.len) {</span>
+<span class="line" id="L70">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-builtin">@sizeOf</span>(T);</span>
+<span class="line" id="L71">                <span class="tok-builtin">@memcpy</span>(padded[<span class="tok-number">0</span> .. bytes.len - i], bytes[i..]);</span>
+<span class="line" id="L72">                self.st[i / <span class="tok-builtin">@sizeOf</span>(T)] = mem.readIntLittle(T, padded[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L73">            }</span>
+<span class="line" id="L74">        }</span>
+<span class="line" id="L75"></span>
+<span class="line" id="L76">        <span class="tok-comment">/// XOR a byte into the state at a given offset.</span></span>
+<span class="line" id="L77">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addByte</span>(self: *Self, byte: <span class="tok-type">u8</span>, offset: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L78">            <span class="tok-kw">const</span> z = <span class="tok-builtin">@sizeOf</span>(T) * <span class="tok-builtin">@as</span>(math.Log2Int(T), <span class="tok-builtin">@truncate</span>(offset % <span class="tok-builtin">@sizeOf</span>(T)));</span>
+<span class="line" id="L79">            self.st[offset / <span class="tok-builtin">@sizeOf</span>(T)] ^= <span class="tok-builtin">@as</span>(T, byte) &lt;&lt; z;</span>
+<span class="line" id="L80">        }</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">        <span class="tok-comment">/// XOR bytes into the beginning of the state.</span></span>
+<span class="line" id="L83">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addBytes</span>(self: *Self, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L84">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L85">            <span class="tok-kw">while</span> (i + <span class="tok-builtin">@sizeOf</span>(T) &lt;= bytes.len) : (i += <span class="tok-builtin">@sizeOf</span>(T)) {</span>
+<span class="line" id="L86">                self.st[i / <span class="tok-builtin">@sizeOf</span>(T)] ^= mem.readIntLittle(T, bytes[i..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L87">            }</span>
+<span class="line" id="L88">            <span class="tok-kw">if</span> (i &lt; bytes.len) {</span>
+<span class="line" id="L89">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-builtin">@sizeOf</span>(T);</span>
+<span class="line" id="L90">                <span class="tok-builtin">@memcpy</span>(padded[<span class="tok-number">0</span> .. bytes.len - i], bytes[i..]);</span>
+<span class="line" id="L91">                self.st[i / <span class="tok-builtin">@sizeOf</span>(T)] ^= mem.readIntLittle(T, padded[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L92">            }</span>
+<span class="line" id="L93">        }</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95">        <span class="tok-comment">/// Extract the first bytes of the state.</span></span>
+<span class="line" id="L96">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">extractBytes</span>(self: *Self, out: []<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L97">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L98">            <span class="tok-kw">while</span> (i + <span class="tok-builtin">@sizeOf</span>(T) &lt;= out.len) : (i += <span class="tok-builtin">@sizeOf</span>(T)) {</span>
+<span class="line" id="L99">                mem.writeIntLittle(T, out[i..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(T)], self.st[i / <span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L100">            }</span>
+<span class="line" id="L101">            <span class="tok-kw">if</span> (i &lt; out.len) {</span>
+<span class="line" id="L102">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-builtin">@sizeOf</span>(T);</span>
+<span class="line" id="L103">                mem.writeIntLittle(T, padded[<span class="tok-number">0</span>..], self.st[i / <span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L104">                <span class="tok-builtin">@memcpy</span>(out[i..], padded[<span class="tok-number">0</span> .. out.len - i]);</span>
+<span class="line" id="L105">            }</span>
+<span class="line" id="L106">        }</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108">        <span class="tok-comment">/// XOR the first bytes of the state into a slice of bytes.</span></span>
+<span class="line" id="L109">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">xorBytes</span>(self: *Self, out: []<span class="tok-type">u8</span>, in: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L110">            assert(out.len == in.len);</span>
+<span class="line" id="L111"></span>
+<span class="line" id="L112">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L113">            <span class="tok-kw">while</span> (i + <span class="tok-builtin">@sizeOf</span>(T) &lt;= in.len) : (i += <span class="tok-builtin">@sizeOf</span>(T)) {</span>
+<span class="line" id="L114">                <span class="tok-kw">const</span> x = mem.readIntNative(T, in[i..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(T)]) ^ mem.nativeToLittle(T, self.st[i / <span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L115">                mem.writeIntNative(T, out[i..][<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(T)], x);</span>
+<span class="line" id="L116">            }</span>
+<span class="line" id="L117">            <span class="tok-kw">if</span> (i &lt; in.len) {</span>
+<span class="line" id="L118">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-builtin">@sizeOf</span>(T);</span>
+<span class="line" id="L119">                <span class="tok-builtin">@memcpy</span>(padded[<span class="tok-number">0</span> .. in.len - i], in[i..]);</span>
+<span class="line" id="L120">                <span class="tok-kw">const</span> x = mem.readIntNative(T, &amp;padded) ^ mem.nativeToLittle(T, self.st[i / <span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L121">                mem.writeIntNative(T, &amp;padded, x);</span>
+<span class="line" id="L122">                <span class="tok-builtin">@memcpy</span>(out[i..], padded[<span class="tok-number">0</span> .. in.len - i]);</span>
+<span class="line" id="L123">            }</span>
+<span class="line" id="L124">        }</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">        <span class="tok-comment">/// Set the words storing the bytes of a given range to zero.</span></span>
+<span class="line" id="L127">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">clear</span>(self: *Self, from: <span class="tok-type">usize</span>, to: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L128">            <span class="tok-builtin">@memset</span>(self.st[from / <span class="tok-builtin">@sizeOf</span>(T) .. (to + <span class="tok-builtin">@sizeOf</span>(T) - <span class="tok-number">1</span>) / <span class="tok-builtin">@sizeOf</span>(T)], <span class="tok-number">0</span>);</span>
+<span class="line" id="L129">        }</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131">        <span class="tok-comment">/// Clear the entire state, disabling compiler optimizations.</span></span>
+<span class="line" id="L132">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">secureZero</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L133">            std.crypto.utils.secureZero(T, &amp;self.st);</span>
+<span class="line" id="L134">        }</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">round</span>(self: *Self, rc: T) <span class="tok-type">void</span> {</span>
+<span class="line" id="L137">            <span class="tok-kw">const</span> st = &amp;self.st;</span>
+<span class="line" id="L138"></span>
+<span class="line" id="L139">            <span class="tok-comment">// theta</span>
+</span>
+<span class="line" id="L140">            <span class="tok-kw">var</span> t = [_]T{<span class="tok-number">0</span>} ** <span class="tok-number">5</span>;</span>
+<span class="line" id="L141">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">5</span>) |i| {</span>
+<span class="line" id="L142">                <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">5</span>) |j| {</span>
+<span class="line" id="L143">                    t[i] ^= st[j * <span class="tok-number">5</span> + i];</span>
+<span class="line" id="L144">                }</span>
+<span class="line" id="L145">            }</span>
+<span class="line" id="L146">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">5</span>) |i| {</span>
+<span class="line" id="L147">                <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">5</span>) |j| {</span>
+<span class="line" id="L148">                    st[j * <span class="tok-number">5</span> + i] ^= t[(i + <span class="tok-number">4</span>) % <span class="tok-number">5</span>] ^ math.rotl(T, t[(i + <span class="tok-number">1</span>) % <span class="tok-number">5</span>], <span class="tok-number">1</span>);</span>
+<span class="line" id="L149">                }</span>
+<span class="line" id="L150">            }</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">            <span class="tok-comment">// rho+pi</span>
+</span>
+<span class="line" id="L153">            <span class="tok-kw">var</span> last = st[<span class="tok-number">1</span>];</span>
+<span class="line" id="L154">            <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> rotc = <span class="tok-number">0</span>;</span>
+<span class="line" id="L155">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">24</span>) |i| {</span>
+<span class="line" id="L156">                <span class="tok-kw">const</span> x = PI[i];</span>
+<span class="line" id="L157">                <span class="tok-kw">const</span> tmp = st[x];</span>
+<span class="line" id="L158">                rotc = (rotc + i + <span class="tok-number">1</span>) % <span class="tok-builtin">@bitSizeOf</span>(T);</span>
+<span class="line" id="L159">                st[x] = math.rotl(T, last, rotc);</span>
+<span class="line" id="L160">                last = tmp;</span>
+<span class="line" id="L161">            }</span>
+<span class="line" id="L162">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">5</span>) |i| {</span>
+<span class="line" id="L163">                <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">5</span>) |j| {</span>
+<span class="line" id="L164">                    t[j] = st[i * <span class="tok-number">5</span> + j];</span>
+<span class="line" id="L165">                }</span>
+<span class="line" id="L166">                <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">5</span>) |j| {</span>
+<span class="line" id="L167">                    st[i * <span class="tok-number">5</span> + j] = t[j] ^ (~t[(j + <span class="tok-number">1</span>) % <span class="tok-number">5</span>] &amp; t[(j + <span class="tok-number">2</span>) % <span class="tok-number">5</span>]);</span>
+<span class="line" id="L168">                }</span>
+<span class="line" id="L169">            }</span>
+<span class="line" id="L170"></span>
+<span class="line" id="L171">            <span class="tok-comment">// iota</span>
+</span>
+<span class="line" id="L172">            st[<span class="tok-number">0</span>] ^= rc;</span>
+<span class="line" id="L173">        }</span>
+<span class="line" id="L174"></span>
+<span class="line" id="L175">        <span class="tok-comment">/// Apply a (possibly) reduced-round permutation to the state.</span></span>
+<span class="line" id="L176">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">permuteR</span>(self: *Self, <span class="tok-kw">comptime</span> rounds: <span class="tok-type">u5</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L177">            <span class="tok-kw">var</span> i = RC.len - rounds;</span>
+<span class="line" id="L178">            <span class="tok-kw">while</span> (i &lt; RC.len - RC.len % <span class="tok-number">3</span>) : (i += <span class="tok-number">3</span>) {</span>
+<span class="line" id="L179">                self.round(RC[i]);</span>
+<span class="line" id="L180">                self.round(RC[i + <span class="tok-number">1</span>]);</span>
+<span class="line" id="L181">                self.round(RC[i + <span class="tok-number">2</span>]);</span>
+<span class="line" id="L182">            }</span>
+<span class="line" id="L183">            <span class="tok-kw">while</span> (i &lt; RC.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L184">                self.round(RC[i]);</span>
+<span class="line" id="L185">            }</span>
+<span class="line" id="L186">        }</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188">        <span class="tok-comment">/// Apply a full-round permutation to the state.</span></span>
+<span class="line" id="L189">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">permute</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L190">            self.permuteR(max_rounds);</span>
+<span class="line" id="L191">        }</span>
+<span class="line" id="L192">    };</span>
+<span class="line" id="L193">}</span>
+<span class="line" id="L194"></span>
+<span class="line" id="L195"><span class="tok-comment">/// A generic Keccak-P state.</span></span>
+<span class="line" id="L196"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">State</span>(<span class="tok-kw">comptime</span> f: <span class="tok-type">u11</span>, <span class="tok-kw">comptime</span> capacity: <span class="tok-type">u11</span>, <span class="tok-kw">comptime</span> delim: <span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> rounds: <span class="tok-type">u5</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L197">    <span class="tok-kw">comptime</span> assert(f &gt; <span class="tok-number">200</span> <span class="tok-kw">and</span> f &lt;= <span class="tok-number">1600</span> <span class="tok-kw">and</span> f % <span class="tok-number">200</span> == <span class="tok-number">0</span>); <span class="tok-comment">// invalid state size</span>
+</span>
+<span class="line" id="L198">    <span class="tok-kw">comptime</span> assert(capacity &lt; f <span class="tok-kw">and</span> capacity % <span class="tok-number">8</span> == <span class="tok-number">0</span>); <span class="tok-comment">// invalid capacity size</span>
+</span>
+<span class="line" id="L199"></span>
+<span class="line" id="L200">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L201">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L202"></span>
+<span class="line" id="L203">        <span class="tok-comment">/// The block length, or rate, in bytes.</span></span>
+<span class="line" id="L204">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> rate = KeccakF(f).block_bytes - capacity / <span class="tok-number">8</span>;</span>
+<span class="line" id="L205">        <span class="tok-comment">/// Keccak does not have any options.</span></span>
+<span class="line" id="L206">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Options = <span class="tok-kw">struct</span> {};</span>
+<span class="line" id="L207"></span>
+<span class="line" id="L208">        offset: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L209">        buf: [rate]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L210"></span>
+<span class="line" id="L211">        st: KeccakF(f) = .{},</span>
+<span class="line" id="L212"></span>
+<span class="line" id="L213">        <span class="tok-comment">/// Absorb a slice of bytes into the sponge.</span></span>
+<span class="line" id="L214">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">absorb</span>(self: *Self, bytes_: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L215">            <span class="tok-kw">var</span> bytes = bytes_;</span>
+<span class="line" id="L216">            <span class="tok-kw">if</span> (self.offset &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L217">                <span class="tok-kw">const</span> left = <span class="tok-builtin">@min</span>(rate - self.offset, bytes.len);</span>
+<span class="line" id="L218">                <span class="tok-builtin">@memcpy</span>(self.buf[self.offset..][<span class="tok-number">0</span>..left], bytes[<span class="tok-number">0</span>..left]);</span>
+<span class="line" id="L219">                self.offset += left;</span>
+<span class="line" id="L220">                <span class="tok-kw">if</span> (self.offset == rate) {</span>
+<span class="line" id="L221">                    self.offset = <span class="tok-number">0</span>;</span>
+<span class="line" id="L222">                    self.st.addBytes(self.buf[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L223">                    self.st.permuteR(rounds);</span>
+<span class="line" id="L224">                }</span>
+<span class="line" id="L225">                <span class="tok-kw">if</span> (left == bytes.len) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L226">                bytes = bytes[left..];</span>
+<span class="line" id="L227">            }</span>
+<span class="line" id="L228">            <span class="tok-kw">while</span> (bytes.len &gt;= rate) {</span>
+<span class="line" id="L229">                self.st.addBytes(bytes[<span class="tok-number">0</span>..rate]);</span>
+<span class="line" id="L230">                self.st.permuteR(rounds);</span>
+<span class="line" id="L231">                bytes = bytes[rate..];</span>
+<span class="line" id="L232">            }</span>
+<span class="line" id="L233">            <span class="tok-kw">if</span> (bytes.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L234">                <span class="tok-builtin">@memcpy</span>(self.buf[<span class="tok-number">0</span>..bytes.len], bytes);</span>
+<span class="line" id="L235">                self.offset = bytes.len;</span>
+<span class="line" id="L236">            }</span>
+<span class="line" id="L237">        }</span>
+<span class="line" id="L238"></span>
+<span class="line" id="L239">        <span class="tok-comment">/// Mark the end of the input.</span></span>
+<span class="line" id="L240">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pad</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L241">            self.st.addBytes(self.buf[<span class="tok-number">0</span>..self.offset]);</span>
+<span class="line" id="L242">            self.st.addByte(delim, self.offset);</span>
+<span class="line" id="L243">            self.st.addByte(<span class="tok-number">0x80</span>, rate - <span class="tok-number">1</span>);</span>
+<span class="line" id="L244">            self.st.permuteR(rounds);</span>
+<span class="line" id="L245">            self.offset = <span class="tok-number">0</span>;</span>
+<span class="line" id="L246">        }</span>
+<span class="line" id="L247"></span>
+<span class="line" id="L248">        <span class="tok-comment">/// Squeeze a slice of bytes from the sponge.</span></span>
+<span class="line" id="L249">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">squeeze</span>(self: *Self, out: []<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L250">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L251">            <span class="tok-kw">while</span> (i &lt; out.len) : (i += rate) {</span>
+<span class="line" id="L252">                <span class="tok-kw">const</span> left = <span class="tok-builtin">@min</span>(rate, out.len - i);</span>
+<span class="line" id="L253">                self.st.extractBytes(out[i..][<span class="tok-number">0</span>..left]);</span>
+<span class="line" id="L254">                self.st.permuteR(rounds);</span>
+<span class="line" id="L255">            }</span>
+<span class="line" id="L256">        }</span>
+<span class="line" id="L257">    };</span>
+<span class="line" id="L258">}</span>
+<span class="line" id="L259"></span>
+<span class="line" id="L260"><span class="tok-kw">test</span> <span class="tok-str">&quot;Keccak-f800&quot;</span> {</span>
+<span class="line" id="L261">    <span class="tok-kw">var</span> st: KeccakF(<span class="tok-number">800</span>) = .{</span>
+<span class="line" id="L262">        .st = .{</span>
+<span class="line" id="L263">            <span class="tok-number">0xE531D45D</span>, <span class="tok-number">0xF404C6FB</span>, <span class="tok-number">0x23A0BF99</span>, <span class="tok-number">0xF1F8452F</span>, <span class="tok-number">0x51FFD042</span>, <span class="tok-number">0xE539F578</span>, <span class="tok-number">0xF00B80A7</span>,</span>
+<span class="line" id="L264">            <span class="tok-number">0xAF973664</span>, <span class="tok-number">0xBF5AF34C</span>, <span class="tok-number">0x227A2424</span>, <span class="tok-number">0x88172715</span>, <span class="tok-number">0x9F685884</span>, <span class="tok-number">0xB15CD054</span>, <span class="tok-number">0x1BF4FC0E</span>,</span>
+<span class="line" id="L265">            <span class="tok-number">0x6166FA91</span>, <span class="tok-number">0x1A9E599A</span>, <span class="tok-number">0xA3970A1F</span>, <span class="tok-number">0xAB659687</span>, <span class="tok-number">0xAFAB8D68</span>, <span class="tok-number">0xE74B1015</span>, <span class="tok-number">0x34001A98</span>,</span>
+<span class="line" id="L266">            <span class="tok-number">0x4119EFF3</span>, <span class="tok-number">0x930A0E76</span>, <span class="tok-number">0x87B28070</span>, <span class="tok-number">0x11EFE996</span>,</span>
+<span class="line" id="L267">        },</span>
+<span class="line" id="L268">    };</span>
+<span class="line" id="L269">    st.permute();</span>
+<span class="line" id="L270">    <span class="tok-kw">const</span> expected: [<span class="tok-number">25</span>]<span class="tok-type">u32</span> = .{</span>
+<span class="line" id="L271">        <span class="tok-number">0x75BF2D0D</span>, <span class="tok-number">0x9B610E89</span>, <span class="tok-number">0xC826AF40</span>, <span class="tok-number">0x64CD84AB</span>, <span class="tok-number">0xF905BDD6</span>, <span class="tok-number">0xBC832835</span>, <span class="tok-number">0x5F8001B9</span>,</span>
+<span class="line" id="L272">        <span class="tok-number">0x15662CCE</span>, <span class="tok-number">0x8E38C95E</span>, <span class="tok-number">0x701FE543</span>, <span class="tok-number">0x1B544380</span>, <span class="tok-number">0x89ACDEFF</span>, <span class="tok-number">0x51EDB5DE</span>, <span class="tok-number">0x0E9702D9</span>,</span>
+<span class="line" id="L273">        <span class="tok-number">0x6C19AA16</span>, <span class="tok-number">0xA2913EEE</span>, <span class="tok-number">0x60754E9A</span>, <span class="tok-number">0x9819063C</span>, <span class="tok-number">0xF4709254</span>, <span class="tok-number">0xD09F9084</span>, <span class="tok-number">0x772DA259</span>,</span>
+<span class="line" id="L274">        <span class="tok-number">0x1DB35DF7</span>, <span class="tok-number">0x5AA60162</span>, <span class="tok-number">0x358825D5</span>, <span class="tok-number">0xB3783BAB</span>,</span>
+<span class="line" id="L275">    };</span>
+<span class="line" id="L276">    <span class="tok-kw">try</span> std.testing.expectEqualSlices(<span class="tok-type">u32</span>, &amp;st.st, &amp;expected);</span>
+<span class="line" id="L277">}</span>
+<span class="line" id="L278"></span>
+</code></pre></body>
+</html>
