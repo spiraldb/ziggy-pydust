@@ -22,19 +22,16 @@ pub const PySlice = extern struct {
 
     pub usingnamespace PyObjectMixin("slice", "PySlice", @This());
 
-    pub fn create(start: anytype, stop: anytype, step: anytype) PySlice {
-        const pystart = py.create(start);
-        defer pystart.decref();
-        const pystop = py.create(stop);
-        defer pystop.decref();
-        const pystep = py.create(step);
-        defer pystep.decref();
+    pub fn create(start: anytype, stop: anytype, step: anytype) !PySlice {
+        // TODO(ngates): think about how to improve comptime optional handling?
+        const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(start)).py;
+        defer if (@typeInfo(@TypeOf(start)) != .Null) py.decref(pystart);
+        const pystop = if (@typeInfo(@TypeOf(stop)) == .Null) null else (try py.create(stop)).py;
+        defer if (@typeInfo(@TypeOf(stop)) != .Null) py.decref(pystop);
+        const pystep = if (@typeInfo(@TypeOf(step)) == .Null) null else (try py.create(step)).py;
+        defer if (@typeInfo(@TypeOf(step)) != .Null) py.decref(pystep);
 
-        const pyslice = ffi.PySlice_New(
-            pystart.obj.py,
-            pystop.obj.py,
-            pystep.obj.py,
-        ) orelse return PyError.PyRaised();
+        const pyslice = ffi.PySlice_New(pystart, pystop, pystep) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = pyslice } };
     }
 
@@ -55,8 +52,9 @@ test "PySlice" {
     py.initialize();
     defer py.finalize();
 
-    const range = PySlice.create(0, 100, null);
+    const range = try PySlice.create(0, 100, null);
     defer range.decref();
 
-    try std.testing.expectEqual(@as(u64, 100), range.getStart(u64));
+    try std.testing.expectEqual(@as(u64, 0), try range.getStart(u64));
+    try std.testing.expectEqual(@as(?u64, null), try range.getStep(?u64));
 }

@@ -20,6 +20,8 @@ pub fn build(b: *std.Build) void {
 
     const pythonInc = getPythonIncludePath(python_exe, b.allocator) catch @panic("Missing python");
     const pythonLib = getPythonLibraryPath(python_exe, b.allocator) catch @panic("Missing python");
+    const pythonVer = getPythonLDVersion(python_exe, b.allocator) catch @panic("Missing python");
+    const pythonLibName = std.fmt.allocPrint(b.allocator, "python{s}", .{pythonVer}) catch @panic("Missing python");
 
     const test_step = b.step("test", "Run library tests");
     const docs_step = b.step("docs", "Generate docs");
@@ -52,7 +54,7 @@ pub fn build(b: *std.Build) void {
     main_tests.linkLibC();
     main_tests.addIncludePath(.{ .path = pythonInc });
     main_tests.addLibraryPath(.{ .path = pythonLib });
-    main_tests.linkSystemLibrary("python3.11");
+    main_tests.linkSystemLibrary(pythonLibName);
     main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     const run_main_tests = b.addRunArtifact(main_tests);
@@ -69,7 +71,7 @@ pub fn build(b: *std.Build) void {
     example_lib.linkLibC();
     main_tests.addIncludePath(.{ .path = pythonInc });
     main_tests.addLibraryPath(.{ .path = pythonLib });
-    main_tests.linkSystemLibrary("python3.11");
+    main_tests.linkSystemLibrary(pythonLibName);
     main_tests.addAnonymousModule("pydust", .{ .source_file = .{ .path = "pydust/src/pydust.zig" } });
     main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
@@ -99,6 +101,15 @@ fn getPythonLibraryPath(python_exe: []const u8, allocator: std.mem.Allocator) ![
     const includeResult = try std.process.Child.exec(.{
         .allocator = allocator,
         .argv = &.{ python_exe, "-c", "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')" },
+    });
+    defer allocator.free(includeResult.stderr);
+    return includeResult.stdout;
+}
+
+fn getPythonLDVersion(python_exe: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    const includeResult = try std.process.Child.exec(.{
+        .allocator = allocator,
+        .argv = &.{ python_exe, "-c", "import sysconfig; print(sysconfig.get_config_var('LDVERSION'), end='')" },
     });
     defer allocator.free(includeResult.stderr);
     return includeResult.stdout;
