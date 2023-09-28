@@ -16,7 +16,6 @@ const State = @import("discovery.zig").State;
 const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
-const PyType = pytypes.PyType;
 const funcs = @import("functions.zig");
 const tramp = @import("trampoline.zig");
 

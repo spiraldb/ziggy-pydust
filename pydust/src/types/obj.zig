@@ -16,15 +16,6 @@ const str = @import("str.zig");
 const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
 
-/// PyTypeObject exists in Limited API only as an opaque pointer.
-pub const PyType = extern struct {
-    obj: PyObject,
-
-    pub fn getQualifiedName(self: PyType) !py.PyString {
-        return py.PyString.of(ffi.PyType_GetQualName(self.obj.py) orelse return PyError.PyRaised);
-    }
-};
-
 pub const PyObject = extern struct {
     py: *ffi.PyObject,
 
