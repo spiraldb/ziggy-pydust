@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/ascon.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! Ascon is a 320-bit permutation, selected as new standard for lightweight cryptography</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! in the NIST Lightweight Cryptography competition (2019–2023).</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! https://csrc.nist.gov/News/2023/lightweight-cryptography-nist-selects-ascon</span></span>
+<span class="line" id="L4"><span class="tok-comment">//!</span></span>
+<span class="line" id="L5"><span class="tok-comment">//! The permutation is compact, and optimized for timing and side channel resistance,</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! making it a good choice for embedded applications.</span></span>
+<span class="line" id="L7"><span class="tok-comment">//!</span></span>
+<span class="line" id="L8"><span class="tok-comment">//! It is not meant to be used directly, but as a building block for symmetric cryptography.</span></span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> builtin = std.builtin;</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> debug = std.debug;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L14"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L15"><span class="tok-kw">const</span> rotr = std.math.rotr;</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17"><span class="tok-comment">/// An Ascon state.</span></span>
+<span class="line" id="L18"><span class="tok-comment">///</span></span>
+<span class="line" id="L19"><span class="tok-comment">/// The state is represented as 5 64-bit words.</span></span>
+<span class="line" id="L20"><span class="tok-comment">///</span></span>
+<span class="line" id="L21"><span class="tok-comment">/// The NIST submission (v1.2) serializes these words as big-endian,</span></span>
+<span class="line" id="L22"><span class="tok-comment">/// but software implementations are free to use native endianness.</span></span>
+<span class="line" id="L23"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">State</span>(<span class="tok-kw">comptime</span> endian: builtin.Endian) <span class="tok-type">type</span> {</span>
+<span class="line" id="L24">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L25">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27">        <span class="tok-comment">/// Number of bytes in the state.</span></span>
+<span class="line" id="L28">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_bytes = <span class="tok-number">40</span>;</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30">        <span class="tok-kw">const</span> Block = [<span class="tok-number">5</span>]<span class="tok-type">u64</span>;</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">        st: Block,</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">        <span class="tok-comment">/// Initialize the state from a slice of bytes.</span></span>
+<span class="line" id="L35">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(initial_state: [block_bytes]<span class="tok-type">u8</span>) Self {</span>
+<span class="line" id="L36">            <span class="tok-kw">var</span> state = Self{ .st = <span class="tok-null">undefined</span> };</span>
+<span class="line" id="L37">            <span class="tok-builtin">@memcpy</span>(state.asBytes(), &amp;initial_state);</span>
+<span class="line" id="L38">            state.endianSwap();</span>
+<span class="line" id="L39">            <span class="tok-kw">return</span> state;</span>
+<span class="line" id="L40">        }</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42">        <span class="tok-comment">/// Initialize the state from u64 words in native endianness.</span></span>
+<span class="line" id="L43">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFromWords</span>(initial_state: [<span class="tok-number">5</span>]<span class="tok-type">u64</span>) Self {</span>
+<span class="line" id="L44">            <span class="tok-kw">var</span> state = Self{ .st = initial_state };</span>
+<span class="line" id="L45">            <span class="tok-kw">return</span> state;</span>
+<span class="line" id="L46">        }</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">        <span class="tok-comment">/// Initialize the state for Ascon XOF</span></span>
+<span class="line" id="L49">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initXof</span>() Self {</span>
+<span class="line" id="L50">            <span class="tok-kw">return</span> Self{ .st = Block{</span>
+<span class="line" id="L51">                <span class="tok-number">0xb57e273b814cd416</span>,</span>
+<span class="line" id="L52">                <span class="tok-number">0x2b51042562ae2420</span>,</span>
+<span class="line" id="L53">                <span class="tok-number">0x66a3a7768ddf2218</span>,</span>
+<span class="line" id="L54">                <span class="tok-number">0x5aad0a7a8153650c</span>,</span>
+<span class="line" id="L55">                <span class="tok-number">0x4f3e0e32539493b6</span>,</span>
+<span class="line" id="L56">            } };</span>
+<span class="line" id="L57">        }</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">        <span class="tok-comment">/// Initialize the state for Ascon XOFa</span></span>
+<span class="line" id="L60">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initXofA</span>() Self {</span>
+<span class="line" id="L61">            <span class="tok-kw">return</span> Self{ .st = Block{</span>
+<span class="line" id="L62">                <span class="tok-number">0x44906568b77b9832</span>,</span>
+<span class="line" id="L63">                <span class="tok-number">0xcd8d6cae53455532</span>,</span>
+<span class="line" id="L64">                <span class="tok-number">0xf7b5212756422129</span>,</span>
+<span class="line" id="L65">                <span class="tok-number">0x246885e1de0d225b</span>,</span>
+<span class="line" id="L66">                <span class="tok-number">0xa8cb5ce33449973f</span>,</span>
+<span class="line" id="L67">            } };</span>
+<span class="line" id="L68">        }</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">        <span class="tok-comment">/// A representation of the state as bytes. The byte order is architecture-dependent.</span></span>
+<span class="line" id="L71">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">asBytes</span>(self: *Self) *[block_bytes]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L72">            <span class="tok-kw">return</span> mem.asBytes(&amp;self.st);</span>
+<span class="line" id="L73">        }</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75">        <span class="tok-comment">/// Byte-swap the entire state if the architecture doesn't match the required endianness.</span></span>
+<span class="line" id="L76">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">endianSwap</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L77">            <span class="tok-kw">for</span> (&amp;self.st) |*w| {</span>
+<span class="line" id="L78">                w.* = mem.toNative(<span class="tok-type">u64</span>, w.*, endian);</span>
+<span class="line" id="L79">            }</span>
+<span class="line" id="L80">        }</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">        <span class="tok-comment">/// Set bytes starting at the beginning of the state.</span></span>
+<span class="line" id="L83">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setBytes</span>(self: *Self, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L84">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L85">            <span class="tok-kw">while</span> (i + <span class="tok-number">8</span> &lt;= bytes.len) : (i += <span class="tok-number">8</span>) {</span>
+<span class="line" id="L86">                self.st[i / <span class="tok-number">8</span>] = mem.readInt(<span class="tok-type">u64</span>, bytes[i..][<span class="tok-number">0</span>..<span class="tok-number">8</span>], endian);</span>
+<span class="line" id="L87">            }</span>
+<span class="line" id="L88">            <span class="tok-kw">if</span> (i &lt; bytes.len) {</span>
+<span class="line" id="L89">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-number">8</span>;</span>
+<span class="line" id="L90">                <span class="tok-builtin">@memcpy</span>(padded[<span class="tok-number">0</span> .. bytes.len - i], bytes[i..]);</span>
+<span class="line" id="L91">                self.st[i / <span class="tok-number">8</span>] = mem.readInt(<span class="tok-type">u64</span>, padded[<span class="tok-number">0</span>..], endian);</span>
+<span class="line" id="L92">            }</span>
+<span class="line" id="L93">        }</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95">        <span class="tok-comment">/// XOR a byte into the state at a given offset.</span></span>
+<span class="line" id="L96">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addByte</span>(self: *Self, byte: <span class="tok-type">u8</span>, offset: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L97">            <span class="tok-kw">const</span> z = <span class="tok-kw">switch</span> (endian) {</span>
+<span class="line" id="L98">                .Big =&gt; <span class="tok-number">64</span> - <span class="tok-number">8</span> - <span class="tok-number">8</span> * <span class="tok-builtin">@as</span>(<span class="tok-type">u6</span>, <span class="tok-builtin">@truncate</span>(offset % <span class="tok-number">8</span>)),</span>
+<span class="line" id="L99">                .Little =&gt; <span class="tok-number">8</span> * <span class="tok-builtin">@as</span>(<span class="tok-type">u6</span>, <span class="tok-builtin">@truncate</span>(offset % <span class="tok-number">8</span>)),</span>
+<span class="line" id="L100">            };</span>
+<span class="line" id="L101">            self.st[offset / <span class="tok-number">8</span>] ^= <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, byte) &lt;&lt; z;</span>
+<span class="line" id="L102">        }</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104">        <span class="tok-comment">/// XOR bytes into the beginning of the state.</span></span>
+<span class="line" id="L105">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addBytes</span>(self: *Self, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L106">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L107">            <span class="tok-kw">while</span> (i + <span class="tok-number">8</span> &lt;= bytes.len) : (i += <span class="tok-number">8</span>) {</span>
+<span class="line" id="L108">                self.st[i / <span class="tok-number">8</span>] ^= mem.readInt(<span class="tok-type">u64</span>, bytes[i..][<span class="tok-number">0</span>..<span class="tok-number">8</span>], endian);</span>
+<span class="line" id="L109">            }</span>
+<span class="line" id="L110">            <span class="tok-kw">if</span> (i &lt; bytes.len) {</span>
+<span class="line" id="L111">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-number">8</span>;</span>
+<span class="line" id="L112">                <span class="tok-builtin">@memcpy</span>(padded[<span class="tok-number">0</span> .. bytes.len - i], bytes[i..]);</span>
+<span class="line" id="L113">                self.st[i / <span class="tok-number">8</span>] ^= mem.readInt(<span class="tok-type">u64</span>, padded[<span class="tok-number">0</span>..], endian);</span>
+<span class="line" id="L114">            }</span>
+<span class="line" id="L115">        }</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117">        <span class="tok-comment">/// Extract the first bytes of the state.</span></span>
+<span class="line" id="L118">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">extractBytes</span>(self: *Self, out: []<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L119">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L120">            <span class="tok-kw">while</span> (i + <span class="tok-number">8</span> &lt;= out.len) : (i += <span class="tok-number">8</span>) {</span>
+<span class="line" id="L121">                mem.writeInt(<span class="tok-type">u64</span>, out[i..][<span class="tok-number">0</span>..<span class="tok-number">8</span>], self.st[i / <span class="tok-number">8</span>], endian);</span>
+<span class="line" id="L122">            }</span>
+<span class="line" id="L123">            <span class="tok-kw">if</span> (i &lt; out.len) {</span>
+<span class="line" id="L124">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-number">8</span>;</span>
+<span class="line" id="L125">                mem.writeInt(<span class="tok-type">u64</span>, padded[<span class="tok-number">0</span>..], self.st[i / <span class="tok-number">8</span>], endian);</span>
+<span class="line" id="L126">                <span class="tok-builtin">@memcpy</span>(out[i..], padded[<span class="tok-number">0</span> .. out.len - i]);</span>
+<span class="line" id="L127">            }</span>
+<span class="line" id="L128">        }</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">        <span class="tok-comment">/// XOR the first bytes of the state into a slice of bytes.</span></span>
+<span class="line" id="L131">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">xorBytes</span>(self: *Self, out: []<span class="tok-type">u8</span>, in: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L132">            debug.assert(out.len == in.len);</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L135">            <span class="tok-kw">while</span> (i + <span class="tok-number">8</span> &lt;= in.len) : (i += <span class="tok-number">8</span>) {</span>
+<span class="line" id="L136">                <span class="tok-kw">const</span> x = mem.readIntNative(<span class="tok-type">u64</span>, in[i..][<span class="tok-number">0</span>..<span class="tok-number">8</span>]) ^ mem.nativeTo(<span class="tok-type">u64</span>, self.st[i / <span class="tok-number">8</span>], endian);</span>
+<span class="line" id="L137">                mem.writeIntNative(<span class="tok-type">u64</span>, out[i..][<span class="tok-number">0</span>..<span class="tok-number">8</span>], x);</span>
+<span class="line" id="L138">            }</span>
+<span class="line" id="L139">            <span class="tok-kw">if</span> (i &lt; in.len) {</span>
+<span class="line" id="L140">                <span class="tok-kw">var</span> padded = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-number">8</span>;</span>
+<span class="line" id="L141">                <span class="tok-builtin">@memcpy</span>(padded[<span class="tok-number">0</span> .. in.len - i], in[i..]);</span>
+<span class="line" id="L142">                <span class="tok-kw">const</span> x = mem.readIntNative(<span class="tok-type">u64</span>, &amp;padded) ^ mem.nativeTo(<span class="tok-type">u64</span>, self.st[i / <span class="tok-number">8</span>], endian);</span>
+<span class="line" id="L143">                mem.writeIntNative(<span class="tok-type">u64</span>, &amp;padded, x);</span>
+<span class="line" id="L144">                <span class="tok-builtin">@memcpy</span>(out[i..], padded[<span class="tok-number">0</span> .. in.len - i]);</span>
+<span class="line" id="L145">            }</span>
+<span class="line" id="L146">        }</span>
+<span class="line" id="L147"></span>
+<span class="line" id="L148">        <span class="tok-comment">/// Set the words storing the bytes of a given range to zero.</span></span>
+<span class="line" id="L149">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">clear</span>(self: *Self, from: <span class="tok-type">usize</span>, to: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L150">            <span class="tok-builtin">@memset</span>(self.st[from / <span class="tok-number">8</span> .. (to + <span class="tok-number">7</span>) / <span class="tok-number">8</span>], <span class="tok-number">0</span>);</span>
+<span class="line" id="L151">        }</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153">        <span class="tok-comment">/// Clear the entire state, disabling compiler optimizations.</span></span>
+<span class="line" id="L154">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">secureZero</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L155">            std.crypto.utils.secureZero(<span class="tok-type">u64</span>, &amp;self.st);</span>
+<span class="line" id="L156">        }</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">        <span class="tok-comment">/// Apply a reduced-round permutation to the state.</span></span>
+<span class="line" id="L159">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">permuteR</span>(state: *Self, <span class="tok-kw">comptime</span> rounds: <span class="tok-type">u4</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L160">            <span class="tok-kw">const</span> rks = [<span class="tok-number">12</span>]<span class="tok-type">u64</span>{ <span class="tok-number">0xf0</span>, <span class="tok-number">0xe1</span>, <span class="tok-number">0xd2</span>, <span class="tok-number">0xc3</span>, <span class="tok-number">0xb4</span>, <span class="tok-number">0xa5</span>, <span class="tok-number">0x96</span>, <span class="tok-number">0x87</span>, <span class="tok-number">0x78</span>, <span class="tok-number">0x69</span>, <span class="tok-number">0x5a</span>, <span class="tok-number">0x4b</span> };</span>
+<span class="line" id="L161">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (rks[rks.len - rounds ..]) |rk| {</span>
+<span class="line" id="L162">                state.round(rk);</span>
+<span class="line" id="L163">            }</span>
+<span class="line" id="L164">        }</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">        <span class="tok-comment">/// Apply a full-round permutation to the state.</span></span>
+<span class="line" id="L167">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">permute</span>(state: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L168">            state.permuteR(<span class="tok-number">12</span>);</span>
+<span class="line" id="L169">        }</span>
+<span class="line" id="L170"></span>
+<span class="line" id="L171">        <span class="tok-comment">/// Apply a permutation to the state and prevent backtracking.</span></span>
+<span class="line" id="L172">        <span class="tok-comment">/// The rate is expressed in bytes and must be a multiple of the word size (8).</span></span>
+<span class="line" id="L173">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">permuteRatchet</span>(state: *Self, <span class="tok-kw">comptime</span> rounds: <span class="tok-type">u4</span>, <span class="tok-kw">comptime</span> rate: <span class="tok-type">u6</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L174">            <span class="tok-kw">const</span> capacity = block_bytes - rate;</span>
+<span class="line" id="L175">            debug.assert(capacity &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> capacity % <span class="tok-number">8</span> == <span class="tok-number">0</span>); <span class="tok-comment">// capacity must be a multiple of 64 bits</span>
+</span>
+<span class="line" id="L176">            <span class="tok-kw">var</span> mask: [capacity / <span class="tok-number">8</span>]<span class="tok-type">u64</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L177">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (&amp;mask, state.st[state.st.len - mask.len ..]) |*m, x| m.* = x;</span>
+<span class="line" id="L178">            state.permuteR(rounds);</span>
+<span class="line" id="L179">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (mask, state.st[state.st.len - mask.len ..]) |m, *x| x.* ^= m;</span>
+<span class="line" id="L180">        }</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182">        <span class="tok-comment">// Core Ascon permutation.</span>
+</span>
+<span class="line" id="L183">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">round</span>(state: *Self, rk: <span class="tok-type">u64</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L184">            <span class="tok-kw">const</span> x = &amp;state.st;</span>
+<span class="line" id="L185">            x[<span class="tok-number">2</span>] ^= rk;</span>
+<span class="line" id="L186"></span>
+<span class="line" id="L187">            x[<span class="tok-number">0</span>] ^= x[<span class="tok-number">4</span>];</span>
+<span class="line" id="L188">            x[<span class="tok-number">4</span>] ^= x[<span class="tok-number">3</span>];</span>
+<span class="line" id="L189">            x[<span class="tok-number">2</span>] ^= x[<span class="tok-number">1</span>];</span>
+<span class="line" id="L190">            <span class="tok-kw">var</span> t: Block = .{</span>
+<span class="line" id="L191">                x[<span class="tok-number">0</span>] ^ (~x[<span class="tok-number">1</span>] &amp; x[<span class="tok-number">2</span>]),</span>
+<span class="line" id="L192">                x[<span class="tok-number">1</span>] ^ (~x[<span class="tok-number">2</span>] &amp; x[<span class="tok-number">3</span>]),</span>
+<span class="line" id="L193">                x[<span class="tok-number">2</span>] ^ (~x[<span class="tok-number">3</span>] &amp; x[<span class="tok-number">4</span>]),</span>
+<span class="line" id="L194">                x[<span class="tok-number">3</span>] ^ (~x[<span class="tok-number">4</span>] &amp; x[<span class="tok-number">0</span>]),</span>
+<span class="line" id="L195">                x[<span class="tok-number">4</span>] ^ (~x[<span class="tok-number">0</span>] &amp; x[<span class="tok-number">1</span>]),</span>
+<span class="line" id="L196">            };</span>
+<span class="line" id="L197">            t[<span class="tok-number">1</span>] ^= t[<span class="tok-number">0</span>];</span>
+<span class="line" id="L198">            t[<span class="tok-number">3</span>] ^= t[<span class="tok-number">2</span>];</span>
+<span class="line" id="L199">            t[<span class="tok-number">0</span>] ^= t[<span class="tok-number">4</span>];</span>
+<span class="line" id="L200"></span>
+<span class="line" id="L201">            x[<span class="tok-number">2</span>] = t[<span class="tok-number">2</span>] ^ rotr(<span class="tok-type">u64</span>, t[<span class="tok-number">2</span>], <span class="tok-number">6</span> - <span class="tok-number">1</span>);</span>
+<span class="line" id="L202">            x[<span class="tok-number">3</span>] = t[<span class="tok-number">3</span>] ^ rotr(<span class="tok-type">u64</span>, t[<span class="tok-number">3</span>], <span class="tok-number">17</span> - <span class="tok-number">10</span>);</span>
+<span class="line" id="L203">            x[<span class="tok-number">4</span>] = t[<span class="tok-number">4</span>] ^ rotr(<span class="tok-type">u64</span>, t[<span class="tok-number">4</span>], <span class="tok-number">41</span> - <span class="tok-number">7</span>);</span>
+<span class="line" id="L204">            x[<span class="tok-number">0</span>] = t[<span class="tok-number">0</span>] ^ rotr(<span class="tok-type">u64</span>, t[<span class="tok-number">0</span>], <span class="tok-number">28</span> - <span class="tok-number">19</span>);</span>
+<span class="line" id="L205">            x[<span class="tok-number">1</span>] = t[<span class="tok-number">1</span>] ^ rotr(<span class="tok-type">u64</span>, t[<span class="tok-number">1</span>], <span class="tok-number">61</span> - <span class="tok-number">39</span>);</span>
+<span class="line" id="L206">            x[<span class="tok-number">2</span>] = t[<span class="tok-number">2</span>] ^ rotr(<span class="tok-type">u64</span>, x[<span class="tok-number">2</span>], <span class="tok-number">1</span>);</span>
+<span class="line" id="L207">            x[<span class="tok-number">3</span>] = t[<span class="tok-number">3</span>] ^ rotr(<span class="tok-type">u64</span>, x[<span class="tok-number">3</span>], <span class="tok-number">10</span>);</span>
+<span class="line" id="L208">            x[<span class="tok-number">4</span>] = t[<span class="tok-number">4</span>] ^ rotr(<span class="tok-type">u64</span>, x[<span class="tok-number">4</span>], <span class="tok-number">7</span>);</span>
+<span class="line" id="L209">            x[<span class="tok-number">0</span>] = t[<span class="tok-number">0</span>] ^ rotr(<span class="tok-type">u64</span>, x[<span class="tok-number">0</span>], <span class="tok-number">19</span>);</span>
+<span class="line" id="L210">            x[<span class="tok-number">1</span>] = t[<span class="tok-number">1</span>] ^ rotr(<span class="tok-type">u64</span>, x[<span class="tok-number">1</span>], <span class="tok-number">39</span>);</span>
+<span class="line" id="L211">            x[<span class="tok-number">2</span>] = ~x[<span class="tok-number">2</span>];</span>
+<span class="line" id="L212">        }</span>
+<span class="line" id="L213">    };</span>
+<span class="line" id="L214">}</span>
+<span class="line" id="L215"></span>
+<span class="line" id="L216"><span class="tok-kw">test</span> <span class="tok-str">&quot;ascon&quot;</span> {</span>
+<span class="line" id="L217">    <span class="tok-kw">const</span> Ascon = State(.Big);</span>
+<span class="line" id="L218">    <span class="tok-kw">const</span> bytes = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x01</span>} ** Ascon.block_bytes;</span>
+<span class="line" id="L219">    <span class="tok-kw">var</span> st = Ascon.init(bytes);</span>
+<span class="line" id="L220">    <span class="tok-kw">var</span> out: [Ascon.block_bytes]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L221">    st.permute();</span>
+<span class="line" id="L222">    st.extractBytes(&amp;out);</span>
+<span class="line" id="L223">    <span class="tok-kw">const</span> expected1 = [_]<span class="tok-type">u8</span>{ <span class="tok-number">148</span>, <span class="tok-number">147</span>, <span class="tok-number">49</span>, <span class="tok-number">226</span>, <span class="tok-number">218</span>, <span class="tok-number">221</span>, <span class="tok-number">208</span>, <span class="tok-number">113</span>, <span class="tok-number">186</span>, <span class="tok-number">94</span>, <span class="tok-number">96</span>, <span class="tok-number">10</span>, <span class="tok-number">183</span>, <span class="tok-number">219</span>, <span class="tok-number">119</span>, <span class="tok-number">150</span>, <span class="tok-number">169</span>, <span class="tok-number">206</span>, <span class="tok-number">65</span>, <span class="tok-number">18</span>, <span class="tok-number">215</span>, <span class="tok-number">97</span>, <span class="tok-number">78</span>, <span class="tok-number">106</span>, <span class="tok-number">118</span>, <span class="tok-number">81</span>, <span class="tok-number">211</span>, <span class="tok-number">150</span>, <span class="tok-number">52</span>, <span class="tok-number">17</span>, <span class="tok-number">117</span>, <span class="tok-number">64</span>, <span class="tok-number">216</span>, <span class="tok-number">45</span>, <span class="tok-number">148</span>, <span class="tok-number">240</span>, <span class="tok-number">65</span>, <span class="tok-number">181</span>, <span class="tok-number">90</span>, <span class="tok-number">180</span> };</span>
+<span class="line" id="L224">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;expected1, &amp;out);</span>
+<span class="line" id="L225">    st.clear(<span class="tok-number">0</span>, <span class="tok-number">10</span>);</span>
+<span class="line" id="L226">    st.extractBytes(&amp;out);</span>
+<span class="line" id="L227">    <span class="tok-kw">const</span> expected2 = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">169</span>, <span class="tok-number">206</span>, <span class="tok-number">65</span>, <span class="tok-number">18</span>, <span class="tok-number">215</span>, <span class="tok-number">97</span>, <span class="tok-number">78</span>, <span class="tok-number">106</span>, <span class="tok-number">118</span>, <span class="tok-number">81</span>, <span class="tok-number">211</span>, <span class="tok-number">150</span>, <span class="tok-number">52</span>, <span class="tok-number">17</span>, <span class="tok-number">117</span>, <span class="tok-number">64</span>, <span class="tok-number">216</span>, <span class="tok-number">45</span>, <span class="tok-number">148</span>, <span class="tok-number">240</span>, <span class="tok-number">65</span>, <span class="tok-number">181</span>, <span class="tok-number">90</span>, <span class="tok-number">180</span> };</span>
+<span class="line" id="L228">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;expected2, &amp;out);</span>
+<span class="line" id="L229">    st.addByte(<span class="tok-number">1</span>, <span class="tok-number">5</span>);</span>
+<span class="line" id="L230">    st.addByte(<span class="tok-number">2</span>, <span class="tok-number">5</span>);</span>
+<span class="line" id="L231">    st.extractBytes(&amp;out);</span>
+<span class="line" id="L232">    <span class="tok-kw">const</span> expected3 = [_]<span class="tok-type">u8</span>{ <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">3</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">169</span>, <span class="tok-number">206</span>, <span class="tok-number">65</span>, <span class="tok-number">18</span>, <span class="tok-number">215</span>, <span class="tok-number">97</span>, <span class="tok-number">78</span>, <span class="tok-number">106</span>, <span class="tok-number">118</span>, <span class="tok-number">81</span>, <span class="tok-number">211</span>, <span class="tok-number">150</span>, <span class="tok-number">52</span>, <span class="tok-number">17</span>, <span class="tok-number">117</span>, <span class="tok-number">64</span>, <span class="tok-number">216</span>, <span class="tok-number">45</span>, <span class="tok-number">148</span>, <span class="tok-number">240</span>, <span class="tok-number">65</span>, <span class="tok-number">181</span>, <span class="tok-number">90</span>, <span class="tok-number">180</span> };</span>
+<span class="line" id="L233">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;expected3, &amp;out);</span>
+<span class="line" id="L234">    st.addBytes(&amp;bytes);</span>
+<span class="line" id="L235">    st.extractBytes(&amp;out);</span>
+<span class="line" id="L236">    <span class="tok-kw">const</span> expected4 = [_]<span class="tok-type">u8</span>{ <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">1</span>, <span class="tok-number">168</span>, <span class="tok-number">207</span>, <span class="tok-number">64</span>, <span class="tok-number">19</span>, <span class="tok-number">214</span>, <span class="tok-number">96</span>, <span class="tok-number">79</span>, <span class="tok-number">107</span>, <span class="tok-number">119</span>, <span class="tok-number">80</span>, <span class="tok-number">210</span>, <span class="tok-number">151</span>, <span class="tok-number">53</span>, <span class="tok-number">16</span>, <span class="tok-number">116</span>, <span class="tok-number">65</span>, <span class="tok-number">217</span>, <span class="tok-number">44</span>, <span class="tok-number">149</span>, <span class="tok-number">241</span>, <span class="tok-number">64</span>, <span class="tok-number">180</span>, <span class="tok-number">91</span>, <span class="tok-number">181</span> };</span>
+<span class="line" id="L237">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, &amp;expected4, &amp;out);</span>
+<span class="line" id="L238">}</span>
+<span class="line" id="L239"></span>
+</code></pre></body>
+</html>
