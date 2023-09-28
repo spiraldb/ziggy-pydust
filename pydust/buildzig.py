@@ -20,8 +20,8 @@ import subprocess
 import sys
 import sysconfig
 import textwrap
-from typing import TextIO
 import typing
+from typing import TextIO
 
 import pydust
 from pydust import config
