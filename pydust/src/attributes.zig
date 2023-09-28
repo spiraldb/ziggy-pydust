@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 const py = @import("pydust.zig");
-const PyType = @import("pytypes.zig").PyType;
+const Type = @import("pytypes.zig").Type;
 const State = @import("discovery.zig").State;
 
 pub const Attribute = struct {
@@ -48,7 +48,7 @@ pub fn Attributes(comptime definition: type) type {
                     if (def.type == .class) {
                         const Closure = struct {
                             pub fn init(module: py.PyModule) !py.PyObject {
-                                const typedef = PyType(decl.name ++ "", def.definition);
+                                const typedef = Type(decl.name ++ "", def.definition);
                                 return try typedef.init(module);
                             }
                         };

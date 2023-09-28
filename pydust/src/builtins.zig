@@ -129,8 +129,11 @@ pub fn tuple(object: anytype) !py.PyTuple {
     return py.PyTuple.unchecked(.{ .py = pytuple });
 }
 
-pub fn type_(object: anytype) !py.PyObject {
-    return .{ .py = ffi.Py_TYPE(py.object(object).py) orelse return PyError.PyRaised };
+pub fn type_(object: anytype) !py.PyType {
+    return .{ .obj = .{ .py = @as(
+        ?*ffi.PyObject,
+        @ptrCast(@alignCast(ffi.Py_TYPE(py.object(object).py))),
+    ) orelse return PyError.PyRaised } };
 }
 
 // TODO(ngates): What's the easiest / cheapest way to do this?

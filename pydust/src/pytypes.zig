@@ -22,7 +22,6 @@ const funcs = @import("functions.zig");
 const PyError = @import("errors.zig").PyError;
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 const tramp = @import("trampoline.zig");
-const Type = std.builtin.Type;
 
 /// For a given Pydust class definition, return the encapsulating PyType struct.
 pub fn PyTypeStruct(comptime definition: type) type {
@@ -35,7 +34,7 @@ pub fn PyTypeStruct(comptime definition: type) type {
 }
 
 /// Discover a Pydust class definition.
-pub fn PyType(comptime name: [:0]const u8, comptime definition: type) type {
+pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
         const qualifiedName: [:0]const u8 = blk: {
             const moduleName = State.getIdentifier(State.getContaining(definition, .module)).name;
