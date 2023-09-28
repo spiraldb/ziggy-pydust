@@ -191,7 +191,7 @@ fn checkArgsParam(comptime Args: type) void {
 pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Signature, comptime flags: c_int) type {
     const def = State.getDefinition(definition);
     return struct {
-        const doc = docTextSignature(sig);
+        const doc = textSignature(sig);
 
         /// Return a PyMethodDef for this wrapped function.
         pub fn aspy() ffi.PyMethodDef {
@@ -389,7 +389,7 @@ pub fn Methods(comptime definition: type) type {
 /// Generate minimal function docstring to populate __text_signature__ function field.
 /// Format is `funcName($self, arg0Name...)\n--\n\n`.
 /// Self arg can be named however but must start with `$`
-fn docTextSignature(comptime sig: Signature) [sigSize(sig):0]u8 {
+pub fn textSignature(comptime sig: Signature) [sigSize(sig):0]u8 {
     const args = sigArgs(sig) catch @compileError("Too many arguments");
     const argSize = sigSize(sig);
 

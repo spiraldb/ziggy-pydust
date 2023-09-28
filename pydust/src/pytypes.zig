@@ -43,7 +43,7 @@ pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
 
         const bases = Bases(definition);
         const attrs = Attributes(definition);
-        const slots = Slots(definition);
+        const slots = Slots(definition, qualifiedName);
 
         pub fn init(module: py.PyModule) PyError!py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;
@@ -96,7 +96,7 @@ fn Bases(comptime definition: type) type {
     };
 }
 
-fn Slots(comptime definition: type) type {
+fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
     return struct {
         const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
@@ -104,16 +104,16 @@ fn Slots(comptime definition: type) type {
         const methods = funcs.Methods(definition);
         const members = Members(definition);
         const properties = Properties(definition);
+        const doc = Doc(definition, name);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
             var slots_: [:empty]const ffi.PyType_Slot = &.{};
 
-            if (@hasDecl(definition, "__doc__")) {
-                const doc: [:0]const u8 = @field(definition, "__doc__");
+            if (doc.docLen != 0) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_doc,
-                    .pfunc = @ptrCast(@constCast(doc.ptr)),
+                    .pfunc = @ptrCast(@constCast(&doc.doc)),
                 }};
             }
 
@@ -346,6 +346,66 @@ fn Slots(comptime definition: type) type {
             const result = tramp.coerceError(definition.__repr__(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
+    };
+}
+
+fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
+    return struct {
+        const docLen = blk: {
+            var size: usize = 0;
+            var sig: ?funcs.Signature = null;
+            if (@hasDecl(definition, "__new__")) {
+                sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
+            } else if (@hasDecl(definition, "__init__")) {
+                sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition._init__)).Fn, &.{ py.PyObject, *definition, *const definition });
+            }
+
+            if (sig) |eSig| {
+                const classSig: funcs.Signature = .{
+                    .name = name,
+                    .selfParam = eSig.selfParam,
+                    .argsParam = eSig.argsParam,
+                    .returnType = eSig.returnType,
+                    .nargs = eSig.nargs,
+                    .nkwargs = eSig.nkwargs,
+                };
+                size += funcs.textSignature(classSig).len;
+            }
+
+            if (@hasDecl(definition, "__doc__")) {
+                size += definition.__doc__.len;
+            }
+            break :blk size;
+        };
+
+        const doc: [docLen:0]u8 = blk: {
+            var userDoc: [docLen:0]u8 = undefined;
+            var docOffset = 0;
+            var sig: ?funcs.Signature = null;
+            if (@hasDecl(definition, "__new__")) {
+                sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
+            } else if (@hasDecl(definition, "__init__")) {
+                sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{ py.PyObject, *definition, *const definition });
+            }
+
+            if (sig) |*eSig| {
+                const classSig: funcs.Signature = .{
+                    .name = name,
+                    .selfParam = eSig.selfParam,
+                    .argsParam = eSig.argsParam,
+                    .returnType = eSig.returnType,
+                    .nargs = eSig.nargs,
+                    .nkwargs = eSig.nkwargs,
+                };
+                const sigText = funcs.textSignature(classSig);
+                @memcpy(userDoc[0..sigText.len], &sigText);
+                docOffset += sigText.len;
+            }
+            if (@hasDecl(definition, "__doc__")) {
+                @memcpy(userDoc[docOffset..], definition.__doc__);
+            }
+            break :blk userDoc;
+        };
     };
 }
 
