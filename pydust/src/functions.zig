@@ -70,16 +70,29 @@ fn keys(comptime stringMap: type) [stringMap.kvs.len][]const u8 {
     return keys_;
 }
 
+pub const compareFuncs = .{
+    "__lt__",
+    "__le__",
+    "__eq__",
+    "__ne__",
+    "__gt__",
+    "__ge__",
+    "__richcompare__",
+};
+
 const reservedNames = .{
     "__new__",
     "__init__",
     "__len__",
     "__del__",
     "__buffer__",
+    "__str__",
+    "__repr__",
     "__release_buffer__",
     "__iter__",
     "__next__",
-} ++ keys(BinaryOperators);
+    "__hash__",
+} ++ compareFuncs ++ keys(BinaryOperators);
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {

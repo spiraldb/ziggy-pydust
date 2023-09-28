@@ -74,3 +74,8 @@ def test_attributes():
 
 
 # --8<-- [end:attributes]
+
+
+def test_hash():
+    h = classes.Hash(42)
+    assert hash(h) == 1558143690

@@ -165,10 +165,6 @@ pub const Ops = py.class(struct {
 });
 // --8<-- [end:all]
 
-comptime {
-    py.rootmodule(@This());
-}
-
 // --8<-- [start:ops]
 pub const Operator = py.class(struct {
     const Self = @This();
@@ -198,3 +194,86 @@ pub const Operator = py.class(struct {
     }
 });
 // --8<-- [end:ops]
+
+// --8<-- [start:richcmp]
+pub const Comparator = py.class(struct {
+    const Self = @This();
+
+    num: u64,
+
+    pub fn __new__(args: struct { num: u64 }) Self {
+        return .{ .num = args.num };
+    }
+
+    pub fn __richcompare__(self: *const Self, args: struct { other: *const Self, op: py.CompareOp }) bool {
+        return switch (args.op) {
+            .LT => self.num < args.other.num,
+            .LE => self.num <= args.other.num,
+            .EQ => self.num == args.other.num,
+            .NE => self.num != args.other.num,
+            .GT => self.num > args.other.num,
+            .GE => self.num >= args.other.num,
+        };
+    }
+});
+// --8<-- [end:richcmp]
+
+// --8<-- [start:equals]
+pub const Equals = py.class(struct {
+    const Self = @This();
+
+    num: u64,
+
+    pub fn __new__(args: struct { num: u64 }) Self {
+        return .{ .num = args.num };
+    }
+
+    pub fn __eq__(self: *const Self, other: *const Self) bool {
+        return self.num == other.num;
+    }
+});
+// --8<-- [end:equals]
+
+// --8<-- [start:lessthan]
+pub const LessThan = py.class(struct {
+    const Self = @This();
+
+    name: py.PyString,
+
+    pub fn __new__(args: struct { name: py.PyString }) Self {
+        args.name.incref();
+        return .{ .name = args.name };
+    }
+
+    pub fn __lt__(self: *const Self, other: *const Self) !bool {
+        const le = try self.__le__(other);
+        if (le) {
+            const selfName = try self.name.asSlice();
+            const otherName = try other.name.asSlice();
+
+            if (std.mem.eql(u8, selfName, otherName)) {
+                return false;
+            }
+        }
+        return le;
+    }
+
+    pub fn __le__(self: *const Self, other: *const Self) !bool {
+        const selfName = try self.name.asSlice();
+        const otherName = try other.name.asSlice();
+        if (selfName.len > otherName.len) {
+            return false;
+        }
+        for (0..selfName.len) |i| {
+            if (selfName[i] > otherName[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+});
+// --8<-- [end:lessthan]
+
+comptime {
+    py.rootmodule(@This());
+}

@@ -88,3 +88,57 @@ def test_custom_ops():
 
 
 # --8<-- [end:test_ops]
+
+
+def test_lessThan():
+    cmp1 = operators.Comparator(0)
+    cmp2 = operators.Comparator(1)
+
+    assert cmp1 < cmp2
+    assert cmp1 <= cmp2
+    assert cmp1 != cmp2
+
+
+def test_equals():
+    cmp1 = operators.Comparator(1)
+    cmp2 = operators.Comparator(1)
+
+    assert cmp1 == cmp2
+
+
+def test_greaterThan():
+    cmp1 = operators.Comparator(2)
+    cmp2 = operators.Comparator(1)
+
+    assert cmp1 > cmp2
+    assert cmp1 >= cmp2
+    assert cmp1 != cmp2
+
+
+def test_justequals():
+    cmp1 = operators.Equals(1)
+    cmp2 = operators.Equals(1)
+
+    assert cmp1 == cmp2
+    assert cmp1 != cmp2
+
+    with pytest.raises(TypeError):
+        assert cmp1 > cmp2
+    with pytest.raises(TypeError):
+        assert cmp1 >= cmp2
+    with pytest.raises(TypeError):
+        assert cmp1 < cmp2
+    with pytest.raises(TypeError):
+        assert cmp1 <= cmp2
+
+
+def test_justLessThan():
+    cmp1 = operators.LessThan("abc")
+    cmp2 = operators.LessThan("abd")
+
+    assert cmp1 < cmp2
+    assert cmp1 <= cmp2
+    assert not (cmp1 > cmp2)
+    assert not (cmp1 >= cmp2)
+    assert not (cmp1 == cmp2)
+    assert cmp1 != cmp2

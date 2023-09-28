@@ -155,7 +155,7 @@ Python operators.
 Also note the shorthand signatures:
 
 ```zig
-const binaryfunc = fn(self: *Self, other: object) !object;
+const binaryfunc = fn(*Self, object) !object;
 ```
 
 ### Type Methods
@@ -185,6 +185,26 @@ The remaining sequence methods are yet to be implemented.
 | `__getitem__` | `binaryfunc` |
 
 The remaining mapping methods are yet to be implemented.
+
+### Richcompare
+
+CompareOp is a zig enum variant of CPython operator int. With an enum you can easily construct an exhaustive switch statement.
+
+| Method            | Signature                                   |
+| :---------------- | :------------------------------------------ |
+| `__hash__`        | `#!zig fn(*Self) !usize`                    |
+| `__richcompare__` | `#!zig fn(*Self, object, CompareOp) !usize` |
+
+Additionally you can implement comparison method as you would in python by providing individual operations as functions.
+
+| Method   | Signature                       |
+| :------- | :------------------------------ |
+| `__lt__` | `#!zig fn(*Self, object) !bool` |
+| `__le__` | `#!zig fn(*Self, object) !bool` |
+| `__eq__` | `#!zig fn(*Self, object) !bool` |
+| `__ne__` | `#!zig fn(*Self, object) !bool` |
+| `__gt__` | `#!zig fn(*Self, object) !bool` |
+| `__ge__` | `#!zig fn(*Self, object) !bool` |
 
 ### Number Methods
 

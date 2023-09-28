@@ -148,6 +148,21 @@ pub const ZigOnlyMethod = py.class(struct {
 });
 // --8<-- [end:zigonly]
 
+// --8<-- [start:zigonly]
+pub const Hash = py.class(struct {
+    const Self = @This();
+    number: u32,
+
+    pub fn __new__(args: struct { x: u32 }) Self {
+        return .{ .number = args.x };
+    }
+
+    pub fn __hash__(self: *const Self) u32 {
+        return std.hash.Murmur3_32.hashUint32(@intCast(self.number));
+    }
+});
+// --8<-- [end:zigonly]
+
 comptime {
     py.rootmodule(@This());
 }
