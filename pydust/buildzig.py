@@ -13,14 +13,16 @@ limitations under the License.
 """
 
 import contextlib
+import hashlib
+import io
 import os
-import shutil
 import subprocess
 import sys
 import sysconfig
 import textwrap
 from typing import TextIO
 
+import pydust
 from pydust import config
 
 PYVER_MINOR = ".".join(str(v) for v in sys.version_info[:2])
@@ -36,11 +38,11 @@ def zig_build(argv: list[str]):
     conf = config.load()
 
     # Always generate the supporting pydist.build.zig
-    generate_pydust_build_zig(conf.pydust_build_zig)
+    update_file(conf.pydust_build_zig, generate_pydust_build_zig())
 
     if not conf.self_managed:
         # Generate the build.zig if we're managing the ext_modules ourselves
-        generate_build_zig(conf.build_zig)
+        update_file(conf.build_zig, generate_build_zig())
 
     zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
 
@@ -50,7 +52,7 @@ def zig_build(argv: list[str]):
     )
 
 
-def generate_build_zig(build_zig_file):
+def generate_build_zig():
     """Generate the build.zig file for the current pyproject.toml.
 
     Initially we were calling `zig build-lib` directly, and this worked fine except it meant we
@@ -62,7 +64,7 @@ def generate_build_zig(build_zig_file):
     """
     conf = config.load()
 
-    with open(build_zig_file, "w+") as f:
+    with io.StringIO() as f:
         b = Writer(f)
 
         b.writeln('const std = @import("std");')
@@ -99,13 +101,26 @@ def generate_build_zig(build_zig_file):
                     """
                 )
 
+        return f.getvalue()
 
-def generate_pydust_build_zig(pydust_build_zig_file):
+
+def generate_pydust_build_zig():
     """Copy the supporting pydust.build.zig into the project directory."""
-    import pydust
+    return open(os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig")).read()
 
-    src = os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig")
-    shutil.copy(src, pydust_build_zig_file)
+
+def update_file(path, contents: TextIO):
+    """Update a file only if the contents have changed.
+
+    This helps ensure we don't unnecessarily invalidate timestamp based caches.
+    """
+    if (
+        os.path.exists(path)
+        and hashlib.sha1(open(path, "rb").read()).hexdigest() == hashlib.sha1(contents.encode("utf-8")).hexdigest()
+    ):
+        return
+    with open(path, "w+") as f:
+        f.write(contents)
 
 
 class Writer:
