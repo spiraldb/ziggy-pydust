@@ -17,20 +17,40 @@ const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 
 /// Wrapper for Python PyType.
+/// Since PyTypeObject is opaque in the Python API, we cannot use the PyObject mixin.
+/// Instead, we re-implement the mixin functions and insert @ptrCast where necessary.
 pub const PyType = extern struct {
     obj: py.PyObject,
 
     pub usingnamespace PyObjectMixin("type", "PyType", @This());
 
     pub fn name(self: PyType) !py.PyString {
-        return py.PyString.unchecked(.{ .py = ffi.PyType_GetName(self.ptr()) orelse return PyError.PyRaised });
+        return py.PyString.unchecked(.{
+            .py = ffi.PyType_GetName(typePtr(self.obj.py)) orelse return PyError.PyRaised,
+        });
     }
 
     pub fn qualifiedName(self: PyType) !py.PyString {
-        return py.PyString.unchecked(ffi.PyType_GetQualName(self.obj.py) orelse return PyError.PyRaised);
+        return py.PyString.unchecked(.{
+            .py = ffi.PyType_GetQualName(typePtr(self.obj.py)) orelse return PyError.PyRaised,
+        });
     }
 
-    fn ptr(self: PyType) *ffi.PyTypeObject {
-        return @alignCast(@ptrCast(self.obj.py));
+    fn typePtr(obj: *ffi.PyObject) *ffi.PyTypeObject {
+        return @alignCast(@ptrCast(obj));
+    }
+
+    fn objPtr(obj: *ffi.PyTypeObject) *ffi.PyObject {
+        return @alignCast(@ptrCast(obj));
     }
 };
+
+test "PyType" {
+    py.initialize();
+    defer py.finalize();
+
+    const StringIO = try PyType.checked(try py.importFrom("io", "StringIO"));
+    defer StringIO.decref();
+
+    try std.testing.expectEqualSlices(u8, "StringIO", try (try StringIO.name()).asSlice());
+}
