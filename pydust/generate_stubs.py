@@ -50,7 +50,7 @@ def function(obj, indent, text_signature=None):
     string += f"{indent}def {obj.__name__}{text_signature}:\n"
     indent += INDENT
     string += doc(obj, indent)
-    string += f"{indent}pass\n"
+    string += f"{indent}...\n"
     string += "\n"
     string += "\n"
     return string
@@ -64,8 +64,11 @@ def doc(obj, indent) -> str:
 
 
 def member_sort(member):
+    """Push classes and functions below attributes"""
     if inspect.isclass(member):
         value = 10 + len(inspect.getmro(member))
+    elif inspect.isbuiltin(member):
+        value = 5
     else:
         value = 1
     return value
@@ -73,16 +76,15 @@ def member_sort(member):
 
 def get_module_members(module):
     members = [
-        member
+        (name, member)
         for name, member in inspect.getmembers(module, lambda obj: not inspect.ismodule(obj))
         if not name.startswith("_")
     ]
-    members.sort(key=member_sort)
+    members.sort(key=lambda member_tuple: (member_sort(member_tuple[1]), member_tuple[0]))
     return members
 
 
-def pyi_file(obj, indent="") -> tuple[str, list[str]]:
-    symbols = []
+def pyi_file(obj, name: str, indent="") -> str:
     result_content = ""
     if inspect.ismodule(obj):
         result_content += doc(obj, indent)
@@ -92,27 +94,21 @@ def pyi_file(obj, indent="") -> tuple[str, list[str]]:
 
         members = get_module_members(obj)
         members_string = ""
-        for member in members:
-            append, new_symbols = pyi_file(member, indent=indent)
+        for name, member in members:
+            append = pyi_file(member, name, indent=indent)
             members_string += append
-            symbols.extend(new_symbols)
 
         submodules = inspect.getmembers(module, inspect.ismodule)
         for name, submodule in submodules:
-            symbols.append(submodule.__name__)
             members_string += f"{indent}class {submodule.__name__}:\n"
             submod_indent = indent + INDENT
             members_string += doc(submodule, submod_indent)
             submodule_members = get_module_members(submodule)
-            for member in submodule_members:
-                append, new_symbols = pyi_file(member, indent=submod_indent)
+            for name, member in submodule_members:
+                append = pyi_file(member, name, indent=submod_indent)
                 members_string += append
 
-        if indent == "":
-            result_content += f"{indent}__all__ = {symbols}\n"
-            result_content += members_string
-        else:
-            result_content += members_string
+        result_content += members_string
 
     elif inspect.isclass(obj):
         mro = inspect.getmro(obj)
@@ -121,7 +117,6 @@ def pyi_file(obj, indent="") -> tuple[str, list[str]]:
         else:
             inherit = ""
         result_content += f"{indent}class {obj.__name__}{inherit}:\n"
-        symbols.append(obj.__name__)
         indent += INDENT
 
         class_body = doc(obj, indent)
@@ -132,22 +127,22 @@ def pyi_file(obj, indent="") -> tuple[str, list[str]]:
             class_body += "\n"
 
         members = [
-            func for name, func in vars(obj).items() if name not in ["__doc__", "__module__", "__new__", "__init__"]
+            (name, func)
+            for name, func in vars(obj).items()
+            if name not in ["__doc__", "__module__", "__new__", "__init__", "__del__"]
         ]
 
-        for member in members:
-            append, new_symbols = pyi_file(member, indent=indent)
+        for name, member in members:
+            append = pyi_file(member, name, indent=indent)
             class_body += append
-            symbols.extend(new_symbols)
 
         if not class_body:
-            class_body += f"{indent}pass\n"
+            class_body += f"{indent}...\n"
 
         result_content += class_body
         result_content += "\n\n"
 
     elif inspect.isbuiltin(obj):
-        symbols.append(obj.__name__)
         result_content += function(obj, indent)
 
     elif inspect.ismethoddescriptor(obj):
@@ -161,13 +156,13 @@ def pyi_file(obj, indent="") -> tuple[str, list[str]]:
     elif inspect.ismemberdescriptor(obj):
         result_content += f"{indent}{obj.__name__}: ..."
     else:
-        raise Exception(f"Object {obj} is not supported")
-    return result_content, symbols
+        result_content += f"{indent}{name}: {type(obj).__qualname__}\n"
+    return result_content
 
 
 def do_black(content, is_pyi):
     mode = black.Mode(
-        target_versions={black.TargetVersion.PY35},
+        target_versions={black.TargetVersion.PY311},
         line_length=119,
         is_pyi=is_pyi,
         string_normalization=True,
@@ -190,7 +185,7 @@ def module_dir(module_name: str) -> Path:
 def write(module, directory, module_name):
     name = simple_name(module_name)
     filename = directory.joinpath(module_dir(module_name)).joinpath(name + ".pyi")
-    pyi_content, symbols = pyi_file(module)
+    pyi_content = pyi_file(module, module_name)
     pyi_content = do_black(pyi_content, is_pyi=True)
     os.makedirs(directory, exist_ok=True)
 
