@@ -20,7 +20,6 @@ import subprocess
 import sys
 import sysconfig
 import textwrap
-import typing
 from typing import TextIO
 
 import pydust
