@@ -643,7 +643,7 @@ fn RichCompare(comptime definition: type) type {
         }
 
         fn builtCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
-            const compFunc = funcPtrs[@intCast(op)];
+            const compFunc = compareFuncs[@intCast(op)];
             if (compFunc) |func| {
                 return @call(.auto, func, .{ pyself, pyother });
             } else {
@@ -651,7 +651,7 @@ fn RichCompare(comptime definition: type) type {
             }
         }
 
-        const funcPtrs = blk: {
+        const compareFuncs = blk: {
             var funcs_: [6]?BinaryFunc = .{ null, null, null, null, null, null };
             for (funcs.compareFuncs, 0..) |func, i| {
                 if (@hasDecl(definition, func)) {
