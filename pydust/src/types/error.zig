@@ -195,7 +195,6 @@ const PyExc = struct {
                 if (qtype) |q| py.decref(q);
                 if (qvalue) |q| py.decref(q);
                 std.debug.assert(qtraceback != null);
-                defer py.decref(qtraceback);
 
                 // Extract the traceback frame by calling into Python (Pytraceback isn't part of the Stable API)
                 const pytb = py.PyObject{ .py = qtraceback.? };
