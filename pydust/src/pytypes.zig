@@ -596,15 +596,11 @@ fn BinaryOperator(
 
 fn RichCompare(comptime definition: type) type {
     const BinaryFunc = *const fn (*ffi.PyObject, *ffi.PyObject) callconv(.C) ?*ffi.PyObject;
+    const errorMsg =
+        \\Class cannot define both __richcompare__ and
+        \\ any of __lt__, __le__, __eq__, __ne__, __gt__, __ge__."
+    ;
     const richCmpName = "__richcompare__";
-    const compareFuncs = .{
-        "__lt__",
-        "__le__",
-        "__eq__",
-        "__ne__",
-        "__gt__",
-        "__ge__",
-    };
     return struct {
         const hasCompare = blk: {
             var result = false;
@@ -612,10 +608,10 @@ fn RichCompare(comptime definition: type) type {
                 result = true;
             }
 
-            for (compareFuncs) |fnName| {
+            for (funcs.compareFuncs) |fnName| {
                 if (@hasDecl(definition, fnName)) {
                     if (result) {
-                        @compileError("PyDust class cannot define both __richcompare__ and any of __lt__, __le__, __eq__, __ne__, __gt__, __ge__, found " ++ fnName);
+                        @compileError(errorMsg);
                     }
                     break :blk true;
                 }

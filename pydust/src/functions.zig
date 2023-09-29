@@ -77,7 +77,6 @@ pub const compareFuncs = .{
     "__ne__",
     "__gt__",
     "__ge__",
-    "__richcompare__",
 };
 
 const reservedNames = .{
@@ -92,6 +91,7 @@ const reservedNames = .{
     "__iter__",
     "__next__",
     "__hash__",
+    "__richcompare__",
 } ++ compareFuncs ++ keys(BinaryOperators);
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
