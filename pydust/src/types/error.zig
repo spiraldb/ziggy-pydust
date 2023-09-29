@@ -170,7 +170,7 @@ const PyExc = struct {
                 const filename = try py.allocator.dupeZ(u8, line_info.file_name);
                 defer py.allocator.free(filename);
                 const compiled = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse continue;
-                defer (py.PyObject{ .py = compiled }).decref();
+                defer py.decref(compiled);
 
                 // Import the compiled code as a module and invoke the failing function
                 const module_name = try py.allocator.dupeZ(u8, symbol_info.compile_unit_name);
@@ -195,6 +195,7 @@ const PyExc = struct {
                 if (qtype) |q| py.decref(q);
                 if (qvalue) |q| py.decref(q);
                 std.debug.assert(qtraceback != null);
+                defer py.decref(qtraceback);
 
                 // Extract the traceback frame by calling into Python (Pytraceback isn't part of the Stable API)
                 const pytb = py.PyObject{ .py = qtraceback.? };
