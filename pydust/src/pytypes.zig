@@ -105,6 +105,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
         const members = Members(definition);
         const properties = Properties(definition);
         const doc = Doc(definition, name);
+        const richcmp = RichCompare(definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -190,6 +191,20 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_repr,
                     .pfunc = @ptrCast(@constCast(&tp_repr)),
+                }};
+            }
+
+            if (@hasDecl(definition, "__hash__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_hash,
+                    .pfunc = @ptrCast(@constCast(&tp_hash)),
+                }};
+            }
+
+            if (richcmp.hasCompare) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_richcompare,
+                    .pfunc = @ptrCast(@constCast(&richcmp.compare)),
                 }};
             }
 
@@ -345,6 +360,12 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(definition.__repr__(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
+        }
+
+        fn tp_hash(pyself: *ffi.PyObject) callconv(.C) ffi.Py_hash_t {
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+            const result = tramp.coerceError(definition.__hash__(&self.state)) catch return -1;
+            return @as(isize, @intCast(result));
         }
     };
 }
@@ -570,5 +591,74 @@ fn BinaryOperator(
             const result = tramp.coerceError(func(&self.state, other)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
+    };
+}
+
+fn RichCompare(comptime definition: type) type {
+    const BinaryFunc = *const fn (*ffi.PyObject, *ffi.PyObject) callconv(.C) ?*ffi.PyObject;
+    const errorMsg =
+        \\Class cannot define both __richcompare__ and
+        \\ any of __lt__, __le__, __eq__, __ne__, __gt__, __ge__."
+    ;
+    const richCmpName = "__richcompare__";
+    return struct {
+        const hasCompare = blk: {
+            var result = false;
+            if (@hasDecl(definition, richCmpName)) {
+                result = true;
+            }
+
+            for (funcs.compareFuncs) |fnName| {
+                if (@hasDecl(definition, fnName)) {
+                    if (result) {
+                        @compileError(errorMsg);
+                    }
+                    break :blk true;
+                }
+            }
+            break :blk result;
+        };
+
+        const compare = if (@hasDecl(definition, richCmpName)) richCompare else builtCompare;
+
+        fn richCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
+            const func = definition.__richcompare__;
+            const typeInfo = @typeInfo(@TypeOf(func));
+            const sig = funcs.parseSignature(richCmpName, typeInfo.Fn, &.{});
+
+            if (sig.selfParam == null) @compileError("__richcompare__ must take a self parameter");
+
+            const argsParam = sig.argsParam orelse @compileError("__richcompare__ must take arguments");
+            const argFields = @typeInfo(argsParam).Struct.fields;
+            const self = py.as(sig.selfParam.?, pyself) catch return null;
+            const otherArg = tramp.Trampoline(argFields[0].type).unwrap(.{ .py = pyother }) catch return null;
+            const opEnum: py.CompareOp = @enumFromInt(op);
+
+            var callArg: argsParam = undefined;
+            @field(callArg, argFields[0].name) = otherArg;
+            @field(callArg, argFields[1].name) = opEnum;
+
+            const result = tramp.coerceError(func(self, callArg)) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+
+        fn builtCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
+            const compFunc = compareFuncs[@intCast(op)];
+            if (compFunc) |func| {
+                return @call(.auto, func, .{ pyself, pyother });
+            } else {
+                return py.NotImplemented().py;
+            }
+        }
+
+        const compareFuncs = blk: {
+            var funcs_: [6]?BinaryFunc = .{ null, null, null, null, null, null };
+            for (funcs.compareFuncs, 0..) |func, i| {
+                if (@hasDecl(definition, func)) {
+                    funcs_[i] = &BinaryOperator(definition, func).call;
+                }
+            }
+            break :blk funcs_;
+        };
     };
 }

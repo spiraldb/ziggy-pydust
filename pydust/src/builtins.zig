@@ -20,6 +20,25 @@ const State = @import("./discovery.zig").State;
 const ffi = @import("./ffi.zig");
 const PyError = @import("./errors.zig").PyError;
 
+/// Zig enum for python richcompare op int.
+/// The order of enums has to match the values of ffi.Py_LT, etc
+pub const CompareOp = enum {
+    LT,
+    LE,
+    EQ,
+    NE,
+    GT,
+    GE,
+};
+
+/// Returns a new reference to Py_NotImplemented.
+pub fn NotImplemented() py.PyObject {
+    // It's important that we incref the Py_NotImplemented singleton
+    const notImplemented = py.PyObject{ .py = ffi.Py_NotImplemented };
+    notImplemented.incref();
+    return notImplemented;
+}
+
 /// Returns a new reference to Py_None.
 pub fn None() py.PyObject {
     // It's important that we incref the Py_None singleton
