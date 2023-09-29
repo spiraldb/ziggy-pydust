@@ -652,12 +652,10 @@ fn RichCompare(comptime definition: type) type {
         }
 
         const funcPtrs = blk: {
-            var funcs_: [6]?BinaryFunc = undefined;
-            for (compareFuncs, 0..) |func, i| {
+            var funcs_: [6]?BinaryFunc = .{ null, null, null, null, null, null };
+            for (funcs.compareFuncs, 0..) |func, i| {
                 if (@hasDecl(definition, func)) {
                     funcs_[i] = &BinaryOperator(definition, func).call;
-                } else {
-                    funcs_[i] = null;
                 }
             }
             break :blk funcs_;
