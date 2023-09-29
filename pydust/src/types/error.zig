@@ -100,6 +100,7 @@ const PyExc = struct {
 
     pub fn raiseFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError {
         const message = try std.fmt.allocPrintZ(py.allocator, fmt, args);
+        defer py.allocator.free(message);
         return self.raise(message);
     }
 
@@ -154,6 +155,7 @@ const PyExc = struct {
                 // This means that exceptions on line 1 will be off... but that's quite rare.
                 const nnewlines = if (line_info.line < 2) 0 else line_info.line - 2;
                 const newlines = try py.allocator.alloc(u8, nnewlines);
+                defer py.allocator.free(newlines);
                 @memset(newlines, '\n');
 
                 // Setup a function we know will fail (with DivideByZero error)
@@ -162,6 +164,7 @@ const PyExc = struct {
                     "{s}def {s}():\n    1/0\n",
                     .{ newlines, symbol_info.symbol_name },
                 );
+                defer py.allocator.free(code);
 
                 // Compilation should succeed, but execution will fail.
                 const filename = try py.allocator.dupeZ(u8, line_info.file_name);

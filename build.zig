@@ -55,6 +55,7 @@ pub fn build(b: *std.Build) void {
     main_tests.addIncludePath(.{ .path = pythonInc });
     main_tests.addLibraryPath(.{ .path = pythonLib });
     main_tests.linkSystemLibrary(pythonLibName);
+    main_tests.addRPath(.{ .path = pythonLib });
     main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     const run_main_tests = b.addRunArtifact(main_tests);
@@ -69,11 +70,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     example_lib.linkLibC();
-    main_tests.addIncludePath(.{ .path = pythonInc });
-    main_tests.addLibraryPath(.{ .path = pythonLib });
-    main_tests.linkSystemLibrary(pythonLibName);
-    main_tests.addAnonymousModule("pydust", .{ .source_file = .{ .path = "pydust/src/pydust.zig" } });
-    main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
+    example_lib.addIncludePath(.{ .path = pythonInc });
+    example_lib.addLibraryPath(.{ .path = pythonLib });
+    example_lib.linkSystemLibrary(pythonLibName);
+    example_lib.addRPath(.{ .path = pythonLib });
+    example_lib.addAnonymousModule("pydust", .{ .source_file = .{ .path = "pydust/src/pydust.zig" } });
+    example_lib.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     // Option for emitting test binary based on the given root source.
     // This is used for debugging as in .vscode/tasks.json
