@@ -306,50 +306,53 @@
 <span class="line" id="L170">                <span class="tok-kw">const</span> filename = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, line_info.file_name);</span>
 <span class="line" id="L171">                <span class="tok-kw">defer</span> py.allocator.free(filename);</span>
 <span class="line" id="L172">                <span class="tok-kw">const</span> compiled = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) <span class="tok-kw">orelse</span> <span class="tok-kw">continue</span>;</span>
-<span class="line" id="L173"></span>
-<span class="line" id="L174">                <span class="tok-comment">// Import the compiled code as a module and invoke the failing function</span>
+<span class="line" id="L173">                <span class="tok-kw">defer</span> py.decref(compiled);</span>
+<span class="line" id="L174"></span>
+<span class="line" id="L175">                <span class="tok-comment">// Import the compiled code as a module and invoke the failing function</span>
 </span>
-<span class="line" id="L175">                <span class="tok-kw">const</span> module_name = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, symbol_info.compile_unit_name);</span>
-<span class="line" id="L176">                <span class="tok-kw">defer</span> py.allocator.free(module_name);</span>
-<span class="line" id="L177">                <span class="tok-kw">const</span> fake_module: py.PyObject = .{</span>
-<span class="line" id="L178">                    .py = ffi.PyImport_ExecCodeModule(module_name.ptr, compiled) <span class="tok-kw">orelse</span> <span class="tok-kw">continue</span>,</span>
-<span class="line" id="L179">                };</span>
-<span class="line" id="L180"></span>
-<span class="line" id="L181">                <span class="tok-kw">const</span> func_name = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, symbol_info.symbol_name);</span>
-<span class="line" id="L182">                <span class="tok-kw">defer</span> py.allocator.free(func_name);</span>
-<span class="line" id="L183">                <span class="tok-kw">const</span> fake_function = <span class="tok-kw">try</span> fake_module.get(func_name);</span>
-<span class="line" id="L184">                _ = fake_function.call(.{}, .{}) <span class="tok-kw">catch</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L185"></span>
-<span class="line" id="L186">                <span class="tok-comment">// Grab our forced exception info.</span>
+<span class="line" id="L176">                <span class="tok-kw">const</span> module_name = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, symbol_info.compile_unit_name);</span>
+<span class="line" id="L177">                <span class="tok-kw">defer</span> py.allocator.free(module_name);</span>
+<span class="line" id="L178">                <span class="tok-kw">const</span> fake_module: py.PyObject = .{</span>
+<span class="line" id="L179">                    .py = ffi.PyImport_ExecCodeModule(module_name.ptr, compiled) <span class="tok-kw">orelse</span> <span class="tok-kw">continue</span>,</span>
+<span class="line" id="L180">                };</span>
+<span class="line" id="L181">                <span class="tok-kw">defer</span> fake_module.decref();</span>
+<span class="line" id="L182"></span>
+<span class="line" id="L183">                <span class="tok-kw">const</span> func_name = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, symbol_info.symbol_name);</span>
+<span class="line" id="L184">                <span class="tok-kw">defer</span> py.allocator.free(func_name);</span>
+<span class="line" id="L185">                <span class="tok-kw">const</span> fake_function = <span class="tok-kw">try</span> fake_module.get(func_name);</span>
+<span class="line" id="L186">                _ = fake_function.call(.{}, .{}) <span class="tok-kw">catch</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L187">                <span class="tok-kw">defer</span> fake_function.decref();</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189">                <span class="tok-comment">// Grab our forced exception info.</span>
 </span>
-<span class="line" id="L187">                <span class="tok-comment">// We can ignore qtype and qvalue, we just want to get the traceback object.</span>
+<span class="line" id="L190">                <span class="tok-comment">// We can ignore qtype and qvalue, we just want to get the traceback object.</span>
 </span>
-<span class="line" id="L188">                <span class="tok-kw">var</span> qtype: ?*ffi.PyObject = <span class="tok-null">undefined</span>;</span>
-<span class="line" id="L189">                <span class="tok-kw">var</span> qvalue: ?*ffi.PyObject = <span class="tok-null">undefined</span>;</span>
-<span class="line" id="L190">                <span class="tok-kw">var</span> qtraceback: ?*ffi.PyObject = <span class="tok-null">undefined</span>;</span>
-<span class="line" id="L191">                ffi.PyErr_Fetch(&amp;qtype, &amp;qvalue, &amp;qtraceback);</span>
-<span class="line" id="L192">                <span class="tok-kw">if</span> (qtype) |q| py.decref(q);</span>
-<span class="line" id="L193">                <span class="tok-kw">if</span> (qvalue) |q| py.decref(q);</span>
-<span class="line" id="L194">                std.debug.assert(qtraceback != <span class="tok-null">null</span>);</span>
-<span class="line" id="L195"></span>
-<span class="line" id="L196">                <span class="tok-comment">// Extract the traceback frame by calling into Python (Pytraceback isn't part of the Stable API)</span>
+<span class="line" id="L191">                <span class="tok-kw">var</span> qtype: ?*ffi.PyObject = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L192">                <span class="tok-kw">var</span> qvalue: ?*ffi.PyObject = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L193">                <span class="tok-kw">var</span> qtraceback: ?*ffi.PyObject = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L194">                ffi.PyErr_Fetch(&amp;qtype, &amp;qvalue, &amp;qtraceback);</span>
+<span class="line" id="L195">                <span class="tok-kw">if</span> (qtype) |q| py.decref(q);</span>
+<span class="line" id="L196">                <span class="tok-kw">if</span> (qvalue) |q| py.decref(q);</span>
+<span class="line" id="L197">                std.debug.assert(qtraceback != <span class="tok-null">null</span>);</span>
+<span class="line" id="L198"></span>
+<span class="line" id="L199">                <span class="tok-comment">// Extract the traceback frame by calling into Python (Pytraceback isn't part of the Stable API)</span>
 </span>
-<span class="line" id="L197">                <span class="tok-kw">const</span> pytb = py.PyObject{ .py = qtraceback.? };</span>
-<span class="line" id="L198">                <span class="tok-kw">const</span> frame = (<span class="tok-kw">try</span> pytb.get(<span class="tok-str">&quot;tb_frame&quot;</span>)).py;</span>
-<span class="line" id="L199"></span>
-<span class="line" id="L200">                <span class="tok-comment">// Restore the original exception, augment it with the new frame, then fetch the new exception.</span>
+<span class="line" id="L200">                <span class="tok-kw">const</span> pytb = py.PyObject{ .py = qtraceback.? };</span>
+<span class="line" id="L201">                <span class="tok-kw">const</span> frame = (<span class="tok-kw">try</span> pytb.get(<span class="tok-str">&quot;tb_frame&quot;</span>)).py;</span>
+<span class="line" id="L202"></span>
+<span class="line" id="L203">                <span class="tok-comment">// Restore the original exception, augment it with the new frame, then fetch the new exception.</span>
 </span>
-<span class="line" id="L201">                ffi.PyErr_Restore(ptype, pvalue, ptraceback);</span>
-<span class="line" id="L202">                _ = ffi.PyTraceBack_Here(<span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(frame)));</span>
-<span class="line" id="L203">                ffi.PyErr_Fetch(&amp;ptype, &amp;pvalue, &amp;ptraceback);</span>
-<span class="line" id="L204">            }</span>
-<span class="line" id="L205"></span>
-<span class="line" id="L206">            <span class="tok-comment">// Restore the latest the exception info</span>
+<span class="line" id="L204">                ffi.PyErr_Restore(ptype, pvalue, ptraceback);</span>
+<span class="line" id="L205">                _ = ffi.PyTraceBack_Here(<span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(frame)));</span>
+<span class="line" id="L206">                ffi.PyErr_Fetch(&amp;ptype, &amp;pvalue, &amp;ptraceback);</span>
+<span class="line" id="L207">            }</span>
+<span class="line" id="L208"></span>
+<span class="line" id="L209">            <span class="tok-comment">// Restore the latest the exception info</span>
 </span>
-<span class="line" id="L207">            ffi.PyErr_Restore(ptype, pvalue, ptraceback);</span>
-<span class="line" id="L208">        }</span>
-<span class="line" id="L209">    }</span>
-<span class="line" id="L210">};</span>
-<span class="line" id="L211"></span>
+<span class="line" id="L210">            ffi.PyErr_Restore(ptype, pvalue, ptraceback);</span>
+<span class="line" id="L211">        }</span>
+<span class="line" id="L212">    }</span>
+<span class="line" id="L213">};</span>
+<span class="line" id="L214"></span>
 </code></pre></body>
 </html>
