@@ -100,6 +100,7 @@ const PyExc = struct {
 
     pub fn raiseFmt(comptime self: Self, comptime fmt: [:0]const u8, args: anytype) PyError {
         const message = try std.fmt.allocPrintZ(py.allocator, fmt, args);
+        defer py.allocator.free(message);
         return self.raise(message);
     }
 
@@ -154,6 +155,7 @@ const PyExc = struct {
                 // This means that exceptions on line 1 will be off... but that's quite rare.
                 const nnewlines = if (line_info.line < 2) 0 else line_info.line - 2;
                 const newlines = try py.allocator.alloc(u8, nnewlines);
+                defer py.allocator.free(newlines);
                 @memset(newlines, '\n');
 
                 // Setup a function we know will fail (with DivideByZero error)
@@ -162,11 +164,13 @@ const PyExc = struct {
                     "{s}def {s}():\n    1/0\n",
                     .{ newlines, symbol_info.symbol_name },
                 );
+                defer py.allocator.free(code);
 
                 // Compilation should succeed, but execution will fail.
                 const filename = try py.allocator.dupeZ(u8, line_info.file_name);
                 defer py.allocator.free(filename);
                 const compiled = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse continue;
+                defer py.decref(compiled);
 
                 // Import the compiled code as a module and invoke the failing function
                 const module_name = try py.allocator.dupeZ(u8, symbol_info.compile_unit_name);
@@ -174,11 +178,13 @@ const PyExc = struct {
                 const fake_module: py.PyObject = .{
                     .py = ffi.PyImport_ExecCodeModule(module_name.ptr, compiled) orelse continue,
                 };
+                defer fake_module.decref();
 
                 const func_name = try py.allocator.dupeZ(u8, symbol_info.symbol_name);
                 defer py.allocator.free(func_name);
                 const fake_function = try fake_module.get(func_name);
                 _ = fake_function.call(.{}, .{}) catch null;
+                defer fake_function.decref();
 
                 // Grab our forced exception info.
                 // We can ignore qtype and qvalue, we just want to get the traceback object.

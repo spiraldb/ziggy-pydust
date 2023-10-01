@@ -34,3 +34,7 @@ test "pydust-expected-failure" {
 
     try std.testing.expectEqualStrings("world", try str.asSlice());
 }
+
+comptime {
+    py.rootmodule(@This());
+}
