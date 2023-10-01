@@ -50,7 +50,49 @@ def zig_build(argv: list[str]):
     )
 
 
-def generate_build_zig(build_zig_file):
+def zig_build_config(
+        argv: list[str],
+        zig_exe: str = None,
+        build_zig: str = "build.zig",
+        self_managed: bool = False,
+        limited_api: bool = True,
+        names: list[str] | None = None,
+        paths: list[str] | None = None,
+    ):
+
+    _extensions = []
+
+    if names and paths:
+        for name, path in zip(names, paths):
+            _ext = config.ExtModule(name=name, root=path, limited_api=limited_api)
+            _extensions.append(_ext)
+
+        conf = config.ToolPydust(
+            zig_exe=zig_exe,
+            build_zig=build_zig,
+            self_managed=self_managed,
+            # ext_modules=_extensions,
+            ext_module=_extensions,
+        )
+
+        # Always generate the supporting pydist.build.zig
+        generate_pydust_build_zig(conf.pydust_build_zig)
+
+        if not conf.self_managed:
+            # Generate the build.zig if we're managing the ext_modules ourselves
+            generate_build_zig(conf.build_zig, conf=conf)
+
+        zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
+
+        cmds = zig_exe + ["build", "--build-file", conf.build_zig] + argv
+
+        print("cmd: ", cmds)
+
+        subprocess.run(cmds, check=True)
+
+
+
+def generate_build_zig(build_zig_file, conf=None):
     """Generate the build.zig file for the current pyproject.toml.
 
     Initially we were calling `zig build-lib` directly, and this worked fine except it meant we
@@ -60,7 +102,8 @@ def generate_build_zig(build_zig_file):
     to the .gitignore. This means ZLS works as expected, we can leverage zig build caching, and the user
     can inspect the generated file to assist with debugging.
     """
-    conf = config.load()
+    if not conf:
+        conf = config.load()
 
     with open(build_zig_file, "w+") as f:
         b = Writer(f)
