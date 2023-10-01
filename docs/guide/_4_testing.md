@@ -23,12 +23,8 @@ poetry add -G dev ziggy-pydust
 
 ```diff title="pyproject.toml"
 [tool.poetry.group.dev.dependencies]
-+ ziggy-pydust = "0.TODO_SET_MINOR_VERSION.*"
++ ziggy-pydust = "TODO_SET_VERSION"
 ```
-
-!!! note
-
-    Keep this version the same as build dependency version. There is currently no way to guarantee this with Poetry.
 
 
 After running `poetry run pytest` you should see your Zig tests included in your Pytest output:
