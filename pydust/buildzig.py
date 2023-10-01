@@ -58,6 +58,7 @@ def zig_build_config(
         build_zig: str = "build.zig",
         self_managed: bool = False,
         limited_api: bool = True,
+        generate_stubs: bool = False,
         names: list[str] | None = None,
         paths: list[str] | None = None,
     ):
@@ -90,6 +91,11 @@ def zig_build_config(
         print("cmds: ", " ".join(cmds))
 
         subprocess.run(cmds, check=True)
+
+        if generate_stubs:
+            from pydust.generate_stubs import generate_stubs
+            for name in names:
+                generate_stubs(name)
 
 
 def generate_build_zig(conf=None):

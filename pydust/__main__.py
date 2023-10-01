@@ -26,11 +26,11 @@ debug_sp.add_argument("entrypoint")
 
 build_sp = sub.add_parser("build", help="Build a zig-based python extension.", 
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-# build_sp.add_argument("root")
 build_sp.add_argument("-z", "--zig-exe", help="zig executable path")
 build_sp.add_argument("-b", "--build-zig", default="build.zig", help="build.zig file")
 build_sp.add_argument("-m", "--self-managed", default=False, action="store_true", help="self-managed mode")
 build_sp.add_argument("-a", "--limited-api", default=True, action="store_true", help="use limited python c-api")
+build_sp.add_argument("-g", "--generate-stubs", default=False, action="store_true", help="generate stubs")
 build_sp.add_argument("-n", "--ext-name", nargs=True, help="name of extension")
 build_sp.add_argument("-p", "--ext-path", nargs=True, help="path of extension")
 
@@ -57,6 +57,7 @@ def build(args):
             build_zig=args.build_zig,
             self_managed=args.self_managed,
             limited_api=args.limited_api,
+            generate_stubs=args.generate_stubs,
             names=args.ext_name,
             paths=args.ext_path,
         )
