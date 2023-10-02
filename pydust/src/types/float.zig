@@ -31,7 +31,7 @@ pub const PyFloat = extern struct {
 
     pub fn as(self: PyFloat, comptime T: type) !T {
         return switch (T) {
-            f32, f64 => {
+            f16, f32, f64 => {
                 const double = ffi.PyFloat_AsDouble(self.obj.py);
                 if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
                 return @floatCast(double);
