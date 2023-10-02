@@ -78,4 +78,4 @@ def test_attributes():
 
 def test_hash():
     h = classes.Hash(42)
-    assert hash(h) == 1558143690
+    assert hash(h) == -7849439630130923510

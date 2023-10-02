@@ -114,6 +114,13 @@ pub fn isinstance(object: anytype, cls: anytype) !bool {
     return result == 1;
 }
 
+/// Return "false" if the object is considered to be truthy, and true otherwise.
+pub fn not_(object: anytype) !bool {
+    const result = ffi.PyObject_Not(py.object(object).py);
+    if (result < 0) return PyError.PyRaised;
+    return result == 1;
+}
+
 /// Return the reference count of the object.
 pub fn refcnt(object: anytype) isize {
     const pyobj = py.object(object);

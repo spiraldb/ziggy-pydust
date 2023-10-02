@@ -365,7 +365,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
         fn tp_hash(pyself: *ffi.PyObject) callconv(.C) ffi.Py_hash_t {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(definition.__hash__(&self.state)) catch return -1;
-            return @as(isize, @intCast(result));
+            return @as(isize, @bitCast(result));
         }
     };
 }
@@ -645,10 +645,21 @@ fn RichCompare(comptime definition: type) type {
         fn builtCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
             const compFunc = compareFuncs[@intCast(op)];
             if (compFunc) |func| {
-                return @call(.auto, func, .{ pyself, pyother });
-            } else {
-                return py.NotImplemented().py;
+                return func(pyself, pyother);
+            } else if (op == @intFromEnum(py.CompareOp.NE)) {
+                // Use the negation of __eq__ if it is implemented and __ne__ is not.
+                if (compareFuncs[@intFromEnum(py.CompareOp.EQ)]) |eq_func| {
+                    const is_eq = eq_func(pyself, pyother) orelse return null;
+                    defer py.decref(is_eq);
+
+                    if (py.not_(is_eq) catch return null) {
+                        return py.True().obj.py;
+                    } else {
+                        return py.False().obj.py;
+                    }
+                }
             }
+            return py.NotImplemented().py;
         }
 
         const compareFuncs = blk: {

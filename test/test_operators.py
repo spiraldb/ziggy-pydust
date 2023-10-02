@@ -120,7 +120,8 @@ def test_justequals():
     cmp2 = operators.Equals(1)
 
     assert cmp1 == cmp2
-    assert cmp1 != cmp2
+    assert not cmp1 != cmp2
+    assert cmp1 != operators.Equals(2)
 
     with pytest.raises(TypeError):
         assert cmp1 > cmp2

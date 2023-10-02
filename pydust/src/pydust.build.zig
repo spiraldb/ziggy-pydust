@@ -46,7 +46,7 @@ pub fn addPydust(b: *std.Build, options: PydustOptions) *PydustStep {
 }
 
 pub const PydustStep = struct {
-    step: Step,
+    owner: *std.Build,
     allocator: std.mem.Allocator,
     options: PydustOptions,
 
@@ -56,9 +56,9 @@ pub const PydustStep = struct {
     libpython: []const u8,
     hexversion: []const u8,
 
-    pydust_source_file: GeneratedFile,
-    python_include_dir: GeneratedFile,
-    python_library_dir: GeneratedFile,
+    pydust_source_file: []const u8,
+    python_include_dir: []const u8,
+    python_library_dir: []const u8,
 
     pub fn add(b: *std.Build, options: PydustOptions) *PydustStep {
         const test_build_step = b.step("pydust-test-build", "Build Pydust test runners");
@@ -86,32 +86,27 @@ pub const PydustStep = struct {
         ) catch @panic("Cannot get python hexversion");
 
         var self = b.allocator.create(PydustStep) catch @panic("OOM");
+
         self.* = .{
-            .step = Step.init(.{
-                .id = .custom,
-                .name = "configure pydust",
-                .owner = b,
-                .makeFn = make,
-            }),
+            .owner = b,
             .allocator = b.allocator,
             .options = options,
             .test_build_step = test_build_step,
             .python_exe = python_exe,
             .libpython = libpython,
             .hexversion = hexversion,
-            .pydust_source_file = .{ .step = &self.step },
-            .python_include_dir = .{ .step = &self.step },
-            .python_library_dir = .{ .step = &self.step },
+            .pydust_source_file = "",
+            .python_include_dir = "",
+            .python_library_dir = "",
         };
-
         // Eagerly run path discovery to work around ZLS support.
-        self.python_include_dir.path = self.pythonOutput(
+        self.python_include_dir = self.pythonOutput(
             "import sysconfig; print(sysconfig.get_path('include'), end='')",
         ) catch @panic("Failed to setup Python");
-        self.python_library_dir.path = self.pythonOutput(
+        self.python_library_dir = self.pythonOutput(
             "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')",
         ) catch @panic("Failed to setup Python");
-        self.pydust_source_file.path = self.pythonOutput(
+        self.pydust_source_file = self.pythonOutput(
             "import pydust; import os; print(os.path.join(os.path.dirname(pydust.__file__), 'src/pydust.zig'), end='')",
         ) catch @panic("Failed to setup Python");
 
@@ -131,15 +126,15 @@ pub const PydustStep = struct {
                 const testdebug = b.addTest(.{ .root_source_file = .{ .path = root }, .target = .{}, .optimize = .Debug });
                 testdebug.addOptions("pyconf", pyconf);
                 testdebug.addAnonymousModule("pydust", .{
-                    .source_file = .{ .generated = &self.pydust_source_file },
+                    .source_file = .{ .path = self.pydust_source_file },
                     .dependencies = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
                 });
-                testdebug.addIncludePath(.{ .generated = &self.python_include_dir });
+                testdebug.addIncludePath(.{ .path = self.python_include_dir });
                 testdebug.linkLibC();
                 testdebug.linkSystemLibrary(libpython);
-                testdebug.addLibraryPath(.{ .generated = &self.python_library_dir });
+                testdebug.addLibraryPath(.{ .path = self.python_library_dir });
                 // Needed to support miniconda statically linking libpython on macos
-                testdebug.addRPath(.{ .generated = &self.python_library_dir });
+                testdebug.addRPath(.{ .path = self.python_library_dir });
 
                 const debugBin = b.addInstallBinFile(testdebug.getEmittedBin(), "debug.bin");
                 b.getInstallStep().dependOn(&debugBin.step);
@@ -152,7 +147,7 @@ pub const PydustStep = struct {
     /// Adds a Pydust Python module. The resulting library and test binaries can be further configured with
     /// additional dependencies or modules.
     pub fn addPythonModule(self: *PydustStep, options: PythonModuleOptions) PythonModule {
-        const b = self.step.owner;
+        const b = self.owner;
 
         const short_name = options.short_name();
 
@@ -171,10 +166,10 @@ pub const PydustStep = struct {
         });
         lib.addOptions("pyconf", pyconf);
         lib.addAnonymousModule("pydust", .{
-            .source_file = .{ .generated = &self.pydust_source_file },
+            .source_file = .{ .path = self.pydust_source_file },
             .dependencies = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
         });
-        lib.addIncludePath(.{ .generated = &self.python_include_dir });
+        lib.addIncludePath(.{ .path = self.python_include_dir });
         lib.linkLibC();
         lib.linker_allow_shlib_undefined = true;
 
@@ -188,11 +183,15 @@ pub const PydustStep = struct {
         b.getInstallStep().dependOn(&install.step);
 
         // Invoke stub generator on the emitted binary
+        // As we are using `inspect` module to proudce stubs we need the module to be importable which requires setting PYTHONPATH
+        // Long term we want to move this generation to Zig as there's more type information available
         const stubsGenerator = std.fs.path.join(self.allocator, &.{
-            std.fs.path.dirname(self.pydust_source_file.getPath()).?,
+            std.fs.path.dirname(self.pydust_source_file).?,
             "../generate_stubs.py",
         }) catch @panic("OOM");
-        const stubs = b.addSystemCommand(&.{ self.python_exe, stubsGenerator, options.name, "." });
+        const workingDir = std.fs.cwd().realpathAlloc(self.allocator, ".") catch @panic("OOM");
+        const stubs = b.addSystemCommand(&.{ self.python_exe, stubsGenerator, options.name, workingDir });
+        stubs.setEnvironmentVariable("PYTHONPATH", workingDir);
         stubs.step.dependOn(&install.step);
         b.getInstallStep().dependOn(&stubs.step);
 
@@ -205,15 +204,15 @@ pub const PydustStep = struct {
         });
         libtest.addOptions("pyconf", pyconf);
         libtest.addAnonymousModule("pydust", .{
-            .source_file = .{ .generated = &self.pydust_source_file },
+            .source_file = .{ .path = self.pydust_source_file },
             .dependencies = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
         });
-        libtest.addIncludePath(.{ .generated = &self.python_include_dir });
+        libtest.addIncludePath(.{ .path = self.python_include_dir });
         libtest.linkLibC();
         libtest.linkSystemLibrary(self.libpython);
-        libtest.addLibraryPath(.{ .generated = &self.python_library_dir });
+        libtest.addLibraryPath(.{ .path = self.python_library_dir });
         // Needed to support miniconda statically linking libpython on macos
-        libtest.addRPath(.{ .generated = &self.python_library_dir });
+        libtest.addRPath(.{ .path = self.python_library_dir });
 
         // Install the test binary
         const install_libtest = b.addInstallBinFile(
@@ -262,15 +261,6 @@ pub const PydustStep = struct {
         @memcpy(destPath[short_name.len..], suffix);
 
         return destPath;
-    }
-
-    fn make(step: *Step, progress: *std.Progress.Node) !void {
-        _ = step;
-        _ = progress;
-        // We use to run path discovery inside this step. Unfortunately the Zig Language Server would avoid
-        // running non-standard steps and so we ended up breaking language server support.
-
-        // Instead, we now run discovery eagerly in the setup.
     }
 
     fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {

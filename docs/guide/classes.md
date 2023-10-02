@@ -186,16 +186,7 @@ The remaining sequence methods are yet to be implemented.
 
 The remaining mapping methods are yet to be implemented.
 
-### Richcompare
-
-CompareOp is a zig enum variant of CPython operator int. With an enum you can easily construct an exhaustive switch statement.
-
-| Method            | Signature                                   |
-| :---------------- | :------------------------------------------ |
-| `__hash__`        | `#!zig fn(*Self) !usize`                    |
-| `__richcompare__` | `#!zig fn(*Self, object, CompareOp) !usize` |
-
-Additionally you can implement comparison method as you would in python by providing individual operations as functions.
+### Rich Compare
 
 | Method   | Signature                       |
 | :------- | :------------------------------ |
@@ -205,6 +196,23 @@ Additionally you can implement comparison method as you would in python by provi
 | `__ne__` | `#!zig fn(*Self, object) !bool` |
 | `__gt__` | `#!zig fn(*Self, object) !bool` |
 | `__ge__` | `#!zig fn(*Self, object) !bool` |
+
+
+!!! note
+
+    By default, `__ne__` will delegate to the negation of `__eq__` if it is defined.
+
+Pydust also defines `py.CompareOp` representing the CPython comparison operators allowing you
+to implement the full comparison logic in a single `__richcompare__` function.
+
+| Method            | Signature                                          |
+| :---------------- | :------------------------------------------------- |
+| `__hash__`        | `#!zig fn(*Self) !usize`                           |
+| `__richcompare__` | `#!zig fn(*Self, other: object, CompareOp) !usize` |
+
+!!! tip
+
+    Whenever `__eq__` is implemented, it is advisable to also implement `__hash__`.
 
 ### Number Methods
 
