@@ -61,8 +61,7 @@ def generate_build_zig(conf=None):
     to the .gitignore. This means ZLS works as expected, we can leverage zig build caching, and the user
     can inspect the generated file to assist with debugging.
     """
-    if not conf:
-        conf = config.load()
+    conf = conf or config.load()
 
     with io.StringIO() as f:
         b = Writer(f)

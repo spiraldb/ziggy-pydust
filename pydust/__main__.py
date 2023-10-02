@@ -43,7 +43,7 @@ def main():
         build(args)
 
 def build(args):
-    """Given a zig target, compile into a python-extension"""
+    """Given a list of (name, path) pairs, compiles zig-based python extensions"""
     names, paths = args.ext_name, args.ext_path
     assert (names and paths) and (len(names) == len(paths)), "requires at least one pair of --ext-name and --ext-path"
     _extensions = []
