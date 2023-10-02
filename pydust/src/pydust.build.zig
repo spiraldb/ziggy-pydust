@@ -192,7 +192,12 @@ pub const PydustStep = struct {
             std.fs.path.dirname(self.pydust_source_file.getPath()).?,
             "../generate_stubs.py",
         }) catch @panic("OOM");
-        const stubs = b.addSystemCommand(&.{ self.python_exe, stubsGenerator, options.name, "." });
+        const workingDir = std.fs.cwd().realpathAlloc(self.allocator, ".") catch @panic("OOM");
+        const pythonPath = std.os.getenv("PYTHONPATH");
+        const newPPath = if (pythonPath) |pp| std.mem.join(self.allocator, ":", &.{ workingDir, pp }) catch @panic("OOM") else workingDir;
+
+        const stubs = b.addSystemCommand(&.{ self.python_exe, stubsGenerator, options.name, workingDir });
+        stubs.setEnvironmentVariable("PYTHONPATH", newPPath);
         stubs.step.dependOn(&install.step);
         b.getInstallStep().dependOn(&stubs.step);
 
