@@ -159,7 +159,7 @@ pub const Hash = py.class(struct {
 
     pub fn __hash__(self: *const Self) usize {
         var hasher = std.hash.Wyhash.init(0);
-        std.hash.autoHashStrat(&hasher, self.wrapped, .DeepRecursive);
+        std.hash.autoHashStrat(&hasher, self, .DeepRecursive);
         return hasher.final();
     }
 });
