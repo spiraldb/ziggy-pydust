@@ -189,11 +189,15 @@ pub const PydustStep = struct {
         b.getInstallStep().dependOn(&install.step);
 
         // Invoke stub generator on the emitted binary
+        // As we are using `inspect` module to proudce stubs we need the module to be importable which requires setting PYTHONPATH
+        // Long term we want to move this generation to Zig as there's more type information available
         const stubsGenerator = std.fs.path.join(self.allocator, &.{
             std.fs.path.dirname(self.pydust_source_file).?,
             "../generate_stubs.py",
         }) catch @panic("OOM");
-        const stubs = b.addSystemCommand(&.{ self.python_exe, stubsGenerator, options.name, "." });
+        const workingDir = std.fs.cwd().realpathAlloc(self.allocator, ".") catch @panic("OOM");
+        const stubs = b.addSystemCommand(&.{ self.python_exe, stubsGenerator, options.name, workingDir });
+        stubs.setEnvironmentVariable("PYTHONPATH", workingDir);
         stubs.step.dependOn(&install.step);
         b.getInstallStep().dependOn(&stubs.step);
 
