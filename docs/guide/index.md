@@ -29,17 +29,17 @@ or returned from functions and automatically converted into Python objects.
 
 ### Zig Primitives
 
-| Zig Type       | Python Type  |
-|:---------------| :----------- |
-| `void`         | `None`       |
-| `bool`         | `bool`       |
-| `i32`, `i64`   | `int`        |
-| `u32`, `u64`   | `int`        |
-| `f32`, `f64`   | `float`      |
-| `struct`       | `dict`       |
-| `tuple struct` | `tuple`      |
-| `[]const u8`   | `str`        |
-| `*[_]u8`       | `str`        |
+| Zig Type              | Python Type  |
+|:----------------------| :----------- |
+| `void`                | `None`       |
+| `bool`                | `bool`       |
+| `i32`, `i64`          | `int`        |
+| `u32`, `u64`          | `int`        |
+| `f16`, `f32`, `f64`   | `float`      |
+| `struct`              | `dict`       |
+| `tuple struct`        | `tuple`      |
+| `[]const u8`          | `str`        |
+| `*[_]u8`              | `str`        |
 
 !!! tip ""
 
