@@ -34,39 +34,19 @@ PYLDLIB = PYLDLIB[3:] if PYLDLIB.startswith("lib") else PYLDLIB
 PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
-def zig_build(argv: list[str]):
-    conf = config.load()
-
-    # Always generate the supporting pydist.build.zig
-    update_file(conf.pydust_build_zig, generate_pydust_build_zig())
-
-    if not conf.self_managed:
-        # Generate the build.zig if we're managing the ext_modules ourselves
-        update_file(conf.build_zig, generate_build_zig())
-
-    zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
-
-    subprocess.run(
-        zig_exe + ["build", "--build-file", conf.build_zig] + argv,
-        check=True,
-    )
-
-
-def zig_build_config(
+def zig_build(
         argv: list[str],
         zig_exe: str = 'zig',
         build_zig: str = "build.zig",
         self_managed: bool = False,
         limited_api: bool = True,
         generate_stubs: bool = False,
-        names: list[str] | None = None,
-        paths: list[str] | None = None,
+        extensions: list[tuple[str, str]] | None = None,
     ):
 
-    _extensions = []
-
-    if names and paths:
-        for name, path in zip(names, paths):
+    if extensions:
+        _extensions = []
+        for name, path in extensions:
             _ext = config.ExtModule(name=name, root=path, limited_api=limited_api)
             _extensions.append(_ext)
 
@@ -77,25 +57,28 @@ def zig_build_config(
             ext_module=_extensions,
         )
 
-        # Always generate the supporting pydist.build.zig
-        update_file(conf.pydust_build_zig, generate_pydust_build_zig())
+    else:
+        conf = config.load()
 
-        if not conf.self_managed:
-            # Generate the build.zig if we're managing the ext_modules ourselves
-            update_file(conf.build_zig, generate_build_zig(conf))
+    # Always generate the supporting pydist.build.zig
+    update_file(conf.pydust_build_zig, generate_pydust_build_zig())
 
-        zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
+    if not conf.self_managed:
+        # Generate the build.zig if we're managing the ext_modules ourselves
+        update_file(conf.build_zig, generate_build_zig(conf))
 
-        cmds = zig_exe + ["build", "--build-file", conf.build_zig] + argv
+    zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
 
-        print("cmds: ", " ".join(cmds))
+    cmds = zig_exe + ["build", "--build-file", conf.build_zig] + argv
 
-        subprocess.run(cmds, check=True)
+    # print("cmds: ", " ".join(cmds))
 
-        if generate_stubs:
-            from pydust.generate_stubs import generate_stubs
-            for name in names:
-                generate_stubs(name)
+    subprocess.run(cmds, check=True)
+
+    if extensions and generate_stubs:
+        from pydust.generate_stubs import generate_stubs
+        for name, _ in extensions:
+            generate_stubs(name)
 
 
 def generate_build_zig(conf=None):
