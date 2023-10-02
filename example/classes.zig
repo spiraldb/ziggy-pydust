@@ -157,8 +157,10 @@ pub const Hash = py.class(struct {
         return .{ .number = args.x };
     }
 
-    pub fn __hash__(self: *const Self) u32 {
-        return std.hash.Murmur3_32.hashUint32(@intCast(self.number));
+    pub fn __hash__(self: *const Self) usize {
+        var hasher = std.hash.Wyhash.init(0);
+        std.hash.autoHashStrat(&hasher, self.wrapped, .DeepRecursive);
+        return hasher.final();
     }
 });
 // --8<-- [end:zigonly]
