@@ -12,11 +12,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import sys
 import argparse
+import sys
 
 from pydust import buildzig, config
-
 
 parser = argparse.ArgumentParser()
 sub = parser.add_subparsers(dest="command", required=True)
@@ -24,7 +23,7 @@ sub = parser.add_subparsers(dest="command", required=True)
 debug_sp = sub.add_parser("debug", help="Compile a Zig file with debug symbols. Useful for running from an IDE.")
 debug_sp.add_argument("entrypoint")
 
-build_sp = sub.add_parser("build", help="Build a zig-based python extension.", 
+build_sp = sub.add_parser("build", help="Build a zig-based python extension.",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 build_sp.add_argument("-z", "--zig-exe", help="zig executable path")
 build_sp.add_argument("-b", "--build-zig", default="build.zig", help="build.zig file")
