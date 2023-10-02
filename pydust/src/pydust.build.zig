@@ -86,22 +86,6 @@ pub const PydustStep = struct {
         ) catch @panic("Cannot get python hexversion");
 
         var self = b.allocator.create(PydustStep) catch @panic("OOM");
-        // Eagerly run path discovery to work around ZLS support.
-        const python_include_dir = getPythonOutput(
-            b.allocator,
-            python_exe,
-            "import sysconfig; print(sysconfig.get_path('include'), end='')",
-        ) catch @panic("Failed to setup Python");
-        const python_library_dir = getPythonOutput(
-            b.allocator,
-            python_exe,
-            "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')",
-        ) catch @panic("Failed to setup Python");
-        const pydust_source_file = getPythonOutput(
-            b.allocator,
-            python_exe,
-            "import pydust; import os; print(os.path.join(os.path.dirname(pydust.__file__), 'src/pydust.zig'), end='')",
-        ) catch @panic("Failed to setup Python");
 
         self.* = .{
             .owner = b,
@@ -111,10 +95,20 @@ pub const PydustStep = struct {
             .python_exe = python_exe,
             .libpython = libpython,
             .hexversion = hexversion,
-            .pydust_source_file = pydust_source_file,
-            .python_include_dir = python_include_dir,
-            .python_library_dir = python_library_dir,
+            .pydust_source_file = "",
+            .python_include_dir = "",
+            .python_library_dir = "",
         };
+        // Eagerly run path discovery to work around ZLS support.
+        self.python_include_dir = self.pythonOutput(
+            "import sysconfig; print(sysconfig.get_path('include'), end='')",
+        ) catch @panic("Failed to setup Python");
+        self.python_library_dir = self.pythonOutput(
+            "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')",
+        ) catch @panic("Failed to setup Python");
+        self.pydust_source_file = self.pythonOutput(
+            "import pydust; import os; print(os.path.join(os.path.dirname(pydust.__file__), 'src/pydust.zig'), end='')",
+        ) catch @panic("Failed to setup Python");
 
         // Option for emitting test binary based on the given root source. This can be helpful for debugging.
         const debugRoot = b.option(
@@ -267,6 +261,10 @@ pub const PydustStep = struct {
         @memcpy(destPath[short_name.len..], suffix);
 
         return destPath;
+    }
+
+    fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
+        return getPythonOutput(self.allocator, self.python_exe, code);
     }
 };
 
