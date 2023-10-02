@@ -365,7 +365,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
         fn tp_hash(pyself: *ffi.PyObject) callconv(.C) ffi.Py_hash_t {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(definition.__hash__(&self.state)) catch return -1;
-            return @as(isize, @intCast(result));
+            return @as(isize, @bitCast(result));
         }
     };
 }
