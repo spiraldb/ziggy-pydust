@@ -13,14 +13,24 @@ limitations under the License.
 """
 
 import argparse
+import sys
 
-from pydust import buildzig
+from pydust import buildzig, config
 
 parser = argparse.ArgumentParser()
 sub = parser.add_subparsers(dest="command", required=True)
 
-debug = sub.add_parser("debug", help="Compile a Zig file with debug symbols. Useful for running from an IDE.")
-debug.add_argument("entrypoint")
+debug_sp = sub.add_parser("debug", help="Compile a Zig file with debug symbols. Useful for running from an IDE.")
+debug_sp.add_argument("entrypoint")
+
+build_sp = sub.add_parser("build", help="Build a zig-based python extension.",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+build_sp.add_argument("-z", "--zig-exe", help="zig executable path")
+build_sp.add_argument("-b", "--build-zig", default="build.zig", help="build.zig file")
+build_sp.add_argument("-m", "--self-managed", default=False, action="store_true", help="self-managed mode")
+build_sp.add_argument("-a", "--limited-api", default=True, action="store_true", help="use limited python c-api")
+build_sp.add_argument("-n", "--ext-name", nargs=True, help="name of extension")
+build_sp.add_argument("-p", "--ext-path", nargs=True, help="path of extension")
 
 
 def main():
@@ -29,6 +39,28 @@ def main():
     if args.command == "debug":
         debug(args)
 
+    elif args.command == "build":
+        build(args)
+
+def build(args):
+    """Given a list of (name, path) pairs, compiles zig-based python extensions"""
+    names, paths = args.ext_name, args.ext_path
+    assert (names and paths) and (len(names) == len(paths)), "requires at least one pair of --ext-name and --ext-path"
+    _extensions = []
+    for name, path in zip(names, paths):
+        _extensions.append(
+            config.ExtModule(name=name, root=path, limited_api=args.limited_api)
+        )
+
+    buildzig.zig_build(
+        argv=["install", f"-Dpython-exe={sys.executable}", "-Doptimize=ReleaseSafe"],
+        conf=config.ToolPydust(
+            zig_exe=args.zig_exe,
+            build_zig=args.build_zig,
+            self_managed=args.self_managed,
+            ext_module=_extensions,
+        )
+    )
 
 def debug(args):
     """Given an entrypoint file, compile it for test debugging. Placing it in a well-known location."""

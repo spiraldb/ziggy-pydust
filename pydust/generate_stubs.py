@@ -98,7 +98,7 @@ def pyi_file(obj, name: str, indent="") -> str:
             append = pyi_file(member, name, indent=indent)
             members_string += append
 
-        submodules = inspect.getmembers(module, inspect.ismodule)
+        submodules = inspect.getmembers(obj, inspect.ismodule)
         for name, submodule in submodules:
             members_string += f"{indent}class {submodule.__name__}:\n"
             submod_indent = indent + INDENT
@@ -193,18 +193,21 @@ def write(module, directory, module_name):
         f.write(pyi_content)
 
 
+def generate_stubs(package_name: str, destination: str = "."):
+    module = None
+    try:
+        module = importlib.import_module(package_name)
+    except Exception as exc:
+        print("Not a valid python module, skipping...", package_name, exc)
+        sys.exit(0)
+
+    if module:
+        write(module, Path(destination).resolve(), package_name)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("package_name")
     parser.add_argument("destination")
     args = parser.parse_args()
-
-    module = None
-    try:
-        module = importlib.import_module(args.package_name)
-    except Exception as exc:
-        print("Not a valid python module, skipping...", args.package_name, exc)
-        sys.exit(0)
-
-    if module:
-        write(module, Path(args.destination).resolve(), args.package_name)
+    generate_stubs(args.package_name, args.destination)

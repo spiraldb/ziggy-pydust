@@ -34,25 +34,24 @@ PYLDLIB = PYLDLIB[3:] if PYLDLIB.startswith("lib") else PYLDLIB
 PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
-def zig_build(argv: list[str]):
-    conf = config.load()
+def zig_build(argv: list[str], conf: config.ToolPydust | None = None):
+    conf = conf or config.load()
 
     # Always generate the supporting pydist.build.zig
     update_file(conf.pydust_build_zig, generate_pydust_build_zig())
 
     if not conf.self_managed:
         # Generate the build.zig if we're managing the ext_modules ourselves
-        update_file(conf.build_zig, generate_build_zig())
+        update_file(conf.build_zig, generate_build_zig(conf))
 
     zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
 
-    subprocess.run(
-        zig_exe + ["build", "--build-file", conf.build_zig] + argv,
-        check=True,
-    )
+    cmds = zig_exe + ["build", "--build-file", conf.build_zig] + argv
+
+    subprocess.run(cmds, check=True)
 
 
-def generate_build_zig():
+def generate_build_zig(conf=None):
     """Generate the build.zig file for the current pyproject.toml.
 
     Initially we were calling `zig build-lib` directly, and this worked fine except it meant we
@@ -62,7 +61,7 @@ def generate_build_zig():
     to the .gitignore. This means ZLS works as expected, we can leverage zig build caching, and the user
     can inspect the generated file to assist with debugging.
     """
-    conf = config.load()
+    conf = conf or config.load()
 
     with io.StringIO() as f:
         b = Writer(f)
@@ -102,6 +101,7 @@ def generate_build_zig():
                 )
 
         return f.getvalue()
+
 
 
 def generate_pydust_build_zig():
