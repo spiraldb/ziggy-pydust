@@ -16,6 +16,7 @@ pub usingnamespace @import("types/bytes.zig");
 pub usingnamespace @import("types/dict.zig");
 pub usingnamespace @import("types/error.zig");
 pub usingnamespace @import("types/float.zig");
+pub usingnamespace @import("types/iter.zig");
 pub usingnamespace @import("types/list.zig");
 pub usingnamespace @import("types/long.zig");
 pub usingnamespace @import("types/module.zig");
