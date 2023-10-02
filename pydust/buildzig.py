@@ -34,30 +34,8 @@ PYLDLIB = PYLDLIB[3:] if PYLDLIB.startswith("lib") else PYLDLIB
 PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
-def zig_build(
-        argv: list[str],
-        zig_exe: str = 'zig',
-        build_zig: str = "build.zig",
-        self_managed: bool = False,
-        limited_api: bool = True,
-        generate_stubs: bool = False,
-        extensions: list[tuple[str, str]] | None = None,
-    ):
-
-    if extensions:
-        _extensions = []
-        for name, path in extensions:
-            _ext = config.ExtModule(name=name, root=path, limited_api=limited_api)
-            _extensions.append(_ext)
-
-        conf = config.ToolPydust(
-            zig_exe=zig_exe,
-            build_zig=build_zig,
-            self_managed=self_managed,
-            ext_module=_extensions,
-        )
-
-    else:
+def zig_build(argv: list[str], conf: config.ToolPydust | None):
+    if not conf:
         conf = config.load()
 
     # Always generate the supporting pydist.build.zig
@@ -71,14 +49,7 @@ def zig_build(
 
     cmds = zig_exe + ["build", "--build-file", conf.build_zig] + argv
 
-    # print("cmds: ", " ".join(cmds))
-
     subprocess.run(cmds, check=True)
-
-    if extensions and generate_stubs:
-        from pydust.generate_stubs import generate_stubs
-        for name, _ in extensions:
-            generate_stubs(name)
 
 
 def generate_build_zig(conf=None):
