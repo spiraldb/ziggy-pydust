@@ -85,13 +85,6 @@ pub fn is_none(object: anytype) bool {
     return ffi.Py_IsNone(obj.py) == 1;
 }
 
-/// Get the length of the given object. Equivalent to len(obj) in Python.
-pub fn len(object: anytype) !usize {
-    const length = ffi.PyObject_Length(py.object(object).py);
-    if (length < 0) return PyError.PyRaised;
-    return @intCast(length);
-}
-
 /// Import a module by fully-qualified name returning a PyObject.
 pub fn import(module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule.import(module_name)).obj;
@@ -112,6 +105,25 @@ pub fn isinstance(object: anytype, cls: anytype) !bool {
     const result = ffi.PyObject_IsInstance(pyobj.py, pycls.py);
     if (result < 0) return PyError.PyRaised;
     return result == 1;
+}
+
+/// Return an iterator for the given object if it has one. Equivalent to iter(obj) in Python.
+pub fn iter(object: anytype) !py.PyIter {
+    const iterator = ffi.PyObject_GetIter(py.object(object).py) orelse return PyError.PyRaised;
+    return py.PyIter.unchecked(.{ .py = iterator });
+}
+
+/// Get the length of the given object. Equivalent to len(obj) in Python.
+pub fn len(object: anytype) !usize {
+    const length = ffi.PyObject_Length(py.object(object).py);
+    if (length < 0) return PyError.PyRaised;
+    return @intCast(length);
+}
+
+/// Return the next item of an iterator. Equivalent to next(obj) in Python.
+pub fn next(comptime T: type, iterator: anytype) !?T {
+    const pyiter = try py.PyIter.checked(iterator);
+    return try pyiter.next(T);
 }
 
 /// Return "false" if the object is considered to be truthy, and true otherwise.
