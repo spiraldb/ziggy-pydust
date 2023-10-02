@@ -791,23 +791,35 @@
 <span class="line" id="L645">        <span class="tok-kw">fn</span> <span class="tok-fn">builtCompare</span>(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: <span class="tok-type">c_int</span>) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
 <span class="line" id="L646">            <span class="tok-kw">const</span> compFunc = compareFuncs[<span class="tok-builtin">@intCast</span>(op)];</span>
 <span class="line" id="L647">            <span class="tok-kw">if</span> (compFunc) |func| {</span>
-<span class="line" id="L648">                <span class="tok-kw">return</span> <span class="tok-builtin">@call</span>(.auto, func, .{ pyself, pyother });</span>
-<span class="line" id="L649">            } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L650">                <span class="tok-kw">return</span> py.NotImplemented().py;</span>
-<span class="line" id="L651">            }</span>
-<span class="line" id="L652">        }</span>
-<span class="line" id="L653"></span>
-<span class="line" id="L654">        <span class="tok-kw">const</span> compareFuncs = blk: {</span>
-<span class="line" id="L655">            <span class="tok-kw">var</span> funcs_: [<span class="tok-number">6</span>]?BinaryFunc = .{ <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span> };</span>
-<span class="line" id="L656">            <span class="tok-kw">for</span> (funcs.compareFuncs, <span class="tok-number">0</span>..) |func, i| {</span>
-<span class="line" id="L657">                <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, func)) {</span>
-<span class="line" id="L658">                    funcs_[i] = &amp;BinaryOperator(definition, func).call;</span>
-<span class="line" id="L659">                }</span>
-<span class="line" id="L660">            }</span>
-<span class="line" id="L661">            <span class="tok-kw">break</span> :blk funcs_;</span>
-<span class="line" id="L662">        };</span>
-<span class="line" id="L663">    };</span>
-<span class="line" id="L664">}</span>
-<span class="line" id="L665"></span>
+<span class="line" id="L648">                <span class="tok-kw">return</span> func(pyself, pyother);</span>
+<span class="line" id="L649">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (op == <span class="tok-builtin">@intFromEnum</span>(py.CompareOp.NE)) {</span>
+<span class="line" id="L650">                <span class="tok-comment">// Use the negation of __eq__ if it is implemented and __ne__ is not.</span>
+</span>
+<span class="line" id="L651">                <span class="tok-kw">if</span> (compareFuncs[<span class="tok-builtin">@intFromEnum</span>(py.CompareOp.EQ)]) |eq_func| {</span>
+<span class="line" id="L652">                    <span class="tok-kw">const</span> is_eq = eq_func(pyself, pyother) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L653">                    <span class="tok-kw">defer</span> py.decref(is_eq);</span>
+<span class="line" id="L654"></span>
+<span class="line" id="L655">                    <span class="tok-kw">if</span> (py.not_(is_eq) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>) {</span>
+<span class="line" id="L656">                        <span class="tok-kw">return</span> py.True().obj.py;</span>
+<span class="line" id="L657">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L658">                        <span class="tok-kw">return</span> py.False().obj.py;</span>
+<span class="line" id="L659">                    }</span>
+<span class="line" id="L660">                }</span>
+<span class="line" id="L661">            }</span>
+<span class="line" id="L662">            <span class="tok-kw">return</span> py.NotImplemented().py;</span>
+<span class="line" id="L663">        }</span>
+<span class="line" id="L664"></span>
+<span class="line" id="L665">        <span class="tok-kw">const</span> compareFuncs = blk: {</span>
+<span class="line" id="L666">            <span class="tok-kw">var</span> funcs_: [<span class="tok-number">6</span>]?BinaryFunc = .{ <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span> };</span>
+<span class="line" id="L667">            <span class="tok-kw">for</span> (funcs.compareFuncs, <span class="tok-number">0</span>..) |func, i| {</span>
+<span class="line" id="L668">                <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, func)) {</span>
+<span class="line" id="L669">                    funcs_[i] = &amp;BinaryOperator(definition, func).call;</span>
+<span class="line" id="L670">                }</span>
+<span class="line" id="L671">            }</span>
+<span class="line" id="L672">            <span class="tok-kw">break</span> :blk funcs_;</span>
+<span class="line" id="L673">        };</span>
+<span class="line" id="L674">    };</span>
+<span class="line" id="L675">}</span>
+<span class="line" id="L676"></span>
 </code></pre></body>
 </html>
