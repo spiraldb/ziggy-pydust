@@ -35,8 +35,7 @@ PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
 def zig_build(argv: list[str], conf: config.ToolPydust | None):
-    if not conf:
-        conf = config.load()
+    conf = conf or config.load()
 
     # Always generate the supporting pydist.build.zig
     update_file(conf.pydust_build_zig, generate_pydust_build_zig())
