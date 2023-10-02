@@ -34,7 +34,7 @@ PYLDLIB = PYLDLIB[3:] if PYLDLIB.startswith("lib") else PYLDLIB
 PYLDLIB = os.path.splitext(PYLDLIB)[0]
 
 
-def zig_build(argv: list[str], conf: config.ToolPydust | None):
+def zig_build(argv: list[str], conf: config.ToolPydust | None = None):
     conf = conf or config.load()
 
     # Always generate the supporting pydist.build.zig
