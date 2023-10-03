@@ -182,18 +182,30 @@ def module_dir(module_name: str) -> Path:
     return Path(*module_name.split(".")[:-1])
 
 
-def write(module, directory, module_name):
-    name = simple_name(module_name)
-    filename = directory.joinpath(module_dir(module_name)).joinpath(name + ".pyi")
+def module_pyi_path(directory: Path, module_name: str) -> Path:
+    return directory.joinpath(module_dir(module_name)).joinpath(simple_name(module_name) + ".pyi")
+
+
+def stub_contents(module, module_name: str) -> str:
     pyi_content = pyi_file(module, module_name)
-    pyi_content = do_black(pyi_content, is_pyi=True)
+    return do_black(pyi_content, is_pyi=True)
+
+
+def write(module, directory: Path, module_name: str) -> None:
+    pyi_content = stub_contents(module, module_name)
     os.makedirs(directory, exist_ok=True)
-
-    with open(filename, "w") as f:
-        f.write(pyi_content)
+    module_pyi_path(directory, module_name).write_text(pyi_content, "utf-8")
 
 
-def generate_stubs(package_name: str, destination: str = "."):
+def check_contents(module, directory: Path, module_name: str) -> None:
+    pyi_path = module_pyi_path(directory, module_name)
+    pyi_content = stub_contents(module, module_name)
+    existing_contents = pyi_path.read_text("utf-8")
+
+    assert pyi_content == existing_contents, f"Contents of {pyi_path} are out of date. Please run generate-stubs"
+
+
+def generate_stubs(package_name: str, destination: str = ".", check: bool = False):
     module = None
     try:
         module = importlib.import_module(package_name)
@@ -201,13 +213,18 @@ def generate_stubs(package_name: str, destination: str = "."):
         print("Not a valid python module, skipping...", package_name, exc)
         sys.exit(0)
 
+    directory = Path(destination).resolve()
     if module:
-        write(module, Path(destination).resolve(), package_name)
+        if check:
+            check_contents(module, directory, package_name)
+        else:
+            write(module, directory, package_name)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("package_name")
     parser.add_argument("destination")
+    parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    generate_stubs(args.package_name, args.destination)
+    generate_stubs(args.package_name, args.destination, args.check)
