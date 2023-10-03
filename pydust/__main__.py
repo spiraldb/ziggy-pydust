@@ -42,7 +42,8 @@ def main():
 
 def build(args):
     """Given a list of '<name>=<path>' entries, compiles corresponding zig-based python extensions"""
-    assert args.extensions and all('=' in ext for ext in args.extensions), "requires at least one --extensions '<name>=<path>'"
+    assert args.extensions and all('=' in ext for ext in args.extensions),\
+        "requires at least one --extensions '<name>=<path>'"
     ext_items = [tuple(ext.split('=')) for ext in args.extensions]
     _extensions = []
     for name, path in ext_items:
