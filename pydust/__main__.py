@@ -29,9 +29,7 @@ build_sp.add_argument("-z", "--zig-exe", help="zig executable path")
 build_sp.add_argument("-b", "--build-zig", default="build.zig", help="build.zig file")
 build_sp.add_argument("-m", "--self-managed", default=False, action="store_true", help="self-managed mode")
 build_sp.add_argument("-a", "--limited-api", default=True, action="store_true", help="use limited python c-api")
-build_sp.add_argument("-n", "--ext-name", nargs=True, help="name of extension")
-build_sp.add_argument("-p", "--ext-path", nargs=True, help="path of extension")
-
+build_sp.add_argument("-e", "--extensions", nargs='+', help="space separated list of extension '<name>=<path>' entries")
 
 def main():
     args = parser.parse_args()
@@ -43,11 +41,11 @@ def main():
         build(args)
 
 def build(args):
-    """Given a list of (name, path) pairs, compiles zig-based python extensions"""
-    names, paths = args.ext_name, args.ext_path
-    assert (names and paths) and (len(names) == len(paths)), "requires at least one pair of --ext-name and --ext-path"
+    """Given a list of '<name>=<path>' entries, compiles corresponding zig-based python extensions"""
+    assert args.extensions and all('=' in ext for ext in args.extensions), "requires at least one --extensions '<name>=<path>'"
+    ext_items = [tuple(ext.split('=')) for ext in args.extensions]
     _extensions = []
-    for name, path in zip(names, paths):
+    for name, path in ext_items:
         _extensions.append(
             config.ExtModule(name=name, root=path, limited_api=args.limited_api)
         )
