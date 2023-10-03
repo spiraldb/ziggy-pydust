@@ -52,6 +52,7 @@ pub const PydustStep = struct {
 
     test_build_step: *Step,
     generate_stubs: *Step,
+    check_stubs: bool,
 
     python_exe: []const u8,
     libpython: []const u8,
@@ -64,6 +65,7 @@ pub const PydustStep = struct {
     pub fn add(b: *std.Build, options: PydustOptions) *PydustStep {
         const test_build_step = b.step("pydust-test-build", "Build Pydust test runners");
         const generate_stubs = b.step("generate-stubs", "Generate pyi stubs for the compiled binary");
+        const check_stubs = b.option(bool, "check-stubs", "Check that existing stubs are up to date instead of generating new ones") orelse false;
 
         const python_exe = blk: {
             if (b.option([]const u8, "python-exe", "Python executable to use")) |exe| {
@@ -95,6 +97,7 @@ pub const PydustStep = struct {
             .options = options,
             .test_build_step = test_build_step,
             .generate_stubs = generate_stubs,
+            .check_stubs = check_stubs,
             .python_exe = python_exe,
             .libpython = libpython,
             .hexversion = hexversion,
@@ -190,10 +193,9 @@ pub const PydustStep = struct {
             std.fs.path.dirname(self.pydust_source_file).?,
             "../generate_stubs.py",
         }) catch @panic("OOM");
-        const checkStubs = b.option(bool, "check-stubs", "Check that existing stubs are up to date instead of generating new ones");
         const workingDir = std.fs.cwd().realpathAlloc(self.allocator, ".") catch @panic("OOM");
         var genArgs: []const []const u8 = undefined;
-        if (checkStubs) {
+        if (self.check_stubs) {
             genArgs = &.{ self.python_exe, stubsGenerator, options.name, workingDir, "--check" };
         } else {
             genArgs = &.{ self.python_exe, stubsGenerator, options.name, workingDir };

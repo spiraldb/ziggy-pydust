@@ -85,6 +85,9 @@ def get_module_members(module):
 
 
 def pyi_file(obj, name: str, indent="") -> str:
+    if obj is None:
+        return ""
+
     result_content = ""
     if inspect.ismodule(obj):
         result_content += doc(obj, indent)

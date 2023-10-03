@@ -33,7 +33,6 @@ class Comparator:
         Return self>=value.
         """
         ...
-    __hash__: NoneType
 
 class Equals:
     def __init__(num, /):
@@ -68,7 +67,6 @@ class Equals:
         Return self>=value.
         """
         ...
-    __hash__: NoneType
 
 class LessThan:
     def __init__(name, /):
@@ -103,7 +101,6 @@ class LessThan:
         Return self>=value.
         """
         ...
-    __hash__: NoneType
 
 class Operator:
     def __init__(num, /):
