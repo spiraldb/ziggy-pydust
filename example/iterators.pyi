@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 class Range:
+    """
+    An example of iterable class
+    """
+
     def __init__(lower, upper, step, /):
         pass
     def __iter__(self, /):

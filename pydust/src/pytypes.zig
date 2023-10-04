@@ -425,6 +425,10 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
             if (@hasDecl(definition, "__doc__")) {
                 @memcpy(userDoc[docOffset..], definition.__doc__);
             }
+
+            // Add null terminator
+            userDoc[userDoc.len] = 0;
+
             break :blk userDoc;
         };
     };
