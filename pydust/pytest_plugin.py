@@ -14,7 +14,6 @@ limitations under the License.
 
 import enum
 import io
-import pathlib
 import struct
 import subprocess
 import sys
