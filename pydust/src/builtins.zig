@@ -71,6 +71,46 @@ pub fn callable(object: anytype) bool {
     return ffi.PyCallable_Check(obj.py) == 1;
 }
 
+/// Call a callable object with no arguments.
+pub fn call0(comptime T: type, object: anytype) !T {
+    const result = ffi.PyObject_CallNoArgs(py.object(object).py) orelse return PyError.PyRaised;
+    return try py.as(T, result);
+}
+
+/// Call a callable object with the given arguments.
+pub fn call(comptime ReturnType: type, object: anytype, args: anytype, kwargs: anytype) !ReturnType {
+    const pyobj = py.object(object);
+
+    var argsPy: py.PyTuple = undefined;
+    if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
+        argsPy = try py.PyTuple.new(0);
+    } else {
+        argsPy = try py.PyTuple.checked(try py.create(args));
+    }
+    defer argsPy.decref();
+
+    // TODO(ngates): avoid creating empty dict for kwargs
+    var kwargsPy: py.PyDict = undefined;
+    if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
+        kwargsPy = try py.PyDict.new();
+    } else {
+        // Annoyingly our trampoline turns an empty kwargs struct into a PyTuple.
+        // This will be fixed by #94
+        const kwobj = try py.create(kwargs);
+        if (try py.len(kwobj) == 0) {
+            kwobj.decref();
+            kwargsPy = try py.PyDict.new();
+        } else {
+            kwargsPy = try py.PyDict.checked(kwobj);
+        }
+    }
+    defer kwargsPy.decref();
+
+    // We _must_ return a PyObject to the user to let them handle the lifetime of the object.
+    const result = ffi.PyObject_Call(pyobj.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.PyRaised;
+    return try py.as(ReturnType, result);
+}
+
 /// Convert an object into a dictionary. Equivalent of Python dict(o).
 pub fn dict(object: anytype) !py.PyDict {
     const Dict: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PyDict_Type)) };

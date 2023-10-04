@@ -166,25 +166,14 @@ const PyExc = struct {
                 );
                 defer py.allocator.free(code);
 
-                // Compilation should succeed, but execution will fail.
-                const filename = try py.allocator.dupeZ(u8, line_info.file_name);
-                defer py.allocator.free(filename);
-                const compiled = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse continue;
-                defer py.decref(compiled);
-
                 // Import the compiled code as a module and invoke the failing function
-                const module_name = try py.allocator.dupeZ(u8, symbol_info.compile_unit_name);
-                defer py.allocator.free(module_name);
-                const fake_module: py.PyObject = .{
-                    .py = ffi.PyImport_ExecCodeModule(module_name.ptr, compiled) orelse continue,
-                };
+                const fake_module = try py.PyModule.fromCode(code, line_info.file_name, symbol_info.compile_unit_name);
                 defer fake_module.decref();
 
                 const func_name = try py.allocator.dupeZ(u8, symbol_info.symbol_name);
                 defer py.allocator.free(func_name);
-                const fake_function = try fake_module.get(func_name);
-                _ = fake_function.call(.{}, .{}) catch null;
-                defer fake_function.decref();
+
+                _ = fake_module.obj.call(void, func_name, .{}, .{}) catch null;
 
                 // Grab our forced exception info.
                 // We can ignore qtype and qvalue, we just want to get the traceback object.
