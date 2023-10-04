@@ -40,10 +40,6 @@ pub const RangeIterator = py.class(struct {
     stop: i64,
     step: i64,
 
-    pub fn __new__(args: struct { next: i64, stop: i64, step: i64 }) Self {
-        return .{ .next = args.next, .stop = args.stop, .step = args.step };
-    }
-
     pub fn __next__(self: *Self) ?i64 {
         if (self.next >= self.stop) {
             return null;
