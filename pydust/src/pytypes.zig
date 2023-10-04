@@ -669,12 +669,41 @@ fn RichCompare(comptime definition: type) type {
 
         const compareFuncs = blk: {
             var funcs_: [6]?BinaryFunc = .{ null, null, null, null, null, null };
-            for (funcs.compareFuncs, 0..) |func, i| {
-                if (@hasDecl(definition, func)) {
-                    funcs_[i] = &BinaryOperator(definition, func).call;
+            for (&funcs_, funcs.compareFuncs) |*func, funcName| {
+                if (@hasDecl(definition, funcName)) {
+                    if (std.mem.eql(u8, funcName, "__eq__")) {
+                        func.* = &__eq__;
+                    } else {
+                        func.* = &BinaryOperator(definition, funcName).call;
+                    }
                 }
             }
             break :blk funcs_;
         };
+
+        fn __eq__(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const typeInfo = @typeInfo(@TypeOf(definition.__eq__));
+            const sig = funcs.parseSignature("__eq__", typeInfo.Fn, &.{});
+
+            if (sig.selfParam == null) @compileError("__eq__ must take a self parameter");
+            if (sig.nargs != 1) @compileError("__eq__ must take exactly one parameter after self parameter");
+
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+            // If other is not PyObject it must be the same type as self.
+            // In that case check that other is of the same type as self to short circuit.
+            if (sig.argsParam != py.PyObject) {
+                const selfType = py.type_(py.object(pyself)) catch return null;
+                if (!(py.isinstance(pyother, selfType.obj) catch return null)) {
+                    return py.False().obj.py;
+                }
+            }
+
+            const other = tramp.Trampoline(
+                sig.argsParam orelse unreachable,
+            ).unwrap(.{ .py = pyother }) catch return null;
+
+            const result = tramp.coerceError(definition.__eq__(&self.state, other)) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
     };
 }

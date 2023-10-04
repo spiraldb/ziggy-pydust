@@ -133,6 +133,13 @@ def test_justequals():
         assert cmp1 <= cmp2
 
 
+def test_justequals_different_type():
+    cmp1 = operators.Equals(1)
+    cmp2 = 2
+
+    assert not cmp1 == cmp2
+
+
 def test_justLessThan():
     cmp1 = operators.LessThan("abc")
     cmp2 = operators.LessThan("abd")
