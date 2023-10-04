@@ -13,8 +13,8 @@ limitations under the License.
 """
 
 import contextlib
-import io
 import os
+import shutil
 import subprocess
 import sys
 import sysconfig
@@ -38,13 +38,12 @@ def zig_build(argv: list[str], conf: config.ToolPydust | None = None):
     conf = conf or config.load()
 
     # Always generate the supporting pydist.build.zig
-    with open(conf.pydust_build_zig, "w+") as f:
-        f.write(generate_pydust_build_zig())
+    shutil.copy(Path(pydust.__file__).parent.joinpath("src/pydust.build.zig"), conf.pydust_build_zig)
 
     if not conf.self_managed:
         # Generate the build.zig if we're managing the ext_modules ourselves
-        with open(conf.build_zig, "w+") as f:
-            f.write(generate_build_zig(conf))
+        with conf.build_zig.open(mode="w") as f:
+            generate_build_zig(f, conf)
 
     zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
 
@@ -53,7 +52,7 @@ def zig_build(argv: list[str], conf: config.ToolPydust | None = None):
     subprocess.run(cmds, check=True)
 
 
-def generate_build_zig(conf=None):
+def generate_build_zig(fileobj: TextIO, conf=None):
     """Generate the build.zig file for the current pyproject.toml.
 
     Initially we were calling `zig build-lib` directly, and this worked fine except it meant we
@@ -65,49 +64,41 @@ def generate_build_zig(conf=None):
     """
     conf = conf or config.load()
 
-    with io.StringIO() as f:
-        b = Writer(f)
+    b = Writer(fileobj)
 
-        b.writeln('const std = @import("std");')
-        b.writeln('const py = @import("./pydust.build.zig");')
-        b.writeln()
+    b.writeln('const std = @import("std");')
+    b.writeln('const py = @import("./pydust.build.zig");')
+    b.writeln()
 
-        with b.block("pub fn build(b: *std.Build) void"):
+    with b.block("pub fn build(b: *std.Build) void"):
+        b.write(
+            """
+            const target = b.standardTargetOptions(.{});
+            const optimize = b.standardOptimizeOption(.{});
+
+            const test_step = b.step("test", "Run library tests");
+
+            const pydust = py.addPydust(b, .{
+                .test_step = test_step,
+            });
+            """
+        )
+
+        for ext_module in conf.ext_modules:
+            # TODO(ngates): fix the out filename for non-limited modules
+            assert ext_module.limited_api, "Only limited_api is supported for now"
+
             b.write(
-                """
-                const target = b.standardTargetOptions(.{});
-                const optimize = b.standardOptimizeOption(.{});
-
-                const test_step = b.step("test", "Run library tests");
-
-                const pydust = py.addPydust(b, .{
-                    .test_step = test_step,
-                });
+                f"""
+                _ = pydust.addPythonModule(.{{
+                    .name = "{ext_module.name}",
+                    .root_source_file = .{{ .path = "{ext_module.root}" }},
+                    .limited_api = {str(ext_module.limited_api).lower()},
+                    .target = target,
+                    .optimize = optimize,
+                }});
                 """
             )
-
-            for ext_module in conf.ext_modules:
-                # TODO(ngates): fix the out filename for non-limited modules
-                assert ext_module.limited_api, "Only limited_api is supported for now"
-
-                b.write(
-                    f"""
-                    _ = pydust.addPythonModule(.{{
-                        .name = "{ext_module.name}",
-                        .root_source_file = .{{ .path = "{ext_module.root}" }},
-                        .limited_api = {str(ext_module.limited_api).lower()},
-                        .target = target,
-                        .optimize = optimize,
-                    }});
-                    """
-                )
-
-        return f.getvalue()
-
-
-def generate_pydust_build_zig():
-    """Copy the supporting pydust.build.zig into the project directory."""
-    return (Path(pydust.__file__).parent / "src/pydust.build.zig").read_text()
 
 
 class Writer:
@@ -139,8 +130,3 @@ class Writer:
     def writeln(self, text: str = ""):
         self.write(text)
         self.f.write("\n")
-
-
-if __name__ == "__main__":
-    generate_pydust_build_zig("pydust.build.zig")
-    generate_build_zig("test.build.zig")
