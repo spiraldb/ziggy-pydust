@@ -14,7 +14,6 @@ limitations under the License.
 
 import enum
 import io
-import pathlib
 import struct
 import subprocess
 import sys
@@ -54,7 +53,7 @@ def pytest_collect_file(file_path, path, parent):
     """Grab any Zig roots for PyTest collection."""
     if file_path.suffix == ".zig":
         for ext_module in pydust_conf.ext_modules:
-            if pathlib.Path(ext_module.root).absolute() == file_path.absolute():
+            if ext_module.root.absolute() == file_path.absolute():
                 return ZigFile.from_parent(parent, path=file_path)
 
 
@@ -65,7 +64,7 @@ class ZigFile(pytest.File):
         First compile using 'zig test'
         Then spin up the test server and query it for the test metadata.
         """
-        ext_module = [e for e in pydust_conf.ext_modules if pathlib.Path(e.root).absolute() == self.path][0]
+        ext_module = [e for e in pydust_conf.ext_modules if e.root.absolute() == self.path][0]
 
         # Then query the test metadata
         proc = subprocess.Popen([ext_module.test_bin, "--listen=-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -83,6 +82,8 @@ class ZigFile(pytest.File):
             assert h.tag == TestProtocol.ResponseTag.test_metadata.value
             test_metas = self._read_test_metadata(proc.stdout.read(h.bytes_len))
         finally:
+            proc.stdin.close()
+            proc.stdout.close()
             proc.kill()
             proc.wait()
 
@@ -163,6 +164,8 @@ class ZigItem(pytest.Item):
         except Exception as e:
             raise Exception("Zig test crashed. Exited " + str(proc.wait())) from e
         finally:
+            proc.stdin.close()
+            proc.stdout.close()
             proc.kill()
             proc.wait()
             stderr.close()
