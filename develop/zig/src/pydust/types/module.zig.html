@@ -190,13 +190,22 @@
 <span class="line" id="L65"></span>
 <span class="line" id="L66">    <span class="tok-comment">/// Create and insantiate a PyModule object from a Python code string.</span></span>
 <span class="line" id="L67">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromCode</span>(code: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, filename: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, module_name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !PyModule {</span>
-<span class="line" id="L68">        <span class="tok-kw">const</span> pycode = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised;</span>
-<span class="line" id="L69">        <span class="tok-kw">defer</span> ffi.Py_DECREF(pycode);</span>
-<span class="line" id="L70"></span>
-<span class="line" id="L71">        <span class="tok-kw">const</span> pymod = ffi.PyImport_ExecCodeModuleEx(module_name.ptr, pycode, filename.ptr) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised;</span>
-<span class="line" id="L72">        <span class="tok-kw">return</span> .{ .obj = .{ .py = pymod } };</span>
-<span class="line" id="L73">    }</span>
-<span class="line" id="L74">};</span>
+<span class="line" id="L68">        <span class="tok-comment">// Ensure null-termination of all strings</span>
+</span>
+<span class="line" id="L69">        <span class="tok-kw">const</span> codeZ = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, code);</span>
+<span class="line" id="L70">        <span class="tok-kw">defer</span> py.allocator.free(codeZ);</span>
+<span class="line" id="L71">        <span class="tok-kw">const</span> filenameZ = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, filename);</span>
+<span class="line" id="L72">        <span class="tok-kw">defer</span> py.allocator.free(filenameZ);</span>
+<span class="line" id="L73">        <span class="tok-kw">const</span> module_nameZ = <span class="tok-kw">try</span> py.allocator.dupeZ(<span class="tok-type">u8</span>, module_name);</span>
+<span class="line" id="L74">        <span class="tok-kw">defer</span> py.allocator.free(module_nameZ);</span>
 <span class="line" id="L75"></span>
+<span class="line" id="L76">        <span class="tok-kw">const</span> pycode = ffi.Py_CompileString(codeZ.ptr, filenameZ.ptr, ffi.Py_file_input) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised;</span>
+<span class="line" id="L77">        <span class="tok-kw">defer</span> ffi.Py_DECREF(pycode);</span>
+<span class="line" id="L78"></span>
+<span class="line" id="L79">        <span class="tok-kw">const</span> pymod = ffi.PyImport_ExecCodeModuleEx(module_nameZ.ptr, pycode, filenameZ.ptr) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised;</span>
+<span class="line" id="L80">        <span class="tok-kw">return</span> .{ .obj = .{ .py = pymod } };</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82">};</span>
+<span class="line" id="L83"></span>
 </code></pre></body>
 </html>
