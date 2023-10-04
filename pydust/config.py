@@ -13,7 +13,7 @@ limitations under the License.
 """
 
 import functools
-import os
+from pathlib import Path
 
 import pkg_resources
 import tomllib
@@ -24,29 +24,29 @@ class ExtModule(BaseModel):
     """Config for a single Zig extension module."""
 
     name: str
-    root: str
+    root: Path
     limited_api: bool = True
 
     @property
-    def libname(self):
+    def libname(self) -> str:
         return self.name.rsplit(".", maxsplit=1)[-1]
 
     @property
-    def install_path(self):
+    def install_path(self) -> Path:
         # FIXME(ngates): for non-limited API
         assert self.limited_api, "Only limited API modules are supported right now"
-        return os.path.join(*self.name.split(".")) + ".abi3.so"
+        return Path(*self.name.split(".")).with_suffix(".abi3.so")
 
     @property
-    def test_bin(self):
-        return os.path.join("zig-out", "bin", self.libname + ".test.bin")
+    def test_bin(self) -> Path:
+        return (Path("zig-out") / "bin" / self.libname).with_suffix(".test.bin")
 
 
 class ToolPydust(BaseModel):
     """Model for tool.pydust section of a pyproject.toml."""
 
-    zig_exe: str | None = None
-    build_zig: str = "build.zig"
+    zig_exe: Path | None = None
+    build_zig: Path = Path("build.zig")
 
     # When true, python module definitions are configured by the user in their own build.zig file.
     # When false, ext_modules is used to auto-generated a build.zig file.
@@ -56,8 +56,8 @@ class ToolPydust(BaseModel):
     ext_modules: list[ExtModule] = Field(alias="ext_module", default_factory=list)
 
     @property
-    def pydust_build_zig(self):
-        return os.path.join(os.path.dirname(self.build_zig), "pydust.build.zig")
+    def pydust_build_zig(self) -> Path:
+        return self.build_zig.parent / "pydust.build.zig"
 
     @model_validator(mode="after")
     def validate_atts(self):

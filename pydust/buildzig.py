@@ -19,6 +19,7 @@ import subprocess
 import sys
 import sysconfig
 import textwrap
+from pathlib import Path
 from typing import TextIO
 
 import pydust
@@ -42,7 +43,7 @@ def zig_build(argv: list[str], conf: config.ToolPydust | None = None):
 
     if not conf.self_managed:
         # Generate the build.zig if we're managing the ext_modules ourselves
-        with open(conf.build_zig, 'w+') as f:
+        with open(conf.build_zig, "w+") as f:
             f.write(generate_build_zig(conf))
 
     zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
@@ -106,8 +107,7 @@ def generate_build_zig(conf=None):
 
 def generate_pydust_build_zig():
     """Copy the supporting pydust.build.zig into the project directory."""
-    with open(os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig")) as f:
-        return f.read()
+    return (Path(pydust.__file__).parent / "src/pydust.build.zig").read_text()
 
 
 class Writer:
