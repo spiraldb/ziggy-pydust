@@ -65,10 +65,18 @@ pub const PyModule = extern struct {
 
     /// Create and insantiate a PyModule object from a Python code string.
     pub fn fromCode(code: []const u8, filename: []const u8, module_name: []const u8) !PyModule {
-        const pycode = ffi.Py_CompileString(code.ptr, filename.ptr, ffi.Py_file_input) orelse return PyError.PyRaised;
+        // Ensure null-termination of all strings
+        const codeZ = try py.allocator.dupeZ(u8, code);
+        defer py.allocator.free(codeZ);
+        const filenameZ = try py.allocator.dupeZ(u8, filename);
+        defer py.allocator.free(filenameZ);
+        const module_nameZ = try py.allocator.dupeZ(u8, module_name);
+        defer py.allocator.free(module_nameZ);
+
+        const pycode = ffi.Py_CompileString(codeZ.ptr, filenameZ.ptr, ffi.Py_file_input) orelse return PyError.PyRaised;
         defer ffi.Py_DECREF(pycode);
 
-        const pymod = ffi.PyImport_ExecCodeModuleEx(module_name.ptr, pycode, filename.ptr) orelse return PyError.PyRaised;
+        const pymod = ffi.PyImport_ExecCodeModuleEx(module_nameZ.ptr, pycode, filenameZ.ptr) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = pymod } };
     }
 };
