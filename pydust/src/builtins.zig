@@ -138,13 +138,6 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule.import(module_name)).obj;
 }
 
-/// Import a module and return a borrowed reference to an attribute on that module.
-pub fn importFrom(module_name: [:0]const u8, attr: [:0]const u8) !py.PyObject {
-    const mod = try import(module_name);
-    defer mod.decref();
-    return try mod.get(attr);
-}
-
 /// Check if object is an instance of cls.
 pub fn isinstance(object: anytype, cls: anytype) !bool {
     const pyobj = py.object(object);
@@ -229,7 +222,9 @@ pub fn self(comptime PydustType: type) !py.PyObject {
     const mod = State.getContaining(PydustType, .module);
     const modName = State.getIdentifier(mod).name;
 
-    return try importFrom(modName, clsName);
+    const pymod = try import(modName);
+    defer pymod.decref();
+    return pymod.get(clsName);
 }
 
 const testing = std.testing;

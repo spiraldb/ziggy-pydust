@@ -40,7 +40,7 @@ pub const PySlice = extern struct {
     }
 
     pub fn getStop(self: PySlice, comptime T: type) !T {
-        return try try self.obj.getAs(T, "stop");
+        return try self.obj.getAs(T, "stop");
     }
 
     pub fn getStep(self: PySlice, comptime T: type) !T {
@@ -56,5 +56,6 @@ test "PySlice" {
     defer range.decref();
 
     try std.testing.expectEqual(@as(u64, 0), try range.getStart(u64));
+    try std.testing.expectEqual(@as(u64, 100), try range.getStop(u64));
     try std.testing.expectEqual(@as(?u64, null), try range.getStep(?u64));
 }

@@ -33,7 +33,12 @@ pub const PyObject = extern struct {
         return name.asSlice();
     }
 
-    /// Call this object with the given args and kwargs.
+    /// Call a method on this object with no arguments.
+    pub fn call0(self: PyObject, comptime T: type, method: [:0]const u8) !T {
+        return py.call0(T, try self.get(method));
+    }
+
+    /// Call a method on this object with the given args and kwargs.
     pub fn call(self: PyObject, comptime T: type, method: [:0]const u8, args: anytype, kwargs: anytype) !T {
         const methodObj = try self.get(method);
         return py.call(T, methodObj, args, kwargs);
@@ -125,7 +130,9 @@ test "call" {
     py.initialize();
     defer py.finalize();
 
-    const pow = try py.importFrom("math", "pow");
-    const result = try py.call(f32, pow, .{ 2, 3 }, .{});
+    const math = try py.import("math");
+    defer math.decref();
+
+    const result = try math.call(f32, "pow", .{ 2, 3 }, .{});
     try std.testing.expectEqual(@as(f32, 8.0), result);
 }
