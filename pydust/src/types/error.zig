@@ -166,12 +166,17 @@ const PyExc = struct {
                 );
                 defer py.allocator.free(code);
 
-                // Import the compiled code as a module and invoke the failing function
-                const fake_module = try py.PyModule.fromCode(code, line_info.file_name, symbol_info.compile_unit_name);
-                defer fake_module.decref();
-
+                // We have to copy all the strings to ensure they're null terminated :(
                 const func_name = try py.allocator.dupeZ(u8, symbol_info.symbol_name);
                 defer py.allocator.free(func_name);
+                const file_name = try py.allocator.dupeZ(u8, line_info.file_name);
+                defer py.allocator.free(file_name);
+                const compile_unit_name = try py.allocator.dupeZ(u8, symbol_info.compile_unit_name);
+                defer py.allocator.free(compile_unit_name);
+
+                // Import the compiled code as a module and invoke the failing function
+                const fake_module = try py.PyModule.fromCode(code, file_name, compile_unit_name);
+                defer fake_module.decref();
 
                 _ = fake_module.obj.call(void, func_name, .{}, .{}) catch null;
 
