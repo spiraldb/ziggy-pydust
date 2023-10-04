@@ -34,21 +34,23 @@ pub const PyObject = extern struct {
     }
 
     /// Call a method on this object with no arguments.
-    pub fn call0(self: PyObject, comptime T: type, method: [:0]const u8) !T {
+    pub fn call0(self: PyObject, comptime T: type, method: []const u8) !T {
         return py.call0(T, try self.get(method));
     }
 
     /// Call a method on this object with the given args and kwargs.
-    pub fn call(self: PyObject, comptime T: type, method: [:0]const u8, args: anytype, kwargs: anytype) !T {
-        const methodObj = try self.get(method);
-        return py.call(T, methodObj, args, kwargs);
+    pub fn call(self: PyObject, comptime T: type, method: []const u8, args: anytype, kwargs: anytype) !T {
+        return py.call(T, try self.get(method), args, kwargs);
     }
 
-    pub fn get(self: PyObject, attr: [:0]const u8) !py.PyObject {
-        return .{ .py = ffi.PyObject_GetAttrString(self.py, attr) orelse return PyError.PyRaised };
+    pub fn get(self: PyObject, attr: []const u8) !py.PyObject {
+        const attrStr = try py.PyString.create(attr);
+        defer attrStr.decref();
+
+        return .{ .py = ffi.PyObject_GetAttr(self.py, attrStr.obj.py) orelse return PyError.PyRaised };
     }
 
-    pub fn getAs(self: PyObject, comptime T: type, attr: [:0]const u8) !T {
+    pub fn getAs(self: PyObject, comptime T: type, attr: []const u8) !T {
         return try py.as(T, try self.get(attr));
     }
 
@@ -65,15 +67,21 @@ pub const PyObject = extern struct {
         return buffer;
     }
 
-    pub fn set(self: PyObject, attr: [:0]const u8, value: PyObject) !PyObject {
-        if (ffi.PyObject_SetAttrString(self.py, attr, value.py) < 0) {
+    pub fn set(self: PyObject, attr: []const u8, value: PyObject) !PyObject {
+        const attrStr = try py.PyString.create(attr);
+        defer attrStr.decref();
+
+        if (ffi.PyObject_SetAttr(self.py, attrStr.obj.py, value.py) < 0) {
             return PyError.PyRaised;
         }
         return self;
     }
 
-    pub fn del(self: PyObject, attr: [:0]const u8) !PyObject {
-        if (ffi.PyObject_DelAttrString(self.py, attr) < 0) {
+    pub fn del(self: PyObject, attr: []const u8) !PyObject {
+        const attrStr = try py.PyString.create(attr);
+        defer attrStr.decref();
+
+        if (ffi.PyObject_DelAttr(self.py, attrStr.obj.py) < 0) {
             return PyError.PyRaised;
         }
         return self;
