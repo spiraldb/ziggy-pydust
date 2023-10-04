@@ -93,10 +93,7 @@ pub const User = py.class(struct {
 
     greeting: py.property(struct {
         pub fn get(self: *const Self) !py.PyString {
-            var g = try py.PyString.create("Hello, ");
-            g = try g.append(self.name);
-            g = try g.appendSlice("!");
-            return g;
+            return py.PyString.createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
     }) = .{},
 });

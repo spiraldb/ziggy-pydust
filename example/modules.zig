@@ -47,11 +47,10 @@ pub fn hello(
     self: *const Self,
     args: struct { name: py.PyString }, // (5)!
 ) !py.PyString {
-    var str = try py.PyString.create("Hello, ");
-    str = try str.append(args.name);
-    str = try str.appendSlice(". It's ");
-    str = try str.append(self.name);
-    return str;
+    return py.PyString.createFmt(
+        "Hello, {s}. It's {s}",
+        .{ try args.name.asSlice(), try self.name.asSlice() },
+    );
 }
 
 pub const submod = py.module(struct { // (6)!
