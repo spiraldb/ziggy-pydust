@@ -349,7 +349,7 @@ pub fn Trampoline(comptime T: type) type {
                     if (try callArgs.getKwarg(field.type, field.name)) |kwarg| {
                         @field(args, field.name) = kwarg;
                     } else {
-                        @field(args, field.name) = @as(*field.type, @ptrCast(def)).*;
+                        @field(args, field.name) = @as(*field.type, @constCast(@alignCast(@ptrCast(def)))).*;
                     }
                 } else {
                     // We're an arg
