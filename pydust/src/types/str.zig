@@ -28,10 +28,9 @@ pub const PyString = extern struct {
         return .{ .obj = .{ .py = unicode } };
     }
 
-    pub fn fmt(comptime format: []const u8, args: anytype) !py.PyString {
+    pub fn createFmt(comptime format: []const u8, args: anytype) !py.PyString {
         const str = try std.fmt.allocPrint(py.allocator, format, args);
         defer py.allocator.free(str);
-
         return create(str);
     }
 
@@ -114,4 +113,14 @@ test "PyString" {
     try testing.expectEqual(@as(u8, 0), ps_slice[ps_slice.len]);
 
     try testing.expectEqualStrings("Hello, world!", ps_slice);
+}
+
+test "PyString createFmt" {
+    py.initialize();
+    defer py.finalize();
+
+    const a = try PyString.createFmt("Hello, {s}!", .{"foo"});
+    defer a.decref();
+
+    try testing.expectEqualStrings("Hello, foo!", try a.asSlice());
 }
