@@ -14,22 +14,29 @@ limitations under the License.
 
 import argparse
 import sys
+from pathlib import Path
 
 from pydust import buildzig, config
 
 parser = argparse.ArgumentParser()
 sub = parser.add_subparsers(dest="command", required=True)
 
-debug_sp = sub.add_parser("debug", help="Compile a Zig file with debug symbols. Useful for running from an IDE.")
+debug_sp = sub.add_parser("debug",
+    help="Compile a Zig file with debug symbols. Useful for running from an IDE.")
 debug_sp.add_argument("entrypoint")
 
 build_sp = sub.add_parser("build", help="Build a zig-based python extension.",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 build_sp.add_argument("-z", "--zig-exe", help="zig executable path")
 build_sp.add_argument("-b", "--build-zig", default="build.zig", help="build.zig file")
-build_sp.add_argument("-m", "--self-managed", default=False, action="store_true", help="self-managed mode")
-build_sp.add_argument("-a", "--limited-api", default=True, action="store_true", help="use limited python c-api")
-build_sp.add_argument("-e", "--extensions", nargs='+', help="space separated list of extension '<name>=<path>' entries")
+build_sp.add_argument("-m", "--self-managed", default=False, action="store_true",
+    help="self-managed mode")
+build_sp.add_argument("-a", "--limited-api", default=True, action="store_true",
+    help="use limited python c-api")
+build_sp.add_argument("-p", "--prefix", default='', help="prefix of built extension")
+build_sp.add_argument("extensions", nargs='+',
+    help="space separated list of extension '<path>' or '<name>=<path>' entries")
+
 
 def main():
     args = parser.parse_args()
@@ -40,17 +47,40 @@ def main():
     elif args.command == "build":
         build(args)
 
-def build(args):
-    """Given a list of '<name>=<path>' entries, compiles corresponding zig-based python extensions"""
-    assert args.extensions and all('=' in ext for ext in args.extensions),\
-        "requires at least one --extensions '<name>=<path>'"
-    ext_items = [tuple(ext.split('=')) for ext in args.extensions]
-    _extensions = []
-    for name, path in ext_items:
-        _extensions.append(
-            config.ExtModule(name=name, root=path, limited_api=args.limited_api)
-        )
 
+def _parse_exts(exts: list[str], limited_api: bool = True, prefix: str = '') -> list[config.ExtModule]:
+    """parses extensions entries, accepts '<name>=<path>' or <path>"""
+    _exts = []
+    def _add_ext(name, path: Path):
+        _exts.append(
+            config.ExtModule(
+                name=name, root=str(path), limited_api=limited_api, prefix=prefix)
+        )
+    def _check_path(path: Path):
+        assert path.exists(), f"path does not exist: {path}"
+        assert path.suffix=='.zig' and path.is_file(), f"path must be a zig file: {path}"
+    for elem in exts:
+        if '=' in elem:
+            name, path = elem.split('=')
+            path = Path(path)
+            _check_path(path)
+            _add_ext(name, path)
+        else: # assume elem is a <path>
+            path = Path(elem)
+            _check_path(path)
+            if len(path.parts) > 1: # >1 part
+                parts = (path.parent / (prefix + path.stem)).parts
+                name = '.'.join(parts)
+                _add_ext(name, path)
+            else: # 1 part
+                name = prefix + path.stem
+                _add_ext(name, path)
+    return _exts
+
+def build(args):
+    """Given a list of '<name>=<path>' or '<path>' entries, builds zig-based python extensions"""
+    _extensions = _parse_exts(
+        exts=args.extensions, limited_api=args.limited_api, prefix=args.prefix)
     buildzig.zig_build(
         argv=["install", f"-Dpython-exe={sys.executable}", "-Doptimize=ReleaseSafe"],
         conf=config.ToolPydust(
