@@ -72,12 +72,20 @@ pub fn callable(object: anytype) bool {
 }
 
 /// Call a callable object with no arguments.
+///
+/// If the result is a new reference, then as always the caller is responsible for calling decref on it.
+/// That means for new references the caller should ask for a return type that they are unable to decref,
+/// for example []const u8.
 pub fn call0(comptime T: type, object: anytype) !T {
     const result = ffi.PyObject_CallNoArgs(py.object(object).py) orelse return PyError.PyRaised;
     return try py.as(T, result);
 }
 
 /// Call a callable object with the given arguments.
+///
+/// If the result is a new reference, then as always the caller is responsible for calling decref on it.
+/// That means for new references the caller should ask for a return type that they are unable to decref,
+/// for example []const u8.
 pub fn call(comptime ReturnType: type, object: anytype, args: anytype, kwargs: anytype) !ReturnType {
     const pyobj = py.object(object);
 
@@ -106,7 +114,7 @@ pub fn call(comptime ReturnType: type, object: anytype, args: anytype, kwargs: a
     }
     defer kwargsPy.decref();
 
-    // We _must_ return a PyObject to the user to let them handle the lifetime of the object.
+    // Note, the caller is responsible for returning a result type that they are able to decref.
     const result = ffi.PyObject_Call(pyobj.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.PyRaised;
     return try py.as(ReturnType, result);
 }
