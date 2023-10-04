@@ -10,8 +10,10 @@ class Range:
         ...
 
 class RangeIterator:
-    def __init__(next, stop, step, /):
-        pass
+    """
+    Range iterator
+    """
+
     def __next__(self, /):
         """
         Implement next(self).
