@@ -33,43 +33,18 @@ pub const PyObject = extern struct {
         return name.asSlice();
     }
 
-    /// Call this object without any arguments.
-    pub fn call0(self: PyObject) !PyObject {
-        return .{ .py = ffi.PyObject_CallNoArgs(self.py) orelse return PyError.PyRaised };
-    }
-
     /// Call this object with the given args and kwargs.
-    pub fn call(self: PyObject, args: anytype, kwargs: anytype) !PyObject {
-        var argsPy: py.PyTuple = undefined;
-        if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
-            argsPy = try py.PyTuple.new(0);
-        } else {
-            argsPy = try py.PyTuple.checked(try py.create(args));
-        }
-        defer argsPy.decref();
-
-        // FIXME(ngates): avoid creating empty dict for kwargs
-        var kwargsPy: py.PyDict = undefined;
-        if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
-            kwargsPy = try py.PyDict.new();
-        } else {
-            const kwobj = try py.create(kwargs);
-            if (try py.len(kwobj) == 0) {
-                kwobj.decref();
-                kwargsPy = try py.PyDict.new();
-            } else {
-                kwargsPy = try py.PyDict.checked(kwobj);
-            }
-        }
-        defer kwargsPy.decref();
-
-        // We _must_ return a PyObject to the user to let them handle the lifetime of the object.
-        const result = ffi.PyObject_Call(self.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.PyRaised;
-        return PyObject{ .py = result };
+    pub fn call(self: PyObject, comptime T: type, method: [:0]const u8, args: anytype, kwargs: anytype) !T {
+        const methodObj = try self.get(method);
+        return py.call(T, methodObj, args, kwargs);
     }
 
-    pub fn get(self: PyObject, attr: [:0]const u8) !PyObject {
+    pub fn get(self: PyObject, attr: [:0]const u8) !py.PyObject {
         return .{ .py = ffi.PyObject_GetAttrString(self.py, attr) orelse return PyError.PyRaised };
+    }
+
+    pub fn getAs(self: PyObject, comptime T: type, attr: [:0]const u8) !T {
+        return try py.as(T, try self.get(attr));
     }
 
     // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
@@ -151,11 +126,6 @@ test "call" {
     defer py.finalize();
 
     const pow = try py.importFrom("math", "pow");
-    const result = try pow.call(.{ 2, 3 }, .{});
-
-    if (py.PyFloat.checkedCast(result)) |f| {
-        try std.testing.expectEqual(f.as(f32), 8.0);
-    }
-
-    try std.testing.expectEqual(@as(f32, 8.0), try py.as(f32, result));
+    const result = try py.call(f32, pow, .{ 2, 3 }, .{});
+    try std.testing.expectEqual(@as(f32, 8.0), result);
 }

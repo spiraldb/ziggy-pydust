@@ -36,15 +36,15 @@ pub const PySlice = extern struct {
     }
 
     pub fn getStart(self: PySlice, comptime T: type) !T {
-        return try py.as(T, try self.obj.get("start"));
+        return try self.obj.getAs(T, "start");
     }
 
     pub fn getStop(self: PySlice, comptime T: type) !T {
-        return try py.as(T, try self.obj.get("stop"));
+        return try try self.obj.getAs(T, "stop");
     }
 
     pub fn getStep(self: PySlice, comptime T: type) !T {
-        return try py.as(T, try self.obj.get("step"));
+        return try self.obj.getAs(T, "step");
     }
 };
 

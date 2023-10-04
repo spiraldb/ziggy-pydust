@@ -49,11 +49,13 @@ test "PyType" {
     py.initialize();
     defer py.finalize();
 
-    const StringIO = try PyType.checked(try py.importFrom("io", "StringIO"));
-    defer StringIO.decref();
+    const io = try py.import("io");
+    defer io.decref();
+
+    const StringIO = try io.getAs(py.PyType, "StringIO");
     try std.testing.expectEqualSlices(u8, "StringIO", try (try StringIO.name()).asSlice());
 
-    const sio = try StringIO.obj.call0();
+    const sio = try py.call0(py.PyObject, StringIO);
     defer sio.decref();
     const sioType = try py.type_(sio);
     try std.testing.expectEqualSlices(u8, "StringIO", try (try sioType.name()).asSlice());

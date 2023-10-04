@@ -124,11 +124,11 @@ fn Slots(comptime definition: type) type {
                 const pySubmodDef: *ffi.PyModuleDef = @ptrCast((try submodDef.init()).py);
 
                 // Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace
-                const SimpleNamespace = try py.importFrom("types", "SimpleNamespace");
-
+                const types = try py.import("types");
+                defer types.decref();
                 const pyname = try py.PyString.create(name);
                 defer pyname.decref();
-                const spec = try SimpleNamespace.call(.{}, .{ .name = pyname });
+                const spec = try types.call(py.PyObject, "SimpleNamespace", .{}, .{ .name = pyname });
                 defer spec.decref();
 
                 const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
