@@ -13,7 +13,6 @@ limitations under the License.
 """
 
 import contextlib
-import hashlib
 import io
 import os
 import subprocess
@@ -38,11 +37,13 @@ def zig_build(argv: list[str], conf: config.ToolPydust | None = None):
     conf = conf or config.load()
 
     # Always generate the supporting pydist.build.zig
-    update_file(conf.pydust_build_zig, generate_pydust_build_zig())
+    with open(conf.pydust_build_zig, "w+") as f:
+        f.write(generate_pydust_build_zig())
 
     if not conf.self_managed:
         # Generate the build.zig if we're managing the ext_modules ourselves
-        update_file(conf.build_zig, generate_build_zig(conf))
+        with open(conf.build_zig, 'w+') as f:
+            f.write(generate_build_zig(conf))
 
     zig_exe = [os.path.expanduser(conf.zig_exe)] if conf.zig_exe else [sys.executable, "-m", "ziglang"]
 
@@ -103,24 +104,10 @@ def generate_build_zig(conf=None):
         return f.getvalue()
 
 
-
 def generate_pydust_build_zig():
     """Copy the supporting pydust.build.zig into the project directory."""
-    return open(os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig")).read()
-
-
-def update_file(path, contents: TextIO):
-    """Update a file only if the contents have changed.
-
-    This helps ensure we don't unnecessarily invalidate timestamp based caches.
-    """
-    if (
-        os.path.exists(path)
-        and hashlib.sha1(open(path, "rb").read()).hexdigest() == hashlib.sha1(contents.encode("utf-8")).hexdigest()
-    ):
-        return
-    with open(path, "w+") as f:
-        f.write(contents)
+    with open(os.path.join(os.path.dirname(pydust.__file__), "src/pydust.build.zig")) as f:
+        return f.read()
 
 
 class Writer:
