@@ -40,7 +40,7 @@ pub fn finalize() void {
 }
 
 /// Instantiate a class defined in Pydust.
-pub fn init(comptime Cls: type, args: NewArgs(Cls)) PyError!*Cls {
+pub fn init(comptime Cls: type, args: Cls) PyError!*Cls {
     const moduleDefinition = State.getContaining(Cls, .module);
     const imported = try types.PyModule.import(State.getIdentifier(moduleDefinition).name);
     const pytype = try imported.obj.get(State.getIdentifier(Cls).name);
@@ -49,27 +49,9 @@ pub fn init(comptime Cls: type, args: NewArgs(Cls)) PyError!*Cls {
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
     // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
     const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.PyRaised));
-
-    if (@hasDecl(Cls, "__new__")) {
-        pyobj.state = try tramp.coerceError(Cls.__new__(args));
-    } else if (@typeInfo(Cls).Struct.fields.len > 0) {
-        pyobj.state = args;
-    }
+    pyobj.state = args;
 
     return &pyobj.state;
-}
-
-/// Find the type of the positional args for a class
-inline fn NewArgs(comptime Cls: type) type {
-    if (!@hasDecl(Cls, "__new__")) {
-        // Default construct args are the struct fields themselves.
-        return Cls;
-    }
-
-    const func = @field(Cls, "__new__");
-    const typeInfo = @typeInfo(@TypeOf(func));
-    const sig = funcs.parseSignature("__new__", typeInfo.Fn, &.{});
-    return sig.argsParam orelse struct {};
 }
 
 /// Register the root Pydust module
