@@ -255,14 +255,15 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
         }
 
         fn tp_new_internal(subtype: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!definition {
-            const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
+            const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{ py.PyObject, py.PyType });
 
-            if (sig.selfParam) |_| {
+            if (sig.selfParam) |Self| {
+                const pycls = try tramp.Trampoline(Self).unwrap(subtype);
                 if (sig.argsParam) |Args| {
                     const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
-                    return try tramp.coerceError(definition.__new__(subtype, args));
+                    return try tramp.coerceError(definition.__new__(pycls, args));
                 } else {
-                    return try tramp.coerceError(definition.__new__(subtype));
+                    return try tramp.coerceError(definition.__new__(pycls));
                 }
             } else if (sig.argsParam) |Args| {
                 const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
