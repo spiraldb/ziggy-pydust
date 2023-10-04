@@ -13,8 +13,8 @@ limitations under the License.
 """
 
 import argparse
-import os
 import sys
+from pathlib import Path
 
 from pydust import buildzig, config
 
@@ -51,33 +51,30 @@ def main():
 def _parse_exts(exts: list[str], limited_api: bool = True, prefix: str = '') -> list[config.ExtModule]:
     """parses extensions entries, accepts '<name>=<path>' or <path>"""
     _exts = []
-    def add_ext(name, path):
+    def _add_ext(name, path: Path):
         _exts.append(
             config.ExtModule(
-                name=name, root=path, limited_api=limited_api, prefix=prefix)
+                name=name, root=str(path), limited_api=limited_api, prefix=prefix)
         )
-    def check_path(path):
-        assert os.path.exists(path), f"path does not exist: {path}"
-        assert os.path.splitext(path)[1]=='.zig', f"path must be a zig file: {path}"
+    def _check_path(path: Path):
+        assert path.exists(), f"path does not exist: {path}"
+        assert path.suffix=='.zig' and path.is_file(), f"path must be a zig file: {path}"
     for elem in exts:
         if '=' in elem:
             name, path = elem.split('=')
-            check_path(path)
-            add_ext(name, path)
+            path = Path(path)
+            _check_path(path)
+            _add_ext(name, path)
         else: # assume elem is a <path>
-            path = elem
-            check_path(path)
-            if os.path.sep in path: # >1 part
-                parts = path.split(os.path.sep)
-                tail = parts.pop()
-                stem, suffix = os.path.splitext(tail)
-                parts = parts + [(prefix+stem)]
+            path = Path(elem)
+            _check_path(path)
+            if len(path.parts) > 1: # >1 part
+                parts = (path.parent / (prefix + path.stem)).parts
                 name = '.'.join(parts)
-                add_ext(name, path)
+                _add_ext(name, path)
             else: # 1 part
-                stem, suffix = os.path.splitext(path)
-                name = prefix + stem
-                add_ext(name, path)
+                name = prefix + path.stem
+                _add_ext(name, path)
     return _exts
 
 def build(args):
