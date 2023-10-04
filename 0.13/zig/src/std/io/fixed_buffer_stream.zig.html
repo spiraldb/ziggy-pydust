@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>io/fixed_buffer_stream.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> io = std.io;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-comment">/// This turns a byte buffer into an `io.Writer`, `io.Reader`, or `io.SeekableStream`.</span></span>
+<span class="line" id="L8"><span class="tok-comment">/// If the supplied byte buffer is const, then `io.Writer` is not available.</span></span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">FixedBufferStream</span>(<span class="tok-kw">comptime</span> Buffer: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L10">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L11">        <span class="tok-comment">/// `Buffer` is either a `[]u8` or `[]const u8`.</span></span>
+<span class="line" id="L12">        buffer: Buffer,</span>
+<span class="line" id="L13">        pos: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ReadError = <span class="tok-kw">error</span>{};</span>
+<span class="line" id="L16">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> WriteError = <span class="tok-kw">error</span>{NoSpaceLeft};</span>
+<span class="line" id="L17">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SeekError = <span class="tok-kw">error</span>{};</span>
+<span class="line" id="L18">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> GetSeekPosError = <span class="tok-kw">error</span>{};</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Reader = io.Reader(*Self, ReadError, read);</span>
+<span class="line" id="L21">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Writer = io.Writer(*Self, WriteError, write);</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SeekableStream = io.SeekableStream(</span>
+<span class="line" id="L24">            *Self,</span>
+<span class="line" id="L25">            SeekError,</span>
+<span class="line" id="L26">            GetSeekPosError,</span>
+<span class="line" id="L27">            seekTo,</span>
+<span class="line" id="L28">            seekBy,</span>
+<span class="line" id="L29">            getPos,</span>
+<span class="line" id="L30">            getEndPos,</span>
+<span class="line" id="L31">        );</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reader</span>(self: *Self) Reader {</span>
+<span class="line" id="L36">            <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L37">        }</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writer</span>(self: *Self) Writer {</span>
+<span class="line" id="L40">            <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L41">        }</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">seekableStream</span>(self: *Self) SeekableStream {</span>
+<span class="line" id="L44">            <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L45">        }</span>
+<span class="line" id="L46"></span>
+<span class="line" id="L47">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(self: *Self, dest: []<span class="tok-type">u8</span>) ReadError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L48">            <span class="tok-kw">const</span> size = <span class="tok-builtin">@min</span>(dest.len, self.buffer.len - self.pos);</span>
+<span class="line" id="L49">            <span class="tok-kw">const</span> end = self.pos + size;</span>
+<span class="line" id="L50"></span>
+<span class="line" id="L51">            <span class="tok-builtin">@memcpy</span>(dest[<span class="tok-number">0</span>..size], self.buffer[self.pos..end]);</span>
+<span class="line" id="L52">            self.pos = end;</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54">            <span class="tok-kw">return</span> size;</span>
+<span class="line" id="L55">        }</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">        <span class="tok-comment">/// If the returned number of bytes written is less than requested, the</span></span>
+<span class="line" id="L58">        <span class="tok-comment">/// buffer is full. Returns `error.NoSpaceLeft` when no bytes would be written.</span></span>
+<span class="line" id="L59">        <span class="tok-comment">/// Note: `error.NoSpaceLeft` matches the corresponding error from</span></span>
+<span class="line" id="L60">        <span class="tok-comment">/// `std.fs.File.WriteError`.</span></span>
+<span class="line" id="L61">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(self: *Self, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) WriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L62">            <span class="tok-kw">if</span> (bytes.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L63">            <span class="tok-kw">if</span> (self.pos &gt;= self.buffer.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NoSpaceLeft;</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">            <span class="tok-kw">const</span> n = <span class="tok-kw">if</span> (self.pos + bytes.len &lt;= self.buffer.len)</span>
+<span class="line" id="L66">                bytes.len</span>
+<span class="line" id="L67">            <span class="tok-kw">else</span></span>
+<span class="line" id="L68">                self.buffer.len - self.pos;</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">            <span class="tok-builtin">@memcpy</span>(self.buffer[self.pos..][<span class="tok-number">0</span>..n], bytes[<span class="tok-number">0</span>..n]);</span>
+<span class="line" id="L71">            self.pos += n;</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">            <span class="tok-kw">if</span> (n == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NoSpaceLeft;</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75">            <span class="tok-kw">return</span> n;</span>
+<span class="line" id="L76">        }</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">seekTo</span>(self: *Self, pos: <span class="tok-type">u64</span>) SeekError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L79">            self.pos = <span class="tok-kw">if</span> (std.math.cast(<span class="tok-type">usize</span>, pos)) |x| <span class="tok-builtin">@min</span>(self.buffer.len, x) <span class="tok-kw">else</span> self.buffer.len;</span>
+<span class="line" id="L80">        }</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">seekBy</span>(self: *Self, amt: <span class="tok-type">i64</span>) SeekError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L83">            <span class="tok-kw">if</span> (amt &lt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L84">                <span class="tok-kw">const</span> abs_amt = std.math.absCast(amt);</span>
+<span class="line" id="L85">                <span class="tok-kw">const</span> abs_amt_usize = std.math.cast(<span class="tok-type">usize</span>, abs_amt) <span class="tok-kw">orelse</span> std.math.maxInt(<span class="tok-type">usize</span>);</span>
+<span class="line" id="L86">                <span class="tok-kw">if</span> (abs_amt_usize &gt; self.pos) {</span>
+<span class="line" id="L87">                    self.pos = <span class="tok-number">0</span>;</span>
+<span class="line" id="L88">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L89">                    self.pos -= abs_amt_usize;</span>
+<span class="line" id="L90">                }</span>
+<span class="line" id="L91">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L92">                <span class="tok-kw">const</span> amt_usize = std.math.cast(<span class="tok-type">usize</span>, amt) <span class="tok-kw">orelse</span> std.math.maxInt(<span class="tok-type">usize</span>);</span>
+<span class="line" id="L93">                <span class="tok-kw">const</span> new_pos = std.math.add(<span class="tok-type">usize</span>, self.pos, amt_usize) <span class="tok-kw">catch</span> std.math.maxInt(<span class="tok-type">usize</span>);</span>
+<span class="line" id="L94">                self.pos = <span class="tok-builtin">@min</span>(self.buffer.len, new_pos);</span>
+<span class="line" id="L95">            }</span>
+<span class="line" id="L96">        }</span>
+<span class="line" id="L97"></span>
+<span class="line" id="L98">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getEndPos</span>(self: *Self) GetSeekPosError!<span class="tok-type">u64</span> {</span>
+<span class="line" id="L99">            <span class="tok-kw">return</span> self.buffer.len;</span>
+<span class="line" id="L100">        }</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPos</span>(self: *Self) GetSeekPosError!<span class="tok-type">u64</span> {</span>
+<span class="line" id="L103">            <span class="tok-kw">return</span> self.pos;</span>
+<span class="line" id="L104">        }</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getWritten</span>(self: Self) Buffer {</span>
+<span class="line" id="L107">            <span class="tok-kw">return</span> self.buffer[<span class="tok-number">0</span>..self.pos];</span>
+<span class="line" id="L108">        }</span>
+<span class="line" id="L109"></span>
+<span class="line" id="L110">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reset</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L111">            self.pos = <span class="tok-number">0</span>;</span>
+<span class="line" id="L112">        }</span>
+<span class="line" id="L113">    };</span>
+<span class="line" id="L114">}</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fixedBufferStream</span>(buffer: <span class="tok-kw">anytype</span>) FixedBufferStream(Slice(<span class="tok-builtin">@TypeOf</span>(buffer))) {</span>
+<span class="line" id="L117">    <span class="tok-kw">return</span> .{ .buffer = buffer, .pos = <span class="tok-number">0</span> };</span>
+<span class="line" id="L118">}</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120"><span class="tok-kw">fn</span> <span class="tok-fn">Slice</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L121">    <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L122">        .Pointer =&gt; |ptr_info| {</span>
+<span class="line" id="L123">            <span class="tok-kw">var</span> new_ptr_info = ptr_info;</span>
+<span class="line" id="L124">            <span class="tok-kw">switch</span> (ptr_info.size) {</span>
+<span class="line" id="L125">                .Slice =&gt; {},</span>
+<span class="line" id="L126">                .One =&gt; <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(ptr_info.child)) {</span>
+<span class="line" id="L127">                    .Array =&gt; |info| new_ptr_info.child = info.child,</span>
+<span class="line" id="L128">                    <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;invalid type given to fixedBufferStream&quot;</span>),</span>
+<span class="line" id="L129">                },</span>
+<span class="line" id="L130">                <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;invalid type given to fixedBufferStream&quot;</span>),</span>
+<span class="line" id="L131">            }</span>
+<span class="line" id="L132">            new_ptr_info.size = .Slice;</span>
+<span class="line" id="L133">            <span class="tok-kw">return</span> <span class="tok-builtin">@Type</span>(.{ .Pointer = new_ptr_info });</span>
+<span class="line" id="L134">        },</span>
+<span class="line" id="L135">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;invalid type given to fixedBufferStream&quot;</span>),</span>
+<span class="line" id="L136">    }</span>
+<span class="line" id="L137">}</span>
+<span class="line" id="L138"></span>
+<span class="line" id="L139"><span class="tok-kw">test</span> <span class="tok-str">&quot;FixedBufferStream output&quot;</span> {</span>
+<span class="line" id="L140">    <span class="tok-kw">var</span> buf: [<span class="tok-number">255</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L141">    <span class="tok-kw">var</span> fbs = fixedBufferStream(&amp;buf);</span>
+<span class="line" id="L142">    <span class="tok-kw">const</span> stream = fbs.writer();</span>
+<span class="line" id="L143"></span>
+<span class="line" id="L144">    <span class="tok-kw">try</span> stream.print(<span class="tok-str">&quot;{s}{s}!&quot;</span>, .{ <span class="tok-str">&quot;Hello&quot;</span>, <span class="tok-str">&quot;World&quot;</span> });</span>
+<span class="line" id="L145">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, <span class="tok-str">&quot;HelloWorld!&quot;</span>, fbs.getWritten());</span>
+<span class="line" id="L146">}</span>
+<span class="line" id="L147"></span>
+<span class="line" id="L148"><span class="tok-kw">test</span> <span class="tok-str">&quot;FixedBufferStream output at comptime&quot;</span> {</span>
+<span class="line" id="L149">    <span class="tok-kw">comptime</span> {</span>
+<span class="line" id="L150">        <span class="tok-kw">var</span> buf: [<span class="tok-number">255</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L151">        <span class="tok-kw">var</span> fbs = fixedBufferStream(&amp;buf);</span>
+<span class="line" id="L152">        <span class="tok-kw">const</span> stream = fbs.writer();</span>
+<span class="line" id="L153"></span>
+<span class="line" id="L154">        <span class="tok-kw">try</span> stream.print(<span class="tok-str">&quot;{s}{s}!&quot;</span>, .{ <span class="tok-str">&quot;Hello&quot;</span>, <span class="tok-str">&quot;World&quot;</span> });</span>
+<span class="line" id="L155">        <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, <span class="tok-str">&quot;HelloWorld!&quot;</span>, fbs.getWritten());</span>
+<span class="line" id="L156">    }</span>
+<span class="line" id="L157">}</span>
+<span class="line" id="L158"></span>
+<span class="line" id="L159"><span class="tok-kw">test</span> <span class="tok-str">&quot;FixedBufferStream output 2&quot;</span> {</span>
+<span class="line" id="L160">    <span class="tok-kw">var</span> buffer: [<span class="tok-number">10</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L161">    <span class="tok-kw">var</span> fbs = fixedBufferStream(&amp;buffer);</span>
+<span class="line" id="L162"></span>
+<span class="line" id="L163">    <span class="tok-kw">try</span> fbs.writer().writeAll(<span class="tok-str">&quot;Hello&quot;</span>);</span>
+<span class="line" id="L164">    <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, fbs.getWritten(), <span class="tok-str">&quot;Hello&quot;</span>));</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">    <span class="tok-kw">try</span> fbs.writer().writeAll(<span class="tok-str">&quot;world&quot;</span>);</span>
+<span class="line" id="L167">    <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, fbs.getWritten(), <span class="tok-str">&quot;Helloworld&quot;</span>));</span>
+<span class="line" id="L168"></span>
+<span class="line" id="L169">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.NoSpaceLeft, fbs.writer().writeAll(<span class="tok-str">&quot;!&quot;</span>));</span>
+<span class="line" id="L170">    <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, fbs.getWritten(), <span class="tok-str">&quot;Helloworld&quot;</span>));</span>
+<span class="line" id="L171"></span>
+<span class="line" id="L172">    fbs.reset();</span>
+<span class="line" id="L173">    <span class="tok-kw">try</span> testing.expect(fbs.getWritten().len == <span class="tok-number">0</span>);</span>
+<span class="line" id="L174"></span>
+<span class="line" id="L175">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.NoSpaceLeft, fbs.writer().writeAll(<span class="tok-str">&quot;Hello world!&quot;</span>));</span>
+<span class="line" id="L176">    <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, fbs.getWritten(), <span class="tok-str">&quot;Hello worl&quot;</span>));</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178">    <span class="tok-kw">try</span> fbs.seekTo((<span class="tok-kw">try</span> fbs.getEndPos()) + <span class="tok-number">1</span>);</span>
+<span class="line" id="L179">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.NoSpaceLeft, fbs.writer().writeAll(<span class="tok-str">&quot;H&quot;</span>));</span>
+<span class="line" id="L180">}</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182"><span class="tok-kw">test</span> <span class="tok-str">&quot;FixedBufferStream input&quot;</span> {</span>
+<span class="line" id="L183">    <span class="tok-kw">const</span> bytes = [_]<span class="tok-type">u8</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span> };</span>
+<span class="line" id="L184">    <span class="tok-kw">var</span> fbs = fixedBufferStream(&amp;bytes);</span>
+<span class="line" id="L185"></span>
+<span class="line" id="L186">    <span class="tok-kw">var</span> dest: [<span class="tok-number">4</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188">    <span class="tok-kw">var</span> read = <span class="tok-kw">try</span> fbs.reader().read(&amp;dest);</span>
+<span class="line" id="L189">    <span class="tok-kw">try</span> testing.expect(read == <span class="tok-number">4</span>);</span>
+<span class="line" id="L190">    <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, dest[<span class="tok-number">0</span>..<span class="tok-number">4</span>], bytes[<span class="tok-number">0</span>..<span class="tok-number">4</span>]));</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192">    read = <span class="tok-kw">try</span> fbs.reader().read(&amp;dest);</span>
+<span class="line" id="L193">    <span class="tok-kw">try</span> testing.expect(read == <span class="tok-number">3</span>);</span>
+<span class="line" id="L194">    <span class="tok-kw">try</span> testing.expect(mem.eql(<span class="tok-type">u8</span>, dest[<span class="tok-number">0</span>..<span class="tok-number">3</span>], bytes[<span class="tok-number">4</span>..<span class="tok-number">7</span>]));</span>
+<span class="line" id="L195"></span>
+<span class="line" id="L196">    read = <span class="tok-kw">try</span> fbs.reader().read(&amp;dest);</span>
+<span class="line" id="L197">    <span class="tok-kw">try</span> testing.expect(read == <span class="tok-number">0</span>);</span>
+<span class="line" id="L198"></span>
+<span class="line" id="L199">    <span class="tok-kw">try</span> fbs.seekTo((<span class="tok-kw">try</span> fbs.getEndPos()) + <span class="tok-number">1</span>);</span>
+<span class="line" id="L200">    read = <span class="tok-kw">try</span> fbs.reader().read(&amp;dest);</span>
+<span class="line" id="L201">    <span class="tok-kw">try</span> testing.expect(read == <span class="tok-number">0</span>);</span>
+<span class="line" id="L202">}</span>
+<span class="line" id="L203"></span>
+</code></pre></body>
+</html>

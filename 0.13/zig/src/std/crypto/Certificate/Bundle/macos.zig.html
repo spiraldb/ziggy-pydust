@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/Certificate/Bundle/macos.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> Bundle = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../Bundle.zig&quot;</span>);</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RescanMacError = Allocator.Error || fs.File.OpenError || fs.File.ReadError || fs.File.SeekError || Bundle.ParseCertError || <span class="tok-kw">error</span>{EndOfStream};</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rescanMac</span>(cb: *Bundle, gpa: Allocator) RescanMacError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L11">    cb.bytes.clearRetainingCapacity();</span>
+<span class="line" id="L12">    cb.map.clearRetainingCapacity();</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14">    <span class="tok-kw">const</span> file = <span class="tok-kw">try</span> fs.openFileAbsolute(<span class="tok-str">&quot;/System/Library/Keychains/SystemRootCertificates.keychain&quot;</span>, .{});</span>
+<span class="line" id="L15">    <span class="tok-kw">defer</span> file.close();</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17">    <span class="tok-kw">const</span> bytes = <span class="tok-kw">try</span> file.readToEndAlloc(gpa, std.math.maxInt(<span class="tok-type">u32</span>));</span>
+<span class="line" id="L18">    <span class="tok-kw">defer</span> gpa.free(bytes);</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20">    <span class="tok-kw">var</span> stream = std.io.fixedBufferStream(bytes);</span>
+<span class="line" id="L21">    <span class="tok-kw">const</span> reader = stream.reader();</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23">    <span class="tok-kw">const</span> db_header = <span class="tok-kw">try</span> reader.readStructBig(ApplDbHeader);</span>
+<span class="line" id="L24">    assert(mem.eql(<span class="tok-type">u8</span>, <span class="tok-str">&quot;kych&quot;</span>, &amp;<span class="tok-builtin">@as</span>([<span class="tok-number">4</span>]<span class="tok-type">u8</span>, <span class="tok-builtin">@bitCast</span>(db_header.signature))));</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26">    <span class="tok-kw">try</span> stream.seekTo(db_header.schema_offset);</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28">    <span class="tok-kw">const</span> db_schema = <span class="tok-kw">try</span> reader.readStructBig(ApplDbSchema);</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30">    <span class="tok-kw">var</span> table_list = <span class="tok-kw">try</span> gpa.alloc(<span class="tok-type">u32</span>, db_schema.table_count);</span>
+<span class="line" id="L31">    <span class="tok-kw">defer</span> gpa.free(table_list);</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">    <span class="tok-kw">var</span> table_idx: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L34">    <span class="tok-kw">while</span> (table_idx &lt; table_list.len) : (table_idx += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L35">        table_list[table_idx] = <span class="tok-kw">try</span> reader.readIntBig(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L36">    }</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38">    <span class="tok-kw">const</span> now_sec = std.time.timestamp();</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40">    <span class="tok-kw">for</span> (table_list) |table_offset| {</span>
+<span class="line" id="L41">        <span class="tok-kw">try</span> stream.seekTo(db_header.schema_offset + table_offset);</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">        <span class="tok-kw">const</span> table_header = <span class="tok-kw">try</span> reader.readStructBig(TableHeader);</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45">        <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(std.os.darwin.cssm.DB_RECORDTYPE, <span class="tok-builtin">@enumFromInt</span>(table_header.table_id)) != .X509_CERTIFICATE) {</span>
+<span class="line" id="L46">            <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L47">        }</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">        <span class="tok-kw">var</span> record_list = <span class="tok-kw">try</span> gpa.alloc(<span class="tok-type">u32</span>, table_header.record_count);</span>
+<span class="line" id="L50">        <span class="tok-kw">defer</span> gpa.free(record_list);</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52">        <span class="tok-kw">var</span> record_idx: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L53">        <span class="tok-kw">while</span> (record_idx &lt; record_list.len) : (record_idx += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L54">            record_list[record_idx] = <span class="tok-kw">try</span> reader.readIntBig(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L55">        }</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">        <span class="tok-kw">for</span> (record_list) |record_offset| {</span>
+<span class="line" id="L58">            <span class="tok-kw">try</span> stream.seekTo(db_header.schema_offset + table_offset + record_offset);</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60">            <span class="tok-kw">const</span> cert_header = <span class="tok-kw">try</span> reader.readStructBig(X509CertHeader);</span>
+<span class="line" id="L61"></span>
+<span class="line" id="L62">            <span class="tok-kw">try</span> cb.bytes.ensureUnusedCapacity(gpa, cert_header.cert_size);</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">            <span class="tok-kw">const</span> cert_start = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(cb.bytes.items.len));</span>
+<span class="line" id="L65">            <span class="tok-kw">const</span> dest_buf = cb.bytes.allocatedSlice()[cert_start..];</span>
+<span class="line" id="L66">            cb.bytes.items.len += <span class="tok-kw">try</span> reader.readAtLeast(dest_buf, cert_header.cert_size);</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">            <span class="tok-kw">try</span> cb.parseCert(gpa, cert_start, now_sec);</span>
+<span class="line" id="L69">        }</span>
+<span class="line" id="L70">    }</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72">    cb.bytes.shrinkAndFree(gpa, cb.bytes.items.len);</span>
+<span class="line" id="L73">}</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75"><span class="tok-kw">const</span> ApplDbHeader = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L76">    signature: <span class="tok-builtin">@Vector</span>(<span class="tok-number">4</span>, <span class="tok-type">u8</span>),</span>
+<span class="line" id="L77">    version: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L78">    header_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L79">    schema_offset: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L80">    auth_offset: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L81">};</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83"><span class="tok-kw">const</span> ApplDbSchema = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L84">    schema_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L85">    table_count: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L86">};</span>
+<span class="line" id="L87"></span>
+<span class="line" id="L88"><span class="tok-kw">const</span> TableHeader = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L89">    table_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L90">    table_id: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L91">    record_count: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L92">    records: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L93">    indexes_offset: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L94">    free_list_head: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L95">    record_numbers_count: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L96">};</span>
+<span class="line" id="L97"></span>
+<span class="line" id="L98"><span class="tok-kw">const</span> X509CertHeader = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L99">    record_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L100">    record_number: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L101">    unknown1: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L102">    unknown2: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L103">    cert_size: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L104">    unknown3: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L105">    cert_type: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L106">    cert_encoding: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L107">    print_name: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L108">    alias: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L109">    subject: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L110">    issuer: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L111">    serial_number: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L112">    subject_key_identifier: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L113">    public_key_hash: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L114">};</span>
+<span class="line" id="L115"></span>
+</code></pre></body>
+</html>
