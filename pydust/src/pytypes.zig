@@ -390,7 +390,7 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
                     .nargs = sig.nargs,
                     .nkwargs = sig.nkwargs,
                 };
-                size += funcs.textSignature(classSig).len - 1;
+                size += funcs.textSignature(classSig).len;
             }
 
             if (@hasDecl(definition, "__doc__")) {
@@ -419,12 +419,16 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
                     .nkwargs = sig.nkwargs,
                 };
                 const sigText = funcs.textSignature(classSig);
-                @memcpy(userDoc[0 .. sigText.len - 1], sigText[0 .. sigText.len - 1]);
-                docOffset += sigText.len - 1;
+                @memcpy(userDoc[0..sigText.len], &sigText);
+                docOffset += sigText.len;
             }
             if (@hasDecl(definition, "__doc__")) {
                 @memcpy(userDoc[docOffset..], definition.__doc__);
             }
+
+            // Add null terminator
+            userDoc[userDoc.len] = 0;
+
             break :blk userDoc;
         };
     };

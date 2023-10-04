@@ -432,6 +432,7 @@ fn sigSize(comptime sig: Signature) usize {
     var argSize: u64 = sig.name.len;
     // Count the size of the output string
     for (args) |arg| {
+        // +2 for ", "
         argSize += arg.len + 2;
     }
 
@@ -440,7 +441,8 @@ fn sigSize(comptime sig: Signature) usize {
     }
 
     // The size is the size of all arguments plus the padding after argument list
-    return argSize + 8;
+    // "(" + ")\n--\n\n" => 7
+    return argSize + 7;
 }
 
 fn sigArgs(comptime sig: Signature) ![]const []const u8 {
