@@ -614,7 +614,7 @@ fn EqualsOperator(
             if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
 
             // If other arg is of the same type as self we can short circuit equality of both objects aren't of same type
-            if (sig.argsParam == *definition or sig.argsParam == *const definition) {
+            if (sig.argsParam == *const definition) {
                 const selfType = py.type_(py.object(pyself)) catch return null;
                 const otherType = py.type_(py.object(pyother)) catch return null;
                 if (otherType.obj.py != selfType.obj.py) {
