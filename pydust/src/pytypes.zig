@@ -599,6 +599,40 @@ fn BinaryOperator(
     };
 }
 
+fn EqualsOperator(
+    comptime definition: type,
+    comptime op: []const u8,
+) type {
+    return struct {
+        const equals = std.mem.eql(u8, op, "__eq__");
+        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const func = @field(definition, op);
+            const typeInfo = @typeInfo(@TypeOf(func));
+            const sig = funcs.parseSignature(op, typeInfo.Fn, &.{});
+
+            if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
+            if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
+
+            // If other arg is of the same type as self we can short circuit equality of both objects aren't of same type
+            if (sig.argsParam == *definition or sig.argsParam == *const definition) {
+                const selfType = py.type_(py.object(pyself)) catch return null;
+                const otherType = py.type_(py.object(pyother)) catch return null;
+                if (otherType.obj.py != selfType.obj.py) {
+                    return if (equals) py.False().obj.py else py.True().obj.py;
+                }
+            }
+
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+            const other = tramp.Trampoline(
+                sig.argsParam orelse unreachable,
+            ).unwrap(.{ .py = pyother }) catch return null;
+
+            const result = tramp.coerceError(func(&self.state, other)) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+    };
+}
+
 fn RichCompare(comptime definition: type) type {
     const BinaryFunc = *const fn (*ffi.PyObject, *ffi.PyObject) callconv(.C) ?*ffi.PyObject;
     const errorMsg =
@@ -671,8 +705,8 @@ fn RichCompare(comptime definition: type) type {
             var funcs_: [6]?BinaryFunc = .{ null, null, null, null, null, null };
             for (&funcs_, funcs.compareFuncs) |*func, funcName| {
                 if (@hasDecl(definition, funcName)) {
-                    if (std.mem.eql(u8, funcName, "__eq__")) {
-                        func.* = &__eq__;
+                    if (std.mem.eql(u8, funcName, "__eq__") or std.mem.eql(u8, funcName, "__ne__")) {
+                        func.* = &EqualsOperator(definition, funcName).call;
                     } else {
                         func.* = &BinaryOperator(definition, funcName).call;
                     }
@@ -680,30 +714,5 @@ fn RichCompare(comptime definition: type) type {
             }
             break :blk funcs_;
         };
-
-        fn __eq__(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const typeInfo = @typeInfo(@TypeOf(definition.__eq__));
-            const sig = funcs.parseSignature("__eq__", typeInfo.Fn, &.{});
-
-            if (sig.selfParam == null) @compileError("__eq__ must take a self parameter");
-            if (sig.nargs != 1) @compileError("__eq__ must take exactly one parameter after self parameter");
-
-            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            // If other is not PyObject it must be the same type as self.
-            // In that case check that other is of the same type as self to short circuit.
-            if (sig.argsParam != py.PyObject) {
-                const selfType = py.type_(py.object(pyself)) catch return null;
-                if (!(py.isinstance(pyother, selfType.obj) catch return null)) {
-                    return py.False().obj.py;
-                }
-            }
-
-            const other = tramp.Trampoline(
-                sig.argsParam orelse unreachable,
-            ).unwrap(.{ .py = pyother }) catch return null;
-
-            const result = tramp.coerceError(definition.__eq__(&self.state, other)) catch return null;
-            return (py.createOwned(result) catch return null).py;
-        }
     };
 }

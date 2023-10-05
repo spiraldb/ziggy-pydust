@@ -133,11 +133,14 @@ def test_justequals():
         assert cmp1 <= cmp2
 
 
+# Test short circuit logic in pydust that handles
+# cases where __eq__ expects same types but values clearly are not
 def test_justequals_different_type():
     cmp1 = operators.Equals(1)
     cmp2 = 2
 
     assert not cmp1 == cmp2
+    assert cmp1 != cmp2
 
 
 def test_justLessThan():
