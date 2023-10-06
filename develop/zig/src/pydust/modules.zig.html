@@ -263,38 +263,43 @@
 <span class="line" id="L132">                <span class="tok-kw">defer</span> spec.decref();</span>
 <span class="line" id="L133"></span>
 <span class="line" id="L134">                <span class="tok-kw">const</span> submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised };</span>
-<span class="line" id="L135">                <span class="tok-kw">try</span> module.addObjectRef(name, submod);</span>
-<span class="line" id="L136">            }</span>
-<span class="line" id="L137"></span>
-<span class="line" id="L138">            <span class="tok-comment">// Finally, i Initialize the state struct to default values</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">                <span class="tok-kw">if</span> (ffi.PyModule_ExecDef(submod.py, pySubmodDef) &lt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L137">                    <span class="tok-kw">return</span> PyError.PyRaised;</span>
+<span class="line" id="L138">                }</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140">                <span class="tok-kw">try</span> module.addObjectRef(name, submod);</span>
+<span class="line" id="L141">            }</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">            <span class="tok-comment">// Finally, i Initialize the state struct to default values</span>
 </span>
-<span class="line" id="L139">            <span class="tok-kw">const</span> state = <span class="tok-kw">try</span> module.getState(definition);</span>
-<span class="line" id="L140">            <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
-<span class="line" id="L141">                <span class="tok-kw">const</span> newFunc = <span class="tok-builtin">@field</span>(definition, <span class="tok-str">&quot;__new__&quot;</span>);</span>
-<span class="line" id="L142">                state.* = <span class="tok-kw">try</span> newFunc();</span>
-<span class="line" id="L143">            } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L144">                state.* = definition{};</span>
-<span class="line" id="L145">            }</span>
-<span class="line" id="L146">        }</span>
-<span class="line" id="L147">    };</span>
-<span class="line" id="L148">}</span>
-<span class="line" id="L149"></span>
-<span class="line" id="L150"><span class="tok-kw">fn</span> <span class="tok-fn">Submodules</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L151">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(definition).Struct;</span>
-<span class="line" id="L152">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L153">        <span class="tok-kw">const</span> submodules: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = blk: {</span>
-<span class="line" id="L154">            <span class="tok-kw">var</span> mods: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = &amp;.{};</span>
-<span class="line" id="L155">            <span class="tok-kw">for</span> (typeInfo.decls) |decl| {</span>
-<span class="line" id="L156">                <span class="tok-kw">if</span> (State.findDefinition(<span class="tok-builtin">@field</span>(definition, decl.name))) |def| {</span>
-<span class="line" id="L157">                    <span class="tok-kw">if</span> (def.<span class="tok-type">type</span> == .module) {</span>
-<span class="line" id="L158">                        mods = mods ++ .{def.definition};</span>
-<span class="line" id="L159">                    }</span>
-<span class="line" id="L160">                }</span>
-<span class="line" id="L161">            }</span>
-<span class="line" id="L162">            <span class="tok-kw">break</span> :blk mods;</span>
-<span class="line" id="L163">        };</span>
-<span class="line" id="L164">    };</span>
-<span class="line" id="L165">}</span>
-<span class="line" id="L166"></span>
+<span class="line" id="L144">            <span class="tok-kw">const</span> state = <span class="tok-kw">try</span> module.getState(definition);</span>
+<span class="line" id="L145">            <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__new__&quot;</span>)) {</span>
+<span class="line" id="L146">                <span class="tok-kw">const</span> newFunc = <span class="tok-builtin">@field</span>(definition, <span class="tok-str">&quot;__new__&quot;</span>);</span>
+<span class="line" id="L147">                state.* = <span class="tok-kw">try</span> newFunc();</span>
+<span class="line" id="L148">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L149">                state.* = definition{};</span>
+<span class="line" id="L150">            }</span>
+<span class="line" id="L151">        }</span>
+<span class="line" id="L152">    };</span>
+<span class="line" id="L153">}</span>
+<span class="line" id="L154"></span>
+<span class="line" id="L155"><span class="tok-kw">fn</span> <span class="tok-fn">Submodules</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L156">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(definition).Struct;</span>
+<span class="line" id="L157">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L158">        <span class="tok-kw">const</span> submodules: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = blk: {</span>
+<span class="line" id="L159">            <span class="tok-kw">var</span> mods: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = &amp;.{};</span>
+<span class="line" id="L160">            <span class="tok-kw">for</span> (typeInfo.decls) |decl| {</span>
+<span class="line" id="L161">                <span class="tok-kw">if</span> (State.findDefinition(<span class="tok-builtin">@field</span>(definition, decl.name))) |def| {</span>
+<span class="line" id="L162">                    <span class="tok-kw">if</span> (def.<span class="tok-type">type</span> == .module) {</span>
+<span class="line" id="L163">                        mods = mods ++ .{def.definition};</span>
+<span class="line" id="L164">                    }</span>
+<span class="line" id="L165">                }</span>
+<span class="line" id="L166">            }</span>
+<span class="line" id="L167">            <span class="tok-kw">break</span> :blk mods;</span>
+<span class="line" id="L168">        };</span>
+<span class="line" id="L169">    };</span>
+<span class="line" id="L170">}</span>
+<span class="line" id="L171"></span>
 </code></pre></body>
 </html>
