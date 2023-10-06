@@ -43,6 +43,7 @@ pub fn finalize() void {
 pub fn init(comptime Cls: type, args: Cls) PyError!*Cls {
     const moduleDefinition = State.getContaining(Cls, .module);
     const imported = try types.PyModule.import(State.getIdentifier(moduleDefinition).name);
+    defer imported.decref();
     const pytype = try imported.obj.get(State.getIdentifier(Cls).name);
 
     // Alloc the class

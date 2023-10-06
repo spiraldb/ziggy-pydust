@@ -132,6 +132,11 @@ fn Slots(comptime definition: type) type {
                 defer spec.decref();
 
                 const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
+
+                if (ffi.PyModule_ExecDef(submod.py, pySubmodDef) < 0) {
+                    return PyError.PyRaised;
+                }
+
                 try module.addObjectRef(name, submod);
             }
 
