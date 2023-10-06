@@ -18,7 +18,6 @@ import argparse
 import importlib
 import inspect
 import os
-import sys
 from pathlib import Path
 
 import black
@@ -209,19 +208,12 @@ def check_contents(module, directory: Path, module_name: str) -> None:
 
 
 def generate_stubs(package_name: str, destination: str = ".", check: bool = False):
-    module = None
-    try:
-        module = importlib.import_module(package_name)
-    except Exception as exc:
-        print("Not a valid python module, skipping...", package_name, exc)
-        sys.exit(0)
-
+    module = importlib.import_module(package_name)
     directory = Path(destination).resolve()
-    if module:
-        if check:
-            check_contents(module, directory, package_name)
-        else:
-            write(module, directory, package_name)
+    if check:
+        check_contents(module, directory, package_name)
+    else:
+        write(module, directory, package_name)
 
 
 if __name__ == "__main__":
