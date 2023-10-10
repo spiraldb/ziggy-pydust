@@ -759,109 +759,111 @@
 <span class="line" id="L613">            <span class="tok-kw">if</span> (typeInfo.params.len != <span class="tok-number">2</span>) <span class="tok-builtin">@compileError</span>(op ++ <span class="tok-str">&quot; must take exactly two parameters&quot;</span>);</span>
 <span class="line" id="L614">            <span class="tok-kw">const</span> Other = typeInfo.params[<span class="tok-number">1</span>].<span class="tok-type">type</span>.?;</span>
 <span class="line" id="L615"></span>
-<span class="line" id="L616">            <span class="tok-comment">// If other arg is of the same type as self we can short circuit equality of both objects aren't of same type</span>
+<span class="line" id="L616">            <span class="tok-comment">// If Other arg type is the same as Self, and Other is not a subclass of Self,</span>
 </span>
-<span class="line" id="L617">            <span class="tok-kw">if</span> (Other == *<span class="tok-kw">const</span> definition) {</span>
-<span class="line" id="L618">                <span class="tok-kw">const</span> selfType = py.type_(py.object(pyself)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L619">                <span class="tok-kw">const</span> otherType = py.type_(py.object(pyother)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L620">                <span class="tok-kw">if</span> (otherType.obj.py != selfType.obj.py) {</span>
-<span class="line" id="L621">                    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (equals) py.False().obj.py <span class="tok-kw">else</span> py.True().obj.py;</span>
-<span class="line" id="L622">                }</span>
-<span class="line" id="L623">            }</span>
-<span class="line" id="L624"></span>
-<span class="line" id="L625">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
-<span class="line" id="L626">            <span class="tok-kw">const</span> other = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L627"></span>
-<span class="line" id="L628">            <span class="tok-kw">const</span> result = tramp.coerceError(func(&amp;self.state, other)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L629">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
-<span class="line" id="L630">        }</span>
-<span class="line" id="L631">    };</span>
-<span class="line" id="L632">}</span>
-<span class="line" id="L633"></span>
-<span class="line" id="L634"><span class="tok-kw">fn</span> <span class="tok-fn">RichCompare</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L635">    <span class="tok-kw">const</span> BinaryFunc = *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (*ffi.PyObject, *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject;</span>
-<span class="line" id="L636">    <span class="tok-kw">const</span> errorMsg =</span>
-<span class="line" id="L637">        <span class="tok-str">\\Class cannot define both __richcompare__ and</span></span>
-
-<span class="line" id="L638">        <span class="tok-str">\\ any of __lt__, __le__, __eq__, __ne__, __gt__, __ge__.&quot;</span></span>
-
-<span class="line" id="L639">    ;</span>
-<span class="line" id="L640">    <span class="tok-kw">const</span> richCmpName = <span class="tok-str">&quot;__richcompare__&quot;</span>;</span>
-<span class="line" id="L641">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L642">        <span class="tok-kw">const</span> hasCompare = blk: {</span>
-<span class="line" id="L643">            <span class="tok-kw">var</span> result = <span class="tok-null">false</span>;</span>
-<span class="line" id="L644">            <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, richCmpName)) {</span>
-<span class="line" id="L645">                result = <span class="tok-null">true</span>;</span>
-<span class="line" id="L646">            }</span>
-<span class="line" id="L647"></span>
-<span class="line" id="L648">            <span class="tok-kw">for</span> (funcs.compareFuncs) |fnName| {</span>
-<span class="line" id="L649">                <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, fnName)) {</span>
-<span class="line" id="L650">                    <span class="tok-kw">if</span> (result) {</span>
-<span class="line" id="L651">                        <span class="tok-builtin">@compileError</span>(errorMsg);</span>
-<span class="line" id="L652">                    }</span>
-<span class="line" id="L653">                    <span class="tok-kw">break</span> :blk <span class="tok-null">true</span>;</span>
-<span class="line" id="L654">                }</span>
-<span class="line" id="L655">            }</span>
-<span class="line" id="L656">            <span class="tok-kw">break</span> :blk result;</span>
-<span class="line" id="L657">        };</span>
-<span class="line" id="L658"></span>
-<span class="line" id="L659">        <span class="tok-kw">const</span> compare = <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, richCmpName)) richCompare <span class="tok-kw">else</span> builtCompare;</span>
-<span class="line" id="L660"></span>
-<span class="line" id="L661">        <span class="tok-kw">fn</span> <span class="tok-fn">richCompare</span>(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: <span class="tok-type">c_int</span>) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
-<span class="line" id="L662">            <span class="tok-kw">const</span> func = definition.__richcompare__;</span>
-<span class="line" id="L663">            <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func)).Fn;</span>
-<span class="line" id="L664"></span>
-<span class="line" id="L665">            <span class="tok-kw">if</span> (typeInfo.params.len != <span class="tok-number">3</span>) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;__richcompare__ must take exactly three parameters: Self, Other, CompareOp&quot;</span>);</span>
-<span class="line" id="L666"></span>
-<span class="line" id="L667">            <span class="tok-kw">const</span> Self = typeInfo.params[<span class="tok-number">0</span>].<span class="tok-type">type</span>.?;</span>
-<span class="line" id="L668">            <span class="tok-kw">const</span> Other = typeInfo.params[<span class="tok-number">1</span>].<span class="tok-type">type</span>.?;</span>
-<span class="line" id="L669">            <span class="tok-kw">const</span> CompareOpArg = typeInfo.params[<span class="tok-number">2</span>].<span class="tok-type">type</span>.?;</span>
-<span class="line" id="L670">            <span class="tok-kw">if</span> (CompareOpArg != py.CompareOp) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Third parameter of __richcompare__ must be a py.CompareOp&quot;</span>);</span>
-<span class="line" id="L671"></span>
-<span class="line" id="L672">            <span class="tok-kw">const</span> self = py.as(Self, pyself) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L673">            <span class="tok-kw">const</span> otherArg = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L674">            <span class="tok-kw">const</span> opEnum: py.CompareOp = <span class="tok-builtin">@enumFromInt</span>(op);</span>
-<span class="line" id="L675"></span>
-<span class="line" id="L676">            <span class="tok-kw">const</span> result = tramp.coerceError(func(self, otherArg, opEnum)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L677">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
-<span class="line" id="L678">        }</span>
-<span class="line" id="L679"></span>
-<span class="line" id="L680">        <span class="tok-kw">fn</span> <span class="tok-fn">builtCompare</span>(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: <span class="tok-type">c_int</span>) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
-<span class="line" id="L681">            <span class="tok-kw">const</span> compFunc = compareFuncs[<span class="tok-builtin">@intCast</span>(op)];</span>
-<span class="line" id="L682">            <span class="tok-kw">if</span> (compFunc) |func| {</span>
-<span class="line" id="L683">                <span class="tok-kw">return</span> func(pyself, pyother);</span>
-<span class="line" id="L684">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (op == <span class="tok-builtin">@intFromEnum</span>(py.CompareOp.NE)) {</span>
-<span class="line" id="L685">                <span class="tok-comment">// Use the negation of __eq__ if it is implemented and __ne__ is not.</span>
+<span class="line" id="L617">            <span class="tok-comment">// then we can short-cut and return not-equal.</span>
 </span>
-<span class="line" id="L686">                <span class="tok-kw">if</span> (compareFuncs[<span class="tok-builtin">@intFromEnum</span>(py.CompareOp.EQ)]) |eq_func| {</span>
-<span class="line" id="L687">                    <span class="tok-kw">const</span> is_eq = eq_func(pyself, pyother) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L688">                    <span class="tok-kw">defer</span> py.decref(is_eq);</span>
-<span class="line" id="L689"></span>
-<span class="line" id="L690">                    <span class="tok-kw">if</span> (py.not_(is_eq) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>) {</span>
-<span class="line" id="L691">                        <span class="tok-kw">return</span> py.True().obj.py;</span>
-<span class="line" id="L692">                    } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L693">                        <span class="tok-kw">return</span> py.False().obj.py;</span>
-<span class="line" id="L694">                    }</span>
-<span class="line" id="L695">                }</span>
-<span class="line" id="L696">            }</span>
-<span class="line" id="L697">            <span class="tok-kw">return</span> py.NotImplemented().py;</span>
-<span class="line" id="L698">        }</span>
-<span class="line" id="L699"></span>
-<span class="line" id="L700">        <span class="tok-kw">const</span> compareFuncs = blk: {</span>
-<span class="line" id="L701">            <span class="tok-kw">var</span> funcs_: [<span class="tok-number">6</span>]?BinaryFunc = .{ <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span> };</span>
-<span class="line" id="L702">            <span class="tok-kw">for</span> (&amp;funcs_, funcs.compareFuncs) |*func, funcName| {</span>
-<span class="line" id="L703">                <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, funcName)) {</span>
-<span class="line" id="L704">                    <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, funcName, <span class="tok-str">&quot;__eq__&quot;</span>) <span class="tok-kw">or</span> std.mem.eql(<span class="tok-type">u8</span>, funcName, <span class="tok-str">&quot;__ne__&quot;</span>)) {</span>
-<span class="line" id="L705">                        func.* = &amp;EqualsOperator(definition, funcName).call;</span>
-<span class="line" id="L706">                    } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L707">                        func.* = &amp;BinaryOperator(definition, funcName).call;</span>
-<span class="line" id="L708">                    }</span>
-<span class="line" id="L709">                }</span>
-<span class="line" id="L710">            }</span>
-<span class="line" id="L711">            <span class="tok-kw">break</span> :blk funcs_;</span>
-<span class="line" id="L712">        };</span>
-<span class="line" id="L713">    };</span>
-<span class="line" id="L714">}</span>
-<span class="line" id="L715"></span>
+<span class="line" id="L618">            <span class="tok-kw">if</span> (Other == *<span class="tok-kw">const</span> definition) {</span>
+<span class="line" id="L619">                <span class="tok-kw">const</span> selfType = py.self(definition) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L620">                <span class="tok-kw">const</span> isSubclass = py.isinstance(pyother, selfType) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L621">                <span class="tok-kw">if</span> (!isSubclass) {</span>
+<span class="line" id="L622">                    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (equals) py.False().obj.py <span class="tok-kw">else</span> py.True().obj.py;</span>
+<span class="line" id="L623">                }</span>
+<span class="line" id="L624">            }</span>
+<span class="line" id="L625"></span>
+<span class="line" id="L626">            <span class="tok-kw">const</span> self: *PyTypeStruct(definition) = <span class="tok-builtin">@ptrCast</span>(pyself);</span>
+<span class="line" id="L627">            <span class="tok-kw">const</span> other = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L628"></span>
+<span class="line" id="L629">            <span class="tok-kw">const</span> result = tramp.coerceError(func(&amp;self.state, other)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L630">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
+<span class="line" id="L631">        }</span>
+<span class="line" id="L632">    };</span>
+<span class="line" id="L633">}</span>
+<span class="line" id="L634"></span>
+<span class="line" id="L635"><span class="tok-kw">fn</span> <span class="tok-fn">RichCompare</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L636">    <span class="tok-kw">const</span> BinaryFunc = *<span class="tok-kw">const</span> <span class="tok-kw">fn</span> (*ffi.PyObject, *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject;</span>
+<span class="line" id="L637">    <span class="tok-kw">const</span> errorMsg =</span>
+<span class="line" id="L638">        <span class="tok-str">\\Class cannot define both __richcompare__ and</span></span>
+
+<span class="line" id="L639">        <span class="tok-str">\\ any of __lt__, __le__, __eq__, __ne__, __gt__, __ge__.&quot;</span></span>
+
+<span class="line" id="L640">    ;</span>
+<span class="line" id="L641">    <span class="tok-kw">const</span> richCmpName = <span class="tok-str">&quot;__richcompare__&quot;</span>;</span>
+<span class="line" id="L642">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L643">        <span class="tok-kw">const</span> hasCompare = blk: {</span>
+<span class="line" id="L644">            <span class="tok-kw">var</span> result = <span class="tok-null">false</span>;</span>
+<span class="line" id="L645">            <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, richCmpName)) {</span>
+<span class="line" id="L646">                result = <span class="tok-null">true</span>;</span>
+<span class="line" id="L647">            }</span>
+<span class="line" id="L648"></span>
+<span class="line" id="L649">            <span class="tok-kw">for</span> (funcs.compareFuncs) |fnName| {</span>
+<span class="line" id="L650">                <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, fnName)) {</span>
+<span class="line" id="L651">                    <span class="tok-kw">if</span> (result) {</span>
+<span class="line" id="L652">                        <span class="tok-builtin">@compileError</span>(errorMsg);</span>
+<span class="line" id="L653">                    }</span>
+<span class="line" id="L654">                    <span class="tok-kw">break</span> :blk <span class="tok-null">true</span>;</span>
+<span class="line" id="L655">                }</span>
+<span class="line" id="L656">            }</span>
+<span class="line" id="L657">            <span class="tok-kw">break</span> :blk result;</span>
+<span class="line" id="L658">        };</span>
+<span class="line" id="L659"></span>
+<span class="line" id="L660">        <span class="tok-kw">const</span> compare = <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, richCmpName)) richCompare <span class="tok-kw">else</span> builtCompare;</span>
+<span class="line" id="L661"></span>
+<span class="line" id="L662">        <span class="tok-kw">fn</span> <span class="tok-fn">richCompare</span>(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: <span class="tok-type">c_int</span>) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
+<span class="line" id="L663">            <span class="tok-kw">const</span> func = definition.__richcompare__;</span>
+<span class="line" id="L664">            <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(func)).Fn;</span>
+<span class="line" id="L665"></span>
+<span class="line" id="L666">            <span class="tok-kw">if</span> (typeInfo.params.len != <span class="tok-number">3</span>) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;__richcompare__ must take exactly three parameters: Self, Other, CompareOp&quot;</span>);</span>
+<span class="line" id="L667"></span>
+<span class="line" id="L668">            <span class="tok-kw">const</span> Self = typeInfo.params[<span class="tok-number">0</span>].<span class="tok-type">type</span>.?;</span>
+<span class="line" id="L669">            <span class="tok-kw">const</span> Other = typeInfo.params[<span class="tok-number">1</span>].<span class="tok-type">type</span>.?;</span>
+<span class="line" id="L670">            <span class="tok-kw">const</span> CompareOpArg = typeInfo.params[<span class="tok-number">2</span>].<span class="tok-type">type</span>.?;</span>
+<span class="line" id="L671">            <span class="tok-kw">if</span> (CompareOpArg != py.CompareOp) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Third parameter of __richcompare__ must be a py.CompareOp&quot;</span>);</span>
+<span class="line" id="L672"></span>
+<span class="line" id="L673">            <span class="tok-kw">const</span> self = py.as(Self, pyself) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L674">            <span class="tok-kw">const</span> otherArg = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L675">            <span class="tok-kw">const</span> opEnum: py.CompareOp = <span class="tok-builtin">@enumFromInt</span>(op);</span>
+<span class="line" id="L676"></span>
+<span class="line" id="L677">            <span class="tok-kw">const</span> result = tramp.coerceError(func(self, otherArg, opEnum)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L678">            <span class="tok-kw">return</span> (py.createOwned(result) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>).py;</span>
+<span class="line" id="L679">        }</span>
+<span class="line" id="L680"></span>
+<span class="line" id="L681">        <span class="tok-kw">fn</span> <span class="tok-fn">builtCompare</span>(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: <span class="tok-type">c_int</span>) <span class="tok-kw">callconv</span>(.C) ?*ffi.PyObject {</span>
+<span class="line" id="L682">            <span class="tok-kw">const</span> compFunc = compareFuncs[<span class="tok-builtin">@intCast</span>(op)];</span>
+<span class="line" id="L683">            <span class="tok-kw">if</span> (compFunc) |func| {</span>
+<span class="line" id="L684">                <span class="tok-kw">return</span> func(pyself, pyother);</span>
+<span class="line" id="L685">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (op == <span class="tok-builtin">@intFromEnum</span>(py.CompareOp.NE)) {</span>
+<span class="line" id="L686">                <span class="tok-comment">// Use the negation of __eq__ if it is implemented and __ne__ is not.</span>
+</span>
+<span class="line" id="L687">                <span class="tok-kw">if</span> (compareFuncs[<span class="tok-builtin">@intFromEnum</span>(py.CompareOp.EQ)]) |eq_func| {</span>
+<span class="line" id="L688">                    <span class="tok-kw">const</span> is_eq = eq_func(pyself, pyother) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L689">                    <span class="tok-kw">defer</span> py.decref(is_eq);</span>
+<span class="line" id="L690"></span>
+<span class="line" id="L691">                    <span class="tok-kw">if</span> (py.not_(is_eq) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>) {</span>
+<span class="line" id="L692">                        <span class="tok-kw">return</span> py.True().obj.py;</span>
+<span class="line" id="L693">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L694">                        <span class="tok-kw">return</span> py.False().obj.py;</span>
+<span class="line" id="L695">                    }</span>
+<span class="line" id="L696">                }</span>
+<span class="line" id="L697">            }</span>
+<span class="line" id="L698">            <span class="tok-kw">return</span> py.NotImplemented().py;</span>
+<span class="line" id="L699">        }</span>
+<span class="line" id="L700"></span>
+<span class="line" id="L701">        <span class="tok-kw">const</span> compareFuncs = blk: {</span>
+<span class="line" id="L702">            <span class="tok-kw">var</span> funcs_: [<span class="tok-number">6</span>]?BinaryFunc = .{ <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span>, <span class="tok-null">null</span> };</span>
+<span class="line" id="L703">            <span class="tok-kw">for</span> (&amp;funcs_, funcs.compareFuncs) |*func, funcName| {</span>
+<span class="line" id="L704">                <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, funcName)) {</span>
+<span class="line" id="L705">                    <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, funcName, <span class="tok-str">&quot;__eq__&quot;</span>) <span class="tok-kw">or</span> std.mem.eql(<span class="tok-type">u8</span>, funcName, <span class="tok-str">&quot;__ne__&quot;</span>)) {</span>
+<span class="line" id="L706">                        func.* = &amp;EqualsOperator(definition, funcName).call;</span>
+<span class="line" id="L707">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L708">                        func.* = &amp;BinaryOperator(definition, funcName).call;</span>
+<span class="line" id="L709">                    }</span>
+<span class="line" id="L710">                }</span>
+<span class="line" id="L711">            }</span>
+<span class="line" id="L712">            <span class="tok-kw">break</span> :blk funcs_;</span>
+<span class="line" id="L713">        };</span>
+<span class="line" id="L714">    };</span>
+<span class="line" id="L715">}</span>
+<span class="line" id="L716"></span>
 </code></pre></body>
 </html>
