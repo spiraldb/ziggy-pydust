@@ -205,14 +205,14 @@ pub const Comparator = py.class(struct {
         return .{ .num = args.num };
     }
 
-    pub fn __richcompare__(self: *const Self, args: struct { other: *const Self, op: py.CompareOp }) bool {
-        return switch (args.op) {
-            .LT => self.num < args.other.num,
-            .LE => self.num <= args.other.num,
-            .EQ => self.num == args.other.num,
-            .NE => self.num != args.other.num,
-            .GT => self.num > args.other.num,
-            .GE => self.num >= args.other.num,
+    pub fn __richcompare__(self: *const Self, other: *const Self, op: py.CompareOp) bool {
+        return switch (op) {
+            .LT => self.num < other.num,
+            .LE => self.num <= other.num,
+            .EQ => self.num == other.num,
+            .NE => self.num != other.num,
+            .GT => self.num > other.num,
+            .GE => self.num >= other.num,
         };
     }
 });

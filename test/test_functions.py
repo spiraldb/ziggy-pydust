@@ -35,11 +35,11 @@ def test_kwargs():
     assert functions.with_kwargs(10.0) == 20
     assert functions.with_kwargs(100.0) == 42
     assert functions.with_kwargs(100.0, y=99.0) == 99
-    with pytest.raises(TypeError, match="unexpected kwarg 'k'"):
+    with pytest.raises(TypeError, match="Unexpected kwarg 'k'"):
         functions.with_kwargs(1.0, y=9.0, k=-2)
     with pytest.raises(TypeError) as exc_info:
         functions.with_kwargs(y=9.0)
-    assert str(exc_info.value) == "expected 1 arg, 1 kwarg"
+    assert str(exc_info.value) == "Expected 1 arg"
 
 
 def test_kw_signature():
@@ -47,5 +47,23 @@ def test_kw_signature():
         [
             inspect.Parameter("x", kind=inspect._ParameterKind.POSITIONAL_ONLY),
             inspect.Parameter("y", kind=inspect._ParameterKind.KEYWORD_ONLY, default=42.0),
+        ]
+    )
+
+
+def test_variadic():
+    assert functions.variadic("world") == "Hello world with 0 varargs and 0 kwargs"
+    assert functions.variadic("world", 1, 2, 3, a="a", b="b") == "Hello world with 3 varargs and 2 kwargs"
+
+    with pytest.raises(TypeError) as exc_info:
+        functions.variadic()
+    assert str(exc_info.value) == "Expected 1 arg"
+
+    assert functions.variadic.__text_signature__ == "(hello, *args, /, **kwargs)"
+    assert inspect.signature(functions.variadic) == inspect.Signature(
+        [
+            inspect.Parameter("hello", kind=inspect._ParameterKind.POSITIONAL_ONLY),
+            inspect.Parameter("args", kind=inspect._ParameterKind.VAR_POSITIONAL),
+            inspect.Parameter("kwargs", kind=inspect._ParameterKind.VAR_KEYWORD),
         ]
     )

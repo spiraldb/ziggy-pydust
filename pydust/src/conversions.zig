@@ -32,7 +32,7 @@ pub fn create(value: anytype) py.PyError!py.PyObject {
 }
 
 /// Python -> Zig. Return a Zig object representing the Python object.
-pub fn as(comptime T: type, obj: anytype) py.PyError!T {
+pub inline fn as(comptime T: type, obj: anytype) py.PyError!T {
     return tramp.Trampoline(T).unwrap(object(obj));
 }
 

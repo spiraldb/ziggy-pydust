@@ -27,6 +27,12 @@ pub const Signature = struct {
     returnType: type,
     nargs: usize = 0,
     nkwargs: usize = 0,
+    varargsIdx: ?usize = null,
+    varkwargsIdx: ?usize = null,
+
+    pub fn supportsKwargs(comptime self: @This()) bool {
+        return self.nkwargs > 0 or self.varkwargsIdx != null;
+    }
 };
 
 pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
@@ -123,43 +129,51 @@ pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptim
     if (sig.argsParam) |p| {
         sig.nargs = argCount(p);
         sig.nkwargs = kwargCount(p);
+        sig.varargsIdx = varArgsIdx(p);
+        sig.varkwargsIdx = varKwargsIdx(p);
     }
 
     return sig;
 }
 
-pub fn argCount(comptime argsParam: type) usize {
-    return switch (@typeInfo(argsParam)) {
-        .Struct => s: {
-            var n: usize = 0;
-            inline for (@typeInfo(argsParam).Struct.fields) |field| {
-                if (field.default_value == null) {
-                    n += 1;
-                }
-            }
-            break :s n;
-        },
-        // Because we can only have 0, 1, 2 parameters, if we're here
-        // and we don't have an args struct, we must have a single param.
-        else => 1,
-    };
+pub fn argCount(comptime ArgsParam: type) usize {
+    var n: usize = 0;
+    inline for (@typeInfo(ArgsParam).Struct.fields) |field| {
+        if (field.type != py.Args and field.type != py.Kwargs and field.default_value == null) {
+            n += 1;
+        }
+    }
+    return n;
 }
 
-pub fn kwargCount(comptime argsParam: type) usize {
-    return switch (@typeInfo(argsParam)) {
-        .Struct => s: {
-            var n: usize = 0;
-            inline for (@typeInfo(argsParam).Struct.fields) |field| {
-                if (field.default_value != null) {
-                    n += 1;
-                }
-            }
-            break :s n;
-        },
-        // Because we can only have 0, 1, 2 parameters, if we're here
-        // and we don't have an args struct, we must have zero kwargs.
-        else => 0,
-    };
+pub fn kwargCount(comptime ArgsParam: type) usize {
+    var n: usize = 0;
+    inline for (@typeInfo(ArgsParam).Struct.fields) |field| {
+        if (field.type != py.Args and field.type != py.Kwargs and field.default_value != null) {
+            n += 1;
+        }
+    }
+    return n;
+}
+
+pub fn varArgsIdx(comptime ArgsParam: type) ?usize {
+    const info = @typeInfo(ArgsParam).Struct;
+    for (info.fields, 0..) |field, i| {
+        if (field.type == py.Args) {
+            return i;
+        }
+    }
+    return null;
+}
+
+pub fn varKwargsIdx(comptime ArgsParam: type) ?usize {
+    const info = @typeInfo(ArgsParam).Struct;
+    for (info.fields, 0..) |field, i| {
+        if (field.type == py.Kwargs) {
+            return i;
+        }
+    }
+    return null;
 }
 
 fn isReserved(comptime name: []const u8) bool {
@@ -210,7 +224,7 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
         pub fn aspy() ffi.PyMethodDef {
             return .{
                 .ml_name = sig.name.ptr ++ "",
-                .ml_meth = if (sig.nkwargs > 0) @ptrCast(&fastcallKwargs) else @ptrCast(&fastcall),
+                .ml_meth = if (sig.supportsKwargs()) @ptrCast(&fastcallKwargs) else @ptrCast(&fastcall),
                 .ml_flags = blk: {
                     var ml_flags: c_int = ffi.METH_FASTCALL | flags;
 
@@ -220,7 +234,7 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
                     }
                     // TODO(ngates): check for METH_CLASS
 
-                    if (sig.nkwargs > 0) {
+                    if (sig.supportsKwargs()) {
                         ml_flags |= ffi.METH_KEYWORDS;
                     }
 
@@ -244,22 +258,9 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
 
         inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) PyError!py.PyObject {
             const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
-
             if (sig.argsParam) |Args| {
-                // Create an args struct and populate it with pyargs.
-                var args: Args = undefined;
-                if (pyargs.len != argCount(Args)) {
-                    return py.TypeError.raiseComptimeFmt("expected {d} arg{s}, {d} kwarg{s}", .{
-                        argCount(Args),   if (argCount(Args) > 1) "s" else "",
-                        kwargCount(Args), if (kwargCount(Args) > 1) "s" else "",
-                    });
-                }
-                inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
-                    @field(args, field.name) = try py.as(field.type, pyargs[i]);
-                }
-
+                const args = try unwrapArgs(Args, pyargs, py.Kwargs.init(py.allocator));
                 const result = if (sig.selfParam) |_| func(self, args) else func(args);
-
                 return py.createOwned(tramp.coerceError(result));
             } else {
                 const result = if (sig.selfParam) |_| func(self) else func();
@@ -279,82 +280,103 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             const nkwargs = if (kwnames) |names| py.len(names) catch return null else 0;
             const kwargs = allArgs[args.len .. args.len + nkwargs];
 
-            const resultObject = internalKwargs(
-                .{ .py = pyself },
-                args,
-                kwargs,
-                if (kwnames) |names| py.PyTuple.unchecked(.{ .py = names }) else null,
-            ) catch return null;
+            // Construct a StringHashMap of keyword arguments.
+            var kwargsMap = py.Kwargs.init(py.allocator);
+            defer kwargsMap.deinit();
+            if (kwnames) |rawnames| {
+                const names = py.PyTuple.unchecked(.{ .py = rawnames });
+                std.debug.assert(names.length() == kwargs.len);
+                for (0..names.length(), kwargs) |i, v| {
+                    const k = names.getItem(py.PyString, i) catch return null;
+                    kwargsMap.put(k.asSlice() catch return null, v) catch return null;
+                }
+            }
+
+            const resultObject = internalKwargs(.{ .py = pyself }, args, kwargsMap) catch return null;
             return resultObject.py;
         }
 
         inline fn internalKwargs(
             pyself: py.PyObject,
-            pyargs: []py.PyObject,
-            pykwargs: []py.PyObject,
-            kwnames: ?py.PyTuple,
+            pyargs: py.Args,
+            pykwargs: py.Kwargs,
         ) PyError!py.PyObject {
-            const Args = sig.argsParam.?; // We must have args if we know we have kwargs
-            var args: Args = undefined;
-
-            if (pyargs.len != argCount(Args)) {
-                return py.TypeError.raiseComptimeFmt("expected {d} arg{s}, {d} kwarg{s}", .{
-                    argCount(Args),   if (argCount(Args) > 1) "s" else "",
-                    kwargCount(Args), if (kwargCount(Args) > 1) "s" else "",
-                });
-            }
-
-            inline for (@typeInfo(Args).Struct.fields, 0..) |field, i| {
-                if (field.default_value) |def_value| {
-                    // We have a kwarg.
-                    const fieldName = try py.PyString.create(field.name);
-                    defer fieldName.decref();
-
-                    const defaultValue: *field.type = @alignCast(@ptrCast(@constCast(def_value)));
-
-                    if (kwnames) |names| {
-                        if (try names.contains(fieldName)) {
-                            const idx = try names.index(fieldName);
-                            const arg = try py.as(field.type, pykwargs[idx]);
-                            @field(args, field.name) = arg;
-                        } else {
-                            @field(args, field.name) = defaultValue.*;
-                        }
-                    } else {
-                        @field(args, field.name) = defaultValue.*;
-                    }
-                } else {
-                    // We have an arg
-                    const arg = try py.as(field.type, pyargs[i]);
-                    @field(args, field.name) = arg;
-                }
-            }
-
-            // Now we loop over the kwnames at runtime and check they all exist in the fieldNames
-            const fieldNames = std.meta.fieldNames(Args);
-            // TODO(ngates): use PySeq iterator when we support it
-            for (0..pykwargs.len) |i| {
-                const names = kwnames orelse @panic("Expected kwnames with non-empty kwargs slice");
-
-                const kwname = try names.getItem([]const u8, i);
-                var exists = false;
-                for (fieldNames) |name| {
-                    if (std.mem.eql(u8, name, kwname)) {
-                        exists = true;
-                        break;
-                    }
-                }
-
-                if (!exists) {
-                    return py.TypeError.raiseFmt("unexpected kwarg '{s}'", .{kwname});
-                }
-            }
-
+            const args = try unwrapArgs(sig.argsParam.?, pyargs, pykwargs);
             const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
             const result = if (sig.selfParam) |_| func(self, args) else func(args);
             return py.createOwned(tramp.coerceError(result));
         }
     };
+}
+
+/// Unwrap the args and kwargs into the requested args struct.
+pub fn unwrapArgs(comptime Args: type, pyargs: py.Args, pykwargs: py.Kwargs) !Args {
+    var kwargs = pykwargs;
+    var args: Args = undefined;
+
+    const s = @typeInfo(Args).Struct;
+    var varargsFieldIdx: usize = undefined;
+    var varkwargsFieldIdx: usize = undefined;
+    var argIdx: usize = 0;
+    inline for (s.fields, 0..) |field, fieldIdx| {
+        if (field.type == py.Args) {
+            // Variadic args
+            varargsFieldIdx = fieldIdx;
+        } else if (field.type == py.Kwargs) {
+            // Variadic kwargs
+            varkwargsFieldIdx = fieldIdx;
+        } else if (field.default_value) |def_value| {
+            // We have a kwarg.
+            if (kwargs.fetchRemove(field.name)) |entry| {
+                @field(args, field.name) = try py.as(field.type, entry.value);
+            } else {
+                // Use the default value
+                const defaultValue: *field.type = @alignCast(@ptrCast(@constCast(def_value)));
+                @field(args, field.name) = defaultValue.*;
+            }
+        } else {
+            // Otherwise, we have a regular argument.
+            if (argIdx >= pyargs.len) {
+                return py.TypeError.raiseFmt("Expected {d} arg{s}", .{
+                    argCount(Args), if (argCount(Args) > 1) "s" else "",
+                });
+            }
+            const value = pyargs[argIdx];
+            argIdx += 1;
+            @field(args, field.name) = try py.as(field.type, value);
+        }
+    }
+
+    // Now to handle var args.
+    if (argIdx < pyargs.len and comptime varArgsIdx(Args) == null) {
+        return py.TypeError.raiseFmt("Too many args, expected {d}", .{argCount(Args)});
+    }
+    if (comptime varArgsIdx(Args)) |idx| {
+        @field(args, s.fields[idx].name) = pyargs[argIdx..];
+    }
+
+    if (kwargs.count() > 0 and comptime varKwargsIdx(Args) == null) {
+        var iterator = kwargs.keyIterator();
+        return py.TypeError.raiseFmt("Unexpected kwarg '{s}'", .{iterator.next().?.*});
+    }
+    if (comptime varKwargsIdx(Args)) |idx| {
+        @field(args, s.fields[idx].name) = kwargs;
+    }
+
+    return args;
+}
+
+pub fn deinitArgs(comptime Args: type, args: Args) void {
+    const s = @typeInfo(Args).Struct;
+    inline for (s.fields) |field| {
+        if (field.type == py.Args) {
+            py.allocator.free(@field(args, field.name));
+        }
+        if (field.type == py.Kwargs) {
+            const kwargs: py.Kwargs = @field(args, field.name);
+            kwargs.deinit();
+        }
+    }
 }
 
 pub fn Methods(comptime definition: type) type {
@@ -446,7 +468,8 @@ fn sigSize(comptime sig: Signature) usize {
 }
 
 fn sigArgs(comptime sig: Signature) ![]const []const u8 {
-    const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs * 2 + 3);
+    // 5 = self + "/" + "*" + "*args" + "**kwargs"
+    const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs + 5);
     var sigargs = ArgBuf.init(0) catch @compileError("OOM");
     if (sig.selfParam) |self| {
         if (self == @TypeOf(py.PyObject)) {
@@ -472,6 +495,17 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
                 }
 
                 try sigargs.append(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, def) }));
+            } else if (field.type == py.Args) {
+                try sigargs.append(std.fmt.comptimePrint("*{s}", .{field.name}));
+            } else if (field.type == py.Kwargs) {
+                if (!inKwargs) {
+                    inKwargs = true;
+                    // Marker for end of positional only args
+                    try sigargs.append("/");
+                    // Note: we don't mark the start of keyword only args since that's implied by **.
+                    // See https://bugs.python.org/issue2613
+                }
+                try sigargs.append(std.fmt.comptimePrint("**{s}", .{field.name}));
             } else {
                 // We have an arg
                 try sigargs.append(field.name);

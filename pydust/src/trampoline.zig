@@ -286,99 +286,27 @@ pub fn Trampoline(comptime T: type) type {
             @compileError("Unsupported argument type " ++ @typeName(T));
         }
 
-        pub const CallArgs = struct {
-            args: ?py.PyTuple,
-            kwargs: ?py.PyDict,
-
-            pub fn nargs(self: CallArgs) usize {
-                return if (self.args) |args| args.length() else 0;
-            }
-
-            pub fn nkwargs(self: CallArgs) usize {
-                return if (self.kwargs) |kwargs| kwargs.length() else 0;
-            }
-
-            pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
-                const args = self.args orelse return py.TypeError.raise("missing args");
-                return try args.getItem(R, idx);
-            }
-
-            pub fn getKwarg(self: CallArgs, comptime R: type, name: []const u8) !?R {
-                const kwargs = self.kwargs orelse return null;
-                return kwargs.getItem(R, name);
-            }
-
-            pub fn decref(self: CallArgs) void {
-                if (self.args) |args| args.decref();
-                if (self.kwargs) |kwargs| kwargs.decref();
-            }
-        };
-
-        /// Wrap a Zig Pydust argument struct into Python CallArgs.
-        /// Creates new references.
-        pub inline fn wrapCallArgs(obj: T) !CallArgs {
-            const args = try py.PyTuple.new(funcs.argCount(T));
-            const kwargs = try py.PyDict.new();
-
-            inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
-                const arg = try Trampoline(field.type).wrapNew(@field(obj, field.name));
-                if (field.default_value == null) {
-                    // It's an arg
-                    try args.setOwnedItem(i, arg);
-                } else {
-                    // It's a kwarg
-                    try kwargs.setOwnedItemStr(field.name, arg);
-                }
-            }
-
-            return .{ .args = args, .kwargs = kwargs };
-        }
-
-        pub inline fn unwrapCallArgs(callArgs: CallArgs) PyError!T {
-            if (funcs.argCount(T) != callArgs.nargs()) {
-                return py.TypeError.raiseComptimeFmt(
-                    "expected {d} argument{s}",
-                    .{ funcs.argCount(T), if (funcs.argCount(T) > 1) "s" else "" },
-                );
-            }
-
-            var args: T = undefined;
-            inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
-                if (field.default_value) |def| {
-                    // We're a kwarg
-                    if (try callArgs.getKwarg(field.type, field.name)) |kwarg| {
-                        @field(args, field.name) = kwarg;
-                    } else {
-                        @field(args, field.name) = @as(*field.type, @constCast(@alignCast(@ptrCast(def)))).*;
-                    }
-                } else {
-                    // We're an arg
-                    @field(args, field.name) = try callArgs.getArg(field.type, i);
-                }
-            }
-
-            // Sanity check that we didn't recieve any kwargs that we weren't expecting
-            const fieldNames = std.meta.fieldNames(T);
-            if (callArgs.kwargs) |kwargs| {
-                var iter = kwargs.itemsIterator();
+        // Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects
+        // but instantiating the args slice and kwargs map containers.
+        // The caller is responsible for invoking funcs.deinitArgs on the returned struct.
+        pub inline fn unwrapCallArgs(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!T {
+            var kwargs = py.Kwargs.init(py.allocator);
+            if (pykwargs) |kw| {
+                var iter = kw.itemsIterator();
                 while (iter.next()) |item| {
-                    const itemName = try (try item.key(py.PyString)).asSlice();
-
-                    var exists = false;
-                    for (fieldNames) |name| {
-                        if (std.mem.eql(u8, name, itemName)) {
-                            exists = true;
-                            break;
-                        }
-                    }
-
-                    if (!exists) {
-                        return py.TypeError.raiseFmt("unexpected kwarg '{s}'", .{itemName});
-                    }
+                    const key: []const u8 = try (try py.PyString.checked(item.k)).asSlice();
+                    try kwargs.put(key, item.v);
                 }
             }
 
-            return args;
+            const args = try py.allocator.alloc(py.PyObject, if (pyargs) |a| a.length() else 0);
+            if (pyargs) |a| {
+                for (0..a.length()) |i| {
+                    args[i] = try a.getItem(py.PyObject, i);
+                }
+            }
+
+            return funcs.unwrapArgs(T, args, kwargs);
         }
     };
 }
