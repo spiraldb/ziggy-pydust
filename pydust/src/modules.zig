@@ -40,6 +40,14 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
             break :blk null;
         };
 
+        const Fns = struct {
+            pub fn free(module: ?*anyopaque) callconv(.C) void {
+                const mod: py.PyModule = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
+                const state = mod.getState(definition) catch return;
+                state.__del__();
+            }
+        };
+
         /// A function to initialize the Python module from its definition.
         pub fn init() !py.PyObject {
             var pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
@@ -60,7 +68,7 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
                 .m_slots = @constCast(slots.slots.ptr),
                 .m_traverse = null,
                 .m_clear = null,
-                .m_free = null,
+                .m_free = if (@hasDecl(definition, "__del__")) &Fns.free else null,
             };
             return .{ .py = ffi.PyModuleDef_Init(pyModuleDef) orelse return PyError.PyRaised };
         }
