@@ -179,7 +179,7 @@ pub inline fn init(comptime Cls: type, args: Cls) PyError!*Cls {
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
     // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
-    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.PyRaised));
+    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.obj.py), 0) orelse return PyError.PyRaised));
     pyobj.state = args;
 
     return &pyobj.state;
@@ -269,7 +269,7 @@ pub fn self(comptime PydustType: type) !py.PyType {
     }
 
     // Grab the qualified name, importing the root module first.
-    var qualName = State.getIdentifier(PydustType).qualifiedName;
+    comptime var qualName = State.getIdentifier(PydustType).qualifiedName;
 
     const root = try import(qualName[0]);
     defer root.decref();
