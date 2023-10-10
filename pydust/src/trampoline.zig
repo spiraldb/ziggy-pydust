@@ -358,8 +358,9 @@ pub fn Trampoline(comptime T: type) type {
             return .{ .args = args, .kwargs = kwargs };
         }
 
-        // Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects.
-        // The caller is responsible for invoking deinit on any return py.Kwargs (using funcs.decrefArgs).
+        // Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects
+        // but instantiating the args slice and kwargs map containers.
+        // The caller is responsible for invoking funcs.deinitArgs on the returned struct.
         pub inline fn unwrapCallArgs(callArgs: CallArgs) PyError!T {
             var pykwargs = py.Kwargs.init(py.allocator);
             if (callArgs.kwargs) |kw| {

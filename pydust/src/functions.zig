@@ -366,9 +366,12 @@ pub fn unwrapArgs(comptime Args: type, pyargs: py.Args, pykwargs: py.Kwargs) !Ar
     return args;
 }
 
-pub fn deinitKwargs(comptime Args: type, args: Args) void {
+pub fn deinitArgs(comptime Args: type, args: Args) void {
     const s = @typeInfo(Args).Struct;
     inline for (s.fields) |field| {
+        if (field.type == py.Args) {
+            py.allocator.free(@field(args, field.name));
+        }
         if (field.type == py.Kwargs) {
             const kwargs: py.Kwargs = @field(args, field.name);
             kwargs.deinit();
