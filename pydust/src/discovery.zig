@@ -33,8 +33,6 @@ const Identifier = struct {
 };
 
 pub const State = blk: {
-    comptime var rootModule: Identifier = undefined;
-
     comptime var privateMethods: [1000]*anyopaque = undefined;
     comptime var privateMethodsSize: usize = 0;
 
@@ -64,25 +62,17 @@ pub const State = blk: {
             comptime name: [:0]const u8,
             comptime parent: type,
         ) void {
-            const identifier: Identifier = .{
+            identifiers[identifiersSize] = .{
                 .name = name,
                 .qualifiedName = if (parent == definition) &.{name} else getIdentifier(parent).qualifiedName ++ .{name},
                 .definition = definition,
                 .parent = parent,
             };
-            if (parent == definition) {
-                rootModule = identifier;
-            }
-            identifiers[identifiersSize] = identifier;
             identifiersSize += 1;
         }
 
         pub fn isEmpty() bool {
             return definitionsSize == 0;
-        }
-
-        pub fn getRootModule() Identifier {
-            return rootModule;
         }
 
         pub fn getDefinitions() []Definition {
