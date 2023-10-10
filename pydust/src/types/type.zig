@@ -36,14 +36,6 @@ pub const PyType = extern struct {
         });
     }
 
-    pub fn getModule(self: PyType) !py.PyModule {
-        return .{ .obj = .{ .py = ffi.PyType_GetModule(self.obj.py) orelse return PyError.PyRaised } };
-    }
-
-    pub fn getModuleState(self: PyType, comptime T: type) !*const T {
-        return @alignCast(@ptrCast(ffi.PyType_GetModuleState(self.obj.py) orelse return PyError.PyRaised));
-    }
-
     fn typePtr(obj: *ffi.PyObject) *ffi.PyTypeObject {
         return @alignCast(@ptrCast(obj));
     }

@@ -27,7 +27,7 @@ const DefinitionType = enum { module, class, attribute, property };
 /// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
     name: [:0]const u8,
-    qualifiedName: [:0]const u8,
+    qualifiedName: []const [:0]const u8,
     definition: type,
     parent: type,
 };
@@ -64,17 +64,17 @@ pub const State = blk: {
             comptime name: [:0]const u8,
             comptime parent: type,
         ) void {
-            identifiers[identifiersSize] = .{
+            const identifier: Identifier = .{
                 .name = name,
-                .qualifiedName = if (parent == definition) name else getIdentifier(parent).qualifiedName ++ "." ++ name,
+                .qualifiedName = if (parent == definition) &.{name} else getIdentifier(parent).qualifiedName ++ .{name},
                 .definition = definition,
                 .parent = parent,
             };
-            identifiersSize += 1;
-
             if (parent == definition) {
-                rootModule = identifiers[identifiersSize - 1];
+                rootModule = identifier;
             }
+            identifiers[identifiersSize] = identifier;
+            identifiersSize += 1;
         }
 
         pub fn isEmpty() bool {

@@ -273,17 +273,15 @@ pub fn self(comptime PydustType: type) !py.PyObject {
     const root = try import(State.getRootModule().name);
     defer root.decref();
 
-    var qualName = State.getIdentifier(PydustType).qualifiedName[State.getRootModule().name.len + 1 ..];
+    // Grab the qualified name, stripping the root module prefix.
+    var qualName = State.getIdentifier(PydustType).qualifiedName[1..];
 
     var mod = root;
-    var lastIdx: usize = 0;
-    inline for (qualName, 0..) |c, idx| {
-        if (c == '.') {
-            mod = try mod.get(qualName[lastIdx..idx]);
-            lastIdx = idx + 1;
-        }
+    inline for (qualName[0 .. qualName.len - 1]) |part| {
+        mod = try mod.get(part);
     }
-    const className = qualName[lastIdx..];
+    const className = qualName[qualName.len - 1];
+
     return mod.get(className);
 }
 
