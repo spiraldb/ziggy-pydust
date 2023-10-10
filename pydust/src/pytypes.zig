@@ -613,11 +613,12 @@ fn EqualsOperator(
             if (typeInfo.params.len != 2) @compileError(op ++ " must take exactly two parameters");
             const Other = typeInfo.params[1].type.?;
 
-            // If other arg is of the same type as self we can short circuit equality of both objects aren't of same type
+            // If Other arg type is the same as Self, and Other is not a subclass of Self,
+            // then we can short-cut and return not-equal.
             if (Other == *const definition) {
-                const selfType = py.type_(py.object(pyself)) catch return null;
-                const otherType = py.type_(py.object(pyother)) catch return null;
-                if (otherType.obj.py != selfType.obj.py) {
+                const selfType = py.self(definition) catch return null;
+                const isSubclass = py.isinstance(pyother, selfType) catch return null;
+                if (!isSubclass) {
                     return if (equals) py.False().obj.py else py.True().obj.py;
                 }
             }
