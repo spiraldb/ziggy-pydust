@@ -13,6 +13,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ffi = @import("ffi.zig");
+const py = @import("./pydust.zig");
 
 pub const PyMemAllocator = struct {
     const Self = @This();
@@ -33,6 +34,11 @@ pub const PyMemAllocator = struct {
         // https://bugs.python.org/msg232221
         _ = ret_addr;
         _ = ctx;
+
+        // FIXME(ngates): we should have a separate allocator for re-entrant cases like this
+        // that require the GIL, without always paying the cost of acquiring it.
+        const gil = py.gil();
+        defer gil.release();
 
         // Zig gives us ptr_align as power of 2
         // This may not always fit into a byte, we should figure out a better way to store the shift value.
@@ -82,6 +88,9 @@ pub const PyMemAllocator = struct {
         _ = buf_align;
         _ = ctx;
         _ = ret_addr;
+
+        const gil = py.gil();
+        defer gil.release();
 
         // Fetch the alignment shift. We could check it matches the buf_align, but it's a bit annoying.
         const aligned_ptr: usize = @intFromPtr(buf.ptr);
