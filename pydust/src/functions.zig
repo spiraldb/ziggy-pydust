@@ -373,7 +373,7 @@ pub fn deinitArgs(comptime Args: type, args: Args) void {
             py.allocator.free(@field(args, field.name));
         }
         if (field.type == py.Kwargs) {
-            const kwargs: py.Kwargs = @field(args, field.name);
+            var kwargs: py.Kwargs = @field(args, field.name);
             kwargs.deinit();
         }
     }
