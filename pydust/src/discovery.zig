@@ -27,11 +27,14 @@ const DefinitionType = enum { module, class, attribute, property };
 /// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
     name: [:0]const u8,
+    qualifiedName: [:0]const u8,
     definition: type,
     parent: type,
 };
 
 pub const State = blk: {
+    comptime var rootModule: Identifier = undefined;
+
     comptime var privateMethods: [1000]*anyopaque = undefined;
     comptime var privateMethodsSize: usize = 0;
 
@@ -61,12 +64,25 @@ pub const State = blk: {
             comptime name: [:0]const u8,
             comptime parent: type,
         ) void {
-            identifiers[identifiersSize] = .{ .name = name, .definition = definition, .parent = parent };
+            identifiers[identifiersSize] = .{
+                .name = name,
+                .qualifiedName = if (parent == definition) name else getIdentifier(parent).qualifiedName ++ "." ++ name,
+                .definition = definition,
+                .parent = parent,
+            };
             identifiersSize += 1;
+
+            if (parent == definition) {
+                rootModule = identifiers[identifiersSize - 1];
+            }
         }
 
         pub fn isEmpty() bool {
             return definitionsSize == 0;
+        }
+
+        pub fn getRootModule() Identifier {
+            return rootModule;
         }
 
         pub fn getDefinitions() []Definition {
