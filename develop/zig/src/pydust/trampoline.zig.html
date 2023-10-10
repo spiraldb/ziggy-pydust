@@ -445,134 +445,60 @@
 <span class="line" id="L286">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported argument type &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T));</span>
 <span class="line" id="L287">        }</span>
 <span class="line" id="L288"></span>
-<span class="line" id="L289">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> CallArgs = <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L290">            args: ?py.PyTuple,</span>
-<span class="line" id="L291">            kwargs: ?py.PyDict,</span>
-<span class="line" id="L292"></span>
-<span class="line" id="L293">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">nargs</span>(self: CallArgs) <span class="tok-type">usize</span> {</span>
-<span class="line" id="L294">                <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.args) |args| args.length() <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
-<span class="line" id="L295">            }</span>
-<span class="line" id="L296"></span>
-<span class="line" id="L297">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">nkwargs</span>(self: CallArgs) <span class="tok-type">usize</span> {</span>
-<span class="line" id="L298">                <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.kwargs) |kwargs| kwargs.length() <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
-<span class="line" id="L299">            }</span>
-<span class="line" id="L300"></span>
-<span class="line" id="L301">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getArg</span>(self: CallArgs, <span class="tok-kw">comptime</span> R: <span class="tok-type">type</span>, idx: <span class="tok-type">usize</span>) !R {</span>
-<span class="line" id="L302">                <span class="tok-kw">const</span> args = self.args <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> py.TypeError.raise(<span class="tok-str">&quot;missing args&quot;</span>);</span>
-<span class="line" id="L303">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> args.getItem(R, idx);</span>
-<span class="line" id="L304">            }</span>
-<span class="line" id="L305"></span>
-<span class="line" id="L306">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getKwarg</span>(self: CallArgs, <span class="tok-kw">comptime</span> R: <span class="tok-type">type</span>, name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !?R {</span>
-<span class="line" id="L307">                <span class="tok-kw">const</span> kwargs = self.kwargs <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L308">                <span class="tok-kw">return</span> kwargs.getItem(R, name);</span>
-<span class="line" id="L309">            }</span>
-<span class="line" id="L310"></span>
-<span class="line" id="L311">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decref</span>(self: CallArgs) <span class="tok-type">void</span> {</span>
-<span class="line" id="L312">                <span class="tok-kw">if</span> (self.args) |args| args.decref();</span>
-<span class="line" id="L313">                <span class="tok-kw">if</span> (self.kwargs) |kwargs| kwargs.decref();</span>
-<span class="line" id="L314">            }</span>
-<span class="line" id="L315">        };</span>
-<span class="line" id="L316"></span>
-<span class="line" id="L317">        <span class="tok-comment">/// Wrap a Zig Pydust argument struct into Python CallArgs.</span></span>
-<span class="line" id="L318">        <span class="tok-comment">/// Creates new references.</span></span>
-<span class="line" id="L319">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">wrapCallArgs</span>(obj: T) !CallArgs {</span>
-<span class="line" id="L320">            <span class="tok-kw">const</span> args = <span class="tok-kw">try</span> py.PyTuple.new(funcs.argCount(T));</span>
-<span class="line" id="L321">            <span class="tok-kw">const</span> kwargs = <span class="tok-kw">try</span> py.PyDict.new();</span>
-<span class="line" id="L322"></span>
-<span class="line" id="L323">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(T).Struct.fields, <span class="tok-number">0</span>..) |field, i| {</span>
-<span class="line" id="L324">                <span class="tok-kw">const</span> arg = <span class="tok-kw">try</span> Trampoline(field.<span class="tok-type">type</span>).wrapNew(<span class="tok-builtin">@field</span>(obj, field.name));</span>
-<span class="line" id="L325">                <span class="tok-kw">if</span> (field.default_value == <span class="tok-null">null</span>) {</span>
-<span class="line" id="L326">                    <span class="tok-comment">// It's an arg</span>
+<span class="line" id="L289">        <span class="tok-comment">// Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects</span>
 </span>
-<span class="line" id="L327">                    <span class="tok-kw">try</span> args.setOwnedItem(i, arg);</span>
-<span class="line" id="L328">                } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L329">                    <span class="tok-comment">// It's a kwarg</span>
+<span class="line" id="L290">        <span class="tok-comment">// but instantiating the args slice and kwargs map containers.</span>
 </span>
-<span class="line" id="L330">                    <span class="tok-kw">try</span> kwargs.setOwnedItemStr(field.name, arg);</span>
-<span class="line" id="L331">                }</span>
-<span class="line" id="L332">            }</span>
-<span class="line" id="L333"></span>
-<span class="line" id="L334">            <span class="tok-kw">return</span> .{ .args = args, .kwargs = kwargs };</span>
-<span class="line" id="L335">        }</span>
-<span class="line" id="L336"></span>
-<span class="line" id="L337">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrapCallArgs</span>(callArgs: CallArgs) PyError!T {</span>
-<span class="line" id="L338">            <span class="tok-kw">if</span> (funcs.argCount(T) != callArgs.nargs()) {</span>
-<span class="line" id="L339">                <span class="tok-kw">return</span> py.TypeError.raiseComptimeFmt(</span>
-<span class="line" id="L340">                    <span class="tok-str">&quot;expected {d} argument{s}&quot;</span>,</span>
-<span class="line" id="L341">                    .{ funcs.argCount(T), <span class="tok-kw">if</span> (funcs.argCount(T) &gt; <span class="tok-number">1</span>) <span class="tok-str">&quot;s&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;&quot;</span> },</span>
-<span class="line" id="L342">                );</span>
-<span class="line" id="L343">            }</span>
-<span class="line" id="L344"></span>
-<span class="line" id="L345">            <span class="tok-kw">var</span> args: T = <span class="tok-null">undefined</span>;</span>
-<span class="line" id="L346">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(T).Struct.fields, <span class="tok-number">0</span>..) |field, i| {</span>
-<span class="line" id="L347">                <span class="tok-kw">if</span> (field.default_value) |def| {</span>
-<span class="line" id="L348">                    <span class="tok-comment">// We're a kwarg</span>
+<span class="line" id="L291">        <span class="tok-comment">// The caller is responsible for invoking funcs.deinitArgs on the returned struct.</span>
 </span>
-<span class="line" id="L349">                    <span class="tok-kw">if</span> (<span class="tok-kw">try</span> callArgs.getKwarg(field.<span class="tok-type">type</span>, field.name)) |kwarg| {</span>
-<span class="line" id="L350">                        <span class="tok-builtin">@field</span>(args, field.name) = kwarg;</span>
-<span class="line" id="L351">                    } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L352">                        <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-builtin">@as</span>(*field.<span class="tok-type">type</span>, <span class="tok-builtin">@constCast</span>(<span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(def)))).*;</span>
-<span class="line" id="L353">                    }</span>
-<span class="line" id="L354">                } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L355">                    <span class="tok-comment">// We're an arg</span>
+<span class="line" id="L292">        <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unwrapCallArgs</span>(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!T {</span>
+<span class="line" id="L293">            <span class="tok-kw">var</span> kwargs = py.Kwargs.init(py.allocator);</span>
+<span class="line" id="L294">            <span class="tok-kw">if</span> (pykwargs) |kw| {</span>
+<span class="line" id="L295">                <span class="tok-kw">var</span> iter = kw.itemsIterator();</span>
+<span class="line" id="L296">                <span class="tok-kw">while</span> (iter.next()) |item| {</span>
+<span class="line" id="L297">                    <span class="tok-kw">const</span> key: []<span class="tok-kw">const</span> <span class="tok-type">u8</span> = <span class="tok-kw">try</span> (<span class="tok-kw">try</span> py.PyString.checked(item.k)).asSlice();</span>
+<span class="line" id="L298">                    <span class="tok-kw">try</span> kwargs.put(key, item.v);</span>
+<span class="line" id="L299">                }</span>
+<span class="line" id="L300">            }</span>
+<span class="line" id="L301"></span>
+<span class="line" id="L302">            <span class="tok-kw">const</span> args = <span class="tok-kw">try</span> py.allocator.alloc(py.PyObject, <span class="tok-kw">if</span> (pyargs) |a| a.length() <span class="tok-kw">else</span> <span class="tok-number">0</span>);</span>
+<span class="line" id="L303">            <span class="tok-kw">if</span> (pyargs) |a| {</span>
+<span class="line" id="L304">                <span class="tok-kw">for</span> (<span class="tok-number">0</span>..a.length()) |i| {</span>
+<span class="line" id="L305">                    args[i] = <span class="tok-kw">try</span> a.getItem(py.PyObject, i);</span>
+<span class="line" id="L306">                }</span>
+<span class="line" id="L307">            }</span>
+<span class="line" id="L308"></span>
+<span class="line" id="L309">            <span class="tok-kw">return</span> funcs.unwrapArgs(T, args, kwargs);</span>
+<span class="line" id="L310">        }</span>
+<span class="line" id="L311">    };</span>
+<span class="line" id="L312">}</span>
+<span class="line" id="L313"></span>
+<span class="line" id="L314"><span class="tok-comment">/// Takes a value that optionally errors and coerces it always into a PyError.</span></span>
+<span class="line" id="L315"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">coerceError</span>(result: <span class="tok-kw">anytype</span>) coerceErrorType(<span class="tok-builtin">@TypeOf</span>(result)) {</span>
+<span class="line" id="L316">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(result));</span>
+<span class="line" id="L317">    <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
+<span class="line" id="L318">        <span class="tok-kw">return</span> result <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L319">            <span class="tok-kw">if</span> (err == PyError.PyRaised) <span class="tok-kw">return</span> PyError.PyRaised;</span>
+<span class="line" id="L320">            <span class="tok-kw">if</span> (err == PyError.OutOfMemory) <span class="tok-kw">return</span> PyError.OutOfMemory;</span>
+<span class="line" id="L321">            <span class="tok-kw">return</span> py.RuntimeError.raise(<span class="tok-builtin">@errorName</span>(err));</span>
+<span class="line" id="L322">        };</span>
+<span class="line" id="L323">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L324">        <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L325">    }</span>
+<span class="line" id="L326">}</span>
+<span class="line" id="L327"></span>
+<span class="line" id="L328"><span class="tok-kw">fn</span> <span class="tok-fn">coerceErrorType</span>(<span class="tok-kw">comptime</span> Result: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L329">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(Result);</span>
+<span class="line" id="L330">    <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
+<span class="line" id="L331">        <span class="tok-comment">// Unwrap the error to ensure it's a PyError</span>
 </span>
-<span class="line" id="L356">                    <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-kw">try</span> callArgs.getArg(field.<span class="tok-type">type</span>, i);</span>
-<span class="line" id="L357">                }</span>
-<span class="line" id="L358">            }</span>
-<span class="line" id="L359"></span>
-<span class="line" id="L360">            <span class="tok-comment">// Sanity check that we didn't recieve any kwargs that we weren't expecting</span>
+<span class="line" id="L332">        <span class="tok-kw">return</span> PyError!typeInfo.ErrorUnion.payload;</span>
+<span class="line" id="L333">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L334">        <span class="tok-comment">// Always return a PyError union so the caller can always &quot;try&quot;.</span>
 </span>
-<span class="line" id="L361">            <span class="tok-kw">const</span> fieldNames = std.meta.fieldNames(T);</span>
-<span class="line" id="L362">            <span class="tok-kw">if</span> (callArgs.kwargs) |kwargs| {</span>
-<span class="line" id="L363">                <span class="tok-kw">var</span> iter = kwargs.itemsIterator();</span>
-<span class="line" id="L364">                <span class="tok-kw">while</span> (iter.next()) |item| {</span>
-<span class="line" id="L365">                    <span class="tok-kw">const</span> itemName = <span class="tok-kw">try</span> (<span class="tok-kw">try</span> item.key(py.PyString)).asSlice();</span>
-<span class="line" id="L366"></span>
-<span class="line" id="L367">                    <span class="tok-kw">var</span> exists = <span class="tok-null">false</span>;</span>
-<span class="line" id="L368">                    <span class="tok-kw">for</span> (fieldNames) |name| {</span>
-<span class="line" id="L369">                        <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, name, itemName)) {</span>
-<span class="line" id="L370">                            exists = <span class="tok-null">true</span>;</span>
-<span class="line" id="L371">                            <span class="tok-kw">break</span>;</span>
-<span class="line" id="L372">                        }</span>
-<span class="line" id="L373">                    }</span>
-<span class="line" id="L374"></span>
-<span class="line" id="L375">                    <span class="tok-kw">if</span> (!exists) {</span>
-<span class="line" id="L376">                        <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;unexpected kwarg '{s}'&quot;</span>, .{itemName});</span>
-<span class="line" id="L377">                    }</span>
-<span class="line" id="L378">                }</span>
-<span class="line" id="L379">            }</span>
-<span class="line" id="L380"></span>
-<span class="line" id="L381">            <span class="tok-kw">return</span> args;</span>
-<span class="line" id="L382">        }</span>
-<span class="line" id="L383">    };</span>
-<span class="line" id="L384">}</span>
-<span class="line" id="L385"></span>
-<span class="line" id="L386"><span class="tok-comment">/// Takes a value that optionally errors and coerces it always into a PyError.</span></span>
-<span class="line" id="L387"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">coerceError</span>(result: <span class="tok-kw">anytype</span>) coerceErrorType(<span class="tok-builtin">@TypeOf</span>(result)) {</span>
-<span class="line" id="L388">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(result));</span>
-<span class="line" id="L389">    <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
-<span class="line" id="L390">        <span class="tok-kw">return</span> result <span class="tok-kw">catch</span> |err| {</span>
-<span class="line" id="L391">            <span class="tok-kw">if</span> (err == PyError.PyRaised) <span class="tok-kw">return</span> PyError.PyRaised;</span>
-<span class="line" id="L392">            <span class="tok-kw">if</span> (err == PyError.OutOfMemory) <span class="tok-kw">return</span> PyError.OutOfMemory;</span>
-<span class="line" id="L393">            <span class="tok-kw">return</span> py.RuntimeError.raise(<span class="tok-builtin">@errorName</span>(err));</span>
-<span class="line" id="L394">        };</span>
-<span class="line" id="L395">    } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L396">        <span class="tok-kw">return</span> result;</span>
-<span class="line" id="L397">    }</span>
-<span class="line" id="L398">}</span>
-<span class="line" id="L399"></span>
-<span class="line" id="L400"><span class="tok-kw">fn</span> <span class="tok-fn">coerceErrorType</span>(<span class="tok-kw">comptime</span> Result: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L401">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(Result);</span>
-<span class="line" id="L402">    <span class="tok-kw">if</span> (typeInfo == .ErrorUnion) {</span>
-<span class="line" id="L403">        <span class="tok-comment">// Unwrap the error to ensure it's a PyError</span>
-</span>
-<span class="line" id="L404">        <span class="tok-kw">return</span> PyError!typeInfo.ErrorUnion.payload;</span>
-<span class="line" id="L405">    } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L406">        <span class="tok-comment">// Always return a PyError union so the caller can always &quot;try&quot;.</span>
-</span>
-<span class="line" id="L407">        <span class="tok-kw">return</span> PyError!Result;</span>
-<span class="line" id="L408">    }</span>
-<span class="line" id="L409">}</span>
-<span class="line" id="L410"></span>
+<span class="line" id="L335">        <span class="tok-kw">return</span> PyError!Result;</span>
+<span class="line" id="L336">    }</span>
+<span class="line" id="L337">}</span>
+<span class="line" id="L338"></span>
 </code></pre></body>
 </html>
