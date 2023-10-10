@@ -137,103 +137,114 @@
 <span class="line" id="L13"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
 <span class="line" id="L14"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
 <span class="line" id="L15"><span class="tok-kw">const</span> ffi = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;ffi.zig&quot;</span>);</span>
-<span class="line" id="L16"></span>
-<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> PyMemAllocator = <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L18">    <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
-<span class="line" id="L19"></span>
-<span class="line" id="L20">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">allocator</span>(self: *<span class="tok-kw">const</span> Self) Allocator {</span>
-<span class="line" id="L21">        <span class="tok-kw">return</span> .{</span>
-<span class="line" id="L22">            .ptr = <span class="tok-builtin">@constCast</span>(self),</span>
-<span class="line" id="L23">            .vtable = &amp;.{</span>
-<span class="line" id="L24">                .alloc = alloc,</span>
-<span class="line" id="L25">                .resize = resize,</span>
-<span class="line" id="L26">                .free = free,</span>
-<span class="line" id="L27">            },</span>
-<span class="line" id="L28">        };</span>
-<span class="line" id="L29">    }</span>
-<span class="line" id="L30"></span>
-<span class="line" id="L31">    <span class="tok-kw">fn</span> <span class="tok-fn">alloc</span>(ctx: *<span class="tok-type">anyopaque</span>, len: <span class="tok-type">usize</span>, ptr_align: <span class="tok-type">u8</span>, ret_addr: <span class="tok-type">usize</span>) ?[*]<span class="tok-type">u8</span> {</span>
-<span class="line" id="L32">        <span class="tok-comment">// As per this issue, we will hack an aligned allocator.</span>
+<span class="line" id="L16"><span class="tok-kw">const</span> py = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;./pydust.zig&quot;</span>);</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> PyMemAllocator = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L19">    <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">allocator</span>(self: *<span class="tok-kw">const</span> Self) Allocator {</span>
+<span class="line" id="L22">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L23">            .ptr = <span class="tok-builtin">@constCast</span>(self),</span>
+<span class="line" id="L24">            .vtable = &amp;.{</span>
+<span class="line" id="L25">                .alloc = alloc,</span>
+<span class="line" id="L26">                .resize = resize,</span>
+<span class="line" id="L27">                .free = free,</span>
+<span class="line" id="L28">            },</span>
+<span class="line" id="L29">        };</span>
+<span class="line" id="L30">    }</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">    <span class="tok-kw">fn</span> <span class="tok-fn">alloc</span>(ctx: *<span class="tok-type">anyopaque</span>, len: <span class="tok-type">usize</span>, ptr_align: <span class="tok-type">u8</span>, ret_addr: <span class="tok-type">usize</span>) ?[*]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L33">        <span class="tok-comment">// As per this issue, we will hack an aligned allocator.</span>
 </span>
-<span class="line" id="L33">        <span class="tok-comment">// https://bugs.python.org/msg232221</span>
+<span class="line" id="L34">        <span class="tok-comment">// https://bugs.python.org/msg232221</span>
 </span>
-<span class="line" id="L34">        _ = ret_addr;</span>
-<span class="line" id="L35">        _ = ctx;</span>
-<span class="line" id="L36"></span>
-<span class="line" id="L37">        <span class="tok-comment">// Zig gives us ptr_align as power of 2</span>
+<span class="line" id="L35">        _ = ret_addr;</span>
+<span class="line" id="L36">        _ = ctx;</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38">        <span class="tok-comment">// FIXME(ngates): we should have a separate allocator for re-entrant cases like this</span>
 </span>
-<span class="line" id="L38">        <span class="tok-comment">// This may not always fit into a byte, we should figure out a better way to store the shift value.</span>
+<span class="line" id="L39">        <span class="tok-comment">// that require the GIL, without always paying the cost of acquiring it.</span>
 </span>
-<span class="line" id="L39">        <span class="tok-kw">const</span> alignment: <span class="tok-type">u8</span> = <span class="tok-builtin">@intCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@intCast</span>(ptr_align));</span>
-<span class="line" id="L40"></span>
-<span class="line" id="L41">        <span class="tok-comment">// By default, ptr_align == 1 which gives us our 1 byte header to store the alignment shift</span>
+<span class="line" id="L40">        <span class="tok-kw">const</span> gil = py.gil();</span>
+<span class="line" id="L41">        <span class="tok-kw">defer</span> gil.release();</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">        <span class="tok-comment">// Zig gives us ptr_align as power of 2</span>
 </span>
-<span class="line" id="L42">        <span class="tok-kw">const</span> raw_ptr: <span class="tok-type">usize</span> = <span class="tok-builtin">@intFromPtr</span>(ffi.PyMem_Malloc(len + alignment) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>);</span>
-<span class="line" id="L43"></span>
-<span class="line" id="L44">        <span class="tok-kw">const</span> shift: <span class="tok-type">u8</span> = <span class="tok-builtin">@intCast</span>(alignment - (raw_ptr % alignment));</span>
-<span class="line" id="L45">        std.debug.assert(<span class="tok-number">0</span> &lt; shift <span class="tok-kw">and</span> shift &lt;= alignment);</span>
+<span class="line" id="L44">        <span class="tok-comment">// This may not always fit into a byte, we should figure out a better way to store the shift value.</span>
+</span>
+<span class="line" id="L45">        <span class="tok-kw">const</span> alignment: <span class="tok-type">u8</span> = <span class="tok-builtin">@intCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@intCast</span>(ptr_align));</span>
 <span class="line" id="L46"></span>
-<span class="line" id="L47">        <span class="tok-kw">const</span> aligned_ptr: <span class="tok-type">usize</span> = raw_ptr + shift;</span>
-<span class="line" id="L48"></span>
-<span class="line" id="L49">        <span class="tok-comment">// Store the shift in the first byte before the aligned ptr</span>
+<span class="line" id="L47">        <span class="tok-comment">// By default, ptr_align == 1 which gives us our 1 byte header to store the alignment shift</span>
 </span>
-<span class="line" id="L50">        <span class="tok-comment">// We know from above that we are guaranteed to own that byte.</span>
-</span>
-<span class="line" id="L51">        <span class="tok-builtin">@as</span>(*<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr - <span class="tok-number">1</span>)).* = shift;</span>
+<span class="line" id="L48">        <span class="tok-kw">const</span> raw_ptr: <span class="tok-type">usize</span> = <span class="tok-builtin">@intFromPtr</span>(ffi.PyMem_Malloc(len + alignment) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>);</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50">        <span class="tok-kw">const</span> shift: <span class="tok-type">u8</span> = <span class="tok-builtin">@intCast</span>(alignment - (raw_ptr % alignment));</span>
+<span class="line" id="L51">        std.debug.assert(<span class="tok-number">0</span> &lt; shift <span class="tok-kw">and</span> shift &lt;= alignment);</span>
 <span class="line" id="L52"></span>
-<span class="line" id="L53">        <span class="tok-kw">return</span> <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr);</span>
-<span class="line" id="L54">    }</span>
-<span class="line" id="L55"></span>
-<span class="line" id="L56">    <span class="tok-kw">fn</span> <span class="tok-fn">resize</span>(ctx: *<span class="tok-type">anyopaque</span>, buf: []<span class="tok-type">u8</span>, buf_align: <span class="tok-type">u8</span>, new_len: <span class="tok-type">usize</span>, ret_addr: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
-<span class="line" id="L57">        _ = ret_addr;</span>
-<span class="line" id="L58">        _ = new_len;</span>
-<span class="line" id="L59">        _ = buf_align;</span>
-<span class="line" id="L60">        _ = buf;</span>
-<span class="line" id="L61">        _ = ctx;</span>
-<span class="line" id="L62">        <span class="tok-comment">// We have a couple of options: return true, or return false...</span>
+<span class="line" id="L53">        <span class="tok-kw">const</span> aligned_ptr: <span class="tok-type">usize</span> = raw_ptr + shift;</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">        <span class="tok-comment">// Store the shift in the first byte before the aligned ptr</span>
 </span>
-<span class="line" id="L63"></span>
-<span class="line" id="L64">        <span class="tok-comment">// Firstly, we can never call PyMem_Realloc since that can internally copy data and return a new ptr.</span>
+<span class="line" id="L56">        <span class="tok-comment">// We know from above that we are guaranteed to own that byte.</span>
 </span>
-<span class="line" id="L65">        <span class="tok-comment">// We have no way of passing that pointer back to the caller and buf will have been freed.</span>
+<span class="line" id="L57">        <span class="tok-builtin">@as</span>(*<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr - <span class="tok-number">1</span>)).* = shift;</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">        <span class="tok-kw">return</span> <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr);</span>
+<span class="line" id="L60">    }</span>
+<span class="line" id="L61"></span>
+<span class="line" id="L62">    <span class="tok-kw">fn</span> <span class="tok-fn">resize</span>(ctx: *<span class="tok-type">anyopaque</span>, buf: []<span class="tok-type">u8</span>, buf_align: <span class="tok-type">u8</span>, new_len: <span class="tok-type">usize</span>, ret_addr: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L63">        _ = ret_addr;</span>
+<span class="line" id="L64">        _ = new_len;</span>
+<span class="line" id="L65">        _ = buf_align;</span>
+<span class="line" id="L66">        _ = buf;</span>
+<span class="line" id="L67">        _ = ctx;</span>
+<span class="line" id="L68">        <span class="tok-comment">// We have a couple of options: return true, or return false...</span>
 </span>
-<span class="line" id="L66"></span>
-<span class="line" id="L67">        <span class="tok-comment">// 1) We could say we successfully resized if new_len &lt; buf.len, and not actually do anything.</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">        <span class="tok-comment">// Firstly, we can never call PyMem_Realloc since that can internally copy data and return a new ptr.</span>
 </span>
-<span class="line" id="L68">        <span class="tok-comment">// This would work since we never use the slice length in the free function and PyMem will internally</span>
+<span class="line" id="L71">        <span class="tok-comment">// We have no way of passing that pointer back to the caller and buf will have been freed.</span>
 </span>
-<span class="line" id="L69">        <span class="tok-comment">// keep track of the initial alloc size.</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">        <span class="tok-comment">// 1) We could say we successfully resized if new_len &lt; buf.len, and not actually do anything.</span>
 </span>
-<span class="line" id="L70"></span>
-<span class="line" id="L71">        <span class="tok-comment">// 2) We could say we _always_ fail to resize and force the caller to decide whether to blindly slice</span>
+<span class="line" id="L74">        <span class="tok-comment">// This would work since we never use the slice length in the free function and PyMem will internally</span>
 </span>
-<span class="line" id="L72">        <span class="tok-comment">// or to copy data into a new place.</span>
-</span>
-<span class="line" id="L73"></span>
-<span class="line" id="L74">        <span class="tok-comment">// 3) We could succeed if new_len &gt; 75% of buf.len. This minimises the amount of &quot;dead&quot; memory we pass</span>
-</span>
-<span class="line" id="L75">        <span class="tok-comment">// around, but it seems like a somewhat arbitrary threshold to hard-code in the allocator.</span>
+<span class="line" id="L75">        <span class="tok-comment">// keep track of the initial alloc size.</span>
 </span>
 <span class="line" id="L76"></span>
-<span class="line" id="L77">        <span class="tok-comment">// For now, we go with 2)</span>
+<span class="line" id="L77">        <span class="tok-comment">// 2) We could say we _always_ fail to resize and force the caller to decide whether to blindly slice</span>
 </span>
-<span class="line" id="L78">        <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
-<span class="line" id="L79">    }</span>
-<span class="line" id="L80"></span>
-<span class="line" id="L81">    <span class="tok-kw">fn</span> <span class="tok-fn">free</span>(ctx: *<span class="tok-type">anyopaque</span>, buf: []<span class="tok-type">u8</span>, buf_align: <span class="tok-type">u8</span>, ret_addr: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
-<span class="line" id="L82">        _ = buf_align;</span>
-<span class="line" id="L83">        _ = ctx;</span>
-<span class="line" id="L84">        _ = ret_addr;</span>
-<span class="line" id="L85"></span>
-<span class="line" id="L86">        <span class="tok-comment">// Fetch the alignment shift. We could check it matches the buf_align, but it's a bit annoying.</span>
+<span class="line" id="L78">        <span class="tok-comment">// or to copy data into a new place.</span>
 </span>
-<span class="line" id="L87">        <span class="tok-kw">const</span> aligned_ptr: <span class="tok-type">usize</span> = <span class="tok-builtin">@intFromPtr</span>(buf.ptr);</span>
-<span class="line" id="L88">        <span class="tok-kw">const</span> shift = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr - <span class="tok-number">1</span>)).*;</span>
-<span class="line" id="L89"></span>
-<span class="line" id="L90">        <span class="tok-kw">const</span> raw_ptr: *<span class="tok-type">anyopaque</span> = <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr - shift);</span>
-<span class="line" id="L91">        ffi.PyMem_Free(raw_ptr);</span>
-<span class="line" id="L92">    }</span>
-<span class="line" id="L93">}{};</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">        <span class="tok-comment">// 3) We could succeed if new_len &gt; 75% of buf.len. This minimises the amount of &quot;dead&quot; memory we pass</span>
+</span>
+<span class="line" id="L81">        <span class="tok-comment">// around, but it seems like a somewhat arbitrary threshold to hard-code in the allocator.</span>
+</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">        <span class="tok-comment">// For now, we go with 2)</span>
+</span>
+<span class="line" id="L84">        <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L85">    }</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    <span class="tok-kw">fn</span> <span class="tok-fn">free</span>(ctx: *<span class="tok-type">anyopaque</span>, buf: []<span class="tok-type">u8</span>, buf_align: <span class="tok-type">u8</span>, ret_addr: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L88">        _ = buf_align;</span>
+<span class="line" id="L89">        _ = ctx;</span>
+<span class="line" id="L90">        _ = ret_addr;</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">        <span class="tok-kw">const</span> gil = py.gil();</span>
+<span class="line" id="L93">        <span class="tok-kw">defer</span> gil.release();</span>
 <span class="line" id="L94"></span>
+<span class="line" id="L95">        <span class="tok-comment">// Fetch the alignment shift. We could check it matches the buf_align, but it's a bit annoying.</span>
+</span>
+<span class="line" id="L96">        <span class="tok-kw">const</span> aligned_ptr: <span class="tok-type">usize</span> = <span class="tok-builtin">@intFromPtr</span>(buf.ptr);</span>
+<span class="line" id="L97">        <span class="tok-kw">const</span> shift = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr - <span class="tok-number">1</span>)).*;</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">        <span class="tok-kw">const</span> raw_ptr: *<span class="tok-type">anyopaque</span> = <span class="tok-builtin">@ptrFromInt</span>(aligned_ptr - shift);</span>
+<span class="line" id="L100">        ffi.PyMem_Free(raw_ptr);</span>
+<span class="line" id="L101">    }</span>
+<span class="line" id="L102">}{};</span>
+<span class="line" id="L103"></span>
 </code></pre></body>
 </html>
