@@ -286,55 +286,27 @@ pub fn Trampoline(comptime T: type) type {
             @compileError("Unsupported argument type " ++ @typeName(T));
         }
 
-        pub const CallArgs = struct {
-            args: ?py.PyTuple,
-            kwargs: ?py.PyDict,
-
-            pub fn nargs(self: CallArgs) usize {
-                return if (self.args) |args| args.length() else 0;
-            }
-
-            pub fn nkwargs(self: CallArgs) usize {
-                return if (self.kwargs) |kwargs| kwargs.length() else 0;
-            }
-
-            pub fn getArg(self: CallArgs, comptime R: type, idx: usize) !R {
-                const args = self.args orelse return py.TypeError.raise("missing args");
-                return try args.getItem(R, idx);
-            }
-
-            pub fn getKwarg(self: CallArgs, comptime R: type, name: []const u8) !?R {
-                const kwargs = self.kwargs orelse return null;
-                return kwargs.getItem(R, name);
-            }
-
-            pub fn decref(self: CallArgs) void {
-                if (self.args) |args| args.decref();
-                if (self.kwargs) |kwargs| kwargs.decref();
-            }
-        };
-
         // Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects
         // but instantiating the args slice and kwargs map containers.
         // The caller is responsible for invoking funcs.deinitArgs on the returned struct.
-        pub inline fn unwrapCallArgs(callArgs: CallArgs) PyError!T {
-            var pykwargs = py.Kwargs.init(py.allocator);
-            if (callArgs.kwargs) |kw| {
+        pub inline fn unwrapCallArgs(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!T {
+            var kwargs = py.Kwargs.init(py.allocator);
+            if (pykwargs) |kw| {
                 var iter = kw.itemsIterator();
                 while (iter.next()) |item| {
                     const key: []const u8 = try (try py.PyString.checked(item.k)).asSlice();
-                    try pykwargs.put(key, item.v);
+                    try kwargs.put(key, item.v);
                 }
             }
 
-            const pyargs = try py.allocator.alloc(py.PyObject, if (callArgs.args) |a| a.length() else 0);
-            if (callArgs.args) |a| {
+            const args = try py.allocator.alloc(py.PyObject, if (pyargs) |a| a.length() else 0);
+            if (pyargs) |a| {
                 for (0..a.length()) |i| {
-                    pyargs[i] = try a.getItem(py.PyObject, i);
+                    args[i] = try a.getItem(py.PyObject, i);
                 }
             }
 
-            return funcs.unwrapArgs(T, pyargs, pykwargs);
+            return funcs.unwrapArgs(T, args, kwargs);
         }
     };
 }

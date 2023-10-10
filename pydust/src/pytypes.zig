@@ -260,14 +260,14 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             if (sig.selfParam) |Self| {
                 const pycls = try tramp.Trampoline(Self).unwrap(subtype);
                 if (sig.argsParam) |Args| {
-                    const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
+                    const args = try tramp.Trampoline(Args).unwrapCallArgs(pyargs, pykwargs);
                     defer funcs.deinitArgs(Args, args);
                     return try tramp.coerceError(definition.__new__(pycls, args));
                 } else {
                     return try tramp.coerceError(definition.__new__(pycls));
                 }
             } else if (sig.argsParam) |Args| {
-                const args = try tramp.Trampoline(Args).unwrapCallArgs(.{ .args = pyargs, .kwargs = pykwargs });
+                const args = try tramp.Trampoline(Args).unwrapCallArgs(pyargs, pykwargs);
                 defer funcs.deinitArgs(Args, args);
                 return try tramp.coerceError(definition.__new__(args));
             } else {
@@ -294,7 +294,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
 
             const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
-            const init_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(.{ .args = args, .kwargs = kwargs }) catch return -1;
+            const init_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return -1;
             defer funcs.deinitArgs(sig.argsParam.?, init_args);
 
             tramp.coerceError(definition.__init__(self, init_args)) catch return -1;
