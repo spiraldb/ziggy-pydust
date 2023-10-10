@@ -127,8 +127,36 @@ pub fn dict(object: anytype) !py.PyDict {
     return Dict.call(py.PyDict, .{pyobj}, .{});
 }
 
-pub fn gil() py.PyGIL {
-    return py.PyGIL.ensure();
+pub const PyGIL = struct {
+    const Self = @This();
+
+    state: *ffi.PyGILState_STATE,
+
+    pub fn release(self_: Self) void {
+        ffi.PyGILState_Release(self_.state);
+    }
+};
+
+/// Ensure the current thread holds the Python GIL.
+/// Must be accompanied by a call to release().
+pub fn gil() PyGIL {
+    return .{ .state = ffi.PyGILState_Ensure() };
+}
+
+pub const PyNoGIL = struct {
+    const Self = @This();
+
+    state: *ffi.PyThreadState,
+
+    pub fn acquire(self_: Self) void {
+        ffi.PyEval_RestoreThread(self_.state);
+    }
+};
+
+/// Release the GIL from the current thread.
+/// Must be accompanied by a call to acquire().
+pub fn nogil() PyNoGIL {
+    return .{ .state = ffi.PyEval_SaveThread() };
 }
 
 /// Checks whether a given object is None. Avoids incref'ing None to do the check.
