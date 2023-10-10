@@ -15,7 +15,7 @@ const tramp = @import("./trampoline.zig");
 
 /// Zig PyObject-like -> ffi.PyObject. Convert a Zig PyObject-like value into a py.PyObject.
 ///  e.g. py.PyObject, py.PyTuple, ffi.PyObject, etc.
-pub inline fn object(value: anytype) py.PyObject {
+pub fn object(value: anytype) py.PyObject {
     return tramp.Trampoline(@TypeOf(value)).asObject(value);
 }
 

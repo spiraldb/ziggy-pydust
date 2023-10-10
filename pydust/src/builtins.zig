@@ -262,27 +262,26 @@ pub fn type_(object: anytype) !py.PyType {
     ) orelse return PyError.PyRaised } };
 }
 
-// TODO(ngates): What's the easiest / cheapest way to do this?
-// For now, we just check the name
-pub fn self(comptime PydustType: type) !py.PyObject {
+/// Returns the PyType object representing the given Pydust class.
+pub fn self(comptime PydustType: type) !py.PyType {
     if (@typeInfo(PydustType) != .Struct) {
         @compileError("py.self should be called on a Pydust struct type. e.g. py.self(MyClass)");
     }
 
-    // We import the root module, then grab the class from it.
-    const root = try import(State.getRootModule().name);
+    // Grab the qualified name, importing the root module first.
+    var qualName = State.getIdentifier(PydustType).qualifiedName;
+
+    const root = try import(qualName[0]);
     defer root.decref();
 
-    // Grab the qualified name, stripping the root module prefix.
-    var qualName = State.getIdentifier(PydustType).qualifiedName[1..];
-
+    // Recursively resolve submodules / nested classes
     var mod = root;
-    inline for (qualName[0 .. qualName.len - 1]) |part| {
+    inline for (qualName[1 .. qualName.len - 1]) |part| {
         mod = try mod.get(part);
     }
-    const className = qualName[qualName.len - 1];
 
-    return mod.get(className);
+    // Grab the class using the final part of the qualified name.
+    return mod.getAs(py.PyType, qualName[qualName.len - 1]);
 }
 
 const testing = std.testing;
