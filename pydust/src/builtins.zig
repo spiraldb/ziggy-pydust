@@ -127,6 +127,39 @@ pub fn dict(object: anytype) !py.PyDict {
     return Dict.call(py.PyDict, .{pyobj}, .{});
 }
 
+pub const PyGIL = struct {
+    const Self = @This();
+
+    state: ffi.PyGILState_STATE,
+
+    pub fn release(self_: Self) void {
+        ffi.PyGILState_Release(self_.state);
+    }
+};
+
+/// Ensure the current thread holds the Python GIL.
+/// Must be accompanied by a call to release().
+pub fn gil() PyGIL {
+    return .{ .state = ffi.PyGILState_Ensure() };
+}
+
+pub const PyNoGIL = struct {
+    const Self = @This();
+
+    state: *ffi.PyThreadState,
+
+    pub fn acquire(self_: Self) void {
+        ffi.PyEval_RestoreThread(self_.state);
+    }
+};
+
+/// Release the GIL from the current thread.
+/// Must be accompanied by a call to acquire().
+pub fn nogil() PyNoGIL {
+    // TODO(ngates): can this fail?
+    return .{ .state = ffi.PyEval_SaveThread() orelse unreachable };
+}
+
 /// Checks whether a given object is None. Avoids incref'ing None to do the check.
 pub fn is_none(object: anytype) bool {
     const obj = py.object(object);
@@ -218,6 +251,10 @@ pub fn type_(object: anytype) !py.PyType {
 // TODO(ngates): What's the easiest / cheapest way to do this?
 // For now, we just check the name
 pub fn self(comptime PydustType: type) !py.PyObject {
+    if (@typeInfo(PydustType) != .Struct) {
+        @compileError("py.self should be called on a Pydust struct type. e.g. py.self(MyClass)");
+    }
+
     const clsName = State.getIdentifier(PydustType).name;
     const mod = State.getContaining(PydustType, .module);
     const modName = State.getIdentifier(mod).name;
