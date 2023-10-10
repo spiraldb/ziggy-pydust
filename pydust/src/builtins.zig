@@ -130,7 +130,7 @@ pub fn dict(object: anytype) !py.PyDict {
 pub const PyGIL = struct {
     const Self = @This();
 
-    state: *ffi.PyGILState_STATE,
+    state: ffi.PyGILState_STATE,
 
     pub fn release(self_: Self) void {
         ffi.PyGILState_Release(self_.state);
@@ -156,7 +156,8 @@ pub const PyNoGIL = struct {
 /// Release the GIL from the current thread.
 /// Must be accompanied by a call to acquire().
 pub fn nogil() PyNoGIL {
-    return .{ .state = ffi.PyEval_SaveThread() };
+    // TODO(ngates): can this fail?
+    return .{ .state = ffi.PyEval_SaveThread() orelse unreachable };
 }
 
 /// Checks whether a given object is None. Avoids incref'ing None to do the check.
