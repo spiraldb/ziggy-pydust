@@ -358,56 +358,26 @@ pub fn Trampoline(comptime T: type) type {
             return .{ .args = args, .kwargs = kwargs };
         }
 
+        // Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects.
+        // The caller is responsible for invoking deinit on any return py.Kwargs (using funcs.decrefArgs).
         pub inline fn unwrapCallArgs(callArgs: CallArgs) PyError!T {
-            if (funcs.argCount(T) != callArgs.nargs()) {
-                return py.TypeError.raiseComptimeFmt(
-                    "expected {d} argument{s}",
-                    .{ funcs.argCount(T), if (funcs.argCount(T) > 1) "s" else "" },
-                );
-            }
-
-            var args: T = undefined;
-            inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
-                if (field.type == py.Args or field.type == py.Kwargs) {
-                    @compileLog("Skipping args/kwargs");
-                    continue;
-                }
-
-                if (field.default_value) |def| {
-                    // We're a kwarg
-                    if (try callArgs.getKwarg(field.type, field.name)) |kwarg| {
-                        @field(args, field.name) = kwarg;
-                    } else {
-                        @field(args, field.name) = @as(*field.type, @constCast(@alignCast(@ptrCast(def)))).*;
-                    }
-                } else {
-                    // We're an arg
-                    @field(args, field.name) = try callArgs.getArg(field.type, i);
-                }
-            }
-
-            // Sanity check that we didn't recieve any kwargs that we weren't expecting
-            const fieldNames = std.meta.fieldNames(T);
-            if (callArgs.kwargs) |kwargs| {
-                var iter = kwargs.itemsIterator();
+            var pykwargs = py.Kwargs.init(py.allocator);
+            if (callArgs.kwargs) |kw| {
+                var iter = kw.itemsIterator();
                 while (iter.next()) |item| {
-                    const itemName = try (try item.key(py.PyString)).asSlice();
-
-                    var exists = false;
-                    for (fieldNames) |name| {
-                        if (std.mem.eql(u8, name, itemName)) {
-                            exists = true;
-                            break;
-                        }
-                    }
-
-                    if (!exists) {
-                        return py.TypeError.raiseFmt("unexpected kwarg '{s}'", .{itemName});
-                    }
+                    const key: []const u8 = try (try py.PyString.checked(item.k)).asSlice();
+                    try pykwargs.put(key, item.v);
                 }
             }
 
-            return args;
+            const pyargs = try py.allocator.alloc(py.PyObject, if (callArgs.args) |a| a.length() else 0);
+            if (callArgs.args) |a| {
+                for (0..a.length()) |i| {
+                    pyargs[i] = try a.getItem(py.PyObject, i);
+                }
+            }
+
+            return funcs.unwrapArgs(T, pyargs, pykwargs);
         }
     };
 }
