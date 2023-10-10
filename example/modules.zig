@@ -31,6 +31,10 @@ pub fn __new__() !Self { // (3)!
     return .{ .name = try py.PyString.create("Ziggy") };
 }
 
+pub fn __del__(self: Self) void {
+    self.name.decref();
+}
+
 pub fn increment(self: *Self) void { // (4)!
     self.count += 1;
 }
@@ -40,6 +44,7 @@ pub fn count(self: *const Self) u32 {
 }
 
 pub fn whoami(self: *const Self) py.PyString {
+    py.incref(self.name);
     return self.name;
 }
 
