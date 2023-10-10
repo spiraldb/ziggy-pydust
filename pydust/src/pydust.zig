@@ -39,22 +39,6 @@ pub fn finalize() void {
     ffi.Py_Finalize();
 }
 
-/// Instantiate a class defined in Pydust.
-pub fn init(comptime Cls: type, args: Cls) PyError!*Cls {
-    const moduleDefinition = State.getContaining(Cls, .module);
-    const imported = try types.PyModule.import(State.getIdentifier(moduleDefinition).name);
-    defer imported.decref();
-    const pytype = try imported.obj.get(State.getIdentifier(Cls).name);
-
-    // Alloc the class
-    // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
-    // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
-    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.PyRaised));
-    pyobj.state = args;
-
-    return &pyobj.state;
-}
-
 /// Register the root Pydust module
 pub fn rootmodule(comptime definition: type) void {
     if (!State.isEmpty()) {

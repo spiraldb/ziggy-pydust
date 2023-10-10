@@ -16,6 +16,7 @@
 //! See https://docs.python.org/3/library/functions.html for full reference.
 const std = @import("std");
 const py = @import("./pydust.zig");
+const pytypes = @import("./pytypes.zig");
 const State = @import("./discovery.zig").State;
 const ffi = @import("./ffi.zig");
 const PyError = @import("./errors.zig").PyError;
@@ -57,11 +58,11 @@ pub inline fn True() py.PyBool {
     return py.PyBool.true_();
 }
 
-pub fn decref(value: anytype) void {
+pub inline fn decref(value: anytype) void {
     py.object(value).decref();
 }
 
-pub fn incref(value: anytype) void {
+pub inline fn incref(value: anytype) void {
     py.object(value).incref();
 }
 
@@ -171,6 +172,19 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule.import(module_name)).obj;
 }
 
+/// Instantiate a class defined in Pydust.
+pub inline fn init(comptime Cls: type, args: Cls) PyError!*Cls {
+    const pytype = try self(Cls);
+
+    // Alloc the class
+    // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
+    // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
+    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.obj.py), 0) orelse return PyError.PyRaised));
+    pyobj.state = args;
+
+    return &pyobj.state;
+}
+
 /// Check if object is an instance of cls.
 pub fn isinstance(object: anytype, cls: anytype) !bool {
     const pyobj = py.object(object);
@@ -248,20 +262,26 @@ pub fn type_(object: anytype) !py.PyType {
     ) orelse return PyError.PyRaised } };
 }
 
-// TODO(ngates): What's the easiest / cheapest way to do this?
-// For now, we just check the name
-pub fn self(comptime PydustType: type) !py.PyObject {
+/// Returns the PyType object representing the given Pydust class.
+pub fn self(comptime PydustType: type) !py.PyType {
     if (@typeInfo(PydustType) != .Struct) {
         @compileError("py.self should be called on a Pydust struct type. e.g. py.self(MyClass)");
     }
 
-    const clsName = State.getIdentifier(PydustType).name;
-    const mod = State.getContaining(PydustType, .module);
-    const modName = State.getIdentifier(mod).name;
+    // Grab the qualified name, importing the root module first.
+    comptime var qualName = State.getIdentifier(PydustType).qualifiedName;
 
-    const pymod = try import(modName);
-    defer pymod.decref();
-    return pymod.get(clsName);
+    const root = try import(qualName[0]);
+    defer root.decref();
+
+    // Recursively resolve submodules / nested classes
+    var mod = root;
+    inline for (qualName[1 .. qualName.len - 1]) |part| {
+        mod = try mod.get(part);
+    }
+
+    // Grab the class using the final part of the qualified name.
+    return mod.getAs(py.PyType, qualName[qualName.len - 1]);
 }
 
 const testing = std.testing;
