@@ -465,7 +465,8 @@ fn sigSize(comptime sig: Signature) usize {
 }
 
 fn sigArgs(comptime sig: Signature) ![]const []const u8 {
-    const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs * 2 + 5);
+    // 5 = self + "/" + "*" + "*args" + "**kwargs"
+    const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs + 5);
     var sigargs = ArgBuf.init(0) catch @compileError("OOM");
     if (sig.selfParam) |self| {
         if (self == @TypeOf(py.PyObject)) {
