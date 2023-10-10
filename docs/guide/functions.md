@@ -17,3 +17,10 @@ to be a kwarg argument if it has a default value associated with it for a functi
 ```
 
 The generated signature will be `(x, /, *, y=42.0)`
+
+Python's variadic arguments `*args` and `**kwargs` are represented by including `py.Args` and `py.Kwargs` attributes
+in your args struct.
+
+```zig
+--8<-- "example/functions.zig:varargs"
+```
