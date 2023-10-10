@@ -317,10 +317,34 @@ pub fn Trampoline(comptime T: type) type {
         /// Wrap a Zig Pydust argument struct into Python CallArgs.
         /// Creates new references.
         pub inline fn wrapCallArgs(obj: T) !CallArgs {
-            const args = try py.PyTuple.new(funcs.argCount(T));
+            const args = try py.PyList.new(0);
             const kwargs = try py.PyDict.new();
 
             inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
+                if (field.type == py.Args) {
+                    // It's a variadic arg, so we add each one to the args tuple
+                    const varargs: py.Args = @field(obj, field.name);
+                    for (varargs) |vararg| {
+                        try args.append(vararg);
+                    }
+                    continue;
+                }
+
+                if (field.type == py.Kwargs) {
+                    const varkwargs: py.Kwargs = @field(obj, field.name);
+                    var iterator = varkwargs.iterator();
+                    while (iterator.next()) |entry| {
+                        // We destory the map keys using py.allocator. The caller must ensure the strings belong to this allocator.
+                        // TODO(ngates): is there a better way of doing this?
+                        py.allocator.free(entry.key_ptr.*);
+
+                        // The value ownership is transferred into the kwargs dict
+                        const value: py.PyObject = entry.value_ptr.*;
+                        try kwargs.setOwnedItem(entry.key_ptr, value);
+                    }
+                    continue;
+                }
+
                 const arg = try Trampoline(field.type).wrapNew(@field(obj, field.name));
                 if (field.default_value == null) {
                     // It's an arg
@@ -344,6 +368,11 @@ pub fn Trampoline(comptime T: type) type {
 
             var args: T = undefined;
             inline for (@typeInfo(T).Struct.fields, 0..) |field, i| {
+                if (field.type == py.Args or field.type == py.Kwargs) {
+                    @compileLog("Skipping args/kwargs");
+                    continue;
+                }
+
                 if (field.default_value) |def| {
                     // We're a kwarg
                     if (try callArgs.getKwarg(field.type, field.name)) |kwarg| {

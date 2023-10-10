@@ -582,16 +582,13 @@ fn BinaryOperator(
     return struct {
         fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const func = @field(definition, op);
-            const typeInfo = @typeInfo(@TypeOf(func));
-            const sig = funcs.parseSignature(op, typeInfo.Fn, &.{});
+            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
 
-            if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
-            if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
+            if (typeInfo.params.len != 2) @compileError(op ++ " must take exactly two parameters");
 
+            // TODO(ngates): do we want to trampoline the self argument?
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const other = tramp.Trampoline(
-                sig.argsParam orelse unreachable,
-            ).unwrap(.{ .py = pyother }) catch return null;
+            const other = tramp.Trampoline(typeInfo.params[1].type.?).unwrap(.{ .py = pyother }) catch return null;
 
             const result = tramp.coerceError(func(&self.state, other)) catch return null;
             return (py.createOwned(result) catch return null).py;
@@ -607,14 +604,13 @@ fn EqualsOperator(
         const equals = std.mem.eql(u8, op, "__eq__");
         fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const func = @field(definition, op);
-            const typeInfo = @typeInfo(@TypeOf(func));
-            const sig = funcs.parseSignature(op, typeInfo.Fn, &.{});
+            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
 
-            if (sig.selfParam == null) @compileError(op ++ " must take a self parameter");
-            if (sig.nargs != 1) @compileError(op ++ " must take exactly one parameter after self parameter");
+            if (typeInfo.params.len != 2) @compileError(op ++ " must take exactly two parameters");
+            const Other = typeInfo.params[1].type.?;
 
             // If other arg is of the same type as self we can short circuit equality of both objects aren't of same type
-            if (sig.argsParam == *const definition) {
+            if (Other == *const definition) {
                 const selfType = py.type_(py.object(pyself)) catch return null;
                 const otherType = py.type_(py.object(pyother)) catch return null;
                 if (otherType.obj.py != selfType.obj.py) {
@@ -623,9 +619,7 @@ fn EqualsOperator(
             }
 
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const other = tramp.Trampoline(
-                sig.argsParam orelse unreachable,
-            ).unwrap(.{ .py = pyother }) catch return null;
+            const other = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) catch return null;
 
             const result = tramp.coerceError(func(&self.state, other)) catch return null;
             return (py.createOwned(result) catch return null).py;
@@ -662,22 +656,20 @@ fn RichCompare(comptime definition: type) type {
 
         fn richCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
             const func = definition.__richcompare__;
-            const typeInfo = @typeInfo(@TypeOf(func));
-            const sig = funcs.parseSignature(richCmpName, typeInfo.Fn, &.{});
+            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
 
-            if (sig.selfParam == null) @compileError("__richcompare__ must take a self parameter");
+            if (typeInfo.params.len != 3) @compileError("__richcompare__ must take exactly three parameters: Self, Other, CompareOp");
 
-            const argsParam = sig.argsParam orelse @compileError("__richcompare__ must take arguments");
-            const argFields = @typeInfo(argsParam).Struct.fields;
-            const self = py.as(sig.selfParam.?, pyself) catch return null;
-            const otherArg = tramp.Trampoline(argFields[0].type).unwrap(.{ .py = pyother }) catch return null;
+            const Self = typeInfo.params[0].type.?;
+            const Other = typeInfo.params[1].type.?;
+            const CompareOpArg = typeInfo.params[2].type.?;
+            if (CompareOpArg != py.CompareOp) @compileError("Third parameter of __richcompare__ must be a py.CompareOp");
+
+            const self = py.as(Self, pyself) catch return null;
+            const otherArg = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) catch return null;
             const opEnum: py.CompareOp = @enumFromInt(op);
 
-            var callArg: argsParam = undefined;
-            @field(callArg, argFields[0].name) = otherArg;
-            @field(callArg, argFields[1].name) = opEnum;
-
-            const result = tramp.coerceError(func(self, callArg)) catch return null;
+            const result = tramp.coerceError(func(self, otherArg, opEnum)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
 
