@@ -15,20 +15,22 @@ const tramp = @import("./trampoline.zig");
 
 /// Zig PyObject-like -> ffi.PyObject. Convert a Zig PyObject-like value into a py.PyObject.
 ///  e.g. py.PyObject, py.PyTuple, ffi.PyObject, etc.
-pub fn object(value: anytype) py.PyObject {
+pub inline fn object(value: anytype) py.PyObject {
     return tramp.Trampoline(@TypeOf(value)).asObject(value);
 }
 
 /// Zig -> Python. Return a Python representation of a Zig object.
 /// For Zig primitives, this constructs a new Python object.
 /// For PyObject-like values, this returns the value without creating a new reference.
-pub fn createOwned(value: anytype) py.PyError!py.PyObject {
-    return tramp.Trampoline(@TypeOf(value)).wrap(value);
+pub inline fn createOwned(value: anytype) py.PyError!py.PyObject {
+    const trampoline = tramp.Trampoline(@TypeOf(value));
+    defer trampoline.decref_objectlike(value);
+    return trampoline.wrap(value);
 }
 
 /// Zig -> Python. Convert a Zig object into a Python object. Returns a new object.
-pub fn create(value: anytype) py.PyError!py.PyObject {
-    return tramp.Trampoline(@TypeOf(value)).wrapNew(value);
+pub inline fn create(value: anytype) py.PyError!py.PyObject {
+    return tramp.Trampoline(@TypeOf(value)).wrap(value);
 }
 
 /// Python -> Zig. Return a Zig object representing the Python object.
@@ -54,4 +56,31 @@ test "as py -> zig" {
     // Return a PyObject representation of it, and ensure the refcnt is untouched.
     _ = try py.as(py.PyObject, str);
     try expect(py.refcnt(str) == 1);
+}
+
+test "create" {
+    py.initialize();
+    defer py.finalize();
+
+    const str = try py.PyString.create("Hello");
+    try testing.expectEqual(@as(isize, 1), py.refcnt(str));
+
+    const some_tuple = try py.create(.{str});
+    defer some_tuple.decref();
+    try testing.expectEqual(@as(isize, 2), py.refcnt(str));
+
+    str.decref();
+    try testing.expectEqual(@as(isize, 1), py.refcnt(str));
+}
+
+test "createOwned" {
+    py.initialize();
+    defer py.finalize();
+
+    const str = try py.PyString.create("Hello");
+    try testing.expectEqual(@as(isize, 1), py.refcnt(str));
+
+    const some_tuple = try py.createOwned(.{str});
+    defer some_tuple.decref();
+    try testing.expectEqual(@as(isize, 1), py.refcnt(str));
 }

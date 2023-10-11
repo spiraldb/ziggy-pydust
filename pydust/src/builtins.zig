@@ -175,6 +175,7 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
 /// Instantiate a class defined in Pydust.
 pub inline fn init(comptime Cls: type, args: Cls) PyError!*Cls {
     const pytype = try self(Cls);
+    defer pytype.decref();
 
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
@@ -208,6 +209,18 @@ pub fn len(object: anytype) !usize {
     return @intCast(length);
 }
 
+/// Return the runtime module state for a Pydust module definition.
+pub fn moduleState(comptime Module: type) !*const Module {
+    if (State.getDefinition(Module).type != .module) {
+        @compileError("Not a module definition: " ++ Module);
+    }
+
+    const mod = py.PyModule.unchecked(try lift(Module));
+    defer mod.decref();
+
+    return mod.getState(Module);
+}
+
 /// Return the next item of an iterator. Equivalent to next(obj) in Python.
 pub fn next(comptime T: type, iterator: anytype) !?T {
     const pyiter = try py.PyIter.checked(iterator);
@@ -239,15 +252,26 @@ pub fn repr(object: anytype) !py.PyString {
     return py.PyString.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.PyRaised });
 }
 
+/// Returns the PyType object representing the given Pydust class.
+pub fn self(comptime Class: type) !py.PyType {
+    if (State.getDefinition(Class).type != .class) {
+        @compileError("Not a class definition: " ++ Class);
+    }
+    return py.PyType.unchecked(try lift(Class));
+}
+
 /// The equivalent of Python's super() builtin. Returns a PyObject.
 pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
-    const module = State.getContaining(Super, .module);
-    const imported = try import(State.getIdentifier(module).name);
+    const mod = State.getContaining(Super, .module);
+
+    const imported = try import(State.getIdentifier(mod).name);
+    defer imported.decref();
+
     const superPyType = try imported.get(State.getIdentifier(Super).name);
-    const pyObj = py.object(selfInstance);
+    defer superPyType.decref();
 
     const superBuiltin: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
-    return superBuiltin.call(.{ superPyType, pyObj }, .{});
+    return superBuiltin.call(.{ superPyType, py.object(selfInstance) }, .{});
 }
 
 pub fn tuple(object: anytype) !py.PyTuple {
@@ -262,14 +286,11 @@ pub fn type_(object: anytype) !py.PyType {
     ) orelse return PyError.PyRaised } };
 }
 
-/// Returns the PyType object representing the given Pydust class.
-pub fn self(comptime PydustType: type) !py.PyType {
-    if (@typeInfo(PydustType) != .Struct) {
-        @compileError("py.self should be called on a Pydust struct type. e.g. py.self(MyClass)");
-    }
-
+/// Lifts a Pydust struct into its corresponding runtime Python object.
+/// Returns a new reference.
+fn lift(comptime PydustStruct: type) !py.PyObject {
     // Grab the qualified name, importing the root module first.
-    comptime var qualName = State.getIdentifier(PydustType).qualifiedName;
+    comptime var qualName = State.getIdentifier(PydustStruct).qualifiedName;
 
     const root = try import(qualName[0]);
     defer root.decref();
@@ -278,10 +299,11 @@ pub fn self(comptime PydustType: type) !py.PyType {
     var mod = root;
     inline for (qualName[1 .. qualName.len - 1]) |part| {
         mod = try mod.get(part);
+        defer mod.decref(); // Inline loop so this runs at the end of the function.
     }
 
-    // Grab the class using the final part of the qualified name.
-    return mod.getAs(py.PyType, qualName[qualName.len - 1]);
+    // Grab the attribute using the final part of the qualified name.
+    return mod.get(qualName[qualName.len - 1]);
 }
 
 const testing = std.testing;

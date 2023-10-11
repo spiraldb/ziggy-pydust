@@ -50,8 +50,7 @@ pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
             if (bases.bases.len > 0) {
                 const basesTuple = try py.PyTuple.new(bases.bases.len);
                 inline for (bases.bases, 0..) |base, i| {
-                    const baseType = try module.obj.get(State.getIdentifier(base).name);
-                    try basesTuple.setItem(i, baseType);
+                    try basesTuple.setOwnedItem(i, (try py.self(base)).obj);
                 }
                 basesPtr = basesTuple.obj.py;
             }
@@ -542,7 +541,7 @@ fn Properties(comptime definition: type) type {
                                 };
 
                                 const result = tramp.coerceError(field.type.get(propself)) catch return null;
-                                const resultObj = tramp.Trampoline(@TypeOf(result)).wrap(result) catch return null;
+                                const resultObj = py.createOwned(result) catch return null;
                                 return resultObj.py;
                             }
                         };
@@ -616,7 +615,10 @@ fn EqualsOperator(
             // If Other arg type is the same as Self, and Other is not a subclass of Self,
             // then we can short-cut and return not-equal.
             if (Other == *const definition) {
+                // TODO(ngates): #193
                 const selfType = py.self(definition) catch return null;
+                defer selfType.decref();
+
                 const isSubclass = py.isinstance(pyother, selfType) catch return null;
                 if (!isSubclass) {
                     return if (equals) py.False().obj.py else py.True().obj.py;

@@ -31,17 +31,27 @@ pub fn Trampoline(comptime T: type) type {
     }
 
     return struct {
-        /// Recursively decref an object-like. No-op for non-objects.
+        /// Recursively decref any PyObjects found in a native Zig type.
         pub inline fn decref_objectlike(obj: T) void {
             if (isObjectLike()) {
                 asObject(obj).decref();
                 return;
             }
             switch (@typeInfo(T)) {
+                .ErrorUnion => |e| {
+                    Trampoline(e.payload).decref_objectlike(obj catch return);
+                },
+                .Optional => |o| {
+                    if (obj) |object| Trampoline(o.child).decref_objectlike(object);
+                },
                 .Struct => |s| {
                     inline for (s.fields) |f| {
                         Trampoline(f.type).decref_objectlike(@field(obj, f.name));
                     }
+                },
+                // Explicit compile-error for other "container" types just to force us to handle them in the future.
+                .Pointer, .Array, .Union => {
+                    @compileError("Object decref not supported for type: " ++ @typeName(T));
                 },
                 else => {},
             }
@@ -113,38 +123,8 @@ pub fn Trampoline(comptime T: type) type {
             return false;
         }
 
-        /// Wraps a Zig object into a Python object.
-        /// Always creates a new strong reference.
-        pub inline fn wrapNew(obj: T) PyError!py.PyObject {
-            // For existing object types, we just incref and return the object.
-            if (isObjectLike()) {
-                const pyobj = asObject(obj);
-                pyobj.incref();
-                return pyobj;
-            }
-
-            // Since we're allowed to create a new reference, we can support string conversions
-            switch (@typeInfo(T)) {
-                .Pointer => |p| {
-                    // We make the assumption that []const u8 is converted to a PyUnicode.
-                    if (p.child == u8 and p.size == .Slice and p.is_const) {
-                        return (try py.PyString.create(obj)).obj;
-                    }
-
-                    // Also pointers to u8 arrays *[_]u8
-                    const childInfo = @typeInfo(p.child);
-                    if (childInfo == .Array and childInfo.Array.child == u8) {
-                        return (try py.PyString.create(obj)).obj;
-                    }
-                },
-                else => {},
-            }
-
-            return wrap(obj);
-        }
-
-        /// Wraps a Zig object into a Python object.
-        /// Does not create a new reference.
+        /// Wraps a Zig object into a new Python object.
+        /// The result should be treated like a new reference.
         pub inline fn wrap(obj: T) PyError!py.PyObject {
             // Check the user is not accidentally returning a Pydust class or Module without a pointer
             if (State.findDefinition(T) != null) {
@@ -167,7 +147,9 @@ pub fn Trampoline(comptime T: type) type {
 
             // Shortcut for object types
             if (isObjectLike()) {
-                return asObject(obj);
+                const pyobj = asObject(obj);
+                pyobj.incref();
+                return pyobj;
             }
 
             switch (@typeInfo(T)) {
@@ -175,17 +157,19 @@ pub fn Trampoline(comptime T: type) type {
                 .ErrorUnion => @compileError("ErrorUnion already handled"),
                 .Float => return (try py.PyFloat.create(obj)).obj,
                 .Int => return (try py.PyLong.create(obj)).obj,
-                .Pointer => {
-                    // We cannot wrap a []const u8 since PyString.create will make a copy of the string
-                    // and we have no way of de-allocating the original slice.
+                .Pointer => |p| {
+                    // We make the assumption that []const u8 is converted to a PyUnicode.
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
+                        return (try py.PyString.create(obj)).obj;
+                    }
+
+                    // Also pointers to u8 arrays *[_]u8
+                    const childInfo = @typeInfo(p.child);
+                    if (childInfo == .Array and childInfo.Array.child == u8) {
+                        return (try py.PyString.create(obj)).obj;
+                    }
                 },
                 .Struct => |s| {
-                    // When recursively converting to tuple or dict, Pydust will either create a new Python object
-                    // or use the existing one. To avoid double-counting existing objects when wrapping up in tuple or dict,
-                    // we decref each of the existing struct fields. The Trampoline.decref_objectlike function will
-                    // only decref objects that already look like Python objects.
-                    defer decref_objectlike(obj);
-
                     // If the struct is a tuple, convert into a Python tuple
                     if (s.is_tuple) {
                         return (try py.PyTuple.create(obj)).obj;
@@ -239,7 +223,10 @@ pub fn Trampoline(comptime T: type) type {
 
                         // If the pointer is for a Pydust class
                         if (def.type == .class) {
+                            // TODO(ngates): #193
                             const Cls = try py.self(p.child);
+                            defer Cls.decref();
+
                             if (!try py.isinstance(obj, Cls)) {
                                 const clsName = State.getIdentifier(p.child).name;
                                 const mod = State.getContaining(p.child, .module);

@@ -35,23 +35,29 @@ pub const PyObject = extern struct {
 
     /// Call a method on this object with no arguments.
     pub fn call0(self: PyObject, comptime T: type, method: []const u8) !T {
-        return py.call0(T, try self.get(method));
+        const meth = try self.get(method);
+        defer meth.decref();
+        return py.call0(T, meth);
     }
 
     /// Call a method on this object with the given args and kwargs.
     pub fn call(self: PyObject, comptime T: type, method: []const u8, args: anytype, kwargs: anytype) !T {
-        return py.call(T, try self.get(method), args, kwargs);
+        const meth = try self.get(method);
+        defer meth.decref();
+        return py.call(T, meth, args, kwargs);
     }
 
-    pub fn get(self: PyObject, attr: []const u8) !py.PyObject {
-        const attrStr = try py.PyString.create(attr);
+    /// Returns a new reference to the attribute of the object.
+    pub fn get(self: PyObject, attrName: []const u8) !py.PyObject {
+        const attrStr = try py.PyString.create(attrName);
         defer attrStr.decref();
 
         return .{ .py = ffi.PyObject_GetAttr(self.py, attrStr.obj.py) orelse return PyError.PyRaised };
     }
 
-    pub fn getAs(self: PyObject, comptime T: type, attr: []const u8) !T {
-        return try py.as(T, try self.get(attr));
+    /// Returns a new reference to the attribute of the object.
+    pub fn getAs(self: PyObject, comptime T: type, attrName: []const u8) !T {
+        return try py.as(T, try self.get(attrName));
     }
 
     // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
