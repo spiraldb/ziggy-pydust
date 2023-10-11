@@ -185,7 +185,7 @@ pub const Operator = py.class(struct {
             return py.create(numF / try py.as(f64, other));
         } else if (try py.PyLong.check(other)) {
             return py.create(self.num / try py.as(u64, other));
-        } else if (try py.isinstance(other, try py.self(Self))) {
+        } else if (try py.isinstance(other, try py.lift(Self))) { // TODO(ngates): #193
             const otherO: *Self = try py.as(*Self, other);
             return py.object(try py.init(Self, .{ .num = self.num / otherO.num }));
         } else {

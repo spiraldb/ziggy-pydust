@@ -47,6 +47,8 @@ pub const PyModule = extern struct {
     /// Most useful during module.__exec__ initialization.
     pub fn init(self: PyModule, class_name: [:0]const u8, class_state: anytype) !*const @TypeOf(class_state) {
         const pytype = try self.obj.get(class_name);
+        defer pytype.decref();
+
         const Cls = @TypeOf(class_state);
 
         if (State.getDefinition(Cls).type != .class) {
