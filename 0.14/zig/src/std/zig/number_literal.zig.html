@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>zig/number_literal.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> utf8Decode = std.unicode.utf8Decode;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> utf8Encode = std.unicode.utf8Encode;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ParseError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L7">    OutOfMemory,</span>
+<span class="line" id="L8">    InvalidLiteral,</span>
+<span class="line" id="L9">};</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Base = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) { decimal = <span class="tok-number">10</span>, hex = <span class="tok-number">16</span>, binary = <span class="tok-number">2</span>, octal = <span class="tok-number">8</span> };</span>
+<span class="line" id="L12"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FloatBase = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) { decimal = <span class="tok-number">10</span>, hex = <span class="tok-number">16</span> };</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Result = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L15">    <span class="tok-comment">/// Result fits if it fits in u64</span></span>
+<span class="line" id="L16">    int: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L17">    <span class="tok-comment">/// Result is an int that doesn't fit in u64. Payload is the base, if it is</span></span>
+<span class="line" id="L18">    <span class="tok-comment">/// not `.decimal` then the slice has a two character prefix.</span></span>
+<span class="line" id="L19">    big_int: Base,</span>
+<span class="line" id="L20">    <span class="tok-comment">/// Result is a float. Payload is the base, if it is not `.decimal` then</span></span>
+<span class="line" id="L21">    <span class="tok-comment">/// the slice has a two character prefix.</span></span>
+<span class="line" id="L22">    float: FloatBase,</span>
+<span class="line" id="L23">    failure: Error,</span>
+<span class="line" id="L24">};</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L27">    <span class="tok-comment">/// The number has leading zeroes.</span></span>
+<span class="line" id="L28">    leading_zero,</span>
+<span class="line" id="L29">    <span class="tok-comment">/// Expected a digit after base prefix.</span></span>
+<span class="line" id="L30">    digit_after_base,</span>
+<span class="line" id="L31">    <span class="tok-comment">/// The base prefix is in uppercase.</span></span>
+<span class="line" id="L32">    upper_case_base: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L33">    <span class="tok-comment">/// Float literal has an invalid base prefix.</span></span>
+<span class="line" id="L34">    invalid_float_base: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L35">    <span class="tok-comment">/// Repeated '_' digit separator.</span></span>
+<span class="line" id="L36">    repeated_underscore: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L37">    <span class="tok-comment">/// '_' digit separator after special character (+-.)</span></span>
+<span class="line" id="L38">    invalid_underscore_after_special: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L39">    <span class="tok-comment">/// Invalid digit for the specified base.</span></span>
+<span class="line" id="L40">    invalid_digit: <span class="tok-kw">struct</span> { i: <span class="tok-type">usize</span>, base: Base },</span>
+<span class="line" id="L41">    <span class="tok-comment">/// Invalid digit for an exponent.</span></span>
+<span class="line" id="L42">    invalid_digit_exponent: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L43">    <span class="tok-comment">/// Float literal has multiple periods.</span></span>
+<span class="line" id="L44">    duplicate_period,</span>
+<span class="line" id="L45">    <span class="tok-comment">/// Float literal has multiple exponents.</span></span>
+<span class="line" id="L46">    duplicate_exponent: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L47">    <span class="tok-comment">/// Exponent comes directly after '_' digit separator.</span></span>
+<span class="line" id="L48">    exponent_after_underscore: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L49">    <span class="tok-comment">/// Special character (+-.) comes directly after exponent.</span></span>
+<span class="line" id="L50">    special_after_underscore: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L51">    <span class="tok-comment">/// Number ends in special character (+-.)</span></span>
+<span class="line" id="L52">    trailing_special: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L53">    <span class="tok-comment">/// Number ends in '_' digit separator.</span></span>
+<span class="line" id="L54">    trailing_underscore: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L55">    <span class="tok-comment">/// Character not in [0-9a-zA-Z.+-_]</span></span>
+<span class="line" id="L56">    invalid_character: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L57">    <span class="tok-comment">/// [+-] not immediately after [pPeE]</span></span>
+<span class="line" id="L58">    invalid_exponent_sign: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L59">};</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61"><span class="tok-comment">/// Parse Zig number literal accepted by fmt.parseInt, fmt.parseFloat and big_int.setString.</span></span>
+<span class="line" id="L62"><span class="tok-comment">/// Valid for any input.</span></span>
+<span class="line" id="L63"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">parseNumberLiteral</span>(bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Result {</span>
+<span class="line" id="L64">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L65">    <span class="tok-kw">var</span> base: <span class="tok-type">u8</span> = <span class="tok-number">10</span>;</span>
+<span class="line" id="L66">    <span class="tok-kw">if</span> (bytes.len &gt;= <span class="tok-number">2</span> <span class="tok-kw">and</span> bytes[<span class="tok-number">0</span>] == <span class="tok-str">'0'</span>) <span class="tok-kw">switch</span> (bytes[<span class="tok-number">1</span>]) {</span>
+<span class="line" id="L67">        <span class="tok-str">'b'</span> =&gt; {</span>
+<span class="line" id="L68">            base = <span class="tok-number">2</span>;</span>
+<span class="line" id="L69">            i = <span class="tok-number">2</span>;</span>
+<span class="line" id="L70">        },</span>
+<span class="line" id="L71">        <span class="tok-str">'o'</span> =&gt; {</span>
+<span class="line" id="L72">            base = <span class="tok-number">8</span>;</span>
+<span class="line" id="L73">            i = <span class="tok-number">2</span>;</span>
+<span class="line" id="L74">        },</span>
+<span class="line" id="L75">        <span class="tok-str">'x'</span> =&gt; {</span>
+<span class="line" id="L76">            base = <span class="tok-number">16</span>;</span>
+<span class="line" id="L77">            i = <span class="tok-number">2</span>;</span>
+<span class="line" id="L78">        },</span>
+<span class="line" id="L79">        <span class="tok-str">'B'</span>, <span class="tok-str">'O'</span>, <span class="tok-str">'X'</span> =&gt; <span class="tok-kw">return</span> .{ .failure = .{ .upper_case_base = <span class="tok-number">1</span> } },</span>
+<span class="line" id="L80">        <span class="tok-str">'.'</span>, <span class="tok-str">'e'</span>, <span class="tok-str">'E'</span> =&gt; {},</span>
+<span class="line" id="L81">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> .{ .failure = .leading_zero },</span>
+<span class="line" id="L82">    };</span>
+<span class="line" id="L83">    <span class="tok-kw">if</span> (bytes.len == <span class="tok-number">2</span> <span class="tok-kw">and</span> base != <span class="tok-number">10</span>) <span class="tok-kw">return</span> .{ .failure = .digit_after_base };</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85">    <span class="tok-kw">var</span> x: <span class="tok-type">u64</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L86">    <span class="tok-kw">var</span> overflow = <span class="tok-null">false</span>;</span>
+<span class="line" id="L87">    <span class="tok-kw">var</span> underscore = <span class="tok-null">false</span>;</span>
+<span class="line" id="L88">    <span class="tok-kw">var</span> period = <span class="tok-null">false</span>;</span>
+<span class="line" id="L89">    <span class="tok-kw">var</span> special: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L90">    <span class="tok-kw">var</span> exponent = <span class="tok-null">false</span>;</span>
+<span class="line" id="L91">    <span class="tok-kw">var</span> float = <span class="tok-null">false</span>;</span>
+<span class="line" id="L92">    <span class="tok-kw">while</span> (i &lt; bytes.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L93">        <span class="tok-kw">const</span> c = bytes[i];</span>
+<span class="line" id="L94">        <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L95">            <span class="tok-str">'_'</span> =&gt; {</span>
+<span class="line" id="L96">                <span class="tok-kw">if</span> (i == <span class="tok-number">2</span> <span class="tok-kw">and</span> base != <span class="tok-number">10</span>) <span class="tok-kw">return</span> .{ .failure = .{ .invalid_underscore_after_special = i } };</span>
+<span class="line" id="L97">                <span class="tok-kw">if</span> (special != <span class="tok-number">0</span>) <span class="tok-kw">return</span> .{ .failure = .{ .invalid_underscore_after_special = i } };</span>
+<span class="line" id="L98">                <span class="tok-kw">if</span> (underscore) <span class="tok-kw">return</span> .{ .failure = .{ .repeated_underscore = i } };</span>
+<span class="line" id="L99">                underscore = <span class="tok-null">true</span>;</span>
+<span class="line" id="L100">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L101">            },</span>
+<span class="line" id="L102">            <span class="tok-str">'e'</span>, <span class="tok-str">'E'</span> =&gt; <span class="tok-kw">if</span> (base == <span class="tok-number">10</span>) {</span>
+<span class="line" id="L103">                float = <span class="tok-null">true</span>;</span>
+<span class="line" id="L104">                <span class="tok-kw">if</span> (exponent) <span class="tok-kw">return</span> .{ .failure = .{ .duplicate_exponent = i } };</span>
+<span class="line" id="L105">                <span class="tok-kw">if</span> (underscore) <span class="tok-kw">return</span> .{ .failure = .{ .exponent_after_underscore = i } };</span>
+<span class="line" id="L106">                special = c;</span>
+<span class="line" id="L107">                exponent = <span class="tok-null">true</span>;</span>
+<span class="line" id="L108">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L109">            },</span>
+<span class="line" id="L110">            <span class="tok-str">'p'</span>, <span class="tok-str">'P'</span> =&gt; <span class="tok-kw">if</span> (base == <span class="tok-number">16</span>) {</span>
+<span class="line" id="L111">                float = <span class="tok-null">true</span>;</span>
+<span class="line" id="L112">                <span class="tok-kw">if</span> (exponent) <span class="tok-kw">return</span> .{ .failure = .{ .duplicate_exponent = i } };</span>
+<span class="line" id="L113">                <span class="tok-kw">if</span> (underscore) <span class="tok-kw">return</span> .{ .failure = .{ .exponent_after_underscore = i } };</span>
+<span class="line" id="L114">                special = c;</span>
+<span class="line" id="L115">                exponent = <span class="tok-null">true</span>;</span>
+<span class="line" id="L116">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L117">            },</span>
+<span class="line" id="L118">            <span class="tok-str">'.'</span> =&gt; {</span>
+<span class="line" id="L119">                float = <span class="tok-null">true</span>;</span>
+<span class="line" id="L120">                <span class="tok-kw">if</span> (base != <span class="tok-number">10</span> <span class="tok-kw">and</span> base != <span class="tok-number">16</span>) <span class="tok-kw">return</span> .{ .failure = .{ .invalid_float_base = <span class="tok-number">2</span> } };</span>
+<span class="line" id="L121">                <span class="tok-kw">if</span> (period) <span class="tok-kw">return</span> .{ .failure = .duplicate_period };</span>
+<span class="line" id="L122">                period = <span class="tok-null">true</span>;</span>
+<span class="line" id="L123">                <span class="tok-kw">if</span> (underscore) <span class="tok-kw">return</span> .{ .failure = .{ .special_after_underscore = i } };</span>
+<span class="line" id="L124">                special = c;</span>
+<span class="line" id="L125">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L126">            },</span>
+<span class="line" id="L127">            <span class="tok-str">'+'</span>, <span class="tok-str">'-'</span> =&gt; {</span>
+<span class="line" id="L128">                <span class="tok-kw">switch</span> (special) {</span>
+<span class="line" id="L129">                    <span class="tok-str">'p'</span>, <span class="tok-str">'P'</span> =&gt; {},</span>
+<span class="line" id="L130">                    <span class="tok-str">'e'</span>, <span class="tok-str">'E'</span> =&gt; <span class="tok-kw">if</span> (base != <span class="tok-number">10</span>) <span class="tok-kw">return</span> .{ .failure = .{ .invalid_exponent_sign = i } },</span>
+<span class="line" id="L131">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> .{ .failure = .{ .invalid_exponent_sign = i } },</span>
+<span class="line" id="L132">                }</span>
+<span class="line" id="L133">                special = c;</span>
+<span class="line" id="L134">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L135">            },</span>
+<span class="line" id="L136">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L137">        }</span>
+<span class="line" id="L138">        <span class="tok-kw">const</span> digit = <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L139">            <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; c - <span class="tok-str">'0'</span>,</span>
+<span class="line" id="L140">            <span class="tok-str">'A'</span>...<span class="tok-str">'Z'</span> =&gt; c - <span class="tok-str">'A'</span> + <span class="tok-number">10</span>,</span>
+<span class="line" id="L141">            <span class="tok-str">'a'</span>...<span class="tok-str">'z'</span> =&gt; c - <span class="tok-str">'a'</span> + <span class="tok-number">10</span>,</span>
+<span class="line" id="L142">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> .{ .failure = .{ .invalid_character = i } },</span>
+<span class="line" id="L143">        };</span>
+<span class="line" id="L144">        <span class="tok-kw">if</span> (digit &gt;= base) <span class="tok-kw">return</span> .{ .failure = .{ .invalid_digit = .{ .i = i, .base = <span class="tok-builtin">@as</span>(Base, <span class="tok-builtin">@enumFromInt</span>(base)) } } };</span>
+<span class="line" id="L145">        <span class="tok-kw">if</span> (exponent <span class="tok-kw">and</span> digit &gt;= <span class="tok-number">10</span>) <span class="tok-kw">return</span> .{ .failure = .{ .invalid_digit_exponent = i } };</span>
+<span class="line" id="L146">        underscore = <span class="tok-null">false</span>;</span>
+<span class="line" id="L147">        special = <span class="tok-number">0</span>;</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">        <span class="tok-kw">if</span> (float) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L150">        <span class="tok-kw">if</span> (x != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L151">            <span class="tok-kw">const</span> res = <span class="tok-builtin">@mulWithOverflow</span>(x, base);</span>
+<span class="line" id="L152">            <span class="tok-kw">if</span> (res[<span class="tok-number">1</span>] != <span class="tok-number">0</span>) overflow = <span class="tok-null">true</span>;</span>
+<span class="line" id="L153">            x = res[<span class="tok-number">0</span>];</span>
+<span class="line" id="L154">        }</span>
+<span class="line" id="L155">        <span class="tok-kw">const</span> res = <span class="tok-builtin">@addWithOverflow</span>(x, digit);</span>
+<span class="line" id="L156">        <span class="tok-kw">if</span> (res[<span class="tok-number">1</span>] != <span class="tok-number">0</span>) overflow = <span class="tok-null">true</span>;</span>
+<span class="line" id="L157">        x = res[<span class="tok-number">0</span>];</span>
+<span class="line" id="L158">    }</span>
+<span class="line" id="L159">    <span class="tok-kw">if</span> (underscore) <span class="tok-kw">return</span> .{ .failure = .{ .trailing_underscore = bytes.len - <span class="tok-number">1</span> } };</span>
+<span class="line" id="L160">    <span class="tok-kw">if</span> (special != <span class="tok-number">0</span>) <span class="tok-kw">return</span> .{ .failure = .{ .trailing_special = bytes.len - <span class="tok-number">1</span> } };</span>
+<span class="line" id="L161"></span>
+<span class="line" id="L162">    <span class="tok-kw">if</span> (float) <span class="tok-kw">return</span> .{ .float = <span class="tok-builtin">@as</span>(FloatBase, <span class="tok-builtin">@enumFromInt</span>(base)) };</span>
+<span class="line" id="L163">    <span class="tok-kw">if</span> (overflow) <span class="tok-kw">return</span> .{ .big_int = <span class="tok-builtin">@as</span>(Base, <span class="tok-builtin">@enumFromInt</span>(base)) };</span>
+<span class="line" id="L164">    <span class="tok-kw">return</span> .{ .int = x };</span>
+<span class="line" id="L165">}</span>
+<span class="line" id="L166"></span>
+</code></pre></body>
+</html>

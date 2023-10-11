@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>hash/wyhash.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Wyhash = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L4">    <span class="tok-kw">const</span> secret = [_]<span class="tok-type">u64</span>{</span>
+<span class="line" id="L5">        <span class="tok-number">0xa0761d6478bd642f</span>,</span>
+<span class="line" id="L6">        <span class="tok-number">0xe7037ed1a0b428db</span>,</span>
+<span class="line" id="L7">        <span class="tok-number">0x8ebc6af09c88c6e3</span>,</span>
+<span class="line" id="L8">        <span class="tok-number">0x589965cc75374cc3</span>,</span>
+<span class="line" id="L9">    };</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11">    a: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L12">    b: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L13">    state: [<span class="tok-number">3</span>]<span class="tok-type">u64</span>,</span>
+<span class="line" id="L14">    total_len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16">    buf: [<span class="tok-number">48</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L17">    buf_len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L18"></span>
+<span class="line" id="L19">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(seed: <span class="tok-type">u64</span>) Wyhash {</span>
+<span class="line" id="L20">        <span class="tok-kw">var</span> self = Wyhash{</span>
+<span class="line" id="L21">            .a = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L22">            .b = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L23">            .state = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L24">            .total_len = <span class="tok-number">0</span>,</span>
+<span class="line" id="L25">            .buf = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L26">            .buf_len = <span class="tok-number">0</span>,</span>
+<span class="line" id="L27">        };</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">        self.state[<span class="tok-number">0</span>] = seed ^ mix(seed ^ secret[<span class="tok-number">0</span>], secret[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L30">        self.state[<span class="tok-number">1</span>] = self.state[<span class="tok-number">0</span>];</span>
+<span class="line" id="L31">        self.state[<span class="tok-number">2</span>] = self.state[<span class="tok-number">0</span>];</span>
+<span class="line" id="L32">        <span class="tok-kw">return</span> self;</span>
+<span class="line" id="L33">    }</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">    <span class="tok-comment">// This is subtly different from other hash function update calls. Wyhash requires the last</span>
+</span>
+<span class="line" id="L36">    <span class="tok-comment">// full 48-byte block to be run through final1 if is exactly aligned to 48-bytes.</span>
+</span>
+<span class="line" id="L37">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">update</span>(self: *Wyhash, input: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L38">        self.total_len += input.len;</span>
+<span class="line" id="L39"></span>
+<span class="line" id="L40">        <span class="tok-kw">if</span> (input.len &lt;= <span class="tok-number">48</span> - self.buf_len) {</span>
+<span class="line" id="L41">            <span class="tok-builtin">@memcpy</span>(self.buf[self.buf_len..][<span class="tok-number">0</span>..input.len], input);</span>
+<span class="line" id="L42">            self.buf_len += input.len;</span>
+<span class="line" id="L43">            <span class="tok-kw">return</span>;</span>
+<span class="line" id="L44">        }</span>
+<span class="line" id="L45"></span>
+<span class="line" id="L46">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">        <span class="tok-kw">if</span> (self.buf_len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L49">            i = <span class="tok-number">48</span> - self.buf_len;</span>
+<span class="line" id="L50">            <span class="tok-builtin">@memcpy</span>(self.buf[self.buf_len..][<span class="tok-number">0</span>..i], input[<span class="tok-number">0</span>..i]);</span>
+<span class="line" id="L51">            self.round(&amp;self.buf);</span>
+<span class="line" id="L52">            self.buf_len = <span class="tok-number">0</span>;</span>
+<span class="line" id="L53">        }</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">        <span class="tok-kw">while</span> (i + <span class="tok-number">48</span> &lt; input.len) : (i += <span class="tok-number">48</span>) {</span>
+<span class="line" id="L56">            self.round(input[i..][<span class="tok-number">0</span>..<span class="tok-number">48</span>]);</span>
+<span class="line" id="L57">        }</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">        <span class="tok-kw">const</span> remaining_bytes = input[i..];</span>
+<span class="line" id="L60">        <span class="tok-builtin">@memcpy</span>(self.buf[<span class="tok-number">0</span>..remaining_bytes.len], remaining_bytes);</span>
+<span class="line" id="L61">        self.buf_len = remaining_bytes.len;</span>
+<span class="line" id="L62">    }</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">final</span>(self: *Wyhash) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L65">        <span class="tok-kw">var</span> input = self.buf[<span class="tok-number">0</span>..self.buf_len];</span>
+<span class="line" id="L66">        <span class="tok-kw">var</span> newSelf = self.shallowCopy(); <span class="tok-comment">// ensure idempotency</span>
+</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">        <span class="tok-kw">if</span> (self.total_len &lt;= <span class="tok-number">16</span>) {</span>
+<span class="line" id="L69">            newSelf.smallKey(input);</span>
+<span class="line" id="L70">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L71">            <span class="tok-kw">var</span> offset: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L72">            <span class="tok-kw">if</span> (self.buf_len &lt; <span class="tok-number">16</span>) {</span>
+<span class="line" id="L73">                <span class="tok-kw">var</span> scratch: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L74">                <span class="tok-kw">const</span> rem = <span class="tok-number">16</span> - self.buf_len;</span>
+<span class="line" id="L75">                <span class="tok-builtin">@memcpy</span>(scratch[<span class="tok-number">0</span>..rem], self.buf[self.buf.len - rem ..][<span class="tok-number">0</span>..rem]);</span>
+<span class="line" id="L76">                <span class="tok-builtin">@memcpy</span>(scratch[rem..][<span class="tok-number">0</span>..self.buf_len], self.buf[<span class="tok-number">0</span>..self.buf_len]);</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">                <span class="tok-comment">// Same as input but with additional bytes preceeding start in case of a short buffer</span>
+</span>
+<span class="line" id="L79">                input = &amp;scratch;</span>
+<span class="line" id="L80">                offset = rem;</span>
+<span class="line" id="L81">            }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">            newSelf.final0();</span>
+<span class="line" id="L84">            newSelf.final1(input, offset);</span>
+<span class="line" id="L85">        }</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">        <span class="tok-kw">return</span> newSelf.final2();</span>
+<span class="line" id="L88">    }</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">    <span class="tok-comment">// Copies the core wyhash state but not any internal buffers.</span>
+</span>
+<span class="line" id="L91">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">shallowCopy</span>(self: *Wyhash) Wyhash {</span>
+<span class="line" id="L92">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L93">            .a = self.a,</span>
+<span class="line" id="L94">            .b = self.b,</span>
+<span class="line" id="L95">            .state = self.state,</span>
+<span class="line" id="L96">            .total_len = self.total_len,</span>
+<span class="line" id="L97">            .buf = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L98">            .buf_len = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L99">        };</span>
+<span class="line" id="L100">    }</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">smallKey</span>(self: *Wyhash, input: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L103">        std.debug.assert(input.len &lt;= <span class="tok-number">16</span>);</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105">        <span class="tok-kw">if</span> (input.len &gt;= <span class="tok-number">4</span>) {</span>
+<span class="line" id="L106">            <span class="tok-kw">const</span> end = input.len - <span class="tok-number">4</span>;</span>
+<span class="line" id="L107">            <span class="tok-kw">const</span> quarter = (input.len &gt;&gt; <span class="tok-number">3</span>) &lt;&lt; <span class="tok-number">2</span>;</span>
+<span class="line" id="L108">            self.a = (read(<span class="tok-number">4</span>, input[<span class="tok-number">0</span>..]) &lt;&lt; <span class="tok-number">32</span>) | read(<span class="tok-number">4</span>, input[quarter..]);</span>
+<span class="line" id="L109">            self.b = (read(<span class="tok-number">4</span>, input[end..]) &lt;&lt; <span class="tok-number">32</span>) | read(<span class="tok-number">4</span>, input[end - quarter ..]);</span>
+<span class="line" id="L110">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (input.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L111">            self.a = (<span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, input[<span class="tok-number">0</span>]) &lt;&lt; <span class="tok-number">16</span>) | (<span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, input[input.len &gt;&gt; <span class="tok-number">1</span>]) &lt;&lt; <span class="tok-number">8</span>) | input[input.len - <span class="tok-number">1</span>];</span>
+<span class="line" id="L112">            self.b = <span class="tok-number">0</span>;</span>
+<span class="line" id="L113">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L114">            self.a = <span class="tok-number">0</span>;</span>
+<span class="line" id="L115">            self.b = <span class="tok-number">0</span>;</span>
+<span class="line" id="L116">        }</span>
+<span class="line" id="L117">    }</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">round</span>(self: *Wyhash, input: *<span class="tok-kw">const</span> [<span class="tok-number">48</span>]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L120">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">3</span>) |i| {</span>
+<span class="line" id="L121">            <span class="tok-kw">const</span> a = read(<span class="tok-number">8</span>, input[<span class="tok-number">8</span> * (<span class="tok-number">2</span> * i) ..]);</span>
+<span class="line" id="L122">            <span class="tok-kw">const</span> b = read(<span class="tok-number">8</span>, input[<span class="tok-number">8</span> * (<span class="tok-number">2</span> * i + <span class="tok-number">1</span>) ..]);</span>
+<span class="line" id="L123">            self.state[i] = mix(a ^ secret[i + <span class="tok-number">1</span>], b ^ self.state[i]);</span>
+<span class="line" id="L124">        }</span>
+<span class="line" id="L125">    }</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(<span class="tok-kw">comptime</span> bytes: <span class="tok-type">usize</span>, data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L128">        std.debug.assert(bytes &lt;= <span class="tok-number">8</span>);</span>
+<span class="line" id="L129">        <span class="tok-kw">const</span> T = std.meta.Int(.unsigned, <span class="tok-number">8</span> * bytes);</span>
+<span class="line" id="L130">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, std.mem.readIntLittle(T, data[<span class="tok-number">0</span>..bytes]));</span>
+<span class="line" id="L131">    }</span>
+<span class="line" id="L132"></span>
+<span class="line" id="L133">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">mum</span>(a: *<span class="tok-type">u64</span>, b: *<span class="tok-type">u64</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L134">        <span class="tok-kw">const</span> x = <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, a.*) *% b.*;</span>
+<span class="line" id="L135">        a.* = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(x));</span>
+<span class="line" id="L136">        b.* = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(x &gt;&gt; <span class="tok-number">64</span>));</span>
+<span class="line" id="L137">    }</span>
+<span class="line" id="L138"></span>
+<span class="line" id="L139">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">mix</span>(a_: <span class="tok-type">u64</span>, b_: <span class="tok-type">u64</span>) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L140">        <span class="tok-kw">var</span> a = a_;</span>
+<span class="line" id="L141">        <span class="tok-kw">var</span> b = b_;</span>
+<span class="line" id="L142">        mum(&amp;a, &amp;b);</span>
+<span class="line" id="L143">        <span class="tok-kw">return</span> a ^ b;</span>
+<span class="line" id="L144">    }</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">final0</span>(self: *Wyhash) <span class="tok-type">void</span> {</span>
+<span class="line" id="L147">        self.state[<span class="tok-number">0</span>] ^= self.state[<span class="tok-number">1</span>] ^ self.state[<span class="tok-number">2</span>];</span>
+<span class="line" id="L148">    }</span>
+<span class="line" id="L149"></span>
+<span class="line" id="L150">    <span class="tok-comment">// input_lb must be at least 16-bytes long (in shorter key cases the smallKey function will be</span>
+</span>
+<span class="line" id="L151">    <span class="tok-comment">// used instead). We use an index into a slice to for comptime processing as opposed to if we</span>
+</span>
+<span class="line" id="L152">    <span class="tok-comment">// used pointers.</span>
+</span>
+<span class="line" id="L153">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">final1</span>(self: *Wyhash, input_lb: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, start_pos: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L154">        std.debug.assert(input_lb.len &gt;= <span class="tok-number">16</span>);</span>
+<span class="line" id="L155">        std.debug.assert(input_lb.len - start_pos &lt;= <span class="tok-number">48</span>);</span>
+<span class="line" id="L156">        <span class="tok-kw">const</span> input = input_lb[start_pos..];</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L159">        <span class="tok-kw">while</span> (i + <span class="tok-number">16</span> &lt; input.len) : (i += <span class="tok-number">16</span>) {</span>
+<span class="line" id="L160">            self.state[<span class="tok-number">0</span>] = mix(read(<span class="tok-number">8</span>, input[i..]) ^ secret[<span class="tok-number">1</span>], read(<span class="tok-number">8</span>, input[i + <span class="tok-number">8</span> ..]) ^ self.state[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L161">        }</span>
+<span class="line" id="L162"></span>
+<span class="line" id="L163">        self.a = read(<span class="tok-number">8</span>, input_lb[input_lb.len - <span class="tok-number">16</span> ..][<span class="tok-number">0</span>..<span class="tok-number">8</span>]);</span>
+<span class="line" id="L164">        self.b = read(<span class="tok-number">8</span>, input_lb[input_lb.len - <span class="tok-number">8</span> ..][<span class="tok-number">0</span>..<span class="tok-number">8</span>]);</span>
+<span class="line" id="L165">    }</span>
+<span class="line" id="L166"></span>
+<span class="line" id="L167">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">final2</span>(self: *Wyhash) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L168">        self.a ^= secret[<span class="tok-number">1</span>];</span>
+<span class="line" id="L169">        self.b ^= self.state[<span class="tok-number">0</span>];</span>
+<span class="line" id="L170">        mum(&amp;self.a, &amp;self.b);</span>
+<span class="line" id="L171">        <span class="tok-kw">return</span> mix(self.a ^ secret[<span class="tok-number">0</span>] ^ self.total_len, self.b ^ secret[<span class="tok-number">1</span>]);</span>
+<span class="line" id="L172">    }</span>
+<span class="line" id="L173"></span>
+<span class="line" id="L174">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">hash</span>(seed: <span class="tok-type">u64</span>, input: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L175">        <span class="tok-kw">var</span> self = Wyhash.init(seed);</span>
+<span class="line" id="L176"></span>
+<span class="line" id="L177">        <span class="tok-kw">if</span> (input.len &lt;= <span class="tok-number">16</span>) {</span>
+<span class="line" id="L178">            self.smallKey(input);</span>
+<span class="line" id="L179">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L180">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L181">            <span class="tok-kw">if</span> (input.len &gt;= <span class="tok-number">48</span>) {</span>
+<span class="line" id="L182">                <span class="tok-kw">while</span> (i + <span class="tok-number">48</span> &lt; input.len) : (i += <span class="tok-number">48</span>) {</span>
+<span class="line" id="L183">                    self.round(input[i..][<span class="tok-number">0</span>..<span class="tok-number">48</span>]);</span>
+<span class="line" id="L184">                }</span>
+<span class="line" id="L185">                self.final0();</span>
+<span class="line" id="L186">            }</span>
+<span class="line" id="L187">            self.final1(input, i);</span>
+<span class="line" id="L188">        }</span>
+<span class="line" id="L189"></span>
+<span class="line" id="L190">        self.total_len = input.len;</span>
+<span class="line" id="L191">        <span class="tok-kw">return</span> self.final2();</span>
+<span class="line" id="L192">    }</span>
+<span class="line" id="L193">};</span>
+<span class="line" id="L194"></span>
+<span class="line" id="L195"><span class="tok-kw">const</span> expectEqual = std.testing.expectEqual;</span>
+<span class="line" id="L196"></span>
+<span class="line" id="L197"><span class="tok-kw">const</span> TestVector = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L198">    expected: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L199">    seed: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L200">    input: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L201">};</span>
+<span class="line" id="L202"></span>
+<span class="line" id="L203"><span class="tok-comment">// Run https://github.com/wangyi-fudan/wyhash/blob/77e50f267fbc7b8e2d09f2d455219adb70ad4749/test_vector.cpp directly.</span>
+</span>
+<span class="line" id="L204"><span class="tok-kw">const</span> vectors = [_]TestVector{</span>
+<span class="line" id="L205">    .{ .seed = <span class="tok-number">0</span>, .expected = <span class="tok-number">0x409638ee2bde459</span>, .input = <span class="tok-str">&quot;&quot;</span> },</span>
+<span class="line" id="L206">    .{ .seed = <span class="tok-number">1</span>, .expected = <span class="tok-number">0xa8412d091b5fe0a9</span>, .input = <span class="tok-str">&quot;a&quot;</span> },</span>
+<span class="line" id="L207">    .{ .seed = <span class="tok-number">2</span>, .expected = <span class="tok-number">0x32dd92e4b2915153</span>, .input = <span class="tok-str">&quot;abc&quot;</span> },</span>
+<span class="line" id="L208">    .{ .seed = <span class="tok-number">3</span>, .expected = <span class="tok-number">0x8619124089a3a16b</span>, .input = <span class="tok-str">&quot;message digest&quot;</span> },</span>
+<span class="line" id="L209">    .{ .seed = <span class="tok-number">4</span>, .expected = <span class="tok-number">0x7a43afb61d7f5f40</span>, .input = <span class="tok-str">&quot;abcdefghijklmnopqrstuvwxyz&quot;</span> },</span>
+<span class="line" id="L210">    .{ .seed = <span class="tok-number">5</span>, .expected = <span class="tok-number">0xff42329b90e50d58</span>, .input = <span class="tok-str">&quot;ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789&quot;</span> },</span>
+<span class="line" id="L211">    .{ .seed = <span class="tok-number">6</span>, .expected = <span class="tok-number">0xc39cab13b115aad3</span>, .input = <span class="tok-str">&quot;12345678901234567890123456789012345678901234567890123456789012345678901234567890&quot;</span> },</span>
+<span class="line" id="L212">};</span>
+<span class="line" id="L213"></span>
+<span class="line" id="L214"><span class="tok-kw">test</span> <span class="tok-str">&quot;test vectors&quot;</span> {</span>
+<span class="line" id="L215">    <span class="tok-kw">for</span> (vectors) |e| {</span>
+<span class="line" id="L216">        <span class="tok-kw">try</span> expectEqual(e.expected, Wyhash.hash(e.seed, e.input));</span>
+<span class="line" id="L217">    }</span>
+<span class="line" id="L218">}</span>
+<span class="line" id="L219"></span>
+<span class="line" id="L220"><span class="tok-kw">test</span> <span class="tok-str">&quot;test vectors at comptime&quot;</span> {</span>
+<span class="line" id="L221">    <span class="tok-kw">comptime</span> {</span>
+<span class="line" id="L222">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (vectors) |e| {</span>
+<span class="line" id="L223">            <span class="tok-kw">try</span> expectEqual(e.expected, Wyhash.hash(e.seed, e.input));</span>
+<span class="line" id="L224">        }</span>
+<span class="line" id="L225">    }</span>
+<span class="line" id="L226">}</span>
+<span class="line" id="L227"></span>
+<span class="line" id="L228"><span class="tok-kw">test</span> <span class="tok-str">&quot;test vectors streaming&quot;</span> {</span>
+<span class="line" id="L229">    <span class="tok-kw">const</span> step = <span class="tok-number">5</span>;</span>
+<span class="line" id="L230"></span>
+<span class="line" id="L231">    <span class="tok-kw">for</span> (vectors) |e| {</span>
+<span class="line" id="L232">        <span class="tok-kw">var</span> wh = Wyhash.init(e.seed);</span>
+<span class="line" id="L233">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L234">        <span class="tok-kw">while</span> (i &lt; e.input.len) : (i += step) {</span>
+<span class="line" id="L235">            <span class="tok-kw">const</span> len = <span class="tok-kw">if</span> (i + step &gt; e.input.len) e.input.len - i <span class="tok-kw">else</span> step;</span>
+<span class="line" id="L236">            wh.update(e.input[i..][<span class="tok-number">0</span>..len]);</span>
+<span class="line" id="L237">        }</span>
+<span class="line" id="L238">        <span class="tok-kw">try</span> expectEqual(e.expected, wh.final());</span>
+<span class="line" id="L239">    }</span>
+<span class="line" id="L240">}</span>
+<span class="line" id="L241"></span>
+<span class="line" id="L242"><span class="tok-kw">test</span> <span class="tok-str">&quot;test ensure idempotent final call&quot;</span> {</span>
+<span class="line" id="L243">    <span class="tok-kw">const</span> e: TestVector = .{ .seed = <span class="tok-number">6</span>, .expected = <span class="tok-number">0xc39cab13b115aad3</span>, .input = <span class="tok-str">&quot;12345678901234567890123456789012345678901234567890123456789012345678901234567890&quot;</span> };</span>
+<span class="line" id="L244">    <span class="tok-kw">var</span> wh = Wyhash.init(e.seed);</span>
+<span class="line" id="L245">    wh.update(e.input);</span>
+<span class="line" id="L246"></span>
+<span class="line" id="L247">    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">10</span>) |_| {</span>
+<span class="line" id="L248">        <span class="tok-kw">try</span> expectEqual(e.expected, wh.final());</span>
+<span class="line" id="L249">    }</span>
+<span class="line" id="L250">}</span>
+<span class="line" id="L251"></span>
+<span class="line" id="L252"><span class="tok-kw">test</span> <span class="tok-str">&quot;iterative non-divisible update&quot;</span> {</span>
+<span class="line" id="L253">    <span class="tok-kw">var</span> buf: [<span class="tok-number">8192</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L254">    <span class="tok-kw">for</span> (&amp;buf, <span class="tok-number">0</span>..) |*e, i| {</span>
+<span class="line" id="L255">        e.* = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(i));</span>
+<span class="line" id="L256">    }</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258">    <span class="tok-kw">const</span> seed = <span class="tok-number">0x128dad08f</span>;</span>
+<span class="line" id="L259"></span>
+<span class="line" id="L260">    <span class="tok-kw">var</span> end: <span class="tok-type">usize</span> = <span class="tok-number">32</span>;</span>
+<span class="line" id="L261">    <span class="tok-kw">while</span> (end &lt; buf.len) : (end += <span class="tok-number">32</span>) {</span>
+<span class="line" id="L262">        <span class="tok-kw">const</span> non_iterative_hash = Wyhash.hash(seed, buf[<span class="tok-number">0</span>..end]);</span>
+<span class="line" id="L263"></span>
+<span class="line" id="L264">        <span class="tok-kw">var</span> wy = Wyhash.init(seed);</span>
+<span class="line" id="L265">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L266">        <span class="tok-kw">while</span> (i &lt; end) : (i += <span class="tok-number">33</span>) {</span>
+<span class="line" id="L267">            wy.update(buf[i..<span class="tok-builtin">@min</span>(i + <span class="tok-number">33</span>, end)]);</span>
+<span class="line" id="L268">        }</span>
+<span class="line" id="L269">        <span class="tok-kw">const</span> iterative_hash = wy.final();</span>
+<span class="line" id="L270"></span>
+<span class="line" id="L271">        <span class="tok-kw">try</span> std.testing.expectEqual(iterative_hash, non_iterative_hash);</span>
+<span class="line" id="L272">    }</span>
+<span class="line" id="L273">}</span>
+<span class="line" id="L274"></span>
+</code></pre></body>
+</html>

@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>math/log10.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> maxInt = std.math.maxInt;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> Log2Int = std.math.Log2Int;</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-comment">/// Returns the base-10 logarithm of x.</span></span>
+<span class="line" id="L10"><span class="tok-comment">///</span></span>
+<span class="line" id="L11"><span class="tok-comment">/// Special Cases:</span></span>
+<span class="line" id="L12"><span class="tok-comment">///  - log10(+inf)  = +inf</span></span>
+<span class="line" id="L13"><span class="tok-comment">///  - log10(0)     = -inf</span></span>
+<span class="line" id="L14"><span class="tok-comment">///  - log10(x)     = nan if x &lt; 0</span></span>
+<span class="line" id="L15"><span class="tok-comment">///  - log10(nan)   = nan</span></span>
+<span class="line" id="L16"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">log10</span>(x: <span class="tok-kw">anytype</span>) <span class="tok-builtin">@TypeOf</span>(x) {</span>
+<span class="line" id="L17">    <span class="tok-kw">const</span> T = <span class="tok-builtin">@TypeOf</span>(x);</span>
+<span class="line" id="L18">    <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L19">        .ComptimeFloat =&gt; {</span>
+<span class="line" id="L20">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">comptime_float</span>, <span class="tok-builtin">@log10</span>(x));</span>
+<span class="line" id="L21">        },</span>
+<span class="line" id="L22">        .Float =&gt; <span class="tok-kw">return</span> <span class="tok-builtin">@log10</span>(x),</span>
+<span class="line" id="L23">        .ComptimeInt =&gt; {</span>
+<span class="line" id="L24">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">comptime_int</span>, <span class="tok-builtin">@floor</span>(<span class="tok-builtin">@log10</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, x))));</span>
+<span class="line" id="L25">        },</span>
+<span class="line" id="L26">        .Int =&gt; |IntType| <span class="tok-kw">switch</span> (IntType.signedness) {</span>
+<span class="line" id="L27">            .signed =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;log10 not implemented for signed integers&quot;</span>),</span>
+<span class="line" id="L28">            .unsigned =&gt; <span class="tok-kw">return</span> log10_int(x),</span>
+<span class="line" id="L29">        },</span>
+<span class="line" id="L30">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;log10 not implemented for &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T)),</span>
+<span class="line" id="L31">    }</span>
+<span class="line" id="L32">}</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34"><span class="tok-comment">// Based on Rust, which is licensed under the MIT license.</span>
+</span>
+<span class="line" id="L35"><span class="tok-comment">// https://github.com/rust-lang/rust/blob/f63ccaf25f74151a5d8ce057904cd944074b01d2/LICENSE-MIT</span>
+</span>
+<span class="line" id="L36"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L37"><span class="tok-comment">// https://github.com/rust-lang/rust/blob/f63ccaf25f74151a5d8ce057904cd944074b01d2/library/core/src/num/int_log10.rs</span>
+</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39"><span class="tok-comment">/// Return the log base 10 of integer value x, rounding down to the</span></span>
+<span class="line" id="L40"><span class="tok-comment">/// nearest integer.</span></span>
+<span class="line" id="L41"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">log10_int</span>(x: <span class="tok-kw">anytype</span>) Log2Int(<span class="tok-builtin">@TypeOf</span>(x)) {</span>
+<span class="line" id="L42">    <span class="tok-kw">const</span> T = <span class="tok-builtin">@TypeOf</span>(x);</span>
+<span class="line" id="L43">    <span class="tok-kw">const</span> OutT = Log2Int(T);</span>
+<span class="line" id="L44">    <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(T) != .Int <span class="tok-kw">or</span> <span class="tok-builtin">@typeInfo</span>(T).Int.signedness != .unsigned)</span>
+<span class="line" id="L45">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;log10_int requires an unsigned integer, found &quot;</span> ++ <span class="tok-builtin">@typeName</span>(T));</span>
+<span class="line" id="L46"></span>
+<span class="line" id="L47">    assert(x != <span class="tok-number">0</span>);</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-kw">const</span> bit_size = <span class="tok-builtin">@typeInfo</span>(T).Int.bits;</span>
+<span class="line" id="L50"></span>
+<span class="line" id="L51">    <span class="tok-kw">if</span> (bit_size &lt;= <span class="tok-number">8</span>) {</span>
+<span class="line" id="L52">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(OutT, <span class="tok-builtin">@intCast</span>(log10_int_u8(x)));</span>
+<span class="line" id="L53">    } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (bit_size &lt;= <span class="tok-number">16</span>) {</span>
+<span class="line" id="L54">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(OutT, <span class="tok-builtin">@intCast</span>(less_than_5(x)));</span>
+<span class="line" id="L55">    }</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">    <span class="tok-kw">var</span> val = x;</span>
+<span class="line" id="L58">    <span class="tok-kw">var</span> log: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">11</span>) |i| {</span>
+<span class="line" id="L61">        <span class="tok-comment">// Unnecessary branches should be removed by the compiler</span>
+</span>
+<span class="line" id="L62">        <span class="tok-kw">if</span> (bit_size &gt; (<span class="tok-number">1</span> &lt;&lt; (<span class="tok-number">11</span> - i)) * <span class="tok-number">5</span> * <span class="tok-builtin">@log2</span>(<span class="tok-number">10.0</span>) <span class="tok-kw">and</span> val &gt;= pow10((<span class="tok-number">1</span> &lt;&lt; (<span class="tok-number">11</span> - i)) * <span class="tok-number">5</span>)) {</span>
+<span class="line" id="L63">            <span class="tok-kw">const</span> num_digits = (<span class="tok-number">1</span> &lt;&lt; (<span class="tok-number">11</span> - i)) * <span class="tok-number">5</span>;</span>
+<span class="line" id="L64">            val /= pow10(num_digits);</span>
+<span class="line" id="L65">            log += num_digits;</span>
+<span class="line" id="L66">        }</span>
+<span class="line" id="L67">    }</span>
+<span class="line" id="L68"></span>
+<span class="line" id="L69">    <span class="tok-kw">if</span> (val &gt;= pow10(<span class="tok-number">5</span>)) {</span>
+<span class="line" id="L70">        val /= pow10(<span class="tok-number">5</span>);</span>
+<span class="line" id="L71">        log += <span class="tok-number">5</span>;</span>
+<span class="line" id="L72">    }</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(OutT, <span class="tok-builtin">@intCast</span>(log + less_than_5(<span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(val)))));</span>
+<span class="line" id="L75">}</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77"><span class="tok-kw">fn</span> <span class="tok-fn">pow10</span>(<span class="tok-kw">comptime</span> y: <span class="tok-type">comptime_int</span>) <span class="tok-type">comptime_int</span> {</span>
+<span class="line" id="L78">    <span class="tok-kw">if</span> (y == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">    <span class="tok-kw">var</span> squaring = <span class="tok-number">0</span>;</span>
+<span class="line" id="L81">    <span class="tok-kw">var</span> s = <span class="tok-number">1</span>;</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    <span class="tok-kw">while</span> (s &lt;= y) : (s &lt;&lt;= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L84">        squaring += <span class="tok-number">1</span>;</span>
+<span class="line" id="L85">    }</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    squaring -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L88"></span>
+<span class="line" id="L89">    <span class="tok-kw">var</span> result = <span class="tok-number">10</span>;</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91">    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..squaring) |_| {</span>
+<span class="line" id="L92">        result *= result;</span>
+<span class="line" id="L93">    }</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95">    <span class="tok-kw">const</span> rest_exp = y - (<span class="tok-number">1</span> &lt;&lt; squaring);</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">    <span class="tok-kw">return</span> result * pow10(rest_exp);</span>
+<span class="line" id="L98">}</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">log10_int_u8</span>(x: <span class="tok-type">u8</span>) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L101">    <span class="tok-comment">// For better performance, avoid branches by assembling the solution</span>
+</span>
+<span class="line" id="L102">    <span class="tok-comment">// in the bits above the low 8 bits.</span>
+</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104">    <span class="tok-comment">// Adding c1 to val gives 10 in the top bits for val &lt; 10, 11 for val &gt;= 10</span>
+</span>
+<span class="line" id="L105">    <span class="tok-kw">const</span> C1: <span class="tok-type">u32</span> = <span class="tok-number">0b11_00000000</span> - <span class="tok-number">10</span>; <span class="tok-comment">// 758</span>
+</span>
+<span class="line" id="L106">    <span class="tok-comment">// Adding c2 to val gives 01 in the top bits for val &lt; 100, 10 for val &gt;= 100</span>
+</span>
+<span class="line" id="L107">    <span class="tok-kw">const</span> C2: <span class="tok-type">u32</span> = <span class="tok-number">0b10_00000000</span> - <span class="tok-number">100</span>; <span class="tok-comment">// 412</span>
+</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">    <span class="tok-comment">// Value of top bits:</span>
+</span>
+<span class="line" id="L110">    <span class="tok-comment">//            +c1  +c2  1&amp;2</span>
+</span>
+<span class="line" id="L111">    <span class="tok-comment">//     0..=9   10   01   00 = 0</span>
+</span>
+<span class="line" id="L112">    <span class="tok-comment">//   10..=99   11   01   01 = 1</span>
+</span>
+<span class="line" id="L113">    <span class="tok-comment">// 100..=255   11   10   10 = 2</span>
+</span>
+<span class="line" id="L114">    <span class="tok-kw">return</span> ((x + C1) &amp; (x + C2)) &gt;&gt; <span class="tok-number">8</span>;</span>
+<span class="line" id="L115">}</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">less_than_5</span>(x: <span class="tok-type">u32</span>) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L118">    <span class="tok-comment">// Similar to log10u8, when adding one of these constants to val,</span>
+</span>
+<span class="line" id="L119">    <span class="tok-comment">// we get two possible bit patterns above the low 17 bits,</span>
+</span>
+<span class="line" id="L120">    <span class="tok-comment">// depending on whether val is below or above the threshold.</span>
+</span>
+<span class="line" id="L121">    <span class="tok-kw">const</span> C1: <span class="tok-type">u32</span> = <span class="tok-number">0b011_00000000000000000</span> - <span class="tok-number">10</span>; <span class="tok-comment">// 393206</span>
+</span>
+<span class="line" id="L122">    <span class="tok-kw">const</span> C2: <span class="tok-type">u32</span> = <span class="tok-number">0b100_00000000000000000</span> - <span class="tok-number">100</span>; <span class="tok-comment">// 524188</span>
+</span>
+<span class="line" id="L123">    <span class="tok-kw">const</span> C3: <span class="tok-type">u32</span> = <span class="tok-number">0b111_00000000000000000</span> - <span class="tok-number">1000</span>; <span class="tok-comment">// 916504</span>
+</span>
+<span class="line" id="L124">    <span class="tok-kw">const</span> C4: <span class="tok-type">u32</span> = <span class="tok-number">0b100_00000000000000000</span> - <span class="tok-number">10000</span>; <span class="tok-comment">// 514288</span>
+</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">    <span class="tok-comment">// Value of top bits:</span>
+</span>
+<span class="line" id="L127">    <span class="tok-comment">//                +c1  +c2  1&amp;2  +c3  +c4  3&amp;4   ^</span>
+</span>
+<span class="line" id="L128">    <span class="tok-comment">//         0..=9  010  011  010  110  011  010  000 = 0</span>
+</span>
+<span class="line" id="L129">    <span class="tok-comment">//       10..=99  011  011  011  110  011  010  001 = 1</span>
+</span>
+<span class="line" id="L130">    <span class="tok-comment">//     100..=999  011  100  000  110  011  010  010 = 2</span>
+</span>
+<span class="line" id="L131">    <span class="tok-comment">//   1000..=9999  011  100  000  111  011  011  011 = 3</span>
+</span>
+<span class="line" id="L132">    <span class="tok-comment">// 10000..=99999  011  100  000  111  100  100  100 = 4</span>
+</span>
+<span class="line" id="L133">    <span class="tok-kw">return</span> (((x + C1) &amp; (x + C2)) ^ ((x + C3) &amp; (x + C4))) &gt;&gt; <span class="tok-number">17</span>;</span>
+<span class="line" id="L134">}</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136"><span class="tok-kw">fn</span> <span class="tok-fn">oldlog10</span>(x: <span class="tok-kw">anytype</span>) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L137">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intFromFloat</span>(<span class="tok-builtin">@log10</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@floatFromInt</span>(x)))));</span>
+<span class="line" id="L138">}</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140"><span class="tok-kw">test</span> <span class="tok-str">&quot;oldlog10 doesn't work&quot;</span> {</span>
+<span class="line" id="L141">    <span class="tok-kw">try</span> testing.expect(<span class="tok-number">14</span> != oldlog10(pow10(<span class="tok-number">15</span>) - <span class="tok-number">1</span>));</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-comment">// log10(10**15 -1) should indeed be 14</span>
+</span>
+<span class="line" id="L144">    <span class="tok-kw">try</span> testing.expect(<span class="tok-number">14</span> == log10_int(<span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, pow10(<span class="tok-number">15</span>) - <span class="tok-number">1</span>)));</span>
+<span class="line" id="L145">}</span>
+<span class="line" id="L146"></span>
+<span class="line" id="L147"><span class="tok-kw">test</span> <span class="tok-str">&quot;log10_int vs old implementation&quot;</span> {</span>
+<span class="line" id="L148">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_wasm) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L149">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_c) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L150">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_x86_64) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L151">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_aarch64) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L152">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_sparc64) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L153">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_arm) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L154">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_llvm <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> builtin.target.isWasm()) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L155"></span>
+<span class="line" id="L156">    <span class="tok-kw">const</span> int_types = .{ <span class="tok-type">u8</span>, <span class="tok-type">u16</span>, <span class="tok-type">u32</span>, <span class="tok-type">u64</span>, <span class="tok-type">u128</span> };</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (int_types) |T| {</span>
+<span class="line" id="L159">        <span class="tok-kw">const</span> last = <span class="tok-builtin">@min</span>(maxInt(T), <span class="tok-number">100_000</span>);</span>
+<span class="line" id="L160">        <span class="tok-kw">for</span> (<span class="tok-number">1</span>..last) |i| {</span>
+<span class="line" id="L161">            <span class="tok-kw">const</span> x = <span class="tok-builtin">@as</span>(T, <span class="tok-builtin">@intCast</span>(i));</span>
+<span class="line" id="L162">            <span class="tok-kw">try</span> testing.expectEqual(oldlog10(x), log10_int(x));</span>
+<span class="line" id="L163">        }</span>
+<span class="line" id="L164"></span>
+<span class="line" id="L165">        <span class="tok-kw">const</span> max_int: T = maxInt(T);</span>
+<span class="line" id="L166">        <span class="tok-kw">try</span> testing.expectEqual(oldlog10(max_int), log10_int(max_int));</span>
+<span class="line" id="L167">    }</span>
+<span class="line" id="L168">}</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170"><span class="tok-kw">test</span> <span class="tok-str">&quot;log10_int close to powers of 10&quot;</span> {</span>
+<span class="line" id="L171">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_wasm) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L172">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_c) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L173">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_x86_64) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L174">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_aarch64) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L175">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_sparc64) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L176">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_arm) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L177">    <span class="tok-kw">if</span> (builtin.zig_backend == .stage2_llvm <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> builtin.target.isWasm()) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179">    <span class="tok-kw">const</span> int_types = .{ <span class="tok-type">u8</span>, <span class="tok-type">u16</span>, <span class="tok-type">u32</span>, <span class="tok-type">u64</span>, <span class="tok-type">u128</span>, <span class="tok-type">u256</span>, <span class="tok-type">u512</span> };</span>
+<span class="line" id="L180">    <span class="tok-kw">const</span> max_log_values: [<span class="tok-number">7</span>]<span class="tok-type">usize</span> = .{ <span class="tok-number">2</span>, <span class="tok-number">4</span>, <span class="tok-number">9</span>, <span class="tok-number">19</span>, <span class="tok-number">38</span>, <span class="tok-number">77</span>, <span class="tok-number">154</span> };</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (int_types, max_log_values) |T, expected_max_ilog| {</span>
+<span class="line" id="L183">        <span class="tok-kw">const</span> max_val: T = maxInt(T);</span>
+<span class="line" id="L184"></span>
+<span class="line" id="L185">        <span class="tok-kw">try</span> testing.expectEqual(expected_max_ilog, log10_int(max_val));</span>
+<span class="line" id="L186"></span>
+<span class="line" id="L187">        <span class="tok-kw">for</span> (<span class="tok-number">0</span>..(expected_max_ilog + <span class="tok-number">1</span>)) |idx| {</span>
+<span class="line" id="L188">            <span class="tok-kw">const</span> i = <span class="tok-builtin">@as</span>(T, <span class="tok-builtin">@intCast</span>(idx));</span>
+<span class="line" id="L189">            <span class="tok-kw">const</span> p: T = <span class="tok-kw">try</span> math.powi(T, <span class="tok-number">10</span>, i);</span>
+<span class="line" id="L190"></span>
+<span class="line" id="L191">            <span class="tok-kw">const</span> b = <span class="tok-builtin">@as</span>(Log2Int(T), <span class="tok-builtin">@intCast</span>(i));</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">            <span class="tok-kw">if</span> (p &gt;= <span class="tok-number">10</span>) {</span>
+<span class="line" id="L194">                <span class="tok-kw">try</span> testing.expectEqual(b - <span class="tok-number">1</span>, log10_int(p - <span class="tok-number">9</span>));</span>
+<span class="line" id="L195">                <span class="tok-kw">try</span> testing.expectEqual(b - <span class="tok-number">1</span>, log10_int(p - <span class="tok-number">1</span>));</span>
+<span class="line" id="L196">            }</span>
+<span class="line" id="L197"></span>
+<span class="line" id="L198">            <span class="tok-kw">try</span> testing.expectEqual(b, log10_int(p));</span>
+<span class="line" id="L199">            <span class="tok-kw">try</span> testing.expectEqual(b, log10_int(p + <span class="tok-number">1</span>));</span>
+<span class="line" id="L200">            <span class="tok-kw">if</span> (p &gt;= <span class="tok-number">10</span>) {</span>
+<span class="line" id="L201">                <span class="tok-kw">try</span> testing.expectEqual(b, log10_int(p + <span class="tok-number">9</span>));</span>
+<span class="line" id="L202">            }</span>
+<span class="line" id="L203">        }</span>
+<span class="line" id="L204">    }</span>
+<span class="line" id="L205">}</span>
+<span class="line" id="L206"></span>
+</code></pre></body>
+</html>

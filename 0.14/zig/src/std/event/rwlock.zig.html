@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>event/rwlock.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> Loop = std.event.Loop;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-comment">/// Thread-safe async/await lock.</span></span>
+<span class="line" id="L10"><span class="tok-comment">/// Functions which are waiting for the lock are suspended, and</span></span>
+<span class="line" id="L11"><span class="tok-comment">/// are resumed when the lock is released, in order.</span></span>
+<span class="line" id="L12"><span class="tok-comment">/// Many readers can hold the lock at the same time; however locking for writing is exclusive.</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// When a read lock is held, it will not be released until the reader queue is empty.</span></span>
+<span class="line" id="L14"><span class="tok-comment">/// When a write lock is held, it will not be released until the writer queue is empty.</span></span>
+<span class="line" id="L15"><span class="tok-comment">/// TODO: make this API also work in blocking I/O mode</span></span>
+<span class="line" id="L16"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RwLock = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L17">    shared_state: State,</span>
+<span class="line" id="L18">    writer_queue: Queue,</span>
+<span class="line" id="L19">    reader_queue: Queue,</span>
+<span class="line" id="L20">    writer_queue_empty: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L21">    reader_queue_empty: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L22">    reader_lock_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24">    <span class="tok-kw">const</span> State = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) {</span>
+<span class="line" id="L25">        Unlocked,</span>
+<span class="line" id="L26">        WriteLock,</span>
+<span class="line" id="L27">        ReadLock,</span>
+<span class="line" id="L28">    };</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30">    <span class="tok-kw">const</span> Queue = std.atomic.Queue(<span class="tok-kw">anyframe</span>);</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32">    <span class="tok-kw">const</span> global_event_loop = Loop.instance <span class="tok-kw">orelse</span></span>
+<span class="line" id="L33">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;std.event.RwLock currently only works with event-based I/O&quot;</span>);</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> HeldRead = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L36">        lock: *RwLock,</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">release</span>(self: HeldRead) <span class="tok-type">void</span> {</span>
+<span class="line" id="L39">            <span class="tok-comment">// If other readers still hold the lock, we're done.</span>
+</span>
+<span class="line" id="L40">            <span class="tok-kw">if</span> (<span class="tok-builtin">@atomicRmw</span>(<span class="tok-type">usize</span>, &amp;self.lock.reader_lock_count, .Sub, <span class="tok-number">1</span>, .SeqCst) != <span class="tok-number">1</span>) {</span>
+<span class="line" id="L41">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L42">            }</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44">            <span class="tok-builtin">@atomicStore</span>(<span class="tok-type">bool</span>, &amp;self.lock.reader_queue_empty, <span class="tok-null">true</span>, .SeqCst);</span>
+<span class="line" id="L45">            <span class="tok-kw">if</span> (<span class="tok-builtin">@cmpxchgStrong</span>(State, &amp;self.lock.shared_state, .ReadLock, .Unlocked, .SeqCst, .SeqCst) != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L46">                <span class="tok-comment">// Didn't unlock. Someone else's problem.</span>
+</span>
+<span class="line" id="L47">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L48">            }</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50">            self.lock.commonPostUnlock();</span>
+<span class="line" id="L51">        }</span>
+<span class="line" id="L52">    };</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> HeldWrite = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L55">        lock: *RwLock,</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">release</span>(self: HeldWrite) <span class="tok-type">void</span> {</span>
+<span class="line" id="L58">            <span class="tok-comment">// See if we can leave it locked for writing, and pass the lock to the next writer</span>
+</span>
+<span class="line" id="L59">            <span class="tok-comment">// in the queue to grab the lock.</span>
+</span>
+<span class="line" id="L60">            <span class="tok-kw">if</span> (self.lock.writer_queue.get()) |node| {</span>
+<span class="line" id="L61">                global_event_loop.onNextTick(node);</span>
+<span class="line" id="L62">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L63">            }</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">            <span class="tok-comment">// We need to release the write lock. Check if any readers are waiting to grab the lock.</span>
+</span>
+<span class="line" id="L66">            <span class="tok-kw">if</span> (!<span class="tok-builtin">@atomicLoad</span>(<span class="tok-type">bool</span>, &amp;self.lock.reader_queue_empty, .SeqCst)) {</span>
+<span class="line" id="L67">                <span class="tok-comment">// Switch to a read lock.</span>
+</span>
+<span class="line" id="L68">                <span class="tok-builtin">@atomicStore</span>(State, &amp;self.lock.shared_state, .ReadLock, .SeqCst);</span>
+<span class="line" id="L69">                <span class="tok-kw">while</span> (self.lock.reader_queue.get()) |node| {</span>
+<span class="line" id="L70">                    global_event_loop.onNextTick(node);</span>
+<span class="line" id="L71">                }</span>
+<span class="line" id="L72">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L73">            }</span>
+<span class="line" id="L74"></span>
+<span class="line" id="L75">            <span class="tok-builtin">@atomicStore</span>(<span class="tok-type">bool</span>, &amp;self.lock.writer_queue_empty, <span class="tok-null">true</span>, .SeqCst);</span>
+<span class="line" id="L76">            <span class="tok-builtin">@atomicStore</span>(State, &amp;self.lock.shared_state, .Unlocked, .SeqCst);</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">            self.lock.commonPostUnlock();</span>
+<span class="line" id="L79">        }</span>
+<span class="line" id="L80">    };</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>() RwLock {</span>
+<span class="line" id="L83">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L84">            .shared_state = .Unlocked,</span>
+<span class="line" id="L85">            .writer_queue = Queue.init(),</span>
+<span class="line" id="L86">            .writer_queue_empty = <span class="tok-null">true</span>,</span>
+<span class="line" id="L87">            .reader_queue = Queue.init(),</span>
+<span class="line" id="L88">            .reader_queue_empty = <span class="tok-null">true</span>,</span>
+<span class="line" id="L89">            .reader_lock_count = <span class="tok-number">0</span>,</span>
+<span class="line" id="L90">        };</span>
+<span class="line" id="L91">    }</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">    <span class="tok-comment">/// Must be called when not locked. Not thread safe.</span></span>
+<span class="line" id="L94">    <span class="tok-comment">/// All calls to acquire() and release() must complete before calling deinit().</span></span>
+<span class="line" id="L95">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *RwLock) <span class="tok-type">void</span> {</span>
+<span class="line" id="L96">        assert(self.shared_state == .Unlocked);</span>
+<span class="line" id="L97">        <span class="tok-kw">while</span> (self.writer_queue.get()) |node| <span class="tok-kw">resume</span> node.data;</span>
+<span class="line" id="L98">        <span class="tok-kw">while</span> (self.reader_queue.get()) |node| <span class="tok-kw">resume</span> node.data;</span>
+<span class="line" id="L99">    }</span>
+<span class="line" id="L100"></span>
+<span class="line" id="L101">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">acquireRead</span>(self: *RwLock) <span class="tok-kw">callconv</span>(.Async) HeldRead {</span>
+<span class="line" id="L102">        _ = <span class="tok-builtin">@atomicRmw</span>(<span class="tok-type">usize</span>, &amp;self.reader_lock_count, .Add, <span class="tok-number">1</span>, .SeqCst);</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L105">            <span class="tok-kw">var</span> my_tick_node = Loop.NextTickNode{</span>
+<span class="line" id="L106">                .data = <span class="tok-builtin">@frame</span>(),</span>
+<span class="line" id="L107">                .prev = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L108">                .next = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L109">            };</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111">            self.reader_queue.put(&amp;my_tick_node);</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113">            <span class="tok-comment">// At this point, we are in the reader_queue, so we might have already been resumed.</span>
+</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115">            <span class="tok-comment">// We set this bit so that later we can rely on the fact, that if reader_queue_empty == true,</span>
+</span>
+<span class="line" id="L116">            <span class="tok-comment">// some actor will attempt to grab the lock.</span>
+</span>
+<span class="line" id="L117">            <span class="tok-builtin">@atomicStore</span>(<span class="tok-type">bool</span>, &amp;self.reader_queue_empty, <span class="tok-null">false</span>, .SeqCst);</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">            <span class="tok-comment">// Here we don't care if we are the one to do the locking or if it was already locked for reading.</span>
+</span>
+<span class="line" id="L120">            <span class="tok-kw">const</span> have_read_lock = <span class="tok-kw">if</span> (<span class="tok-builtin">@cmpxchgStrong</span>(State, &amp;self.shared_state, .Unlocked, .ReadLock, .SeqCst, .SeqCst)) |old_state| old_state == .ReadLock <span class="tok-kw">else</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L121">            <span class="tok-kw">if</span> (have_read_lock) {</span>
+<span class="line" id="L122">                <span class="tok-comment">// Give out all the read locks.</span>
+</span>
+<span class="line" id="L123">                <span class="tok-kw">if</span> (self.reader_queue.get()) |first_node| {</span>
+<span class="line" id="L124">                    <span class="tok-kw">while</span> (self.reader_queue.get()) |node| {</span>
+<span class="line" id="L125">                        global_event_loop.onNextTick(node);</span>
+<span class="line" id="L126">                    }</span>
+<span class="line" id="L127">                    <span class="tok-kw">resume</span> first_node.data;</span>
+<span class="line" id="L128">                }</span>
+<span class="line" id="L129">            }</span>
+<span class="line" id="L130">        }</span>
+<span class="line" id="L131">        <span class="tok-kw">return</span> HeldRead{ .lock = self };</span>
+<span class="line" id="L132">    }</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">acquireWrite</span>(self: *RwLock) <span class="tok-kw">callconv</span>(.Async) HeldWrite {</span>
+<span class="line" id="L135">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L136">            <span class="tok-kw">var</span> my_tick_node = Loop.NextTickNode{</span>
+<span class="line" id="L137">                .data = <span class="tok-builtin">@frame</span>(),</span>
+<span class="line" id="L138">                .prev = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L139">                .next = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L140">            };</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">            self.writer_queue.put(&amp;my_tick_node);</span>
+<span class="line" id="L143"></span>
+<span class="line" id="L144">            <span class="tok-comment">// At this point, we are in the writer_queue, so we might have already been resumed.</span>
+</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146">            <span class="tok-comment">// We set this bit so that later we can rely on the fact, that if writer_queue_empty == true,</span>
+</span>
+<span class="line" id="L147">            <span class="tok-comment">// some actor will attempt to grab the lock.</span>
+</span>
+<span class="line" id="L148">            <span class="tok-builtin">@atomicStore</span>(<span class="tok-type">bool</span>, &amp;self.writer_queue_empty, <span class="tok-null">false</span>, .SeqCst);</span>
+<span class="line" id="L149"></span>
+<span class="line" id="L150">            <span class="tok-comment">// Here we must be the one to acquire the write lock. It cannot already be locked.</span>
+</span>
+<span class="line" id="L151">            <span class="tok-kw">if</span> (<span class="tok-builtin">@cmpxchgStrong</span>(State, &amp;self.shared_state, .Unlocked, .WriteLock, .SeqCst, .SeqCst) == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L152">                <span class="tok-comment">// We now have a write lock.</span>
+</span>
+<span class="line" id="L153">                <span class="tok-kw">if</span> (self.writer_queue.get()) |node| {</span>
+<span class="line" id="L154">                    <span class="tok-comment">// Whether this node is us or someone else, we tail resume it.</span>
+</span>
+<span class="line" id="L155">                    <span class="tok-kw">resume</span> node.data;</span>
+<span class="line" id="L156">                }</span>
+<span class="line" id="L157">            }</span>
+<span class="line" id="L158">        }</span>
+<span class="line" id="L159">        <span class="tok-kw">return</span> HeldWrite{ .lock = self };</span>
+<span class="line" id="L160">    }</span>
+<span class="line" id="L161"></span>
+<span class="line" id="L162">    <span class="tok-kw">fn</span> <span class="tok-fn">commonPostUnlock</span>(self: *RwLock) <span class="tok-type">void</span> {</span>
+<span class="line" id="L163">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L164">            <span class="tok-comment">// There might be a writer_queue item or a reader_queue item</span>
+</span>
+<span class="line" id="L165">            <span class="tok-comment">// If we check and both are empty, we can be done, because the other actors will try to</span>
+</span>
+<span class="line" id="L166">            <span class="tok-comment">// obtain the lock.</span>
+</span>
+<span class="line" id="L167">            <span class="tok-comment">// But if there's a writer_queue item or a reader_queue item,</span>
+</span>
+<span class="line" id="L168">            <span class="tok-comment">// we are the actor which must loop and attempt to grab the lock again.</span>
+</span>
+<span class="line" id="L169">            <span class="tok-kw">if</span> (!<span class="tok-builtin">@atomicLoad</span>(<span class="tok-type">bool</span>, &amp;self.writer_queue_empty, .SeqCst)) {</span>
+<span class="line" id="L170">                <span class="tok-kw">if</span> (<span class="tok-builtin">@cmpxchgStrong</span>(State, &amp;self.shared_state, .Unlocked, .WriteLock, .SeqCst, .SeqCst) != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L171">                    <span class="tok-comment">// We did not obtain the lock. Great, the queues are someone else's problem.</span>
+</span>
+<span class="line" id="L172">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L173">                }</span>
+<span class="line" id="L174">                <span class="tok-comment">// If there's an item in the writer queue, give them the lock, and we're done.</span>
+</span>
+<span class="line" id="L175">                <span class="tok-kw">if</span> (self.writer_queue.get()) |node| {</span>
+<span class="line" id="L176">                    global_event_loop.onNextTick(node);</span>
+<span class="line" id="L177">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L178">                }</span>
+<span class="line" id="L179">                <span class="tok-comment">// Release the lock again.</span>
+</span>
+<span class="line" id="L180">                <span class="tok-builtin">@atomicStore</span>(<span class="tok-type">bool</span>, &amp;self.writer_queue_empty, <span class="tok-null">true</span>, .SeqCst);</span>
+<span class="line" id="L181">                <span class="tok-builtin">@atomicStore</span>(State, &amp;self.shared_state, .Unlocked, .SeqCst);</span>
+<span class="line" id="L182">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L183">            }</span>
+<span class="line" id="L184"></span>
+<span class="line" id="L185">            <span class="tok-kw">if</span> (!<span class="tok-builtin">@atomicLoad</span>(<span class="tok-type">bool</span>, &amp;self.reader_queue_empty, .SeqCst)) {</span>
+<span class="line" id="L186">                <span class="tok-kw">if</span> (<span class="tok-builtin">@cmpxchgStrong</span>(State, &amp;self.shared_state, .Unlocked, .ReadLock, .SeqCst, .SeqCst) != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L187">                    <span class="tok-comment">// We did not obtain the lock. Great, the queues are someone else's problem.</span>
+</span>
+<span class="line" id="L188">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L189">                }</span>
+<span class="line" id="L190">                <span class="tok-comment">// If there are any items in the reader queue, give out all the reader locks, and we're done.</span>
+</span>
+<span class="line" id="L191">                <span class="tok-kw">if</span> (self.reader_queue.get()) |first_node| {</span>
+<span class="line" id="L192">                    global_event_loop.onNextTick(first_node);</span>
+<span class="line" id="L193">                    <span class="tok-kw">while</span> (self.reader_queue.get()) |node| {</span>
+<span class="line" id="L194">                        global_event_loop.onNextTick(node);</span>
+<span class="line" id="L195">                    }</span>
+<span class="line" id="L196">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L197">                }</span>
+<span class="line" id="L198">                <span class="tok-comment">// Release the lock again.</span>
+</span>
+<span class="line" id="L199">                <span class="tok-builtin">@atomicStore</span>(<span class="tok-type">bool</span>, &amp;self.reader_queue_empty, <span class="tok-null">true</span>, .SeqCst);</span>
+<span class="line" id="L200">                <span class="tok-kw">if</span> (<span class="tok-builtin">@cmpxchgStrong</span>(State, &amp;self.shared_state, .ReadLock, .Unlocked, .SeqCst, .SeqCst) != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L201">                    <span class="tok-comment">// Didn't unlock. Someone else's problem.</span>
+</span>
+<span class="line" id="L202">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L203">                }</span>
+<span class="line" id="L204">                <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L205">            }</span>
+<span class="line" id="L206">            <span class="tok-kw">return</span>;</span>
+<span class="line" id="L207">        }</span>
+<span class="line" id="L208">    }</span>
+<span class="line" id="L209">};</span>
+<span class="line" id="L210"></span>
+<span class="line" id="L211"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.event.RwLock&quot;</span> {</span>
+<span class="line" id="L212">    <span class="tok-comment">// https://github.com/ziglang/zig/issues/2377</span>
+</span>
+<span class="line" id="L213">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L214"></span>
+<span class="line" id="L215">    <span class="tok-comment">// https://github.com/ziglang/zig/issues/1908</span>
+</span>
+<span class="line" id="L216">    <span class="tok-kw">if</span> (builtin.single_threaded) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218">    <span class="tok-comment">// TODO provide a way to run tests in evented I/O mode</span>
+</span>
+<span class="line" id="L219">    <span class="tok-kw">if</span> (!std.io.is_async) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221">    <span class="tok-kw">var</span> lock = RwLock.init();</span>
+<span class="line" id="L222">    <span class="tok-kw">defer</span> lock.deinit();</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">    _ = testLock(std.heap.page_allocator, &amp;lock);</span>
+<span class="line" id="L225"></span>
+<span class="line" id="L226">    <span class="tok-kw">const</span> expected_result = [<span class="tok-number">1</span>]<span class="tok-type">i32</span>{shared_it_count * <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, <span class="tok-builtin">@intCast</span>(shared_test_data.len))} ** shared_test_data.len;</span>
+<span class="line" id="L227">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">i32</span>, expected_result, shared_test_data);</span>
+<span class="line" id="L228">}</span>
+<span class="line" id="L229"><span class="tok-kw">fn</span> <span class="tok-fn">testLock</span>(allocator: Allocator, lock: *RwLock) <span class="tok-kw">callconv</span>(.Async) <span class="tok-type">void</span> {</span>
+<span class="line" id="L230">    <span class="tok-kw">var</span> read_nodes: [<span class="tok-number">100</span>]Loop.NextTickNode = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L231">    <span class="tok-kw">for</span> (read_nodes) |*read_node| {</span>
+<span class="line" id="L232">        <span class="tok-kw">const</span> frame = allocator.create(<span class="tok-builtin">@Frame</span>(readRunner)) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;memory&quot;</span>);</span>
+<span class="line" id="L233">        read_node.data = frame;</span>
+<span class="line" id="L234">        frame.* = <span class="tok-kw">async</span> readRunner(lock);</span>
+<span class="line" id="L235">        Loop.instance.?.onNextTick(read_node);</span>
+<span class="line" id="L236">    }</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">    <span class="tok-kw">var</span> write_nodes: [shared_it_count]Loop.NextTickNode = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L239">    <span class="tok-kw">for</span> (write_nodes) |*write_node| {</span>
+<span class="line" id="L240">        <span class="tok-kw">const</span> frame = allocator.create(<span class="tok-builtin">@Frame</span>(writeRunner)) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;memory&quot;</span>);</span>
+<span class="line" id="L241">        write_node.data = frame;</span>
+<span class="line" id="L242">        frame.* = <span class="tok-kw">async</span> writeRunner(lock);</span>
+<span class="line" id="L243">        Loop.instance.?.onNextTick(write_node);</span>
+<span class="line" id="L244">    }</span>
+<span class="line" id="L245"></span>
+<span class="line" id="L246">    <span class="tok-kw">for</span> (write_nodes) |*write_node| {</span>
+<span class="line" id="L247">        <span class="tok-kw">const</span> casted = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> <span class="tok-builtin">@Frame</span>(writeRunner), <span class="tok-builtin">@ptrCast</span>(write_node.data));</span>
+<span class="line" id="L248">        <span class="tok-kw">await</span> casted;</span>
+<span class="line" id="L249">        allocator.destroy(casted);</span>
+<span class="line" id="L250">    }</span>
+<span class="line" id="L251">    <span class="tok-kw">for</span> (read_nodes) |*read_node| {</span>
+<span class="line" id="L252">        <span class="tok-kw">const</span> casted = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> <span class="tok-builtin">@Frame</span>(readRunner), <span class="tok-builtin">@ptrCast</span>(read_node.data));</span>
+<span class="line" id="L253">        <span class="tok-kw">await</span> casted;</span>
+<span class="line" id="L254">        allocator.destroy(casted);</span>
+<span class="line" id="L255">    }</span>
+<span class="line" id="L256">}</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258"><span class="tok-kw">const</span> shared_it_count = <span class="tok-number">10</span>;</span>
+<span class="line" id="L259"><span class="tok-kw">var</span> shared_test_data = [<span class="tok-number">1</span>]<span class="tok-type">i32</span>{<span class="tok-number">0</span>} ** <span class="tok-number">10</span>;</span>
+<span class="line" id="L260"><span class="tok-kw">var</span> shared_test_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L261"><span class="tok-kw">var</span> shared_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L262"><span class="tok-kw">fn</span> <span class="tok-fn">writeRunner</span>(lock: *RwLock) <span class="tok-kw">callconv</span>(.Async) <span class="tok-type">void</span> {</span>
+<span class="line" id="L263">    <span class="tok-kw">suspend</span> {} <span class="tok-comment">// resumed by onNextTick</span>
+</span>
+<span class="line" id="L264"></span>
+<span class="line" id="L265">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L266">    <span class="tok-kw">while</span> (i &lt; shared_test_data.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L267">        std.time.sleep(<span class="tok-number">100</span> * std.time.microsecond);</span>
+<span class="line" id="L268">        <span class="tok-kw">const</span> lock_promise = <span class="tok-kw">async</span> lock.acquireWrite();</span>
+<span class="line" id="L269">        <span class="tok-kw">const</span> handle = <span class="tok-kw">await</span> lock_promise;</span>
+<span class="line" id="L270">        <span class="tok-kw">defer</span> handle.release();</span>
+<span class="line" id="L271"></span>
+<span class="line" id="L272">        shared_count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L273">        <span class="tok-kw">while</span> (shared_test_index &lt; shared_test_data.len) : (shared_test_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L274">            shared_test_data[shared_test_index] = shared_test_data[shared_test_index] + <span class="tok-number">1</span>;</span>
+<span class="line" id="L275">        }</span>
+<span class="line" id="L276">        shared_test_index = <span class="tok-number">0</span>;</span>
+<span class="line" id="L277">    }</span>
+<span class="line" id="L278">}</span>
+<span class="line" id="L279"><span class="tok-kw">fn</span> <span class="tok-fn">readRunner</span>(lock: *RwLock) <span class="tok-kw">callconv</span>(.Async) <span class="tok-type">void</span> {</span>
+<span class="line" id="L280">    <span class="tok-kw">suspend</span> {} <span class="tok-comment">// resumed by onNextTick</span>
+</span>
+<span class="line" id="L281">    std.time.sleep(<span class="tok-number">1</span>);</span>
+<span class="line" id="L282"></span>
+<span class="line" id="L283">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L284">    <span class="tok-kw">while</span> (i &lt; shared_test_data.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L285">        <span class="tok-kw">const</span> lock_promise = <span class="tok-kw">async</span> lock.acquireRead();</span>
+<span class="line" id="L286">        <span class="tok-kw">const</span> handle = <span class="tok-kw">await</span> lock_promise;</span>
+<span class="line" id="L287">        <span class="tok-kw">defer</span> handle.release();</span>
+<span class="line" id="L288"></span>
+<span class="line" id="L289">        <span class="tok-kw">try</span> testing.expect(shared_test_index == <span class="tok-number">0</span>);</span>
+<span class="line" id="L290">        <span class="tok-kw">try</span> testing.expect(shared_test_data[i] == <span class="tok-builtin">@as</span>(<span class="tok-type">i32</span>, <span class="tok-builtin">@intCast</span>(shared_count)));</span>
+<span class="line" id="L291">    }</span>
+<span class="line" id="L292">}</span>
+<span class="line" id="L293"></span>
+</code></pre></body>
+</html>

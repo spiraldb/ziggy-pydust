@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>json/stringify.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> ArrayList = std.ArrayList;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> BitStack = std.BitStack;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">const</span> OBJECT_MODE = <span class="tok-number">0</span>;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> ARRAY_MODE = <span class="tok-number">1</span>;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> StringifyOptions = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L11">    <span class="tok-comment">/// Controls the whitespace emitted.</span></span>
+<span class="line" id="L12">    <span class="tok-comment">/// The default `.minified` is a compact encoding with no whitespace between tokens.</span></span>
+<span class="line" id="L13">    <span class="tok-comment">/// Any setting other than `.minified` will use newlines, indentation, and a space after each ':'.</span></span>
+<span class="line" id="L14">    <span class="tok-comment">/// `.indent_1` means 1 space for each indentation level, `.indent_2` means 2 spaces, etc.</span></span>
+<span class="line" id="L15">    <span class="tok-comment">/// `.indent_tab` uses a tab for each indentation level.</span></span>
+<span class="line" id="L16">    whitespace: <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L17">        minified,</span>
+<span class="line" id="L18">        indent_1,</span>
+<span class="line" id="L19">        indent_2,</span>
+<span class="line" id="L20">        indent_3,</span>
+<span class="line" id="L21">        indent_4,</span>
+<span class="line" id="L22">        indent_8,</span>
+<span class="line" id="L23">        indent_tab,</span>
+<span class="line" id="L24">    } = .minified,</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26">    <span class="tok-comment">/// Should optional fields with null value be written?</span></span>
+<span class="line" id="L27">    emit_null_optional_fields: <span class="tok-type">bool</span> = <span class="tok-null">true</span>,</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">    <span class="tok-comment">/// Arrays/slices of u8 are typically encoded as JSON strings.</span></span>
+<span class="line" id="L30">    <span class="tok-comment">/// This option emits them as arrays of numbers instead.</span></span>
+<span class="line" id="L31">    <span class="tok-comment">/// Does not affect calls to `objectField()`.</span></span>
+<span class="line" id="L32">    emit_strings_as_arrays: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">    <span class="tok-comment">/// Should unicode characters be escaped in strings?</span></span>
+<span class="line" id="L35">    escape_unicode: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L36">};</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-comment">/// Writes the given value to the `std.io.Writer` stream.</span></span>
+<span class="line" id="L39"><span class="tok-comment">/// See `WriteStream` for how the given value is serialized into JSON.</span></span>
+<span class="line" id="L40"><span class="tok-comment">/// The maximum nesting depth of the output JSON document is 256.</span></span>
+<span class="line" id="L41"><span class="tok-comment">/// See also `stringifyMaxDepth` and `stringifyArbitraryDepth`.</span></span>
+<span class="line" id="L42"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">stringify</span>(</span>
+<span class="line" id="L43">    value: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L44">    options: StringifyOptions,</span>
+<span class="line" id="L45">    out_stream: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L46">) <span class="tok-builtin">@TypeOf</span>(out_stream).Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L47">    <span class="tok-kw">var</span> jw = writeStream(out_stream, options);</span>
+<span class="line" id="L48">    <span class="tok-kw">defer</span> jw.deinit();</span>
+<span class="line" id="L49">    <span class="tok-kw">try</span> jw.write(value);</span>
+<span class="line" id="L50">}</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52"><span class="tok-comment">/// Like `stringify` with configurable nesting depth.</span></span>
+<span class="line" id="L53"><span class="tok-comment">/// `max_depth` is rounded up to the nearest multiple of 8.</span></span>
+<span class="line" id="L54"><span class="tok-comment">/// Give `null` for `max_depth` to disable some safety checks and allow arbitrary nesting depth.</span></span>
+<span class="line" id="L55"><span class="tok-comment">/// See `writeStreamMaxDepth` for more info.</span></span>
+<span class="line" id="L56"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">stringifyMaxDepth</span>(</span>
+<span class="line" id="L57">    value: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L58">    options: StringifyOptions,</span>
+<span class="line" id="L59">    out_stream: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L60">    <span class="tok-kw">comptime</span> max_depth: ?<span class="tok-type">usize</span>,</span>
+<span class="line" id="L61">) <span class="tok-builtin">@TypeOf</span>(out_stream).Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L62">    <span class="tok-kw">var</span> jw = writeStreamMaxDepth(out_stream, options, max_depth);</span>
+<span class="line" id="L63">    <span class="tok-kw">try</span> jw.write(value);</span>
+<span class="line" id="L64">}</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66"><span class="tok-comment">/// Like `stringify` but takes an allocator to facilitate safety checks while allowing arbitrary nesting depth.</span></span>
+<span class="line" id="L67"><span class="tok-comment">/// These safety checks can be helpful when debugging custom `jsonStringify` implementations;</span></span>
+<span class="line" id="L68"><span class="tok-comment">/// See `WriteStream`.</span></span>
+<span class="line" id="L69"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">stringifyArbitraryDepth</span>(</span>
+<span class="line" id="L70">    allocator: Allocator,</span>
+<span class="line" id="L71">    value: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L72">    options: StringifyOptions,</span>
+<span class="line" id="L73">    out_stream: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L74">) WriteStream(<span class="tok-builtin">@TypeOf</span>(out_stream), .checked_to_arbitrary_depth).Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L75">    <span class="tok-kw">var</span> jw = writeStreamArbitraryDepth(allocator, out_stream, options);</span>
+<span class="line" id="L76">    <span class="tok-kw">defer</span> jw.deinit();</span>
+<span class="line" id="L77">    <span class="tok-kw">try</span> jw.write(value);</span>
+<span class="line" id="L78">}</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80"><span class="tok-comment">/// Calls `stringifyArbitraryDepth` and stores the result in dynamically allocated memory</span></span>
+<span class="line" id="L81"><span class="tok-comment">/// instead of taking a `std.io.Writer`.</span></span>
+<span class="line" id="L82"><span class="tok-comment">///</span></span>
+<span class="line" id="L83"><span class="tok-comment">/// Caller owns returned memory.</span></span>
+<span class="line" id="L84"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">stringifyAlloc</span>(</span>
+<span class="line" id="L85">    allocator: Allocator,</span>
+<span class="line" id="L86">    value: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L87">    options: StringifyOptions,</span>
+<span class="line" id="L88">) <span class="tok-kw">error</span>{OutOfMemory}![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L89">    <span class="tok-kw">var</span> list = std.ArrayList(<span class="tok-type">u8</span>).init(allocator);</span>
+<span class="line" id="L90">    <span class="tok-kw">errdefer</span> list.deinit();</span>
+<span class="line" id="L91">    <span class="tok-kw">try</span> stringifyArbitraryDepth(allocator, value, options, list.writer());</span>
+<span class="line" id="L92">    <span class="tok-kw">return</span> list.toOwnedSlice();</span>
+<span class="line" id="L93">}</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95"><span class="tok-comment">/// See `WriteStream` for documentation.</span></span>
+<span class="line" id="L96"><span class="tok-comment">/// Equivalent to calling `writeStreamMaxDepth` with a depth of `256`.</span></span>
+<span class="line" id="L97"><span class="tok-comment">///</span></span>
+<span class="line" id="L98"><span class="tok-comment">/// The caller does *not* need to call `deinit()` on the returned object.</span></span>
+<span class="line" id="L99"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeStream</span>(</span>
+<span class="line" id="L100">    out_stream: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L101">    options: StringifyOptions,</span>
+<span class="line" id="L102">) WriteStream(<span class="tok-builtin">@TypeOf</span>(out_stream), .{ .checked_to_fixed_depth = <span class="tok-number">256</span> }) {</span>
+<span class="line" id="L103">    <span class="tok-kw">return</span> writeStreamMaxDepth(out_stream, options, <span class="tok-number">256</span>);</span>
+<span class="line" id="L104">}</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106"><span class="tok-comment">/// See `WriteStream` for documentation.</span></span>
+<span class="line" id="L107"><span class="tok-comment">/// The returned object includes 1 bit of size per `max_depth` to enable safety checks on the order of method calls;</span></span>
+<span class="line" id="L108"><span class="tok-comment">/// see the grammar in the `WriteStream` documentation.</span></span>
+<span class="line" id="L109"><span class="tok-comment">/// `max_depth` is rounded up to the nearest multiple of 8.</span></span>
+<span class="line" id="L110"><span class="tok-comment">/// If the nesting depth exceeds `max_depth`, it is detectable illegal behavior.</span></span>
+<span class="line" id="L111"><span class="tok-comment">/// Give `null` for `max_depth` to disable safety checks for the grammar and allow arbitrary nesting depth.</span></span>
+<span class="line" id="L112"><span class="tok-comment">/// In `ReleaseFast` and `ReleaseSmall`, `max_depth` is ignored, effectively equivalent to passing `null`.</span></span>
+<span class="line" id="L113"><span class="tok-comment">/// Alternatively, see `writeStreamArbitraryDepth` to do safety checks to arbitrary depth.</span></span>
+<span class="line" id="L114"><span class="tok-comment">///</span></span>
+<span class="line" id="L115"><span class="tok-comment">/// The caller does *not* need to call `deinit()` on the returned object.</span></span>
+<span class="line" id="L116"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeStreamMaxDepth</span>(</span>
+<span class="line" id="L117">    out_stream: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L118">    options: StringifyOptions,</span>
+<span class="line" id="L119">    <span class="tok-kw">comptime</span> max_depth: ?<span class="tok-type">usize</span>,</span>
+<span class="line" id="L120">) WriteStream(</span>
+<span class="line" id="L121">    <span class="tok-builtin">@TypeOf</span>(out_stream),</span>
+<span class="line" id="L122">    <span class="tok-kw">if</span> (max_depth) |d| .{ .checked_to_fixed_depth = d } <span class="tok-kw">else</span> .assumed_correct,</span>
+<span class="line" id="L123">) {</span>
+<span class="line" id="L124">    <span class="tok-kw">return</span> WriteStream(</span>
+<span class="line" id="L125">        <span class="tok-builtin">@TypeOf</span>(out_stream),</span>
+<span class="line" id="L126">        <span class="tok-kw">if</span> (max_depth) |d| .{ .checked_to_fixed_depth = d } <span class="tok-kw">else</span> .assumed_correct,</span>
+<span class="line" id="L127">    ).init(<span class="tok-null">undefined</span>, out_stream, options);</span>
+<span class="line" id="L128">}</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130"><span class="tok-comment">/// See `WriteStream` for documentation.</span></span>
+<span class="line" id="L131"><span class="tok-comment">/// This version of the write stream enables safety checks to arbitrarily deep nesting levels</span></span>
+<span class="line" id="L132"><span class="tok-comment">/// by using the given allocator.</span></span>
+<span class="line" id="L133"><span class="tok-comment">/// The caller should call `deinit()` on the returned object to free allocated memory.</span></span>
+<span class="line" id="L134"><span class="tok-comment">///</span></span>
+<span class="line" id="L135"><span class="tok-comment">/// In `ReleaseFast` and `ReleaseSmall` mode, this function is effectively equivalent to calling `writeStreamMaxDepth(..., null)`;</span></span>
+<span class="line" id="L136"><span class="tok-comment">/// in those build modes, the allocator is *not used*.</span></span>
+<span class="line" id="L137"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writeStreamArbitraryDepth</span>(</span>
+<span class="line" id="L138">    allocator: Allocator,</span>
+<span class="line" id="L139">    out_stream: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L140">    options: StringifyOptions,</span>
+<span class="line" id="L141">) WriteStream(<span class="tok-builtin">@TypeOf</span>(out_stream), .checked_to_arbitrary_depth) {</span>
+<span class="line" id="L142">    <span class="tok-kw">return</span> WriteStream(<span class="tok-builtin">@TypeOf</span>(out_stream), .checked_to_arbitrary_depth).init(allocator, out_stream, options);</span>
+<span class="line" id="L143">}</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145"><span class="tok-comment">/// Writes JSON ([RFC8259](https://tools.ietf.org/html/rfc8259)) formatted data</span></span>
+<span class="line" id="L146"><span class="tok-comment">/// to a stream.</span></span>
+<span class="line" id="L147"><span class="tok-comment">///</span></span>
+<span class="line" id="L148"><span class="tok-comment">/// The seqeunce of method calls to write JSON content must follow this grammar:</span></span>
+<span class="line" id="L149"><span class="tok-comment">/// ```</span></span>
+<span class="line" id="L150"><span class="tok-comment">///  &lt;once&gt; = &lt;value&gt;</span></span>
+<span class="line" id="L151"><span class="tok-comment">///  &lt;value&gt; =</span></span>
+<span class="line" id="L152"><span class="tok-comment">///    | &lt;object&gt;</span></span>
+<span class="line" id="L153"><span class="tok-comment">///    | &lt;array&gt;</span></span>
+<span class="line" id="L154"><span class="tok-comment">///    | write</span></span>
+<span class="line" id="L155"><span class="tok-comment">///    | print</span></span>
+<span class="line" id="L156"><span class="tok-comment">///  &lt;object&gt; = beginObject ( objectField &lt;value&gt; )* endObject</span></span>
+<span class="line" id="L157"><span class="tok-comment">///  &lt;array&gt; = beginArray ( &lt;value&gt; )* endArray</span></span>
+<span class="line" id="L158"><span class="tok-comment">/// ```</span></span>
+<span class="line" id="L159"><span class="tok-comment">///</span></span>
+<span class="line" id="L160"><span class="tok-comment">/// Supported types:</span></span>
+<span class="line" id="L161"><span class="tok-comment">///  * Zig `bool` -&gt; JSON `true` or `false`.</span></span>
+<span class="line" id="L162"><span class="tok-comment">///  * Zig `?T` -&gt; `null` or the rendering of `T`.</span></span>
+<span class="line" id="L163"><span class="tok-comment">///  * Zig `i32`, `u64`, etc. -&gt; JSON number or string.</span></span>
+<span class="line" id="L164"><span class="tok-comment">///      * If the value is outside the range `±1&lt;&lt;53` (the precise integer rage of f64), it is rendered as a JSON string in base 10. Otherwise, it is rendered as JSON number.</span></span>
+<span class="line" id="L165"><span class="tok-comment">///  * Zig floats -&gt; JSON number or string.</span></span>
+<span class="line" id="L166"><span class="tok-comment">///      * If the value cannot be precisely represented by an f64, it is rendered as a JSON string. Otherwise, it is rendered as JSON number.</span></span>
+<span class="line" id="L167"><span class="tok-comment">///      * TODO: Float rendering will likely change in the future, e.g. to remove the unnecessary &quot;e+00&quot;.</span></span>
+<span class="line" id="L168"><span class="tok-comment">///  * Zig `[]const u8`, `[]u8`, `*[N]u8`, `@Vector(N, u8)`, and similar -&gt; JSON string.</span></span>
+<span class="line" id="L169"><span class="tok-comment">///      * See `StringifyOptions.emit_strings_as_arrays`.</span></span>
+<span class="line" id="L170"><span class="tok-comment">///      * If the content is not valid UTF-8, rendered as an array of numbers instead.</span></span>
+<span class="line" id="L171"><span class="tok-comment">///  * Zig `[]T`, `[N]T`, `*[N]T`, `@Vector(N, T)`, and similar -&gt; JSON array of the rendering of each item.</span></span>
+<span class="line" id="L172"><span class="tok-comment">///  * Zig tuple -&gt; JSON array of the rendering of each item.</span></span>
+<span class="line" id="L173"><span class="tok-comment">///  * Zig `struct` -&gt; JSON object with each field in declaration order.</span></span>
+<span class="line" id="L174"><span class="tok-comment">///      * If the struct declares a method `pub fn jsonStringify(self: *@This(), jw: anytype) !void`, it is called to do the serialization instead of the default behavior. The given `jw` is a pointer to this `WriteStream`. See `std.json.Value` for an example.</span></span>
+<span class="line" id="L175"><span class="tok-comment">///      * See `StringifyOptions.emit_null_optional_fields`.</span></span>
+<span class="line" id="L176"><span class="tok-comment">///  * Zig `union(enum)` -&gt; JSON object with one field named for the active tag and a value representing the payload.</span></span>
+<span class="line" id="L177"><span class="tok-comment">///      * If the payload is `void`, then the emitted value is `{}`.</span></span>
+<span class="line" id="L178"><span class="tok-comment">///      * If the union declares a method `pub fn jsonStringify(self: *@This(), jw: anytype) !void`, it is called to do the serialization instead of the default behavior. The given `jw` is a pointer to this `WriteStream`.</span></span>
+<span class="line" id="L179"><span class="tok-comment">///  * Zig `enum` -&gt; JSON string naming the active tag.</span></span>
+<span class="line" id="L180"><span class="tok-comment">///      * If the enum declares a method `pub fn jsonStringify(self: *@This(), jw: anytype) !void`, it is called to do the serialization instead of the default behavior. The given `jw` is a pointer to this `WriteStream`.</span></span>
+<span class="line" id="L181"><span class="tok-comment">///  * Zig error -&gt; JSON string naming the error.</span></span>
+<span class="line" id="L182"><span class="tok-comment">///  * Zig `*T` -&gt; the rendering of `T`. Note there is no guard against circular-reference infinite recursion.</span></span>
+<span class="line" id="L183"><span class="tok-comment">///</span></span>
+<span class="line" id="L184"><span class="tok-comment">/// In `ReleaseFast` and `ReleaseSmall` mode, the given `safety_checks_hint` is ignored and is always treated as `.assumed_correct`.</span></span>
+<span class="line" id="L185"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">WriteStream</span>(</span>
+<span class="line" id="L186">    <span class="tok-kw">comptime</span> OutStream: <span class="tok-type">type</span>,</span>
+<span class="line" id="L187">    <span class="tok-kw">comptime</span> safety_checks_hint: <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L188">        checked_to_arbitrary_depth,</span>
+<span class="line" id="L189">        checked_to_fixed_depth: <span class="tok-type">usize</span>, <span class="tok-comment">// Rounded up to the nearest multiple of 8.</span>
+</span>
+<span class="line" id="L190">        assumed_correct,</span>
+<span class="line" id="L191">    },</span>
+<span class="line" id="L192">) <span class="tok-type">type</span> {</span>
+<span class="line" id="L193">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L194">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L195">        <span class="tok-kw">const</span> safety_checks: <span class="tok-builtin">@TypeOf</span>(safety_checks_hint) = <span class="tok-kw">switch</span> (<span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>).mode) {</span>
+<span class="line" id="L196">            .Debug, .ReleaseSafe =&gt; safety_checks_hint,</span>
+<span class="line" id="L197">            .ReleaseFast, .ReleaseSmall =&gt; .assumed_correct,</span>
+<span class="line" id="L198">        };</span>
+<span class="line" id="L199"></span>
+<span class="line" id="L200">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Stream = OutStream;</span>
+<span class="line" id="L201">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = <span class="tok-kw">switch</span> (safety_checks) {</span>
+<span class="line" id="L202">            .checked_to_arbitrary_depth =&gt; Stream.Error || <span class="tok-kw">error</span>{OutOfMemory},</span>
+<span class="line" id="L203">            .checked_to_fixed_depth, .assumed_correct =&gt; Stream.Error,</span>
+<span class="line" id="L204">        };</span>
+<span class="line" id="L205"></span>
+<span class="line" id="L206">        options: StringifyOptions,</span>
+<span class="line" id="L207"></span>
+<span class="line" id="L208">        stream: OutStream,</span>
+<span class="line" id="L209">        indent_level: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L210">        next_punctuation: <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L211">            the_beginning,</span>
+<span class="line" id="L212">            none,</span>
+<span class="line" id="L213">            comma,</span>
+<span class="line" id="L214">            colon,</span>
+<span class="line" id="L215">        } = .the_beginning,</span>
+<span class="line" id="L216"></span>
+<span class="line" id="L217">        nesting_stack: <span class="tok-kw">switch</span> (safety_checks) {</span>
+<span class="line" id="L218">            .checked_to_arbitrary_depth =&gt; BitStack,</span>
+<span class="line" id="L219">            .checked_to_fixed_depth =&gt; |fixed_buffer_size| [(fixed_buffer_size + <span class="tok-number">7</span>) &gt;&gt; <span class="tok-number">3</span>]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L220">            .assumed_correct =&gt; <span class="tok-type">void</span>,</span>
+<span class="line" id="L221">        },</span>
+<span class="line" id="L222"></span>
+<span class="line" id="L223">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(safety_allocator: Allocator, stream: OutStream, options: StringifyOptions) Self {</span>
+<span class="line" id="L224">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L225">                .options = options,</span>
+<span class="line" id="L226">                .stream = stream,</span>
+<span class="line" id="L227">                .nesting_stack = <span class="tok-kw">switch</span> (safety_checks) {</span>
+<span class="line" id="L228">                    .checked_to_arbitrary_depth =&gt; BitStack.init(safety_allocator),</span>
+<span class="line" id="L229">                    .checked_to_fixed_depth =&gt; |fixed_buffer_size| [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** ((fixed_buffer_size + <span class="tok-number">7</span>) &gt;&gt; <span class="tok-number">3</span>),</span>
+<span class="line" id="L230">                    .assumed_correct =&gt; {},</span>
+<span class="line" id="L231">                },</span>
+<span class="line" id="L232">            };</span>
+<span class="line" id="L233">        }</span>
+<span class="line" id="L234"></span>
+<span class="line" id="L235">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L236">            <span class="tok-kw">switch</span> (safety_checks) {</span>
+<span class="line" id="L237">                .checked_to_arbitrary_depth =&gt; self.nesting_stack.deinit(),</span>
+<span class="line" id="L238">                .checked_to_fixed_depth, .assumed_correct =&gt; {},</span>
+<span class="line" id="L239">            }</span>
+<span class="line" id="L240">            self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L241">        }</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">beginArray</span>(self: *Self) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L244">            <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L245">            <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">'['</span>);</span>
+<span class="line" id="L246">            <span class="tok-kw">try</span> self.pushIndentation(ARRAY_MODE);</span>
+<span class="line" id="L247">            self.next_punctuation = .none;</span>
+<span class="line" id="L248">        }</span>
+<span class="line" id="L249"></span>
+<span class="line" id="L250">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">beginObject</span>(self: *Self) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L251">            <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L252">            <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">'{'</span>);</span>
+<span class="line" id="L253">            <span class="tok-kw">try</span> self.pushIndentation(OBJECT_MODE);</span>
+<span class="line" id="L254">            self.next_punctuation = .none;</span>
+<span class="line" id="L255">        }</span>
+<span class="line" id="L256"></span>
+<span class="line" id="L257">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">endArray</span>(self: *Self) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L258">            self.popIndentation(ARRAY_MODE);</span>
+<span class="line" id="L259">            <span class="tok-kw">switch</span> (self.next_punctuation) {</span>
+<span class="line" id="L260">                .none =&gt; {},</span>
+<span class="line" id="L261">                .comma =&gt; {</span>
+<span class="line" id="L262">                    <span class="tok-kw">try</span> self.indent();</span>
+<span class="line" id="L263">                },</span>
+<span class="line" id="L264">                .the_beginning, .colon =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L265">            }</span>
+<span class="line" id="L266">            <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">']'</span>);</span>
+<span class="line" id="L267">            self.valueDone();</span>
+<span class="line" id="L268">        }</span>
+<span class="line" id="L269"></span>
+<span class="line" id="L270">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">endObject</span>(self: *Self) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L271">            self.popIndentation(OBJECT_MODE);</span>
+<span class="line" id="L272">            <span class="tok-kw">switch</span> (self.next_punctuation) {</span>
+<span class="line" id="L273">                .none =&gt; {},</span>
+<span class="line" id="L274">                .comma =&gt; {</span>
+<span class="line" id="L275">                    <span class="tok-kw">try</span> self.indent();</span>
+<span class="line" id="L276">                },</span>
+<span class="line" id="L277">                .the_beginning, .colon =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L278">            }</span>
+<span class="line" id="L279">            <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">'}'</span>);</span>
+<span class="line" id="L280">            self.valueDone();</span>
+<span class="line" id="L281">        }</span>
+<span class="line" id="L282"></span>
+<span class="line" id="L283">        <span class="tok-kw">fn</span> <span class="tok-fn">pushIndentation</span>(self: *Self, mode: <span class="tok-type">u1</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L284">            <span class="tok-kw">switch</span> (safety_checks) {</span>
+<span class="line" id="L285">                .checked_to_arbitrary_depth =&gt; {</span>
+<span class="line" id="L286">                    <span class="tok-kw">try</span> self.nesting_stack.push(mode);</span>
+<span class="line" id="L287">                    self.indent_level += <span class="tok-number">1</span>;</span>
+<span class="line" id="L288">                },</span>
+<span class="line" id="L289">                .checked_to_fixed_depth =&gt; {</span>
+<span class="line" id="L290">                    BitStack.pushWithStateAssumeCapacity(&amp;self.nesting_stack, &amp;self.indent_level, mode);</span>
+<span class="line" id="L291">                },</span>
+<span class="line" id="L292">                .assumed_correct =&gt; {</span>
+<span class="line" id="L293">                    self.indent_level += <span class="tok-number">1</span>;</span>
+<span class="line" id="L294">                },</span>
+<span class="line" id="L295">            }</span>
+<span class="line" id="L296">        }</span>
+<span class="line" id="L297">        <span class="tok-kw">fn</span> <span class="tok-fn">popIndentation</span>(self: *Self, assert_its_this_one: <span class="tok-type">u1</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L298">            <span class="tok-kw">switch</span> (safety_checks) {</span>
+<span class="line" id="L299">                .checked_to_arbitrary_depth =&gt; {</span>
+<span class="line" id="L300">                    assert(self.nesting_stack.pop() == assert_its_this_one);</span>
+<span class="line" id="L301">                    self.indent_level -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L302">                },</span>
+<span class="line" id="L303">                .checked_to_fixed_depth =&gt; {</span>
+<span class="line" id="L304">                    assert(BitStack.popWithState(&amp;self.nesting_stack, &amp;self.indent_level) == assert_its_this_one);</span>
+<span class="line" id="L305">                },</span>
+<span class="line" id="L306">                .assumed_correct =&gt; {</span>
+<span class="line" id="L307">                    self.indent_level -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L308">                },</span>
+<span class="line" id="L309">            }</span>
+<span class="line" id="L310">        }</span>
+<span class="line" id="L311"></span>
+<span class="line" id="L312">        <span class="tok-kw">fn</span> <span class="tok-fn">indent</span>(self: *Self) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L313">            <span class="tok-kw">var</span> char: <span class="tok-type">u8</span> = <span class="tok-str">' '</span>;</span>
+<span class="line" id="L314">            <span class="tok-kw">const</span> n_chars = <span class="tok-kw">switch</span> (self.options.whitespace) {</span>
+<span class="line" id="L315">                .minified =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L316">                .indent_1 =&gt; <span class="tok-number">1</span> * self.indent_level,</span>
+<span class="line" id="L317">                .indent_2 =&gt; <span class="tok-number">2</span> * self.indent_level,</span>
+<span class="line" id="L318">                .indent_3 =&gt; <span class="tok-number">3</span> * self.indent_level,</span>
+<span class="line" id="L319">                .indent_4 =&gt; <span class="tok-number">4</span> * self.indent_level,</span>
+<span class="line" id="L320">                .indent_8 =&gt; <span class="tok-number">8</span> * self.indent_level,</span>
+<span class="line" id="L321">                .indent_tab =&gt; blk: {</span>
+<span class="line" id="L322">                    char = <span class="tok-str">'\t'</span>;</span>
+<span class="line" id="L323">                    <span class="tok-kw">break</span> :blk self.indent_level;</span>
+<span class="line" id="L324">                },</span>
+<span class="line" id="L325">            };</span>
+<span class="line" id="L326">            <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">'\n'</span>);</span>
+<span class="line" id="L327">            <span class="tok-kw">try</span> self.stream.writeByteNTimes(char, n_chars);</span>
+<span class="line" id="L328">        }</span>
+<span class="line" id="L329"></span>
+<span class="line" id="L330">        <span class="tok-kw">fn</span> <span class="tok-fn">valueStart</span>(self: *Self) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L331">            <span class="tok-kw">if</span> (self.isObjectKeyExpected()) |is_it| assert(!is_it); <span class="tok-comment">// Call objectField(), not write(), for object keys.</span>
+</span>
+<span class="line" id="L332">            <span class="tok-kw">return</span> self.valueStartAssumeTypeOk();</span>
+<span class="line" id="L333">        }</span>
+<span class="line" id="L334">        <span class="tok-kw">fn</span> <span class="tok-fn">objectFieldStart</span>(self: *Self) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L335">            <span class="tok-kw">if</span> (self.isObjectKeyExpected()) |is_it| assert(is_it); <span class="tok-comment">// Expected write(), not objectField().</span>
+</span>
+<span class="line" id="L336">            <span class="tok-kw">return</span> self.valueStartAssumeTypeOk();</span>
+<span class="line" id="L337">        }</span>
+<span class="line" id="L338">        <span class="tok-kw">fn</span> <span class="tok-fn">valueStartAssumeTypeOk</span>(self: *Self) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L339">            assert(!self.isComplete()); <span class="tok-comment">// JSON document already complete.</span>
+</span>
+<span class="line" id="L340">            <span class="tok-kw">switch</span> (self.next_punctuation) {</span>
+<span class="line" id="L341">                .the_beginning =&gt; {</span>
+<span class="line" id="L342">                    <span class="tok-comment">// No indentation for the very beginning.</span>
+</span>
+<span class="line" id="L343">                },</span>
+<span class="line" id="L344">                .none =&gt; {</span>
+<span class="line" id="L345">                    <span class="tok-comment">// First item in a container.</span>
+</span>
+<span class="line" id="L346">                    <span class="tok-kw">try</span> self.indent();</span>
+<span class="line" id="L347">                },</span>
+<span class="line" id="L348">                .comma =&gt; {</span>
+<span class="line" id="L349">                    <span class="tok-comment">// Subsequent item in a container.</span>
+</span>
+<span class="line" id="L350">                    <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">','</span>);</span>
+<span class="line" id="L351">                    <span class="tok-kw">try</span> self.indent();</span>
+<span class="line" id="L352">                },</span>
+<span class="line" id="L353">                .colon =&gt; {</span>
+<span class="line" id="L354">                    <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">':'</span>);</span>
+<span class="line" id="L355">                    <span class="tok-kw">if</span> (self.options.whitespace != .minified) {</span>
+<span class="line" id="L356">                        <span class="tok-kw">try</span> self.stream.writeByte(<span class="tok-str">' '</span>);</span>
+<span class="line" id="L357">                    }</span>
+<span class="line" id="L358">                },</span>
+<span class="line" id="L359">            }</span>
+<span class="line" id="L360">        }</span>
+<span class="line" id="L361">        <span class="tok-kw">fn</span> <span class="tok-fn">valueDone</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L362">            self.next_punctuation = .comma;</span>
+<span class="line" id="L363">        }</span>
+<span class="line" id="L364"></span>
+<span class="line" id="L365">        <span class="tok-comment">// Only when safety is enabled:</span>
+</span>
+<span class="line" id="L366">        <span class="tok-kw">fn</span> <span class="tok-fn">isObjectKeyExpected</span>(self: *<span class="tok-kw">const</span> Self) ?<span class="tok-type">bool</span> {</span>
+<span class="line" id="L367">            <span class="tok-kw">switch</span> (safety_checks) {</span>
+<span class="line" id="L368">                .checked_to_arbitrary_depth =&gt; <span class="tok-kw">return</span> self.indent_level &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span></span>
+<span class="line" id="L369">                    self.nesting_stack.peek() == OBJECT_MODE <span class="tok-kw">and</span></span>
+<span class="line" id="L370">                    self.next_punctuation != .colon,</span>
+<span class="line" id="L371">                .checked_to_fixed_depth =&gt; <span class="tok-kw">return</span> self.indent_level &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span></span>
+<span class="line" id="L372">                    BitStack.peekWithState(&amp;self.nesting_stack, self.indent_level) == OBJECT_MODE <span class="tok-kw">and</span></span>
+<span class="line" id="L373">                    self.next_punctuation != .colon,</span>
+<span class="line" id="L374">                .assumed_correct =&gt; <span class="tok-kw">return</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L375">            }</span>
+<span class="line" id="L376">        }</span>
+<span class="line" id="L377">        <span class="tok-kw">fn</span> <span class="tok-fn">isComplete</span>(self: *<span class="tok-kw">const</span> Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L378">            <span class="tok-kw">return</span> self.indent_level == <span class="tok-number">0</span> <span class="tok-kw">and</span> self.next_punctuation == .comma;</span>
+<span class="line" id="L379">        }</span>
+<span class="line" id="L380"></span>
+<span class="line" id="L381">        <span class="tok-comment">/// An alternative to calling `write` that formats a value with `std.fmt`.</span></span>
+<span class="line" id="L382">        <span class="tok-comment">/// This function does the usual punctuation and indentation formatting</span></span>
+<span class="line" id="L383">        <span class="tok-comment">/// assuming the resulting formatted string represents a single complete value;</span></span>
+<span class="line" id="L384">        <span class="tok-comment">/// e.g. `&quot;1&quot;`, `&quot;[]&quot;`, `&quot;[1,2]&quot;`, not `&quot;1,2&quot;`.</span></span>
+<span class="line" id="L385">        <span class="tok-comment">/// This function may be useful for doing your own number formatting.</span></span>
+<span class="line" id="L386">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">print</span>(self: *Self, <span class="tok-kw">comptime</span> fmt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, args: <span class="tok-kw">anytype</span>) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L387">            <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L388">            <span class="tok-kw">try</span> self.stream.print(fmt, args);</span>
+<span class="line" id="L389">            self.valueDone();</span>
+<span class="line" id="L390">        }</span>
+<span class="line" id="L391"></span>
+<span class="line" id="L392">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">objectField</span>(self: *Self, key: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L393">            <span class="tok-kw">try</span> self.objectFieldStart();</span>
+<span class="line" id="L394">            <span class="tok-kw">try</span> encodeJsonString(key, self.options, self.stream);</span>
+<span class="line" id="L395">            self.next_punctuation = .colon;</span>
+<span class="line" id="L396">        }</span>
+<span class="line" id="L397"></span>
+<span class="line" id="L398">        <span class="tok-comment">/// See `WriteStream`.</span></span>
+<span class="line" id="L399">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(self: *Self, value: <span class="tok-kw">anytype</span>) Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L400">            <span class="tok-kw">const</span> T = <span class="tok-builtin">@TypeOf</span>(value);</span>
+<span class="line" id="L401">            <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L402">                .Int =&gt; |info| {</span>
+<span class="line" id="L403">                    <span class="tok-kw">if</span> (info.bits &lt; <span class="tok-number">53</span>) {</span>
+<span class="line" id="L404">                        <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L405">                        <span class="tok-kw">try</span> self.stream.print(<span class="tok-str">&quot;{}&quot;</span>, .{value});</span>
+<span class="line" id="L406">                        self.valueDone();</span>
+<span class="line" id="L407">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L408">                    }</span>
+<span class="line" id="L409">                    <span class="tok-kw">if</span> (value &lt; <span class="tok-number">4503599627370496</span> <span class="tok-kw">and</span> (info.signedness == .unsigned <span class="tok-kw">or</span> value &gt; -<span class="tok-number">4503599627370496</span>)) {</span>
+<span class="line" id="L410">                        <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L411">                        <span class="tok-kw">try</span> self.stream.print(<span class="tok-str">&quot;{}&quot;</span>, .{value});</span>
+<span class="line" id="L412">                        self.valueDone();</span>
+<span class="line" id="L413">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L414">                    }</span>
+<span class="line" id="L415">                    <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L416">                    <span class="tok-kw">try</span> self.stream.print(<span class="tok-str">&quot;\&quot;{}\&quot;&quot;</span>, .{value});</span>
+<span class="line" id="L417">                    self.valueDone();</span>
+<span class="line" id="L418">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L419">                },</span>
+<span class="line" id="L420">                .ComptimeInt =&gt; {</span>
+<span class="line" id="L421">                    <span class="tok-kw">return</span> self.write(<span class="tok-builtin">@as</span>(std.math.IntFittingRange(value, value), value));</span>
+<span class="line" id="L422">                },</span>
+<span class="line" id="L423">                .Float, .ComptimeFloat =&gt; {</span>
+<span class="line" id="L424">                    <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@floatCast</span>(value)) == value) {</span>
+<span class="line" id="L425">                        <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L426">                        <span class="tok-kw">try</span> self.stream.print(<span class="tok-str">&quot;{}&quot;</span>, .{<span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@floatCast</span>(value))});</span>
+<span class="line" id="L427">                        self.valueDone();</span>
+<span class="line" id="L428">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L429">                    }</span>
+<span class="line" id="L430">                    <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L431">                    <span class="tok-kw">try</span> self.stream.print(<span class="tok-str">&quot;\&quot;{}\&quot;&quot;</span>, .{value});</span>
+<span class="line" id="L432">                    self.valueDone();</span>
+<span class="line" id="L433">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L434">                },</span>
+<span class="line" id="L435"></span>
+<span class="line" id="L436">                .Bool =&gt; {</span>
+<span class="line" id="L437">                    <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L438">                    <span class="tok-kw">try</span> self.stream.writeAll(<span class="tok-kw">if</span> (value) <span class="tok-str">&quot;true&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;false&quot;</span>);</span>
+<span class="line" id="L439">                    self.valueDone();</span>
+<span class="line" id="L440">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L441">                },</span>
+<span class="line" id="L442">                .Null =&gt; {</span>
+<span class="line" id="L443">                    <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L444">                    <span class="tok-kw">try</span> self.stream.writeAll(<span class="tok-str">&quot;null&quot;</span>);</span>
+<span class="line" id="L445">                    self.valueDone();</span>
+<span class="line" id="L446">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L447">                },</span>
+<span class="line" id="L448">                .Optional =&gt; {</span>
+<span class="line" id="L449">                    <span class="tok-kw">if</span> (value) |payload| {</span>
+<span class="line" id="L450">                        <span class="tok-kw">return</span> <span class="tok-kw">try</span> self.write(payload);</span>
+<span class="line" id="L451">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L452">                        <span class="tok-kw">return</span> <span class="tok-kw">try</span> self.write(<span class="tok-null">null</span>);</span>
+<span class="line" id="L453">                    }</span>
+<span class="line" id="L454">                },</span>
+<span class="line" id="L455">                .Enum =&gt; {</span>
+<span class="line" id="L456">                    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> std.meta.trait.hasFn(<span class="tok-str">&quot;jsonStringify&quot;</span>)(T)) {</span>
+<span class="line" id="L457">                        <span class="tok-kw">return</span> value.jsonStringify(self);</span>
+<span class="line" id="L458">                    }</span>
+<span class="line" id="L459"></span>
+<span class="line" id="L460">                    <span class="tok-kw">return</span> self.stringValue(<span class="tok-builtin">@tagName</span>(value));</span>
+<span class="line" id="L461">                },</span>
+<span class="line" id="L462">                .Union =&gt; {</span>
+<span class="line" id="L463">                    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> std.meta.trait.hasFn(<span class="tok-str">&quot;jsonStringify&quot;</span>)(T)) {</span>
+<span class="line" id="L464">                        <span class="tok-kw">return</span> value.jsonStringify(self);</span>
+<span class="line" id="L465">                    }</span>
+<span class="line" id="L466"></span>
+<span class="line" id="L467">                    <span class="tok-kw">const</span> info = <span class="tok-builtin">@typeInfo</span>(T).Union;</span>
+<span class="line" id="L468">                    <span class="tok-kw">if</span> (info.tag_type) |UnionTagType| {</span>
+<span class="line" id="L469">                        <span class="tok-kw">try</span> self.beginObject();</span>
+<span class="line" id="L470">                        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (info.fields) |u_field| {</span>
+<span class="line" id="L471">                            <span class="tok-kw">if</span> (value == <span class="tok-builtin">@field</span>(UnionTagType, u_field.name)) {</span>
+<span class="line" id="L472">                                <span class="tok-kw">try</span> self.objectField(u_field.name);</span>
+<span class="line" id="L473">                                <span class="tok-kw">if</span> (u_field.<span class="tok-type">type</span> == <span class="tok-type">void</span>) {</span>
+<span class="line" id="L474">                                    <span class="tok-comment">// void value is {}</span>
+</span>
+<span class="line" id="L475">                                    <span class="tok-kw">try</span> self.beginObject();</span>
+<span class="line" id="L476">                                    <span class="tok-kw">try</span> self.endObject();</span>
+<span class="line" id="L477">                                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L478">                                    <span class="tok-kw">try</span> self.write(<span class="tok-builtin">@field</span>(value, u_field.name));</span>
+<span class="line" id="L479">                                }</span>
+<span class="line" id="L480">                                <span class="tok-kw">break</span>;</span>
+<span class="line" id="L481">                            }</span>
+<span class="line" id="L482">                        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L483">                            <span class="tok-kw">unreachable</span>; <span class="tok-comment">// No active tag?</span>
+</span>
+<span class="line" id="L484">                        }</span>
+<span class="line" id="L485">                        <span class="tok-kw">try</span> self.endObject();</span>
+<span class="line" id="L486">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L487">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L488">                        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unable to stringify untagged union '&quot;</span> ++ <span class="tok-builtin">@typeName</span>(T) ++ <span class="tok-str">&quot;'&quot;</span>);</span>
+<span class="line" id="L489">                    }</span>
+<span class="line" id="L490">                },</span>
+<span class="line" id="L491">                .Struct =&gt; |S| {</span>
+<span class="line" id="L492">                    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> std.meta.trait.hasFn(<span class="tok-str">&quot;jsonStringify&quot;</span>)(T)) {</span>
+<span class="line" id="L493">                        <span class="tok-kw">return</span> value.jsonStringify(self);</span>
+<span class="line" id="L494">                    }</span>
+<span class="line" id="L495"></span>
+<span class="line" id="L496">                    <span class="tok-kw">if</span> (S.is_tuple) {</span>
+<span class="line" id="L497">                        <span class="tok-kw">try</span> self.beginArray();</span>
+<span class="line" id="L498">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L499">                        <span class="tok-kw">try</span> self.beginObject();</span>
+<span class="line" id="L500">                    }</span>
+<span class="line" id="L501">                    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (S.fields) |Field| {</span>
+<span class="line" id="L502">                        <span class="tok-comment">// don't include void fields</span>
+</span>
+<span class="line" id="L503">                        <span class="tok-kw">if</span> (Field.<span class="tok-type">type</span> == <span class="tok-type">void</span>) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L504"></span>
+<span class="line" id="L505">                        <span class="tok-kw">var</span> emit_field = <span class="tok-null">true</span>;</span>
+<span class="line" id="L506"></span>
+<span class="line" id="L507">                        <span class="tok-comment">// don't include optional fields that are null when emit_null_optional_fields is set to false</span>
+</span>
+<span class="line" id="L508">                        <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(Field.<span class="tok-type">type</span>) == .Optional) {</span>
+<span class="line" id="L509">                            <span class="tok-kw">if</span> (self.options.emit_null_optional_fields == <span class="tok-null">false</span>) {</span>
+<span class="line" id="L510">                                <span class="tok-kw">if</span> (<span class="tok-builtin">@field</span>(value, Field.name) == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L511">                                    emit_field = <span class="tok-null">false</span>;</span>
+<span class="line" id="L512">                                }</span>
+<span class="line" id="L513">                            }</span>
+<span class="line" id="L514">                        }</span>
+<span class="line" id="L515"></span>
+<span class="line" id="L516">                        <span class="tok-kw">if</span> (emit_field) {</span>
+<span class="line" id="L517">                            <span class="tok-kw">if</span> (!S.is_tuple) {</span>
+<span class="line" id="L518">                                <span class="tok-kw">try</span> self.objectField(Field.name);</span>
+<span class="line" id="L519">                            }</span>
+<span class="line" id="L520">                            <span class="tok-kw">try</span> self.write(<span class="tok-builtin">@field</span>(value, Field.name));</span>
+<span class="line" id="L521">                        }</span>
+<span class="line" id="L522">                    }</span>
+<span class="line" id="L523">                    <span class="tok-kw">if</span> (S.is_tuple) {</span>
+<span class="line" id="L524">                        <span class="tok-kw">try</span> self.endArray();</span>
+<span class="line" id="L525">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L526">                        <span class="tok-kw">try</span> self.endObject();</span>
+<span class="line" id="L527">                    }</span>
+<span class="line" id="L528">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L529">                },</span>
+<span class="line" id="L530">                .ErrorSet =&gt; <span class="tok-kw">return</span> self.stringValue(<span class="tok-builtin">@errorName</span>(value)),</span>
+<span class="line" id="L531">                .Pointer =&gt; |ptr_info| <span class="tok-kw">switch</span> (ptr_info.size) {</span>
+<span class="line" id="L532">                    .One =&gt; <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(ptr_info.child)) {</span>
+<span class="line" id="L533">                        .Array =&gt; {</span>
+<span class="line" id="L534">                            <span class="tok-comment">// Coerce `*[N]T` to `[]const T`.</span>
+</span>
+<span class="line" id="L535">                            <span class="tok-kw">const</span> Slice = []<span class="tok-kw">const</span> std.meta.Elem(ptr_info.child);</span>
+<span class="line" id="L536">                            <span class="tok-kw">return</span> self.write(<span class="tok-builtin">@as</span>(Slice, value));</span>
+<span class="line" id="L537">                        },</span>
+<span class="line" id="L538">                        <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L539">                            <span class="tok-kw">return</span> self.write(value.*);</span>
+<span class="line" id="L540">                        },</span>
+<span class="line" id="L541">                    },</span>
+<span class="line" id="L542">                    .Many, .Slice =&gt; {</span>
+<span class="line" id="L543">                        <span class="tok-kw">if</span> (ptr_info.size == .Many <span class="tok-kw">and</span> ptr_info.sentinel == <span class="tok-null">null</span>)</span>
+<span class="line" id="L544">                            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;unable to stringify type '&quot;</span> ++ <span class="tok-builtin">@typeName</span>(T) ++ <span class="tok-str">&quot;' without sentinel&quot;</span>);</span>
+<span class="line" id="L545">                        <span class="tok-kw">const</span> slice = <span class="tok-kw">if</span> (ptr_info.size == .Many) std.mem.span(value) <span class="tok-kw">else</span> value;</span>
+<span class="line" id="L546"></span>
+<span class="line" id="L547">                        <span class="tok-kw">if</span> (ptr_info.child == <span class="tok-type">u8</span>) {</span>
+<span class="line" id="L548">                            <span class="tok-comment">// This is a []const u8, or some similar Zig string.</span>
+</span>
+<span class="line" id="L549">                            <span class="tok-kw">if</span> (!self.options.emit_strings_as_arrays <span class="tok-kw">and</span> std.unicode.utf8ValidateSlice(slice)) {</span>
+<span class="line" id="L550">                                <span class="tok-kw">return</span> self.stringValue(slice);</span>
+<span class="line" id="L551">                            }</span>
+<span class="line" id="L552">                        }</span>
+<span class="line" id="L553"></span>
+<span class="line" id="L554">                        <span class="tok-kw">try</span> self.beginArray();</span>
+<span class="line" id="L555">                        <span class="tok-kw">for</span> (slice) |x| {</span>
+<span class="line" id="L556">                            <span class="tok-kw">try</span> self.write(x);</span>
+<span class="line" id="L557">                        }</span>
+<span class="line" id="L558">                        <span class="tok-kw">try</span> self.endArray();</span>
+<span class="line" id="L559">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L560">                    },</span>
+<span class="line" id="L561">                    <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unable to stringify type '&quot;</span> ++ <span class="tok-builtin">@typeName</span>(T) ++ <span class="tok-str">&quot;'&quot;</span>),</span>
+<span class="line" id="L562">                },</span>
+<span class="line" id="L563">                .Array =&gt; {</span>
+<span class="line" id="L564">                    <span class="tok-comment">// Coerce `[N]T` to `*const [N]T` (and then to `[]const T`).</span>
+</span>
+<span class="line" id="L565">                    <span class="tok-kw">return</span> self.write(&amp;value);</span>
+<span class="line" id="L566">                },</span>
+<span class="line" id="L567">                .Vector =&gt; |info| {</span>
+<span class="line" id="L568">                    <span class="tok-kw">const</span> array: [info.len]info.child = value;</span>
+<span class="line" id="L569">                    <span class="tok-kw">return</span> self.write(&amp;array);</span>
+<span class="line" id="L570">                },</span>
+<span class="line" id="L571">                <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unable to stringify type '&quot;</span> ++ <span class="tok-builtin">@typeName</span>(T) ++ <span class="tok-str">&quot;'&quot;</span>),</span>
+<span class="line" id="L572">            }</span>
+<span class="line" id="L573">            <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L574">        }</span>
+<span class="line" id="L575"></span>
+<span class="line" id="L576">        <span class="tok-kw">fn</span> <span class="tok-fn">stringValue</span>(self: *Self, s: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L577">            <span class="tok-kw">try</span> self.valueStart();</span>
+<span class="line" id="L578">            <span class="tok-kw">try</span> encodeJsonString(s, self.options, self.stream);</span>
+<span class="line" id="L579">            self.valueDone();</span>
+<span class="line" id="L580">        }</span>
+<span class="line" id="L581"></span>
+<span class="line" id="L582">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> arrayElem = <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Deprecated; You don't need to call this anymore.&quot;</span>);</span>
+<span class="line" id="L583">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> emitNull = <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Deprecated; Use .write(null) instead.&quot;</span>);</span>
+<span class="line" id="L584">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> emitBool = <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Deprecated; Use .write() instead.&quot;</span>);</span>
+<span class="line" id="L585">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> emitNumber = <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Deprecated; Use .write() instead.&quot;</span>);</span>
+<span class="line" id="L586">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> emitString = <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Deprecated; Use .write() instead.&quot;</span>);</span>
+<span class="line" id="L587">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> emitJson = <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Deprecated; Use .write() instead.&quot;</span>);</span>
+<span class="line" id="L588">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> writePreformatted = <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Deprecated; Use .print(\&quot;{s}\&quot;, .{s}) instead.&quot;</span>);</span>
+<span class="line" id="L589">    };</span>
+<span class="line" id="L590">}</span>
+<span class="line" id="L591"></span>
+<span class="line" id="L592"><span class="tok-kw">fn</span> <span class="tok-fn">outputUnicodeEscape</span>(codepoint: <span class="tok-type">u21</span>, out_stream: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L593">    <span class="tok-kw">if</span> (codepoint &lt;= <span class="tok-number">0xFFFF</span>) {</span>
+<span class="line" id="L594">        <span class="tok-comment">// If the character is in the Basic Multilingual Plane (U+0000 through U+FFFF),</span>
+</span>
+<span class="line" id="L595">        <span class="tok-comment">// then it may be represented as a six-character sequence: a reverse solidus, followed</span>
+</span>
+<span class="line" id="L596">        <span class="tok-comment">// by the lowercase letter u, followed by four hexadecimal digits that encode the character's code point.</span>
+</span>
+<span class="line" id="L597">        <span class="tok-kw">try</span> out_stream.writeAll(<span class="tok-str">&quot;\\u&quot;</span>);</span>
+<span class="line" id="L598">        <span class="tok-kw">try</span> std.fmt.formatIntValue(codepoint, <span class="tok-str">&quot;x&quot;</span>, std.fmt.FormatOptions{ .width = <span class="tok-number">4</span>, .fill = <span class="tok-str">'0'</span> }, out_stream);</span>
+<span class="line" id="L599">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L600">        assert(codepoint &lt;= <span class="tok-number">0x10FFFF</span>);</span>
+<span class="line" id="L601">        <span class="tok-comment">// To escape an extended character that is not in the Basic Multilingual Plane,</span>
+</span>
+<span class="line" id="L602">        <span class="tok-comment">// the character is represented as a 12-character sequence, encoding the UTF-16 surrogate pair.</span>
+</span>
+<span class="line" id="L603">        <span class="tok-kw">const</span> high = <span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-builtin">@intCast</span>((codepoint - <span class="tok-number">0x10000</span>) &gt;&gt; <span class="tok-number">10</span>)) + <span class="tok-number">0xD800</span>;</span>
+<span class="line" id="L604">        <span class="tok-kw">const</span> low = <span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-builtin">@intCast</span>(codepoint &amp; <span class="tok-number">0x3FF</span>)) + <span class="tok-number">0xDC00</span>;</span>
+<span class="line" id="L605">        <span class="tok-kw">try</span> out_stream.writeAll(<span class="tok-str">&quot;\\u&quot;</span>);</span>
+<span class="line" id="L606">        <span class="tok-kw">try</span> std.fmt.formatIntValue(high, <span class="tok-str">&quot;x&quot;</span>, std.fmt.FormatOptions{ .width = <span class="tok-number">4</span>, .fill = <span class="tok-str">'0'</span> }, out_stream);</span>
+<span class="line" id="L607">        <span class="tok-kw">try</span> out_stream.writeAll(<span class="tok-str">&quot;\\u&quot;</span>);</span>
+<span class="line" id="L608">        <span class="tok-kw">try</span> std.fmt.formatIntValue(low, <span class="tok-str">&quot;x&quot;</span>, std.fmt.FormatOptions{ .width = <span class="tok-number">4</span>, .fill = <span class="tok-str">'0'</span> }, out_stream);</span>
+<span class="line" id="L609">    }</span>
+<span class="line" id="L610">}</span>
+<span class="line" id="L611"></span>
+<span class="line" id="L612"><span class="tok-kw">fn</span> <span class="tok-fn">outputSpecialEscape</span>(c: <span class="tok-type">u8</span>, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L613">    <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L614">        <span class="tok-str">'\\'</span> =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\\\\&quot;</span>),</span>
+<span class="line" id="L615">        <span class="tok-str">'\&quot;'</span> =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\\\&quot;&quot;</span>),</span>
+<span class="line" id="L616">        <span class="tok-number">0x08</span> =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\\b&quot;</span>),</span>
+<span class="line" id="L617">        <span class="tok-number">0x0C</span> =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\\f&quot;</span>),</span>
+<span class="line" id="L618">        <span class="tok-str">'\n'</span> =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\\n&quot;</span>),</span>
+<span class="line" id="L619">        <span class="tok-str">'\r'</span> =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\\r&quot;</span>),</span>
+<span class="line" id="L620">        <span class="tok-str">'\t'</span> =&gt; <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;\\t&quot;</span>),</span>
+<span class="line" id="L621">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">try</span> outputUnicodeEscape(c, writer),</span>
+<span class="line" id="L622">    }</span>
+<span class="line" id="L623">}</span>
+<span class="line" id="L624"></span>
+<span class="line" id="L625"><span class="tok-comment">/// Write `string` to `writer` as a JSON encoded string.</span></span>
+<span class="line" id="L626"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">encodeJsonString</span>(string: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, options: StringifyOptions, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L627">    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\&quot;'</span>);</span>
+<span class="line" id="L628">    <span class="tok-kw">try</span> encodeJsonStringChars(string, options, writer);</span>
+<span class="line" id="L629">    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\&quot;'</span>);</span>
+<span class="line" id="L630">}</span>
+<span class="line" id="L631"></span>
+<span class="line" id="L632"><span class="tok-comment">/// Write `chars` to `writer` as JSON encoded string characters.</span></span>
+<span class="line" id="L633"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">encodeJsonStringChars</span>(chars: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, options: StringifyOptions, writer: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L634">    <span class="tok-kw">var</span> write_cursor: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L635">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L636">    <span class="tok-kw">if</span> (options.escape_unicode) {</span>
+<span class="line" id="L637">        <span class="tok-kw">while</span> (i &lt; chars.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L638">            <span class="tok-kw">switch</span> (chars[i]) {</span>
+<span class="line" id="L639">                <span class="tok-comment">// normal ascii character</span>
+</span>
+<span class="line" id="L640">                <span class="tok-number">0x20</span>...<span class="tok-number">0x21</span>, <span class="tok-number">0x23</span>...<span class="tok-number">0x5B</span>, <span class="tok-number">0x5D</span>...<span class="tok-number">0x7E</span> =&gt; {},</span>
+<span class="line" id="L641">                <span class="tok-number">0x00</span>...<span class="tok-number">0x1F</span>, <span class="tok-str">'\\'</span>, <span class="tok-str">'\&quot;'</span> =&gt; {</span>
+<span class="line" id="L642">                    <span class="tok-comment">// Always must escape these.</span>
+</span>
+<span class="line" id="L643">                    <span class="tok-kw">try</span> writer.writeAll(chars[write_cursor..i]);</span>
+<span class="line" id="L644">                    <span class="tok-kw">try</span> outputSpecialEscape(chars[i], writer);</span>
+<span class="line" id="L645">                    write_cursor = i + <span class="tok-number">1</span>;</span>
+<span class="line" id="L646">                },</span>
+<span class="line" id="L647">                <span class="tok-number">0x7F</span>...<span class="tok-number">0xFF</span> =&gt; {</span>
+<span class="line" id="L648">                    <span class="tok-kw">try</span> writer.writeAll(chars[write_cursor..i]);</span>
+<span class="line" id="L649">                    <span class="tok-kw">const</span> ulen = std.unicode.utf8ByteSequenceLength(chars[i]) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L650">                    <span class="tok-kw">const</span> codepoint = std.unicode.utf8Decode(chars[i..][<span class="tok-number">0</span>..ulen]) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L651">                    <span class="tok-kw">try</span> outputUnicodeEscape(codepoint, writer);</span>
+<span class="line" id="L652">                    i += ulen - <span class="tok-number">1</span>;</span>
+<span class="line" id="L653">                    write_cursor = i + <span class="tok-number">1</span>;</span>
+<span class="line" id="L654">                },</span>
+<span class="line" id="L655">            }</span>
+<span class="line" id="L656">        }</span>
+<span class="line" id="L657">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L658">        <span class="tok-kw">while</span> (i &lt; chars.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L659">            <span class="tok-kw">switch</span> (chars[i]) {</span>
+<span class="line" id="L660">                <span class="tok-comment">// normal bytes</span>
+</span>
+<span class="line" id="L661">                <span class="tok-number">0x20</span>...<span class="tok-number">0x21</span>, <span class="tok-number">0x23</span>...<span class="tok-number">0x5B</span>, <span class="tok-number">0x5D</span>...<span class="tok-number">0xFF</span> =&gt; {},</span>
+<span class="line" id="L662">                <span class="tok-number">0x00</span>...<span class="tok-number">0x1F</span>, <span class="tok-str">'\\'</span>, <span class="tok-str">'\&quot;'</span> =&gt; {</span>
+<span class="line" id="L663">                    <span class="tok-comment">// Always must escape these.</span>
+</span>
+<span class="line" id="L664">                    <span class="tok-kw">try</span> writer.writeAll(chars[write_cursor..i]);</span>
+<span class="line" id="L665">                    <span class="tok-kw">try</span> outputSpecialEscape(chars[i], writer);</span>
+<span class="line" id="L666">                    write_cursor = i + <span class="tok-number">1</span>;</span>
+<span class="line" id="L667">                },</span>
+<span class="line" id="L668">            }</span>
+<span class="line" id="L669">        }</span>
+<span class="line" id="L670">    }</span>
+<span class="line" id="L671">    <span class="tok-kw">try</span> writer.writeAll(chars[write_cursor..chars.len]);</span>
+<span class="line" id="L672">}</span>
+<span class="line" id="L673"></span>
+<span class="line" id="L674"><span class="tok-kw">test</span> {</span>
+<span class="line" id="L675">    _ = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;./stringify_test.zig&quot;</span>);</span>
+<span class="line" id="L676">}</span>
+<span class="line" id="L677"></span>
+</code></pre></body>
+</html>

@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>os/linux/tls.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> os = std.os;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> elf = std.elf;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> native_arch = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>).cpu.arch;</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-comment">// This file implements the two TLS variants [1] used by ELF-based systems.</span>
+</span>
+<span class="line" id="L10"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L11"><span class="tok-comment">// The variant I has the following layout in memory:</span>
+</span>
+<span class="line" id="L12"><span class="tok-comment">// -------------------------------------------------------</span>
+</span>
+<span class="line" id="L13"><span class="tok-comment">// |   DTV   |     Zig     |   DTV   | Alignment |  TLS  |</span>
+</span>
+<span class="line" id="L14"><span class="tok-comment">// | storage | thread data | pointer |           | block |</span>
+</span>
+<span class="line" id="L15"><span class="tok-comment">// ------------------------^------------------------------</span>
+</span>
+<span class="line" id="L16"><span class="tok-comment">//                         `-- The thread pointer register points here</span>
+</span>
+<span class="line" id="L17"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L18"><span class="tok-comment">// In this case we allocate additional space for our control structure that's</span>
+</span>
+<span class="line" id="L19"><span class="tok-comment">// placed _before_ the DTV pointer together with the DTV.</span>
+</span>
+<span class="line" id="L20"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L21"><span class="tok-comment">// NOTE: Some systems such as power64 or mips use this variant with a twist: the</span>
+</span>
+<span class="line" id="L22"><span class="tok-comment">// alignment is not present and the tp and DTV addresses are offset by a</span>
+</span>
+<span class="line" id="L23"><span class="tok-comment">// constant.</span>
+</span>
+<span class="line" id="L24"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L25"><span class="tok-comment">// On the other hand the variant II has the following layout in memory:</span>
+</span>
+<span class="line" id="L26"><span class="tok-comment">// ---------------------------------------</span>
+</span>
+<span class="line" id="L27"><span class="tok-comment">// |  TLS  | TCB |     Zig     |   DTV   |</span>
+</span>
+<span class="line" id="L28"><span class="tok-comment">// | block |     | thread data | storage |</span>
+</span>
+<span class="line" id="L29"><span class="tok-comment">// --------^------------------------------</span>
+</span>
+<span class="line" id="L30"><span class="tok-comment">//         `-- The thread pointer register points here</span>
+</span>
+<span class="line" id="L31"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L32"><span class="tok-comment">// The structure of the TCB is not defined by the ABI so we reserve enough space</span>
+</span>
+<span class="line" id="L33"><span class="tok-comment">// for a single pointer as some architectures such as x86 and x86_64 need a</span>
+</span>
+<span class="line" id="L34"><span class="tok-comment">// pointer to the TCB block itself at the address pointed by the tp.</span>
+</span>
+<span class="line" id="L35"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L36"><span class="tok-comment">// In this case the control structure and DTV are placed one after another right</span>
+</span>
+<span class="line" id="L37"><span class="tok-comment">// after the TLS block data.</span>
+</span>
+<span class="line" id="L38"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L39"><span class="tok-comment">// At the moment the DTV is very simple since we only support static TLS, all we</span>
+</span>
+<span class="line" id="L40"><span class="tok-comment">// need is a two word vector to hold the number of entries (1) and the address</span>
+</span>
+<span class="line" id="L41"><span class="tok-comment">// of the first TLS block.</span>
+</span>
+<span class="line" id="L42"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L43"><span class="tok-comment">// [1] https://www.akkadia.org/drepper/tls.pdf</span>
+</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45"><span class="tok-kw">const</span> TLSVariant = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L46">    VariantI,</span>
+<span class="line" id="L47">    VariantII,</span>
+<span class="line" id="L48">};</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50"><span class="tok-kw">const</span> tls_variant = <span class="tok-kw">switch</span> (native_arch) {</span>
+<span class="line" id="L51">    .arm, .armeb, .thumb, .aarch64, .aarch64_be, .riscv32, .riscv64, .mips, .mipsel, .mips64, .mips64el, .powerpc, .powerpcle, .powerpc64, .powerpc64le =&gt; TLSVariant.VariantI,</span>
+<span class="line" id="L52">    .x86_64, .x86, .sparc64 =&gt; TLSVariant.VariantII,</span>
+<span class="line" id="L53">    <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;undefined tls_variant for this architecture&quot;</span>),</span>
+<span class="line" id="L54">};</span>
+<span class="line" id="L55"></span>
+<span class="line" id="L56"><span class="tok-comment">// Controls how many bytes are reserved for the Thread Control Block</span>
+</span>
+<span class="line" id="L57"><span class="tok-kw">const</span> tls_tcb_size = <span class="tok-kw">switch</span> (native_arch) {</span>
+<span class="line" id="L58">    <span class="tok-comment">// ARM EABI mandates enough space for two pointers: the first one points to</span>
+</span>
+<span class="line" id="L59">    <span class="tok-comment">// the DTV while the second one is unspecified but reserved</span>
+</span>
+<span class="line" id="L60">    .arm, .armeb, .thumb, .aarch64, .aarch64_be =&gt; <span class="tok-number">2</span> * <span class="tok-builtin">@sizeOf</span>(<span class="tok-type">usize</span>),</span>
+<span class="line" id="L61">    <span class="tok-comment">// One pointer-sized word that points either to the DTV or the TCB itself</span>
+</span>
+<span class="line" id="L62">    <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@sizeOf</span>(<span class="tok-type">usize</span>),</span>
+<span class="line" id="L63">};</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65"><span class="tok-comment">// Controls if the TP points to the end of the TCB instead of its beginning</span>
+</span>
+<span class="line" id="L66"><span class="tok-kw">const</span> tls_tp_points_past_tcb = <span class="tok-kw">switch</span> (native_arch) {</span>
+<span class="line" id="L67">    .riscv32, .riscv64, .mips, .mipsel, .mips64, .mips64el, .powerpc, .powerpc64, .powerpc64le =&gt; <span class="tok-null">true</span>,</span>
+<span class="line" id="L68">    <span class="tok-kw">else</span> =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L69">};</span>
+<span class="line" id="L70"></span>
+<span class="line" id="L71"><span class="tok-comment">// Some architectures add some offset to the tp and dtv addresses in order to</span>
+</span>
+<span class="line" id="L72"><span class="tok-comment">// make the generated code more efficient</span>
+</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74"><span class="tok-kw">const</span> tls_tp_offset = <span class="tok-kw">switch</span> (native_arch) {</span>
+<span class="line" id="L75">    .mips, .mipsel, .mips64, .mips64el, .powerpc, .powerpc64, .powerpc64le =&gt; <span class="tok-number">0x7000</span>,</span>
+<span class="line" id="L76">    <span class="tok-kw">else</span> =&gt; <span class="tok-number">0</span>,</span>
+<span class="line" id="L77">};</span>
+<span class="line" id="L78"></span>
+<span class="line" id="L79"><span class="tok-kw">const</span> tls_dtv_offset = <span class="tok-kw">switch</span> (native_arch) {</span>
+<span class="line" id="L80">    .mips, .mipsel, .mips64, .mips64el, .powerpc, .powerpc64, .powerpc64le =&gt; <span class="tok-number">0x8000</span>,</span>
+<span class="line" id="L81">    .riscv32, .riscv64 =&gt; <span class="tok-number">0x800</span>,</span>
+<span class="line" id="L82">    <span class="tok-kw">else</span> =&gt; <span class="tok-number">0</span>,</span>
+<span class="line" id="L83">};</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85"><span class="tok-comment">// Per-thread storage for Zig's use</span>
+</span>
+<span class="line" id="L86"><span class="tok-kw">const</span> CustomData = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L87">    dummy: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L88">};</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90"><span class="tok-comment">// Dynamic Thread Vector</span>
+</span>
+<span class="line" id="L91"><span class="tok-kw">const</span> DTV = <span class="tok-kw">extern</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L92">    entries: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L93">    tls_block: [<span class="tok-number">1</span>][*]<span class="tok-type">u8</span>,</span>
+<span class="line" id="L94">};</span>
+<span class="line" id="L95"></span>
+<span class="line" id="L96"><span class="tok-comment">// Holds all the information about the process TLS image</span>
+</span>
+<span class="line" id="L97"><span class="tok-kw">const</span> TLSImage = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L98">    init_data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L99">    alloc_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L100">    alloc_align: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L101">    tcb_offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L102">    dtv_offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L103">    data_offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L104">    data_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L105">    <span class="tok-comment">// Only used on the x86 architecture</span>
+</span>
+<span class="line" id="L106">    gdt_entry_number: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L107">};</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109"><span class="tok-kw">pub</span> <span class="tok-kw">var</span> tls_image: TLSImage = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setThreadPointer</span>(addr: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L112">    <span class="tok-kw">switch</span> (native_arch) {</span>
+<span class="line" id="L113">        .x86 =&gt; {</span>
+<span class="line" id="L114">            <span class="tok-kw">var</span> user_desc = std.os.linux.user_desc{</span>
+<span class="line" id="L115">                .entry_number = tls_image.gdt_entry_number,</span>
+<span class="line" id="L116">                .base_addr = addr,</span>
+<span class="line" id="L117">                .limit = <span class="tok-number">0xfffff</span>,</span>
+<span class="line" id="L118">                .flags = .{</span>
+<span class="line" id="L119">                    .seg_32bit = <span class="tok-number">1</span>,</span>
+<span class="line" id="L120">                    .contents = <span class="tok-number">0</span>, <span class="tok-comment">// Data</span>
+</span>
+<span class="line" id="L121">                    .read_exec_only = <span class="tok-number">0</span>,</span>
+<span class="line" id="L122">                    .limit_in_pages = <span class="tok-number">1</span>,</span>
+<span class="line" id="L123">                    .seg_not_present = <span class="tok-number">0</span>,</span>
+<span class="line" id="L124">                    .useable = <span class="tok-number">1</span>,</span>
+<span class="line" id="L125">                },</span>
+<span class="line" id="L126">            };</span>
+<span class="line" id="L127">            <span class="tok-kw">const</span> rc = std.os.linux.syscall1(.set_thread_area, <span class="tok-builtin">@intFromPtr</span>(&amp;user_desc));</span>
+<span class="line" id="L128">            assert(rc == <span class="tok-number">0</span>);</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">            <span class="tok-kw">const</span> gdt_entry_number = user_desc.entry_number;</span>
+<span class="line" id="L131">            <span class="tok-comment">// We have to keep track of our slot as it's also needed for clone()</span>
+</span>
+<span class="line" id="L132">            tls_image.gdt_entry_number = gdt_entry_number;</span>
+<span class="line" id="L133">            <span class="tok-comment">// Update the %gs selector</span>
+</span>
+<span class="line" id="L134">            <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (<span class="tok-str">&quot;movl %[gs_val], %%gs&quot;</span></span>
+<span class="line" id="L135">                :</span>
+<span class="line" id="L136">                : [gs_val] <span class="tok-str">&quot;r&quot;</span> (gdt_entry_number &lt;&lt; <span class="tok-number">3</span> | <span class="tok-number">3</span>),</span>
+<span class="line" id="L137">            );</span>
+<span class="line" id="L138">        },</span>
+<span class="line" id="L139">        .x86_64 =&gt; {</span>
+<span class="line" id="L140">            <span class="tok-kw">const</span> rc = std.os.linux.syscall2(.arch_prctl, std.os.linux.ARCH.SET_FS, addr);</span>
+<span class="line" id="L141">            assert(rc == <span class="tok-number">0</span>);</span>
+<span class="line" id="L142">        },</span>
+<span class="line" id="L143">        .aarch64, .aarch64_be =&gt; {</span>
+<span class="line" id="L144">            <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L145">                <span class="tok-str">\\ msr tpidr_el0, %[addr]</span></span>
+
+<span class="line" id="L146">                :</span>
+<span class="line" id="L147">                : [addr] <span class="tok-str">&quot;r&quot;</span> (addr),</span>
+<span class="line" id="L148">            );</span>
+<span class="line" id="L149">        },</span>
+<span class="line" id="L150">        .arm, .thumb =&gt; {</span>
+<span class="line" id="L151">            <span class="tok-kw">const</span> rc = std.os.linux.syscall1(.set_tls, addr);</span>
+<span class="line" id="L152">            assert(rc == <span class="tok-number">0</span>);</span>
+<span class="line" id="L153">        },</span>
+<span class="line" id="L154">        .riscv64 =&gt; {</span>
+<span class="line" id="L155">            <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L156">                <span class="tok-str">\\ mv tp, %[addr]</span></span>
+
+<span class="line" id="L157">                :</span>
+<span class="line" id="L158">                : [addr] <span class="tok-str">&quot;r&quot;</span> (addr),</span>
+<span class="line" id="L159">            );</span>
+<span class="line" id="L160">        },</span>
+<span class="line" id="L161">        .mips, .mipsel, .mips64, .mips64el =&gt; {</span>
+<span class="line" id="L162">            <span class="tok-kw">const</span> rc = std.os.linux.syscall1(.set_thread_area, addr);</span>
+<span class="line" id="L163">            assert(rc == <span class="tok-number">0</span>);</span>
+<span class="line" id="L164">        },</span>
+<span class="line" id="L165">        .powerpc, .powerpcle =&gt; {</span>
+<span class="line" id="L166">            <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L167">                <span class="tok-str">\\ mr 2, %[addr]</span></span>
+
+<span class="line" id="L168">                :</span>
+<span class="line" id="L169">                : [addr] <span class="tok-str">&quot;r&quot;</span> (addr),</span>
+<span class="line" id="L170">            );</span>
+<span class="line" id="L171">        },</span>
+<span class="line" id="L172">        .powerpc64, .powerpc64le =&gt; {</span>
+<span class="line" id="L173">            <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L174">                <span class="tok-str">\\ mr 13, %[addr]</span></span>
+
+<span class="line" id="L175">                :</span>
+<span class="line" id="L176">                : [addr] <span class="tok-str">&quot;r&quot;</span> (addr),</span>
+<span class="line" id="L177">            );</span>
+<span class="line" id="L178">        },</span>
+<span class="line" id="L179">        .sparc64 =&gt; {</span>
+<span class="line" id="L180">            <span class="tok-kw">asm</span> <span class="tok-kw">volatile</span> (</span>
+<span class="line" id="L181">                <span class="tok-str">\\ mov %[addr], %%g7</span></span>
+
+<span class="line" id="L182">                :</span>
+<span class="line" id="L183">                : [addr] <span class="tok-str">&quot;r&quot;</span> (addr),</span>
+<span class="line" id="L184">            );</span>
+<span class="line" id="L185">        },</span>
+<span class="line" id="L186">        <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported architecture&quot;</span>),</span>
+<span class="line" id="L187">    }</span>
+<span class="line" id="L188">}</span>
+<span class="line" id="L189"></span>
+<span class="line" id="L190"><span class="tok-kw">fn</span> <span class="tok-fn">initTLS</span>(phdrs: []elf.Phdr) <span class="tok-type">void</span> {</span>
+<span class="line" id="L191">    <span class="tok-kw">var</span> tls_phdr: ?*elf.Phdr = <span class="tok-null">null</span>;</span>
+<span class="line" id="L192">    <span class="tok-kw">var</span> img_base: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L193"></span>
+<span class="line" id="L194">    <span class="tok-kw">for</span> (phdrs) |*phdr| {</span>
+<span class="line" id="L195">        <span class="tok-kw">switch</span> (phdr.p_type) {</span>
+<span class="line" id="L196">            elf.PT_PHDR =&gt; img_base = <span class="tok-builtin">@intFromPtr</span>(phdrs.ptr) - phdr.p_vaddr,</span>
+<span class="line" id="L197">            elf.PT_TLS =&gt; tls_phdr = phdr,</span>
+<span class="line" id="L198">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L199">        }</span>
+<span class="line" id="L200">    }</span>
+<span class="line" id="L201"></span>
+<span class="line" id="L202">    <span class="tok-kw">var</span> tls_align_factor: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L203">    <span class="tok-kw">var</span> tls_data: []<span class="tok-kw">const</span> <span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L204">    <span class="tok-kw">var</span> tls_data_alloc_size: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L205">    <span class="tok-kw">if</span> (tls_phdr) |phdr| {</span>
+<span class="line" id="L206">        <span class="tok-comment">// The effective size in memory is represented by p_memsz, the length of</span>
+</span>
+<span class="line" id="L207">        <span class="tok-comment">// the data stored in the PT_TLS segment is p_filesz and may be less</span>
+</span>
+<span class="line" id="L208">        <span class="tok-comment">// than the former</span>
+</span>
+<span class="line" id="L209">        tls_align_factor = phdr.p_align;</span>
+<span class="line" id="L210">        tls_data = <span class="tok-builtin">@as</span>([*]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(img_base + phdr.p_vaddr))[<span class="tok-number">0</span>..phdr.p_filesz];</span>
+<span class="line" id="L211">        tls_data_alloc_size = phdr.p_memsz;</span>
+<span class="line" id="L212">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L213">        tls_align_factor = <span class="tok-builtin">@alignOf</span>(<span class="tok-type">usize</span>);</span>
+<span class="line" id="L214">        tls_data = &amp;[_]<span class="tok-type">u8</span>{};</span>
+<span class="line" id="L215">        tls_data_alloc_size = <span class="tok-number">0</span>;</span>
+<span class="line" id="L216">    }</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218">    <span class="tok-comment">// Offsets into the allocated TLS area</span>
+</span>
+<span class="line" id="L219">    <span class="tok-kw">var</span> tcb_offset: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L220">    <span class="tok-kw">var</span> dtv_offset: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L221">    <span class="tok-kw">var</span> data_offset: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L222">    <span class="tok-comment">// Compute the total size of the ABI-specific data plus our own control</span>
+</span>
+<span class="line" id="L223">    <span class="tok-comment">// structures. All the offset calculated here assume a well-aligned base</span>
+</span>
+<span class="line" id="L224">    <span class="tok-comment">// address.</span>
+</span>
+<span class="line" id="L225">    <span class="tok-kw">const</span> alloc_size = <span class="tok-kw">switch</span> (tls_variant) {</span>
+<span class="line" id="L226">        .VariantI =&gt; blk: {</span>
+<span class="line" id="L227">            <span class="tok-kw">var</span> l: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L228">            dtv_offset = l;</span>
+<span class="line" id="L229">            l += <span class="tok-builtin">@sizeOf</span>(DTV);</span>
+<span class="line" id="L230">            <span class="tok-comment">// Add some padding here so that the thread pointer (tcb_offset) is</span>
+</span>
+<span class="line" id="L231">            <span class="tok-comment">// aligned to p_align and the CustomData structure can be found by</span>
+</span>
+<span class="line" id="L232">            <span class="tok-comment">// simply subtracting its @sizeOf from the tp value</span>
+</span>
+<span class="line" id="L233">            <span class="tok-kw">const</span> delta = (l + <span class="tok-builtin">@sizeOf</span>(CustomData)) &amp; (tls_align_factor - <span class="tok-number">1</span>);</span>
+<span class="line" id="L234">            <span class="tok-kw">if</span> (delta &gt; <span class="tok-number">0</span>)</span>
+<span class="line" id="L235">                l += tls_align_factor - delta;</span>
+<span class="line" id="L236">            l += <span class="tok-builtin">@sizeOf</span>(CustomData);</span>
+<span class="line" id="L237">            tcb_offset = l;</span>
+<span class="line" id="L238">            l += mem.alignForward(<span class="tok-type">usize</span>, tls_tcb_size, tls_align_factor);</span>
+<span class="line" id="L239">            data_offset = l;</span>
+<span class="line" id="L240">            l += tls_data_alloc_size;</span>
+<span class="line" id="L241">            <span class="tok-kw">break</span> :blk l;</span>
+<span class="line" id="L242">        },</span>
+<span class="line" id="L243">        .VariantII =&gt; blk: {</span>
+<span class="line" id="L244">            <span class="tok-kw">var</span> l: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L245">            data_offset = l;</span>
+<span class="line" id="L246">            l += mem.alignForward(<span class="tok-type">usize</span>, tls_data_alloc_size, tls_align_factor);</span>
+<span class="line" id="L247">            <span class="tok-comment">// The thread pointer is aligned to p_align</span>
+</span>
+<span class="line" id="L248">            tcb_offset = l;</span>
+<span class="line" id="L249">            l += tls_tcb_size;</span>
+<span class="line" id="L250">            <span class="tok-comment">// The CustomData structure is right after the TCB with no padding</span>
+</span>
+<span class="line" id="L251">            <span class="tok-comment">// in between so it can be easily found</span>
+</span>
+<span class="line" id="L252">            l += <span class="tok-builtin">@sizeOf</span>(CustomData);</span>
+<span class="line" id="L253">            l = mem.alignForward(<span class="tok-type">usize</span>, l, <span class="tok-builtin">@alignOf</span>(DTV));</span>
+<span class="line" id="L254">            dtv_offset = l;</span>
+<span class="line" id="L255">            l += <span class="tok-builtin">@sizeOf</span>(DTV);</span>
+<span class="line" id="L256">            <span class="tok-kw">break</span> :blk l;</span>
+<span class="line" id="L257">        },</span>
+<span class="line" id="L258">    };</span>
+<span class="line" id="L259"></span>
+<span class="line" id="L260">    tls_image = TLSImage{</span>
+<span class="line" id="L261">        .init_data = tls_data,</span>
+<span class="line" id="L262">        .alloc_size = alloc_size,</span>
+<span class="line" id="L263">        .alloc_align = tls_align_factor,</span>
+<span class="line" id="L264">        .tcb_offset = tcb_offset,</span>
+<span class="line" id="L265">        .dtv_offset = dtv_offset,</span>
+<span class="line" id="L266">        .data_offset = data_offset,</span>
+<span class="line" id="L267">        .data_size = tls_data_alloc_size,</span>
+<span class="line" id="L268">        .gdt_entry_number = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, -<span class="tok-number">1</span>))),</span>
+<span class="line" id="L269">    };</span>
+<span class="line" id="L270">}</span>
+<span class="line" id="L271"></span>
+<span class="line" id="L272"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">alignPtrCast</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, ptr: [*]<span class="tok-type">u8</span>) *T {</span>
+<span class="line" id="L273">    <span class="tok-kw">return</span> <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(ptr));</span>
+<span class="line" id="L274">}</span>
+<span class="line" id="L275"></span>
+<span class="line" id="L276"><span class="tok-comment">/// Initializes all the fields of the static TLS area and returns the computed</span></span>
+<span class="line" id="L277"><span class="tok-comment">/// architecture-specific value of the thread-pointer register</span></span>
+<span class="line" id="L278"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">prepareTLS</span>(area: []<span class="tok-type">u8</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L279">    <span class="tok-comment">// Clear the area we're going to use, just to be safe</span>
+</span>
+<span class="line" id="L280">    <span class="tok-builtin">@memset</span>(area, <span class="tok-number">0</span>);</span>
+<span class="line" id="L281">    <span class="tok-comment">// Prepare the DTV</span>
+</span>
+<span class="line" id="L282">    <span class="tok-kw">const</span> dtv = alignPtrCast(DTV, area.ptr + tls_image.dtv_offset);</span>
+<span class="line" id="L283">    dtv.entries = <span class="tok-number">1</span>;</span>
+<span class="line" id="L284">    dtv.tls_block[<span class="tok-number">0</span>] = area.ptr + tls_dtv_offset + tls_image.data_offset;</span>
+<span class="line" id="L285">    <span class="tok-comment">// Prepare the TCB</span>
+</span>
+<span class="line" id="L286">    <span class="tok-kw">const</span> tcb_ptr = alignPtrCast([*]<span class="tok-type">u8</span>, area.ptr + tls_image.tcb_offset);</span>
+<span class="line" id="L287">    tcb_ptr.* = <span class="tok-kw">switch</span> (tls_variant) {</span>
+<span class="line" id="L288">        .VariantI =&gt; area.ptr + tls_image.dtv_offset,</span>
+<span class="line" id="L289">        .VariantII =&gt; area.ptr + tls_image.tcb_offset,</span>
+<span class="line" id="L290">    };</span>
+<span class="line" id="L291">    <span class="tok-comment">// Copy the data</span>
+</span>
+<span class="line" id="L292">    <span class="tok-builtin">@memcpy</span>(area[tls_image.data_offset..][<span class="tok-number">0</span>..tls_image.init_data.len], tls_image.init_data);</span>
+<span class="line" id="L293"></span>
+<span class="line" id="L294">    <span class="tok-comment">// Return the corrected value (if needed) for the tp register.</span>
+</span>
+<span class="line" id="L295">    <span class="tok-comment">// Overflow here is not a problem, the pointer arithmetic involving the tp</span>
+</span>
+<span class="line" id="L296">    <span class="tok-comment">// is done with wrapping semantics.</span>
+</span>
+<span class="line" id="L297">    <span class="tok-kw">return</span> <span class="tok-builtin">@intFromPtr</span>(area.ptr) +% tls_tp_offset +%</span>
+<span class="line" id="L298">        <span class="tok-kw">if</span> (tls_tp_points_past_tcb) tls_image.data_offset <span class="tok-kw">else</span> tls_image.tcb_offset;</span>
+<span class="line" id="L299">}</span>
+<span class="line" id="L300"></span>
+<span class="line" id="L301"><span class="tok-comment">// The main motivation for the size chosen here is this is how much ends up being</span>
+</span>
+<span class="line" id="L302"><span class="tok-comment">// requested for the thread local variables of the std.crypto.random implementation.</span>
+</span>
+<span class="line" id="L303"><span class="tok-comment">// I'm not sure why it ends up being so much; the struct itself is only 64 bytes.</span>
+</span>
+<span class="line" id="L304"><span class="tok-comment">// I think it has to do with being page aligned and LLVM or LLD is not smart enough</span>
+</span>
+<span class="line" id="L305"><span class="tok-comment">// to lay out the TLS data in a space conserving way. Anyway I think it's fine</span>
+</span>
+<span class="line" id="L306"><span class="tok-comment">// because it's less than 3 pages of memory, and putting it in the ELF like this</span>
+</span>
+<span class="line" id="L307"><span class="tok-comment">// is equivalent to moving the mmap call below into the kernel, avoiding syscall</span>
+</span>
+<span class="line" id="L308"><span class="tok-comment">// overhead.</span>
+</span>
+<span class="line" id="L309"><span class="tok-kw">var</span> main_thread_tls_buffer: [<span class="tok-number">0x2100</span>]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(mem.page_size) = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initStaticTLS</span>(phdrs: []elf.Phdr) <span class="tok-type">void</span> {</span>
+<span class="line" id="L312">    initTLS(phdrs);</span>
+<span class="line" id="L313"></span>
+<span class="line" id="L314">    <span class="tok-kw">const</span> tls_area = blk: {</span>
+<span class="line" id="L315">        <span class="tok-comment">// Fast path for the common case where the TLS data is really small,</span>
+</span>
+<span class="line" id="L316">        <span class="tok-comment">// avoid an allocation and use our local buffer.</span>
+</span>
+<span class="line" id="L317">        <span class="tok-kw">if</span> (tls_image.alloc_align &lt;= mem.page_size <span class="tok-kw">and</span></span>
+<span class="line" id="L318">            tls_image.alloc_size &lt;= main_thread_tls_buffer.len)</span>
+<span class="line" id="L319">        {</span>
+<span class="line" id="L320">            <span class="tok-kw">break</span> :blk main_thread_tls_buffer[<span class="tok-number">0</span>..tls_image.alloc_size];</span>
+<span class="line" id="L321">        }</span>
+<span class="line" id="L322"></span>
+<span class="line" id="L323">        <span class="tok-kw">const</span> alloc_tls_area = os.mmap(</span>
+<span class="line" id="L324">            <span class="tok-null">null</span>,</span>
+<span class="line" id="L325">            tls_image.alloc_size + tls_image.alloc_align - <span class="tok-number">1</span>,</span>
+<span class="line" id="L326">            os.PROT.READ | os.PROT.WRITE,</span>
+<span class="line" id="L327">            os.MAP.PRIVATE | os.MAP.ANONYMOUS,</span>
+<span class="line" id="L328">            -<span class="tok-number">1</span>,</span>
+<span class="line" id="L329">            <span class="tok-number">0</span>,</span>
+<span class="line" id="L330">        ) <span class="tok-kw">catch</span> os.abort();</span>
+<span class="line" id="L331"></span>
+<span class="line" id="L332">        <span class="tok-comment">// Make sure the slice is correctly aligned.</span>
+</span>
+<span class="line" id="L333">        <span class="tok-kw">const</span> begin_addr = <span class="tok-builtin">@intFromPtr</span>(alloc_tls_area.ptr);</span>
+<span class="line" id="L334">        <span class="tok-kw">const</span> begin_aligned_addr = mem.alignForward(<span class="tok-type">usize</span>, begin_addr, tls_image.alloc_align);</span>
+<span class="line" id="L335">        <span class="tok-kw">const</span> start = begin_aligned_addr - begin_addr;</span>
+<span class="line" id="L336">        <span class="tok-kw">break</span> :blk alloc_tls_area[start .. start + tls_image.alloc_size];</span>
+<span class="line" id="L337">    };</span>
+<span class="line" id="L338"></span>
+<span class="line" id="L339">    <span class="tok-kw">const</span> tp_value = prepareTLS(tls_area);</span>
+<span class="line" id="L340">    setThreadPointer(tp_value);</span>
+<span class="line" id="L341">}</span>
+<span class="line" id="L342"></span>
+</code></pre></body>
+</html>
