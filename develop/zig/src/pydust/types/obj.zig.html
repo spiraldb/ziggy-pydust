@@ -236,46 +236,48 @@
 <span class="line" id="L110">        <span class="tok-comment">/// Checked conversion from a PyObject.</span></span>
 <span class="line" id="L111">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checked</span>(obj: py.PyObject) !Self {</span>
 <span class="line" id="L112">            <span class="tok-kw">if</span> (PyCheck(obj.py) == <span class="tok-number">0</span>) {</span>
-<span class="line" id="L113">                <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;expected {s}, found {s}&quot;</span>, .{ name, <span class="tok-kw">try</span> (<span class="tok-kw">try</span> py.str(<span class="tok-kw">try</span> py.type_(obj))).asSlice() });</span>
-<span class="line" id="L114">            }</span>
-<span class="line" id="L115">            <span class="tok-kw">return</span> .{ .obj = obj };</span>
-<span class="line" id="L116">        }</span>
-<span class="line" id="L117"></span>
-<span class="line" id="L118">        <span class="tok-comment">/// Optionally downcast the object if it is of this type.</span></span>
-<span class="line" id="L119">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkedCast</span>(obj: py.PyObject) ?Self {</span>
-<span class="line" id="L120">            <span class="tok-kw">if</span> (PyCheck(obj.py) == <span class="tok-number">1</span>) {</span>
-<span class="line" id="L121">                <span class="tok-kw">return</span> .{ .obj = obj };</span>
-<span class="line" id="L122">            }</span>
-<span class="line" id="L123">            <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
-<span class="line" id="L124">        }</span>
-<span class="line" id="L125"></span>
-<span class="line" id="L126">        <span class="tok-comment">/// Unchecked conversion from a PyObject.</span></span>
-<span class="line" id="L127">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">unchecked</span>(obj: py.PyObject) Self {</span>
-<span class="line" id="L128">            <span class="tok-kw">return</span> .{ .obj = obj };</span>
-<span class="line" id="L129">        }</span>
-<span class="line" id="L130"></span>
-<span class="line" id="L131">        <span class="tok-comment">/// Increment the object's refcnt.</span></span>
-<span class="line" id="L132">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">incref</span>(self: Self) <span class="tok-type">void</span> {</span>
-<span class="line" id="L133">            self.obj.incref();</span>
-<span class="line" id="L134">        }</span>
-<span class="line" id="L135"></span>
-<span class="line" id="L136">        <span class="tok-comment">/// Decrement the object's refcnt.</span></span>
-<span class="line" id="L137">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decref</span>(self: Self) <span class="tok-type">void</span> {</span>
-<span class="line" id="L138">            self.obj.decref();</span>
-<span class="line" id="L139">        }</span>
-<span class="line" id="L140">    };</span>
-<span class="line" id="L141">}</span>
-<span class="line" id="L142"></span>
-<span class="line" id="L143"><span class="tok-kw">test</span> <span class="tok-str">&quot;call&quot;</span> {</span>
-<span class="line" id="L144">    py.initialize();</span>
-<span class="line" id="L145">    <span class="tok-kw">defer</span> py.finalize();</span>
-<span class="line" id="L146"></span>
-<span class="line" id="L147">    <span class="tok-kw">const</span> math = <span class="tok-kw">try</span> py.import(<span class="tok-str">&quot;math&quot;</span>);</span>
-<span class="line" id="L148">    <span class="tok-kw">defer</span> math.decref();</span>
-<span class="line" id="L149"></span>
-<span class="line" id="L150">    <span class="tok-kw">const</span> result = <span class="tok-kw">try</span> math.call(<span class="tok-type">f32</span>, <span class="tok-str">&quot;pow&quot;</span>, .{ <span class="tok-number">2</span>, <span class="tok-number">3</span> }, .{});</span>
-<span class="line" id="L151">    <span class="tok-kw">try</span> std.testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-number">8.0</span>), result);</span>
-<span class="line" id="L152">}</span>
-<span class="line" id="L153"></span>
+<span class="line" id="L113">                <span class="tok-kw">const</span> typeName = <span class="tok-kw">try</span> py.str(<span class="tok-kw">try</span> py.type_(obj));</span>
+<span class="line" id="L114">                <span class="tok-kw">defer</span> typeName.decref();</span>
+<span class="line" id="L115">                <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;expected {s}, found {s}&quot;</span>, .{ name, <span class="tok-kw">try</span> typeName.asSlice() });</span>
+<span class="line" id="L116">            }</span>
+<span class="line" id="L117">            <span class="tok-kw">return</span> .{ .obj = obj };</span>
+<span class="line" id="L118">        }</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120">        <span class="tok-comment">/// Optionally downcast the object if it is of this type.</span></span>
+<span class="line" id="L121">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkedCast</span>(obj: py.PyObject) ?Self {</span>
+<span class="line" id="L122">            <span class="tok-kw">if</span> (PyCheck(obj.py) == <span class="tok-number">1</span>) {</span>
+<span class="line" id="L123">                <span class="tok-kw">return</span> .{ .obj = obj };</span>
+<span class="line" id="L124">            }</span>
+<span class="line" id="L125">            <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L126">        }</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128">        <span class="tok-comment">/// Unchecked conversion from a PyObject.</span></span>
+<span class="line" id="L129">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">unchecked</span>(obj: py.PyObject) Self {</span>
+<span class="line" id="L130">            <span class="tok-kw">return</span> .{ .obj = obj };</span>
+<span class="line" id="L131">        }</span>
+<span class="line" id="L132"></span>
+<span class="line" id="L133">        <span class="tok-comment">/// Increment the object's refcnt.</span></span>
+<span class="line" id="L134">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">incref</span>(self: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L135">            self.obj.incref();</span>
+<span class="line" id="L136">        }</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138">        <span class="tok-comment">/// Decrement the object's refcnt.</span></span>
+<span class="line" id="L139">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decref</span>(self: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L140">            self.obj.decref();</span>
+<span class="line" id="L141">        }</span>
+<span class="line" id="L142">    };</span>
+<span class="line" id="L143">}</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145"><span class="tok-kw">test</span> <span class="tok-str">&quot;call&quot;</span> {</span>
+<span class="line" id="L146">    py.initialize();</span>
+<span class="line" id="L147">    <span class="tok-kw">defer</span> py.finalize();</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149">    <span class="tok-kw">const</span> math = <span class="tok-kw">try</span> py.import(<span class="tok-str">&quot;math&quot;</span>);</span>
+<span class="line" id="L150">    <span class="tok-kw">defer</span> math.decref();</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">    <span class="tok-kw">const</span> result = <span class="tok-kw">try</span> math.call(<span class="tok-type">f32</span>, <span class="tok-str">&quot;pow&quot;</span>, .{ <span class="tok-number">2</span>, <span class="tok-number">3</span> }, .{});</span>
+<span class="line" id="L153">    <span class="tok-kw">try</span> std.testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-number">8.0</span>), result);</span>
+<span class="line" id="L154">}</span>
+<span class="line" id="L155"></span>
 </code></pre></body>
 </html>
