@@ -232,10 +232,7 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
                     if (def.type == .class and sig.selfParam == null) {
                         ml_flags |= ffi.METH_STATIC;
                     }
-
-                    if (def.type == .class and sig.selfParam == py.PyType) {
-                        ml_flags |= ffi.METH_CLASS;
-                    }
+                    // TODO(ngates): check for METH_CLASS
 
                     if (sig.supportsKwargs()) {
                         ml_flags |= ffi.METH_KEYWORDS;
@@ -263,11 +260,11 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
             if (sig.argsParam) |Args| {
                 const args = try unwrapArgs(Args, pyargs, py.Kwargs.init(py.allocator));
-                const result = try tramp.coerceError(if (sig.selfParam) |_| func(self, args) else func(args));
-                return try py.createOwned(result);
+                const result = if (sig.selfParam) |_| func(self, args) else func(args);
+                return py.createOwned(tramp.coerceError(result));
             } else {
-                const result = try tramp.coerceError(if (sig.selfParam) |_| func(self) else func());
-                return try py.createOwned(result);
+                const result = if (sig.selfParam) |_| func(self) else func();
+                return py.createOwned(tramp.coerceError(result));
             }
         }
 
