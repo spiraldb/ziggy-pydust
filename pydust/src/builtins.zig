@@ -303,7 +303,7 @@ fn lift(comptime PydustStruct: type) !py.PyObject {
     }
 
     // Grab the attribute using the final part of the qualified name.
-    return mod.getAs(py.PyObject, qualName[qualName.len - 1]);
+    return mod.get(qualName[qualName.len - 1]);
 }
 
 const testing = std.testing;

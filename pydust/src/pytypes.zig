@@ -50,8 +50,7 @@ pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
             if (bases.bases.len > 0) {
                 const basesTuple = try py.PyTuple.new(bases.bases.len);
                 inline for (bases.bases, 0..) |base, i| {
-                    const baseType = try module.obj.get(State.getIdentifier(base).name);
-                    try basesTuple.setOwnedItem(i, baseType);
+                    try basesTuple.setOwnedItem(i, (try py.self(base)).obj);
                 }
                 basesPtr = basesTuple.obj.py;
             }

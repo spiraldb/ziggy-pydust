@@ -145,7 +145,6 @@ pub const ZigOnlyMethod = py.class(struct {
 });
 // --8<-- [end:zigonly]
 
-// --8<-- [start:zigonly]
 pub const Hash = py.class(struct {
     const Self = @This();
     number: u32,
@@ -160,7 +159,6 @@ pub const Hash = py.class(struct {
         return hasher.final();
     }
 });
-// --8<-- [end:zigonly]
 
 comptime {
     py.rootmodule(@This());
