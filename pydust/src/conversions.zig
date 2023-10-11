@@ -23,8 +23,6 @@ pub inline fn object(value: anytype) py.PyObject {
 /// For Zig primitives, this constructs a new Python object.
 /// For PyObject-like values, this returns the value without creating a new reference.
 pub inline fn createOwned(value: anytype) py.PyError!py.PyObject {
-    // FIXME(ngates): we need to prevent wrapping up any allocated Zig types since this function
-    // claims to take ownership.
     const trampoline = tramp.Trampoline(@TypeOf(value));
     defer trampoline.decref_objectlike(value);
     return trampoline.wrap(value);
