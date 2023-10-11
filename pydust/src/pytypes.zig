@@ -617,7 +617,7 @@ fn EqualsOperator(
             // then we can short-cut and return not-equal.
             if (Other == *const definition) {
                 // TODO(ngates): #193
-                const selfType = py.lift(definition) catch return null;
+                const selfType = py.self(definition) catch return null;
                 defer selfType.decref();
 
                 const isSubclass = py.isinstance(pyother, selfType) catch return null;

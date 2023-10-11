@@ -174,13 +174,13 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
 
 /// Instantiate a class defined in Pydust.
 pub inline fn init(comptime Cls: type, args: Cls) PyError!*Cls {
-    const pytype = try lift(Cls);
+    const pytype = try self(Cls);
     defer pytype.decref();
 
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
     // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
-    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.PyRaised));
+    const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.obj.py), 0) orelse return PyError.PyRaised));
     pyobj.state = args;
 
     return &pyobj.state;
@@ -214,7 +214,8 @@ pub fn moduleState(comptime Module: type) !*const Module {
     if (State.getDefinition(Module).type != .module) {
         @compileError("Not a module definition: " ++ Module);
     }
-    const mod = try liftAs(py.PyModule, Module);
+
+    const mod = py.PyModule.unchecked(try lift(Module));
     defer mod.decref();
 
     return mod.getState(Module);
@@ -251,6 +252,14 @@ pub fn repr(object: anytype) !py.PyString {
     return py.PyString.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.PyRaised });
 }
 
+/// Returns the PyType object representing the given Pydust class.
+pub fn self(comptime Class: type) !py.PyType {
+    if (State.getDefinition(Class).type != .class) {
+        @compileError("Not a class definition: " ++ Class);
+    }
+    return py.PyType.unchecked(try lift(Class));
+}
+
 /// The equivalent of Python's super() builtin. Returns a PyObject.
 pub fn super(comptime Super: type, selfInstance: anytype) !py.PyObject {
     const mod = State.getContaining(Super, .module);
@@ -279,7 +288,7 @@ pub fn type_(object: anytype) !py.PyType {
 
 /// Lifts a Pydust struct into its corresponding runtime Python object.
 /// Returns a new reference.
-pub fn lift(comptime PydustStruct: type) !py.PyObject {
+fn lift(comptime PydustStruct: type) !py.PyObject {
     // Grab the qualified name, importing the root module first.
     comptime var qualName = State.getIdentifier(PydustStruct).qualifiedName;
 
@@ -295,11 +304,6 @@ pub fn lift(comptime PydustStruct: type) !py.PyObject {
 
     // Grab the attribute using the final part of the qualified name.
     return mod.getAs(py.PyObject, qualName[qualName.len - 1]);
-}
-
-/// Lifts a Pydust struct into its corresponding runtime Python object. Returns a new reference.
-pub fn liftAs(comptime T: type, comptime PydustStruct: type) !T {
-    return py.as(T, try lift(PydustStruct));
 }
 
 const testing = std.testing;

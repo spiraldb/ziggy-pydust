@@ -224,7 +224,7 @@ pub fn Trampoline(comptime T: type) type {
                         // If the pointer is for a Pydust class
                         if (def.type == .class) {
                             // TODO(ngates): #193
-                            const Cls = try py.lift(p.child);
+                            const Cls = try py.self(p.child);
                             defer Cls.decref();
 
                             if (!try py.isinstance(obj, Cls)) {
