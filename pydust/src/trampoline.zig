@@ -244,9 +244,9 @@ pub fn Trampoline(comptime T: type) type {
                     }
 
                     // We make the assumption that []const u8 is converted from a PyString
-                    //if (p.child == u8 and p.size == .Slice and p.is_const) {
-                    //   return (try py.PyString.checked(obj)).asSlice();
-                    //}
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
+                        return (try py.PyString.checked(obj)).asSlice();
+                    }
 
                     @compileError("Unsupported pointer type " ++ @typeName(p.child));
                 },

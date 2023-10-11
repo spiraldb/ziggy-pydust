@@ -232,7 +232,10 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
                     if (def.type == .class and sig.selfParam == null) {
                         ml_flags |= ffi.METH_STATIC;
                     }
-                    // TODO(ngates): check for METH_CLASS
+
+                    if (def.type == .class and sig.selfParam == py.PyType) {
+                        ml_flags |= ffi.METH_CLASS;
+                    }
 
                     if (sig.supportsKwargs()) {
                         ml_flags |= ffi.METH_KEYWORDS;

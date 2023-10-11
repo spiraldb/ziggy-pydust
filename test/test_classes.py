@@ -12,6 +12,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import sys
+
 import pytest
 
 from example import classes
@@ -79,3 +81,10 @@ def test_attributes():
 def test_hash():
     h = classes.Hash(42)
     assert hash(h) == -7849439630130923510
+
+
+def test_refcnt():
+    # Verify that initializing a class does not leak a reference to the module.
+    rc = sys.getrefcount(classes)
+    classes.Hash(42)
+    assert sys.getrefcount(classes) == rc

@@ -214,7 +214,10 @@ pub fn moduleState(comptime Module: type) !*const Module {
     if (State.getDefinition(Module).type != .module) {
         @compileError("Not a module definition: " ++ Module);
     }
-    return try liftAs(*const Module, Module);
+    const mod = try liftAs(py.PyModule, Module);
+    defer mod.decref();
+
+    return mod.getState(Module);
 }
 
 /// Return the next item of an iterator. Equivalent to next(obj) in Python.
@@ -281,22 +284,20 @@ pub fn lift(comptime PydustStruct: type) !py.PyObject {
     comptime var qualName = State.getIdentifier(PydustStruct).qualifiedName;
 
     const root = try import(qualName[0]);
+    defer root.decref();
 
     // Recursively resolve submodules / nested classes
     var mod = root;
     inline for (qualName[1 .. qualName.len - 1]) |part| {
-        const old_mod = mod;
-        mod = try old_mod.get(part);
-        old_mod.decref();
+        mod = try mod.get(part);
+        defer mod.decref(); // Inline loop so this runs at the end of the function.
     }
-
-    std.debug.print("MOD REFCNT: {}\n", .{py.refcnt(mod)});
 
     // Grab the attribute using the final part of the qualified name.
     return mod.getAs(py.PyObject, qualName[qualName.len - 1]);
 }
 
-/// Lifts a Pydust struct into its corresponding runtime Python object.
+/// Lifts a Pydust struct into its corresponding runtime Python object. Returns a new reference.
 pub fn liftAs(comptime T: type, comptime PydustStruct: type) !T {
     return py.as(T, try lift(PydustStruct));
 }
