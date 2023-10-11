@@ -258,7 +258,7 @@ pub fn tuple(object: anytype) !py.PyTuple {
 pub fn type_(object: anytype) !py.PyType {
     return .{ .obj = .{ .py = @as(
         ?*ffi.PyObject,
-        @ptrCast(@alignCast(ffi.Py_TYPE(py.object(object).py))),
+        @ptrCast(@alignCast(py.object(object).py.ob_type)),
     ) orelse return PyError.PyRaised } };
 }
 
