@@ -40,6 +40,12 @@ pub inline fn as(comptime T: type, obj: anytype) py.PyError!T {
     return tramp.Trampoline(T).unwrap(object(obj));
 }
 
+/// Python -> Zig. Return a Zig object representing the Python object. Steals the reference.
+pub inline fn asOwned(comptime T: type, obj: anytype) py.PyError!T {
+    defer tramp.Trampoline(T).decref_objectlike(obj);
+    return as(T, obj);
+}
+
 const testing = @import("std").testing;
 const expect = testing.expect;
 

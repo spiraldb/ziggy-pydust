@@ -286,9 +286,8 @@ pub fn lift(comptime PydustStruct: type) !py.PyObject {
     var mod = root;
     inline for (qualName[1 .. qualName.len - 1]) |part| {
         const old_mod = mod;
-        defer old_mod.decref();
-
         mod = try old_mod.get(part);
+        old_mod.decref();
     }
 
     std.debug.print("MOD REFCNT: {}\n", .{py.refcnt(mod)});
