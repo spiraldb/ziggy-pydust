@@ -210,7 +210,7 @@ pub fn len(object: anytype) !usize {
 }
 
 /// Return the runtime module state for a Pydust module definition.
-pub fn moduleState(comptime Module: type) !*const Module {
+pub fn moduleState(comptime Module: type) !*Module {
     if (State.getDefinition(Module).type != .module) {
         @compileError("Not a module definition: " ++ Module);
     }
@@ -279,6 +279,8 @@ pub fn tuple(object: anytype) !py.PyTuple {
     return py.PyTuple.unchecked(.{ .py = pytuple });
 }
 
+/// Return the PyType object for a given Python object.
+/// Returns a borrowed reference.
 pub fn type_(object: anytype) !py.PyType {
     return .{ .obj = .{ .py = @as(
         ?*ffi.PyObject,
