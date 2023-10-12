@@ -281,11 +281,11 @@ pub fn tuple(object: anytype) !py.PyTuple {
 
 /// Return the PyType object for a given Python object.
 /// Returns a borrowed reference.
-pub fn type_(object: anytype) !py.PyType {
+pub fn type_(object: anytype) py.PyType {
     return .{ .obj = .{ .py = @as(
         ?*ffi.PyObject,
         @ptrCast(@alignCast(py.object(object).py.ob_type)),
-    ) orelse return PyError.PyRaised } };
+    ) } };
 }
 
 /// Lifts a Pydust struct into its corresponding runtime Python object.
