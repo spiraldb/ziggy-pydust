@@ -110,7 +110,7 @@ pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, com
         /// Checked conversion from a PyObject.
         pub fn checked(obj: py.PyObject) !Self {
             if (PyCheck(obj.py) == 0) {
-                const typeName = try py.str(try py.type_(obj));
+                const typeName = try py.str(py.type_(obj));
                 defer typeName.decref();
                 return py.TypeError.raiseFmt("expected {s}, found {s}", .{ name, try typeName.asSlice() });
             }

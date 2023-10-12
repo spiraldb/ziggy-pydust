@@ -57,6 +57,6 @@ test "PyType" {
 
     const sio = try py.call0(py.PyObject, StringIO);
     defer sio.decref();
-    const sioType = try py.type_(sio);
+    const sioType = py.type_(sio);
     try std.testing.expectEqualSlices(u8, "StringIO", try (try sioType.name()).asSlice());
 }
