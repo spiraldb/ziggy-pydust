@@ -285,7 +285,7 @@ pub fn type_(object: anytype) py.PyType {
     return .{ .obj = .{ .py = @as(
         ?*ffi.PyObject,
         @ptrCast(@alignCast(py.object(object).py.ob_type)),
-    ) } };
+    ).? } };
 }
 
 /// Lifts a Pydust struct into its corresponding runtime Python object.
