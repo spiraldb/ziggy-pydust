@@ -60,6 +60,13 @@ pub const PyObject = extern struct {
         return try py.as(T, try self.get(attrName));
     }
 
+    /// Checks whether object has given attribute
+    pub fn has(self: PyObject, attrName: []const u8) !bool {
+        const attrStr = try py.PyString.create(attrName);
+        defer attrStr.decref();
+        return ffi.PyObject_HasAttr(self.py, attrStr.obj.py) == 1;
+    }
+
     // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
     pub fn getBuffer(self: py.PyObject, flags: c_int) !py.PyBuffer {
         if (ffi.PyObject_CheckBuffer(self.py) != 1) {
@@ -151,4 +158,14 @@ test "call" {
 
     const result = try math.call(f32, "pow", .{ 2, 3 }, .{});
     try std.testing.expectEqual(@as(f32, 8.0), result);
+}
+
+test "has" {
+    py.initialize();
+    defer py.finalize();
+
+    const math = try py.import("math");
+    defer math.decref();
+
+    try std.testing.expect(try math.has("pow"));
 }
