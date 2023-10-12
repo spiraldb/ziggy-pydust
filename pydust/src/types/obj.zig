@@ -159,3 +159,13 @@ test "call" {
     const result = try math.call(f32, "pow", .{ 2, 3 }, .{});
     try std.testing.expectEqual(@as(f32, 8.0), result);
 }
+
+test "has" {
+    py.initialize();
+    defer py.finalize();
+
+    const math = try py.import("math");
+    defer math.decref();
+
+    try std.testing.expect(try math.has("pow"));
+}
