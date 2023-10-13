@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>heap/logging_allocator.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-comment">/// This allocator is used in front of another allocator and logs to `std.log`</span></span>
+<span class="line" id="L5"><span class="tok-comment">/// on every call to the allocator.</span></span>
+<span class="line" id="L6"><span class="tok-comment">/// For logging to a `std.io.Writer` see `std.heap.LogToWriterAllocator`</span></span>
+<span class="line" id="L7"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">LoggingAllocator</span>(</span>
+<span class="line" id="L8">    <span class="tok-kw">comptime</span> success_log_level: std.log.Level,</span>
+<span class="line" id="L9">    <span class="tok-kw">comptime</span> failure_log_level: std.log.Level,</span>
+<span class="line" id="L10">) <span class="tok-type">type</span> {</span>
+<span class="line" id="L11">    <span class="tok-kw">return</span> ScopedLoggingAllocator(.default, success_log_level, failure_log_level);</span>
+<span class="line" id="L12">}</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-comment">/// This allocator is used in front of another allocator and logs to `std.log`</span></span>
+<span class="line" id="L15"><span class="tok-comment">/// with the given scope on every call to the allocator.</span></span>
+<span class="line" id="L16"><span class="tok-comment">/// For logging to a `std.io.Writer` see `std.heap.LogToWriterAllocator`</span></span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">ScopedLoggingAllocator</span>(</span>
+<span class="line" id="L18">    <span class="tok-kw">comptime</span> scope: <span class="tok-builtin">@Type</span>(.EnumLiteral),</span>
+<span class="line" id="L19">    <span class="tok-kw">comptime</span> success_log_level: std.log.Level,</span>
+<span class="line" id="L20">    <span class="tok-kw">comptime</span> failure_log_level: std.log.Level,</span>
+<span class="line" id="L21">) <span class="tok-type">type</span> {</span>
+<span class="line" id="L22">    <span class="tok-kw">const</span> log = std.log.scoped(scope);</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L25">        parent_allocator: Allocator,</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(parent_allocator: Allocator) Self {</span>
+<span class="line" id="L30">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L31">                .parent_allocator = parent_allocator,</span>
+<span class="line" id="L32">            };</span>
+<span class="line" id="L33">        }</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">allocator</span>(self: *Self) Allocator {</span>
+<span class="line" id="L36">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L37">                .ptr = self,</span>
+<span class="line" id="L38">                .vtable = &amp;.{</span>
+<span class="line" id="L39">                    .alloc = alloc,</span>
+<span class="line" id="L40">                    .resize = resize,</span>
+<span class="line" id="L41">                    .free = free,</span>
+<span class="line" id="L42">                },</span>
+<span class="line" id="L43">            };</span>
+<span class="line" id="L44">        }</span>
+<span class="line" id="L45"></span>
+<span class="line" id="L46">        <span class="tok-comment">// This function is required as the `std.log.log` function is not public</span>
+</span>
+<span class="line" id="L47">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">logHelper</span>(<span class="tok-kw">comptime</span> log_level: std.log.Level, <span class="tok-kw">comptime</span> format: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, args: <span class="tok-kw">anytype</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L48">            <span class="tok-kw">switch</span> (log_level) {</span>
+<span class="line" id="L49">                .err =&gt; log.err(format, args),</span>
+<span class="line" id="L50">                .warn =&gt; log.warn(format, args),</span>
+<span class="line" id="L51">                .info =&gt; log.info(format, args),</span>
+<span class="line" id="L52">                .debug =&gt; log.debug(format, args),</span>
+<span class="line" id="L53">            }</span>
+<span class="line" id="L54">        }</span>
+<span class="line" id="L55"></span>
+<span class="line" id="L56">        <span class="tok-kw">fn</span> <span class="tok-fn">alloc</span>(</span>
+<span class="line" id="L57">            ctx: *<span class="tok-type">anyopaque</span>,</span>
+<span class="line" id="L58">            len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L59">            log2_ptr_align: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L60">            ra: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L61">        ) ?[*]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L62">            <span class="tok-kw">const</span> self: *Self = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(ctx));</span>
+<span class="line" id="L63">            <span class="tok-kw">const</span> result = self.parent_allocator.rawAlloc(len, log2_ptr_align, ra);</span>
+<span class="line" id="L64">            <span class="tok-kw">if</span> (result != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L65">                logHelper(</span>
+<span class="line" id="L66">                    success_log_level,</span>
+<span class="line" id="L67">                    <span class="tok-str">&quot;alloc - success - len: {}, ptr_align: {}&quot;</span>,</span>
+<span class="line" id="L68">                    .{ len, log2_ptr_align },</span>
+<span class="line" id="L69">                );</span>
+<span class="line" id="L70">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L71">                logHelper(</span>
+<span class="line" id="L72">                    failure_log_level,</span>
+<span class="line" id="L73">                    <span class="tok-str">&quot;alloc - failure: OutOfMemory - len: {}, ptr_align: {}&quot;</span>,</span>
+<span class="line" id="L74">                    .{ len, log2_ptr_align },</span>
+<span class="line" id="L75">                );</span>
+<span class="line" id="L76">            }</span>
+<span class="line" id="L77">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L78">        }</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">        <span class="tok-kw">fn</span> <span class="tok-fn">resize</span>(</span>
+<span class="line" id="L81">            ctx: *<span class="tok-type">anyopaque</span>,</span>
+<span class="line" id="L82">            buf: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L83">            log2_buf_align: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L84">            new_len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L85">            ra: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L86">        ) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L87">            <span class="tok-kw">const</span> self: *Self = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(ctx));</span>
+<span class="line" id="L88">            <span class="tok-kw">if</span> (self.parent_allocator.rawResize(buf, log2_buf_align, new_len, ra)) {</span>
+<span class="line" id="L89">                <span class="tok-kw">if</span> (new_len &lt;= buf.len) {</span>
+<span class="line" id="L90">                    logHelper(</span>
+<span class="line" id="L91">                        success_log_level,</span>
+<span class="line" id="L92">                        <span class="tok-str">&quot;shrink - success - {} to {}, buf_align: {}&quot;</span>,</span>
+<span class="line" id="L93">                        .{ buf.len, new_len, log2_buf_align },</span>
+<span class="line" id="L94">                    );</span>
+<span class="line" id="L95">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L96">                    logHelper(</span>
+<span class="line" id="L97">                        success_log_level,</span>
+<span class="line" id="L98">                        <span class="tok-str">&quot;expand - success - {} to {}, buf_align: {}&quot;</span>,</span>
+<span class="line" id="L99">                        .{ buf.len, new_len, log2_buf_align },</span>
+<span class="line" id="L100">                    );</span>
+<span class="line" id="L101">                }</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103">                <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L104">            }</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106">            std.debug.assert(new_len &gt; buf.len);</span>
+<span class="line" id="L107">            logHelper(</span>
+<span class="line" id="L108">                failure_log_level,</span>
+<span class="line" id="L109">                <span class="tok-str">&quot;expand - failure - {} to {}, buf_align: {}&quot;</span>,</span>
+<span class="line" id="L110">                .{ buf.len, new_len, log2_buf_align },</span>
+<span class="line" id="L111">            );</span>
+<span class="line" id="L112">            <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L113">        }</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115">        <span class="tok-kw">fn</span> <span class="tok-fn">free</span>(</span>
+<span class="line" id="L116">            ctx: *<span class="tok-type">anyopaque</span>,</span>
+<span class="line" id="L117">            buf: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L118">            log2_buf_align: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L119">            ra: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L120">        ) <span class="tok-type">void</span> {</span>
+<span class="line" id="L121">            <span class="tok-kw">const</span> self: *Self = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(ctx));</span>
+<span class="line" id="L122">            self.parent_allocator.rawFree(buf, log2_buf_align, ra);</span>
+<span class="line" id="L123">            logHelper(success_log_level, <span class="tok-str">&quot;free - len: {}&quot;</span>, .{buf.len});</span>
+<span class="line" id="L124">        }</span>
+<span class="line" id="L125">    };</span>
+<span class="line" id="L126">}</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128"><span class="tok-comment">/// This allocator is used in front of another allocator and logs to `std.log`</span></span>
+<span class="line" id="L129"><span class="tok-comment">/// on every call to the allocator.</span></span>
+<span class="line" id="L130"><span class="tok-comment">/// For logging to a `std.io.Writer` see `std.heap.LogToWriterAllocator`</span></span>
+<span class="line" id="L131"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">loggingAllocator</span>(parent_allocator: Allocator) LoggingAllocator(.debug, .err) {</span>
+<span class="line" id="L132">    <span class="tok-kw">return</span> LoggingAllocator(.debug, .err).init(parent_allocator);</span>
+<span class="line" id="L133">}</span>
+<span class="line" id="L134"></span>
+</code></pre></body>
+</html>
