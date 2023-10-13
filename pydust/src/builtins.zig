@@ -299,12 +299,14 @@ fn lift(comptime PydustStruct: type) !py.PyObject {
     // Recursively resolve submodules / nested classes
     if (comptime qualName.len > 1) {
         inline for (qualName[1 .. qualName.len - 1]) |part| {
-            defer mod.decref();
+            const prev_mod = mod;
             mod = try mod.get(part);
+            prev_mod.decref();
         }
 
-        defer mod.decref();
+        const prev_mod = mod;
         mod = try mod.get(qualName[qualName.len - 1]);
+        prev_mod.decref();
     }
 
     // Grab the attribute using the final part of the qualified name.
