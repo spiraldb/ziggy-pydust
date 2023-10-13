@@ -294,18 +294,21 @@ fn lift(comptime PydustStruct: type) !py.PyObject {
     // Grab the qualified name, importing the root module first.
     comptime var qualName = State.getIdentifier(PydustStruct).qualifiedName;
 
-    const root = try import(qualName[0]);
-    defer root.decref();
+    var mod = try import(qualName[0]);
 
     // Recursively resolve submodules / nested classes
-    var mod = root;
-    inline for (qualName[1 .. qualName.len - 1]) |part| {
-        mod = try mod.get(part);
-        defer mod.decref(); // Inline loop so this runs at the end of the function.
+    if (comptime qualName.len > 1) {
+        inline for (qualName[1 .. qualName.len - 1]) |part| {
+            defer mod.decref();
+            mod = try mod.get(part);
+        }
+
+        defer mod.decref();
+        mod = try mod.get(qualName[qualName.len - 1]);
     }
 
     // Grab the attribute using the final part of the qualified name.
-    return mod.get(qualName[qualName.len - 1]);
+    return mod;
 }
 
 const testing = std.testing;
