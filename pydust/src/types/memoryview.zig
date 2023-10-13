@@ -28,11 +28,7 @@ pub const PyMemoryView = extern struct {
 
     pub fn fromSlice(slice: anytype) !PyMemoryView {
         const sliceType = Slice(@TypeOf(slice));
-        var flag = PyMemoryView.Flags.PyBUF_READ;
-        if (!std.meta.trait.isConstPtr(sliceType)) {
-            flag = PyMemoryView.Flags.PyBUF_WRITE;
-        }
-
+        const flag = if (std.meta.trait.isConstPtr(sliceType)) PyMemoryView.Flags.PyBUF_READ else PyMemoryView.Flags.PyBUF_WRITE;
         return .{ .obj = .{
             .py = py.ffi.PyMemoryView_FromMemory(@constCast(slice.ptr), @intCast(slice.len), flag) orelse return py.PyError.PyRaised,
         } };
