@@ -20,6 +20,7 @@ pub usingnamespace @import("types/gil.zig");
 pub usingnamespace @import("types/iter.zig");
 pub usingnamespace @import("types/list.zig");
 pub usingnamespace @import("types/long.zig");
+pub usingnamespace @import("types/memoryview.zig");
 pub usingnamespace @import("types/module.zig");
 pub usingnamespace @import("types/obj.zig");
 pub usingnamespace @import("types/slice.zig");
