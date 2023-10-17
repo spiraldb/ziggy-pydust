@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>compress/lzma.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> decode = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;lzma/decode.zig&quot;</span>);</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decompress</span>(</span>
+<span class="line" id="L9">    allocator: Allocator,</span>
+<span class="line" id="L10">    reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L11">) !Decompress(<span class="tok-builtin">@TypeOf</span>(reader)) {</span>
+<span class="line" id="L12">    <span class="tok-kw">return</span> decompressWithOptions(allocator, reader, .{});</span>
+<span class="line" id="L13">}</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decompressWithOptions</span>(</span>
+<span class="line" id="L16">    allocator: Allocator,</span>
+<span class="line" id="L17">    reader: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L18">    options: decode.Options,</span>
+<span class="line" id="L19">) !Decompress(<span class="tok-builtin">@TypeOf</span>(reader)) {</span>
+<span class="line" id="L20">    <span class="tok-kw">const</span> params = <span class="tok-kw">try</span> decode.Params.readHeader(reader, options);</span>
+<span class="line" id="L21">    <span class="tok-kw">return</span> Decompress(<span class="tok-builtin">@TypeOf</span>(reader)).init(allocator, reader, params, options.memlimit);</span>
+<span class="line" id="L22">}</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Decompress</span>(<span class="tok-kw">comptime</span> ReaderType: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L25">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L26">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error =</span>
+<span class="line" id="L29">            ReaderType.Error ||</span>
+<span class="line" id="L30">            Allocator.Error ||</span>
+<span class="line" id="L31">            <span class="tok-kw">error</span>{ CorruptInput, EndOfStream, Overflow };</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Reader = std.io.Reader(*Self, Error, read);</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">        allocator: Allocator,</span>
+<span class="line" id="L36">        in_reader: ReaderType,</span>
+<span class="line" id="L37">        to_read: std.ArrayListUnmanaged(<span class="tok-type">u8</span>),</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39">        buffer: decode.lzbuffer.LzCircularBuffer,</span>
+<span class="line" id="L40">        decoder: decode.rangecoder.RangeDecoder,</span>
+<span class="line" id="L41">        state: decode.DecoderState,</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(allocator: Allocator, source: ReaderType, params: decode.Params, memlimit: ?<span class="tok-type">usize</span>) !Self {</span>
+<span class="line" id="L44">            <span class="tok-kw">return</span> Self{</span>
+<span class="line" id="L45">                .allocator = allocator,</span>
+<span class="line" id="L46">                .in_reader = source,</span>
+<span class="line" id="L47">                .to_read = .{},</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">                .buffer = decode.lzbuffer.LzCircularBuffer.init(params.dict_size, memlimit <span class="tok-kw">orelse</span> math.maxInt(<span class="tok-type">usize</span>)),</span>
+<span class="line" id="L50">                .decoder = <span class="tok-kw">try</span> decode.rangecoder.RangeDecoder.init(source),</span>
+<span class="line" id="L51">                .state = <span class="tok-kw">try</span> decode.DecoderState.init(allocator, params.properties, params.unpacked_size),</span>
+<span class="line" id="L52">            };</span>
+<span class="line" id="L53">        }</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reader</span>(self: *Self) Reader {</span>
+<span class="line" id="L56">            <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L57">        }</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L60">            self.to_read.deinit(self.allocator);</span>
+<span class="line" id="L61">            self.buffer.deinit(self.allocator);</span>
+<span class="line" id="L62">            self.state.deinit(self.allocator);</span>
+<span class="line" id="L63">            self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L64">        }</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(self: *Self, output: []<span class="tok-type">u8</span>) Error!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L67">            <span class="tok-kw">const</span> writer = self.to_read.writer(self.allocator);</span>
+<span class="line" id="L68">            <span class="tok-kw">while</span> (self.to_read.items.len &lt; output.len) {</span>
+<span class="line" id="L69">                <span class="tok-kw">switch</span> (<span class="tok-kw">try</span> self.state.process(self.allocator, self.in_reader, writer, &amp;self.buffer, &amp;self.decoder)) {</span>
+<span class="line" id="L70">                    .continue_ =&gt; {},</span>
+<span class="line" id="L71">                    .finished =&gt; {</span>
+<span class="line" id="L72">                        <span class="tok-kw">try</span> self.buffer.finish(writer);</span>
+<span class="line" id="L73">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L74">                    },</span>
+<span class="line" id="L75">                }</span>
+<span class="line" id="L76">            }</span>
+<span class="line" id="L77">            <span class="tok-kw">const</span> input = self.to_read.items;</span>
+<span class="line" id="L78">            <span class="tok-kw">const</span> n = <span class="tok-builtin">@min</span>(input.len, output.len);</span>
+<span class="line" id="L79">            <span class="tok-builtin">@memcpy</span>(output[<span class="tok-number">0</span>..n], input[<span class="tok-number">0</span>..n]);</span>
+<span class="line" id="L80">            <span class="tok-builtin">@memcpy</span>(input[<span class="tok-number">0</span> .. input.len - n], input[n..]);</span>
+<span class="line" id="L81">            self.to_read.shrinkRetainingCapacity(input.len - n);</span>
+<span class="line" id="L82">            <span class="tok-kw">return</span> n;</span>
+<span class="line" id="L83">        }</span>
+<span class="line" id="L84">    };</span>
+<span class="line" id="L85">}</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87"><span class="tok-kw">test</span> {</span>
+<span class="line" id="L88">    _ = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;lzma/test.zig&quot;</span>);</span>
+<span class="line" id="L89">    _ = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;lzma/vec2d.zig&quot;</span>);</span>
+<span class="line" id="L90">}</span>
+<span class="line" id="L91"></span>
+</code></pre></body>
+</html>

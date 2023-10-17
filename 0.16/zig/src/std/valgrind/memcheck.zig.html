@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>valgrind/memcheck.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> valgrind = std.valgrind;</span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> MemCheckClientRequest = <span class="tok-kw">enum</span>(<span class="tok-type">usize</span>) {</span>
+<span class="line" id="L6">    MakeMemNoAccess = valgrind.ToolBase(<span class="tok-str">&quot;MC&quot;</span>.*),</span>
+<span class="line" id="L7">    MakeMemUndefined,</span>
+<span class="line" id="L8">    MakeMemDefined,</span>
+<span class="line" id="L9">    Discard,</span>
+<span class="line" id="L10">    CheckMemIsAddressable,</span>
+<span class="line" id="L11">    CheckMemIsDefined,</span>
+<span class="line" id="L12">    DoLeakCheck,</span>
+<span class="line" id="L13">    CountLeaks,</span>
+<span class="line" id="L14">    GetVbits,</span>
+<span class="line" id="L15">    SetVbits,</span>
+<span class="line" id="L16">    CreateBlock,</span>
+<span class="line" id="L17">    MakeMemDefinedIfAddressable,</span>
+<span class="line" id="L18">    CountLeakBlocks,</span>
+<span class="line" id="L19">    EnableAddrErrorReportingInRange,</span>
+<span class="line" id="L20">    DisableAddrErrorReportingInRange,</span>
+<span class="line" id="L21">};</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23"><span class="tok-kw">fn</span> <span class="tok-fn">doMemCheckClientRequestExpr</span>(default: <span class="tok-type">usize</span>, request: MemCheckClientRequest, a1: <span class="tok-type">usize</span>, a2: <span class="tok-type">usize</span>, a3: <span class="tok-type">usize</span>, a4: <span class="tok-type">usize</span>, a5: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L24">    <span class="tok-kw">return</span> valgrind.doClientRequest(default, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(<span class="tok-builtin">@intFromEnum</span>(request))), a1, a2, a3, a4, a5);</span>
+<span class="line" id="L25">}</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27"><span class="tok-kw">fn</span> <span class="tok-fn">doMemCheckClientRequestStmt</span>(request: MemCheckClientRequest, a1: <span class="tok-type">usize</span>, a2: <span class="tok-type">usize</span>, a3: <span class="tok-type">usize</span>, a4: <span class="tok-type">usize</span>, a5: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L28">    _ = doMemCheckClientRequestExpr(<span class="tok-number">0</span>, request, a1, a2, a3, a4, a5);</span>
+<span class="line" id="L29">}</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31"><span class="tok-comment">/// Mark memory at qzz.ptr as unaddressable for qzz.len bytes.</span></span>
+<span class="line" id="L32"><span class="tok-comment">/// This returns -1 when run on Valgrind and 0 otherwise.</span></span>
+<span class="line" id="L33"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">makeMemNoAccess</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">i1</span> {</span>
+<span class="line" id="L34">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">i1</span>, <span class="tok-builtin">@intCast</span>(doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L35">        .MakeMemNoAccess, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>)));</span>
+<span class="line" id="L36">}</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-comment">/// Similarly, mark memory at qzz.ptr as addressable but undefined</span></span>
+<span class="line" id="L39"><span class="tok-comment">/// for qzz.len bytes.</span></span>
+<span class="line" id="L40"><span class="tok-comment">/// This returns -1 when run on Valgrind and 0 otherwise.</span></span>
+<span class="line" id="L41"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">makeMemUndefined</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">i1</span> {</span>
+<span class="line" id="L42">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">i1</span>, <span class="tok-builtin">@intCast</span>(doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L43">        .MakeMemUndefined, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>)));</span>
+<span class="line" id="L44">}</span>
+<span class="line" id="L45"></span>
+<span class="line" id="L46"><span class="tok-comment">/// Similarly, mark memory at qzz.ptr as addressable and defined</span></span>
+<span class="line" id="L47"><span class="tok-comment">/// for qzz.len bytes.</span></span>
+<span class="line" id="L48"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">makeMemDefined</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">i1</span> {</span>
+<span class="line" id="L49">    <span class="tok-comment">// This returns -1 when run on Valgrind and 0 otherwise.</span>
+</span>
+<span class="line" id="L50">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">i1</span>, <span class="tok-builtin">@intCast</span>(doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L51">        .MakeMemDefined, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>)));</span>
+<span class="line" id="L52">}</span>
+<span class="line" id="L53"></span>
+<span class="line" id="L54"><span class="tok-comment">/// Similar to makeMemDefined except that addressability is</span></span>
+<span class="line" id="L55"><span class="tok-comment">/// not altered: bytes which are addressable are marked as defined,</span></span>
+<span class="line" id="L56"><span class="tok-comment">/// but those which are not addressable are left unchanged.</span></span>
+<span class="line" id="L57"><span class="tok-comment">/// This returns -1 when run on Valgrind and 0 otherwise.</span></span>
+<span class="line" id="L58"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">makeMemDefinedIfAddressable</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">i1</span> {</span>
+<span class="line" id="L59">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">i1</span>, <span class="tok-builtin">@intCast</span>(doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L60">        .MakeMemDefinedIfAddressable, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>)));</span>
+<span class="line" id="L61">}</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63"><span class="tok-comment">/// Create a block-description handle.  The description is an ascii</span></span>
+<span class="line" id="L64"><span class="tok-comment">/// string which is included in any messages pertaining to addresses</span></span>
+<span class="line" id="L65"><span class="tok-comment">/// within the specified memory range.  Has no other effect on the</span></span>
+<span class="line" id="L66"><span class="tok-comment">/// properties of the memory range.</span></span>
+<span class="line" id="L67"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">createBlock</span>(qzz: []<span class="tok-type">u8</span>, desc: [*]<span class="tok-type">u8</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L68">    <span class="tok-kw">return</span> doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L69">        .CreateBlock, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-builtin">@intFromPtr</span>(desc), <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L70">}</span>
+<span class="line" id="L71"></span>
+<span class="line" id="L72"><span class="tok-comment">/// Discard a block-description-handle. Returns 1 for an</span></span>
+<span class="line" id="L73"><span class="tok-comment">/// invalid handle, 0 for a valid handle.</span></span>
+<span class="line" id="L74"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">discard</span>(blkindex: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L75">    <span class="tok-kw">return</span> doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L76">        .Discard, <span class="tok-number">0</span>, blkindex, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>) != <span class="tok-number">0</span>;</span>
+<span class="line" id="L77">}</span>
+<span class="line" id="L78"></span>
+<span class="line" id="L79"><span class="tok-comment">/// Check that memory at qzz.ptr is addressable for qzz.len bytes.</span></span>
+<span class="line" id="L80"><span class="tok-comment">/// If suitable addressability is not established, Valgrind prints an</span></span>
+<span class="line" id="L81"><span class="tok-comment">/// error message and returns the address of the first offending byte.</span></span>
+<span class="line" id="L82"><span class="tok-comment">/// Otherwise it returns zero.</span></span>
+<span class="line" id="L83"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkMemIsAddressable</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L84">    <span class="tok-kw">return</span> doMemCheckClientRequestExpr(<span class="tok-number">0</span>, .CheckMemIsAddressable, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L85">}</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87"><span class="tok-comment">/// Check that memory at qzz.ptr is addressable and defined for</span></span>
+<span class="line" id="L88"><span class="tok-comment">/// qzz.len bytes.  If suitable addressability and definedness are not</span></span>
+<span class="line" id="L89"><span class="tok-comment">/// established, Valgrind prints an error message and returns the</span></span>
+<span class="line" id="L90"><span class="tok-comment">/// address of the first offending byte.  Otherwise it returns zero.</span></span>
+<span class="line" id="L91"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">checkMemIsDefined</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L92">    <span class="tok-kw">return</span> doMemCheckClientRequestExpr(<span class="tok-number">0</span>, .CheckMemIsDefined, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L93">}</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95"><span class="tok-comment">/// Do a full memory leak check (like --leak-check=full) mid-execution.</span></span>
+<span class="line" id="L96"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">doLeakCheck</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L97">    doMemCheckClientRequestStmt(.DO_LEAK_CHECK, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L98">}</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100"><span class="tok-comment">/// Same as doLeakCheck() but only showing the entries for</span></span>
+<span class="line" id="L101"><span class="tok-comment">/// which there was an increase in leaked bytes or leaked nr of blocks</span></span>
+<span class="line" id="L102"><span class="tok-comment">/// since the previous leak search.</span></span>
+<span class="line" id="L103"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">doAddedLeakCheck</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L104">    doMemCheckClientRequestStmt(.DO_LEAK_CHECK, <span class="tok-number">0</span>, <span class="tok-number">1</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L105">}</span>
+<span class="line" id="L106"></span>
+<span class="line" id="L107"><span class="tok-comment">/// Same as doAddedLeakCheck() but showing entries with</span></span>
+<span class="line" id="L108"><span class="tok-comment">/// increased or decreased leaked bytes/blocks since previous leak</span></span>
+<span class="line" id="L109"><span class="tok-comment">/// search.</span></span>
+<span class="line" id="L110"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">doChangedLeakCheck</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L111">    doMemCheckClientRequestStmt(.DO_LEAK_CHECK, <span class="tok-number">0</span>, <span class="tok-number">2</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L112">}</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114"><span class="tok-comment">/// Do a summary memory leak check (like --leak-check=summary) mid-execution.</span></span>
+<span class="line" id="L115"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">doQuickLeakCheck</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L116">    doMemCheckClientRequestStmt(.DO_LEAK_CHECK, <span class="tok-number">1</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L117">}</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119"><span class="tok-comment">/// Return number of leaked, dubious, reachable and suppressed bytes found by</span></span>
+<span class="line" id="L120"><span class="tok-comment">/// all previous leak checks.</span></span>
+<span class="line" id="L121"><span class="tok-kw">const</span> CountResult = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L122">    leaked: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L123">    dubious: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L124">    reachable: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L125">    suppressed: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L126">};</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">countLeaks</span>() CountResult {</span>
+<span class="line" id="L129">    <span class="tok-kw">var</span> res: CountResult = .{</span>
+<span class="line" id="L130">        .leaked = <span class="tok-number">0</span>,</span>
+<span class="line" id="L131">        .dubious = <span class="tok-number">0</span>,</span>
+<span class="line" id="L132">        .reachable = <span class="tok-number">0</span>,</span>
+<span class="line" id="L133">        .suppressed = <span class="tok-number">0</span>,</span>
+<span class="line" id="L134">    };</span>
+<span class="line" id="L135">    doMemCheckClientRequestStmt(</span>
+<span class="line" id="L136">        .CountLeaks,</span>
+<span class="line" id="L137">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.leaked),</span>
+<span class="line" id="L138">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.dubious),</span>
+<span class="line" id="L139">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.reachable),</span>
+<span class="line" id="L140">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.suppressed),</span>
+<span class="line" id="L141">        <span class="tok-number">0</span>,</span>
+<span class="line" id="L142">    );</span>
+<span class="line" id="L143">    <span class="tok-kw">return</span> res;</span>
+<span class="line" id="L144">}</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146"><span class="tok-kw">test</span> <span class="tok-str">&quot;countLeaks&quot;</span> {</span>
+<span class="line" id="L147">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L148">        <span class="tok-builtin">@as</span>(CountResult, .{</span>
+<span class="line" id="L149">            .leaked = <span class="tok-number">0</span>,</span>
+<span class="line" id="L150">            .dubious = <span class="tok-number">0</span>,</span>
+<span class="line" id="L151">            .reachable = <span class="tok-number">0</span>,</span>
+<span class="line" id="L152">            .suppressed = <span class="tok-number">0</span>,</span>
+<span class="line" id="L153">        }),</span>
+<span class="line" id="L154">        countLeaks(),</span>
+<span class="line" id="L155">    );</span>
+<span class="line" id="L156">}</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">countLeakBlocks</span>() CountResult {</span>
+<span class="line" id="L159">    <span class="tok-kw">var</span> res: CountResult = .{</span>
+<span class="line" id="L160">        .leaked = <span class="tok-number">0</span>,</span>
+<span class="line" id="L161">        .dubious = <span class="tok-number">0</span>,</span>
+<span class="line" id="L162">        .reachable = <span class="tok-number">0</span>,</span>
+<span class="line" id="L163">        .suppressed = <span class="tok-number">0</span>,</span>
+<span class="line" id="L164">    };</span>
+<span class="line" id="L165">    doMemCheckClientRequestStmt(</span>
+<span class="line" id="L166">        .CountLeakBlocks,</span>
+<span class="line" id="L167">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.leaked),</span>
+<span class="line" id="L168">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.dubious),</span>
+<span class="line" id="L169">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.reachable),</span>
+<span class="line" id="L170">        <span class="tok-builtin">@intFromPtr</span>(&amp;res.suppressed),</span>
+<span class="line" id="L171">        <span class="tok-number">0</span>,</span>
+<span class="line" id="L172">    );</span>
+<span class="line" id="L173">    <span class="tok-kw">return</span> res;</span>
+<span class="line" id="L174">}</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176"><span class="tok-kw">test</span> <span class="tok-str">&quot;countLeakBlocks&quot;</span> {</span>
+<span class="line" id="L177">    <span class="tok-kw">try</span> testing.expectEqual(</span>
+<span class="line" id="L178">        <span class="tok-builtin">@as</span>(CountResult, .{</span>
+<span class="line" id="L179">            .leaked = <span class="tok-number">0</span>,</span>
+<span class="line" id="L180">            .dubious = <span class="tok-number">0</span>,</span>
+<span class="line" id="L181">            .reachable = <span class="tok-number">0</span>,</span>
+<span class="line" id="L182">            .suppressed = <span class="tok-number">0</span>,</span>
+<span class="line" id="L183">        }),</span>
+<span class="line" id="L184">        countLeakBlocks(),</span>
+<span class="line" id="L185">    );</span>
+<span class="line" id="L186">}</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188"><span class="tok-comment">/// Get the validity data for addresses zza and copy it</span></span>
+<span class="line" id="L189"><span class="tok-comment">/// into the provided zzvbits array.  Return values:</span></span>
+<span class="line" id="L190"><span class="tok-comment">///    0   if not running on valgrind</span></span>
+<span class="line" id="L191"><span class="tok-comment">///    1   success</span></span>
+<span class="line" id="L192"><span class="tok-comment">///    2   [previously indicated unaligned arrays;  these are now allowed]</span></span>
+<span class="line" id="L193"><span class="tok-comment">///    3   if any parts of zzsrc/zzvbits are not addressable.</span></span>
+<span class="line" id="L194"><span class="tok-comment">/// The metadata is not copied in cases 0, 2 or 3 so it should be</span></span>
+<span class="line" id="L195"><span class="tok-comment">/// impossible to segfault your system by using this call.</span></span>
+<span class="line" id="L196"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getVbits</span>(zza: []<span class="tok-type">u8</span>, zzvbits: []<span class="tok-type">u8</span>) <span class="tok-type">u2</span> {</span>
+<span class="line" id="L197">    std.debug.assert(zzvbits.len &gt;= zza.len / <span class="tok-number">8</span>);</span>
+<span class="line" id="L198">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u2</span>, <span class="tok-builtin">@intCast</span>(doMemCheckClientRequestExpr(<span class="tok-number">0</span>, .GetVbits, <span class="tok-builtin">@intFromPtr</span>(zza.ptr), <span class="tok-builtin">@intFromPtr</span>(zzvbits), zza.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>)));</span>
+<span class="line" id="L199">}</span>
+<span class="line" id="L200"></span>
+<span class="line" id="L201"><span class="tok-comment">/// Set the validity data for addresses zza, copying it</span></span>
+<span class="line" id="L202"><span class="tok-comment">/// from the provided zzvbits array.  Return values:</span></span>
+<span class="line" id="L203"><span class="tok-comment">///    0   if not running on valgrind</span></span>
+<span class="line" id="L204"><span class="tok-comment">///    1   success</span></span>
+<span class="line" id="L205"><span class="tok-comment">///    2   [previously indicated unaligned arrays;  these are now allowed]</span></span>
+<span class="line" id="L206"><span class="tok-comment">///    3   if any parts of zza/zzvbits are not addressable.</span></span>
+<span class="line" id="L207"><span class="tok-comment">/// The metadata is not copied in cases 0, 2 or 3 so it should be</span></span>
+<span class="line" id="L208"><span class="tok-comment">/// impossible to segfault your system by using this call.</span></span>
+<span class="line" id="L209"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setVbits</span>(zzvbits: []<span class="tok-type">u8</span>, zza: []<span class="tok-type">u8</span>) <span class="tok-type">u2</span> {</span>
+<span class="line" id="L210">    std.debug.assert(zzvbits.len &gt;= zza.len / <span class="tok-number">8</span>);</span>
+<span class="line" id="L211">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u2</span>, <span class="tok-builtin">@intCast</span>(doMemCheckClientRequestExpr(<span class="tok-number">0</span>, .SetVbits, <span class="tok-builtin">@intFromPtr</span>(zza.ptr), <span class="tok-builtin">@intFromPtr</span>(zzvbits), zza.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>)));</span>
+<span class="line" id="L212">}</span>
+<span class="line" id="L213"></span>
+<span class="line" id="L214"><span class="tok-comment">/// Disable and re-enable reporting of addressing errors in the</span></span>
+<span class="line" id="L215"><span class="tok-comment">/// specified address range.</span></span>
+<span class="line" id="L216"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">disableAddrErrorReportingInRange</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L217">    <span class="tok-kw">return</span> doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L218">        .DisableAddrErrorReportingInRange, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L219">}</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">enableAddrErrorReportingInRange</span>(qzz: []<span class="tok-type">u8</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L222">    <span class="tok-kw">return</span> doMemCheckClientRequestExpr(<span class="tok-number">0</span>, <span class="tok-comment">// default return</span>
+</span>
+<span class="line" id="L223">        .EnableAddrErrorReportingInRange, <span class="tok-builtin">@intFromPtr</span>(qzz.ptr), qzz.len, <span class="tok-number">0</span>, <span class="tok-number">0</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L224">}</span>
+<span class="line" id="L225"></span>
+</code></pre></body>
+</html>

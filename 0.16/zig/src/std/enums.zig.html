@@ -1,0 +1,1550 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>enums.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! This module contains utilities and data structures for working with enums.</span></span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> EnumField = std.builtin.Type.EnumField;</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-comment">/// Returns a struct with a field matching each unique named enum element.</span></span>
+<span class="line" id="L9"><span class="tok-comment">/// If the enum is extern and has multiple names for the same value, only</span></span>
+<span class="line" id="L10"><span class="tok-comment">/// the first name is used.  Each field is of type Data and has the provided</span></span>
+<span class="line" id="L11"><span class="tok-comment">/// default, which may be undefined.</span></span>
+<span class="line" id="L12"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">EnumFieldStruct</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> Data: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> field_default: ?Data) <span class="tok-type">type</span> {</span>
+<span class="line" id="L13">    <span class="tok-kw">const</span> StructField = std.builtin.Type.StructField;</span>
+<span class="line" id="L14">    <span class="tok-kw">var</span> fields: []<span class="tok-kw">const</span> StructField = &amp;[_]StructField{};</span>
+<span class="line" id="L15">    <span class="tok-kw">for</span> (std.meta.fields(E)) |field| {</span>
+<span class="line" id="L16">        fields = fields ++ &amp;[_]StructField{.{</span>
+<span class="line" id="L17">            .name = field.name,</span>
+<span class="line" id="L18">            .<span class="tok-type">type</span> = Data,</span>
+<span class="line" id="L19">            .default_value = <span class="tok-kw">if</span> (field_default) |d| <span class="tok-builtin">@as</span>(?*<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>, <span class="tok-builtin">@ptrCast</span>(&amp;d)) <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L20">            .is_comptime = <span class="tok-null">false</span>,</span>
+<span class="line" id="L21">            .alignment = <span class="tok-kw">if</span> (<span class="tok-builtin">@sizeOf</span>(Data) &gt; <span class="tok-number">0</span>) <span class="tok-builtin">@alignOf</span>(Data) <span class="tok-kw">else</span> <span class="tok-number">0</span>,</span>
+<span class="line" id="L22">        }};</span>
+<span class="line" id="L23">    }</span>
+<span class="line" id="L24">    <span class="tok-kw">return</span> <span class="tok-builtin">@Type</span>(.{ .Struct = .{</span>
+<span class="line" id="L25">        .layout = .Auto,</span>
+<span class="line" id="L26">        .fields = fields,</span>
+<span class="line" id="L27">        .decls = &amp;.{},</span>
+<span class="line" id="L28">        .is_tuple = <span class="tok-null">false</span>,</span>
+<span class="line" id="L29">    } });</span>
+<span class="line" id="L30">}</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32"><span class="tok-comment">/// Looks up the supplied fields in the given enum type.</span></span>
+<span class="line" id="L33"><span class="tok-comment">/// Uses only the field names, field values are ignored.</span></span>
+<span class="line" id="L34"><span class="tok-comment">/// The result array is in the same order as the input.</span></span>
+<span class="line" id="L35"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">valuesFromFields</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> fields: []<span class="tok-kw">const</span> EnumField) []<span class="tok-kw">const</span> E {</span>
+<span class="line" id="L36">    <span class="tok-kw">comptime</span> {</span>
+<span class="line" id="L37">        <span class="tok-kw">var</span> result: [fields.len]E = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L38">        <span class="tok-kw">for</span> (fields, <span class="tok-number">0</span>..) |f, i| {</span>
+<span class="line" id="L39">            result[i] = <span class="tok-builtin">@field</span>(E, f.name);</span>
+<span class="line" id="L40">        }</span>
+<span class="line" id="L41">        <span class="tok-kw">return</span> &amp;result;</span>
+<span class="line" id="L42">    }</span>
+<span class="line" id="L43">}</span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45"><span class="tok-comment">/// Returns the set of all named values in the given enum, in</span></span>
+<span class="line" id="L46"><span class="tok-comment">/// declaration order.</span></span>
+<span class="line" id="L47"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">values</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>) []<span class="tok-kw">const</span> E {</span>
+<span class="line" id="L48">    <span class="tok-kw">return</span> <span class="tok-kw">comptime</span> valuesFromFields(E, <span class="tok-builtin">@typeInfo</span>(E).Enum.fields);</span>
+<span class="line" id="L49">}</span>
+<span class="line" id="L50"></span>
+<span class="line" id="L51"><span class="tok-comment">/// A safe alternative to @tagName() for non-exhaustive enums that doesn't</span></span>
+<span class="line" id="L52"><span class="tok-comment">/// panic when `e` has no tagged value.</span></span>
+<span class="line" id="L53"><span class="tok-comment">/// Returns the tag name for `e` or null if no tag exists.</span></span>
+<span class="line" id="L54"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">tagName</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, e: E) ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L55">    <span class="tok-kw">return</span> <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |f| {</span>
+<span class="line" id="L56">        <span class="tok-kw">if</span> (<span class="tok-builtin">@intFromEnum</span>(e) == f.value) <span class="tok-kw">break</span> f.name;</span>
+<span class="line" id="L57">    } <span class="tok-kw">else</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L58">}</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60"><span class="tok-kw">test</span> tagName {</span>
+<span class="line" id="L61">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">u8</span>) { a, b, _ };</span>
+<span class="line" id="L62">    <span class="tok-kw">try</span> testing.expect(tagName(E, .a) != <span class="tok-null">null</span>);</span>
+<span class="line" id="L63">    <span class="tok-kw">try</span> testing.expectEqualStrings(<span class="tok-str">&quot;a&quot;</span>, tagName(E, .a).?);</span>
+<span class="line" id="L64">    <span class="tok-kw">try</span> testing.expect(tagName(E, <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(<span class="tok-number">42</span>))) == <span class="tok-null">null</span>);</span>
+<span class="line" id="L65">}</span>
+<span class="line" id="L66"></span>
+<span class="line" id="L67"><span class="tok-comment">/// Determines the length of a direct-mapped enum array, indexed by</span></span>
+<span class="line" id="L68"><span class="tok-comment">/// @intCast(usize, @intFromEnum(enum_value)).</span></span>
+<span class="line" id="L69"><span class="tok-comment">/// If the enum is non-exhaustive, the resulting length will only be enough</span></span>
+<span class="line" id="L70"><span class="tok-comment">/// to hold all explicit fields.</span></span>
+<span class="line" id="L71"><span class="tok-comment">/// If the enum contains any fields with values that cannot be represented</span></span>
+<span class="line" id="L72"><span class="tok-comment">/// by usize, a compile error is issued.  The max_unused_slots parameter limits</span></span>
+<span class="line" id="L73"><span class="tok-comment">/// the total number of items which have no matching enum key (holes in the enum</span></span>
+<span class="line" id="L74"><span class="tok-comment">/// numbering).  So for example, if an enum has values 1, 2, 5, and 6, max_unused_slots</span></span>
+<span class="line" id="L75"><span class="tok-comment">/// must be at least 3, to allow unused slots 0, 3, and 4.</span></span>
+<span class="line" id="L76"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">directEnumArrayLen</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> max_unused_slots: <span class="tok-type">comptime_int</span>) <span class="tok-type">comptime_int</span> {</span>
+<span class="line" id="L77">    <span class="tok-kw">var</span> max_value: <span class="tok-type">comptime_int</span> = -<span class="tok-number">1</span>;</span>
+<span class="line" id="L78">    <span class="tok-kw">const</span> max_usize: <span class="tok-type">comptime_int</span> = ~<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">0</span>);</span>
+<span class="line" id="L79">    <span class="tok-kw">const</span> fields = std.meta.fields(E);</span>
+<span class="line" id="L80">    <span class="tok-kw">for</span> (fields) |f| {</span>
+<span class="line" id="L81">        <span class="tok-kw">if</span> (f.value &lt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L82">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Cannot create a direct enum array for &quot;</span> ++ <span class="tok-builtin">@typeName</span>(E) ++ <span class="tok-str">&quot;, field .&quot;</span> ++ f.name ++ <span class="tok-str">&quot; has a negative value.&quot;</span>);</span>
+<span class="line" id="L83">        }</span>
+<span class="line" id="L84">        <span class="tok-kw">if</span> (f.value &gt; max_value) {</span>
+<span class="line" id="L85">            <span class="tok-kw">if</span> (f.value &gt; max_usize) {</span>
+<span class="line" id="L86">                <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Cannot create a direct enum array for &quot;</span> ++ <span class="tok-builtin">@typeName</span>(E) ++ <span class="tok-str">&quot;, field .&quot;</span> ++ f.name ++ <span class="tok-str">&quot; is larger than the max value of usize.&quot;</span>);</span>
+<span class="line" id="L87">            }</span>
+<span class="line" id="L88">            max_value = f.value;</span>
+<span class="line" id="L89">        }</span>
+<span class="line" id="L90">    }</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">    <span class="tok-kw">const</span> unused_slots = max_value + <span class="tok-number">1</span> - fields.len;</span>
+<span class="line" id="L93">    <span class="tok-kw">if</span> (unused_slots &gt; max_unused_slots) {</span>
+<span class="line" id="L94">        <span class="tok-kw">const</span> unused_str = std.fmt.comptimePrint(<span class="tok-str">&quot;{d}&quot;</span>, .{unused_slots});</span>
+<span class="line" id="L95">        <span class="tok-kw">const</span> allowed_str = std.fmt.comptimePrint(<span class="tok-str">&quot;{d}&quot;</span>, .{max_unused_slots});</span>
+<span class="line" id="L96">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Cannot create a direct enum array for &quot;</span> ++ <span class="tok-builtin">@typeName</span>(E) ++ <span class="tok-str">&quot;. It would have &quot;</span> ++ unused_str ++ <span class="tok-str">&quot; unused slots, but only &quot;</span> ++ allowed_str ++ <span class="tok-str">&quot; are allowed.&quot;</span>);</span>
+<span class="line" id="L97">    }</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">    <span class="tok-kw">return</span> max_value + <span class="tok-number">1</span>;</span>
+<span class="line" id="L100">}</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102"><span class="tok-comment">/// Initializes an array of Data which can be indexed by</span></span>
+<span class="line" id="L103"><span class="tok-comment">/// @intCast(usize, @intFromEnum(enum_value)).</span></span>
+<span class="line" id="L104"><span class="tok-comment">/// If the enum is non-exhaustive, the resulting array will only be large enough</span></span>
+<span class="line" id="L105"><span class="tok-comment">/// to hold all explicit fields.</span></span>
+<span class="line" id="L106"><span class="tok-comment">/// If the enum contains any fields with values that cannot be represented</span></span>
+<span class="line" id="L107"><span class="tok-comment">/// by usize, a compile error is issued.  The max_unused_slots parameter limits</span></span>
+<span class="line" id="L108"><span class="tok-comment">/// the total number of items which have no matching enum key (holes in the enum</span></span>
+<span class="line" id="L109"><span class="tok-comment">/// numbering).  So for example, if an enum has values 1, 2, 5, and 6, max_unused_slots</span></span>
+<span class="line" id="L110"><span class="tok-comment">/// must be at least 3, to allow unused slots 0, 3, and 4.</span></span>
+<span class="line" id="L111"><span class="tok-comment">/// The init_values parameter must be a struct with field names that match the enum values.</span></span>
+<span class="line" id="L112"><span class="tok-comment">/// If the enum has multiple fields with the same value, the name of the first one must</span></span>
+<span class="line" id="L113"><span class="tok-comment">/// be used.</span></span>
+<span class="line" id="L114"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">directEnumArray</span>(</span>
+<span class="line" id="L115">    <span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>,</span>
+<span class="line" id="L116">    <span class="tok-kw">comptime</span> Data: <span class="tok-type">type</span>,</span>
+<span class="line" id="L117">    <span class="tok-kw">comptime</span> max_unused_slots: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L118">    init_values: EnumFieldStruct(E, Data, <span class="tok-null">null</span>),</span>
+<span class="line" id="L119">) [directEnumArrayLen(E, max_unused_slots)]Data {</span>
+<span class="line" id="L120">    <span class="tok-kw">return</span> directEnumArrayDefault(E, Data, <span class="tok-null">null</span>, max_unused_slots, init_values);</span>
+<span class="line" id="L121">}</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.directEnumArray&quot;</span> {</span>
+<span class="line" id="L124">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">i4</span>) { a = <span class="tok-number">4</span>, b = <span class="tok-number">6</span>, c = <span class="tok-number">2</span> };</span>
+<span class="line" id="L125">    <span class="tok-kw">var</span> runtime_false: <span class="tok-type">bool</span> = <span class="tok-null">false</span>;</span>
+<span class="line" id="L126">    <span class="tok-kw">const</span> array = directEnumArray(E, <span class="tok-type">bool</span>, <span class="tok-number">4</span>, .{</span>
+<span class="line" id="L127">        .a = <span class="tok-null">true</span>,</span>
+<span class="line" id="L128">        .b = runtime_false,</span>
+<span class="line" id="L129">        .c = <span class="tok-null">true</span>,</span>
+<span class="line" id="L130">    });</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">    <span class="tok-kw">try</span> testing.expectEqual([<span class="tok-number">7</span>]<span class="tok-type">bool</span>, <span class="tok-builtin">@TypeOf</span>(array));</span>
+<span class="line" id="L133">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">true</span>, array[<span class="tok-number">4</span>]);</span>
+<span class="line" id="L134">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, array[<span class="tok-number">6</span>]);</span>
+<span class="line" id="L135">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">true</span>, array[<span class="tok-number">2</span>]);</span>
+<span class="line" id="L136">}</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138"><span class="tok-comment">/// Initializes an array of Data which can be indexed by</span></span>
+<span class="line" id="L139"><span class="tok-comment">/// @intCast(usize, @intFromEnum(enum_value)).  The enum must be exhaustive.</span></span>
+<span class="line" id="L140"><span class="tok-comment">/// If the enum contains any fields with values that cannot be represented</span></span>
+<span class="line" id="L141"><span class="tok-comment">/// by usize, a compile error is issued.  The max_unused_slots parameter limits</span></span>
+<span class="line" id="L142"><span class="tok-comment">/// the total number of items which have no matching enum key (holes in the enum</span></span>
+<span class="line" id="L143"><span class="tok-comment">/// numbering).  So for example, if an enum has values 1, 2, 5, and 6, max_unused_slots</span></span>
+<span class="line" id="L144"><span class="tok-comment">/// must be at least 3, to allow unused slots 0, 3, and 4.</span></span>
+<span class="line" id="L145"><span class="tok-comment">/// The init_values parameter must be a struct with field names that match the enum values.</span></span>
+<span class="line" id="L146"><span class="tok-comment">/// If the enum has multiple fields with the same value, the name of the first one must</span></span>
+<span class="line" id="L147"><span class="tok-comment">/// be used.</span></span>
+<span class="line" id="L148"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">directEnumArrayDefault</span>(</span>
+<span class="line" id="L149">    <span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>,</span>
+<span class="line" id="L150">    <span class="tok-kw">comptime</span> Data: <span class="tok-type">type</span>,</span>
+<span class="line" id="L151">    <span class="tok-kw">comptime</span> default: ?Data,</span>
+<span class="line" id="L152">    <span class="tok-kw">comptime</span> max_unused_slots: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L153">    init_values: EnumFieldStruct(E, Data, default),</span>
+<span class="line" id="L154">) [directEnumArrayLen(E, max_unused_slots)]Data {</span>
+<span class="line" id="L155">    <span class="tok-kw">const</span> len = <span class="tok-kw">comptime</span> directEnumArrayLen(E, max_unused_slots);</span>
+<span class="line" id="L156">    <span class="tok-kw">var</span> result: [len]Data = <span class="tok-kw">if</span> (default) |d| [_]Data{d} ** len <span class="tok-kw">else</span> <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L157">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(init_values)).Struct.fields) |f| {</span>
+<span class="line" id="L158">        <span class="tok-kw">const</span> enum_value = <span class="tok-builtin">@field</span>(E, f.name);</span>
+<span class="line" id="L159">        <span class="tok-kw">const</span> index = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(<span class="tok-builtin">@intFromEnum</span>(enum_value)));</span>
+<span class="line" id="L160">        result[index] = <span class="tok-builtin">@field</span>(init_values, f.name);</span>
+<span class="line" id="L161">    }</span>
+<span class="line" id="L162">    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L163">}</span>
+<span class="line" id="L164"></span>
+<span class="line" id="L165"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.directEnumArrayDefault&quot;</span> {</span>
+<span class="line" id="L166">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">i4</span>) { a = <span class="tok-number">4</span>, b = <span class="tok-number">6</span>, c = <span class="tok-number">2</span> };</span>
+<span class="line" id="L167">    <span class="tok-kw">var</span> runtime_false: <span class="tok-type">bool</span> = <span class="tok-null">false</span>;</span>
+<span class="line" id="L168">    <span class="tok-kw">const</span> array = directEnumArrayDefault(E, <span class="tok-type">bool</span>, <span class="tok-null">false</span>, <span class="tok-number">4</span>, .{</span>
+<span class="line" id="L169">        .a = <span class="tok-null">true</span>,</span>
+<span class="line" id="L170">        .b = runtime_false,</span>
+<span class="line" id="L171">    });</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173">    <span class="tok-kw">try</span> testing.expectEqual([<span class="tok-number">7</span>]<span class="tok-type">bool</span>, <span class="tok-builtin">@TypeOf</span>(array));</span>
+<span class="line" id="L174">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">true</span>, array[<span class="tok-number">4</span>]);</span>
+<span class="line" id="L175">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, array[<span class="tok-number">6</span>]);</span>
+<span class="line" id="L176">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-null">false</span>, array[<span class="tok-number">2</span>]);</span>
+<span class="line" id="L177">}</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.directEnumArrayDefault slice&quot;</span> {</span>
+<span class="line" id="L180">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">i4</span>) { a = <span class="tok-number">4</span>, b = <span class="tok-number">6</span>, c = <span class="tok-number">2</span> };</span>
+<span class="line" id="L181">    <span class="tok-kw">var</span> runtime_b = <span class="tok-str">&quot;b&quot;</span>;</span>
+<span class="line" id="L182">    <span class="tok-kw">const</span> array = directEnumArrayDefault(E, []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-str">&quot;default&quot;</span>, <span class="tok-number">4</span>, .{</span>
+<span class="line" id="L183">        .a = <span class="tok-str">&quot;a&quot;</span>,</span>
+<span class="line" id="L184">        .b = runtime_b,</span>
+<span class="line" id="L185">    });</span>
+<span class="line" id="L186"></span>
+<span class="line" id="L187">    <span class="tok-kw">try</span> testing.expectEqual([<span class="tok-number">7</span>][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-builtin">@TypeOf</span>(array));</span>
+<span class="line" id="L188">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, <span class="tok-str">&quot;a&quot;</span>, array[<span class="tok-number">4</span>]);</span>
+<span class="line" id="L189">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, <span class="tok-str">&quot;b&quot;</span>, array[<span class="tok-number">6</span>]);</span>
+<span class="line" id="L190">    <span class="tok-kw">try</span> testing.expectEqualSlices(<span class="tok-type">u8</span>, <span class="tok-str">&quot;default&quot;</span>, array[<span class="tok-number">2</span>]);</span>
+<span class="line" id="L191">}</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193"><span class="tok-comment">/// Cast an enum literal, value, or string to the enum value of type E</span></span>
+<span class="line" id="L194"><span class="tok-comment">/// with the same name.</span></span>
+<span class="line" id="L195"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">nameCast</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> value: <span class="tok-kw">anytype</span>) E {</span>
+<span class="line" id="L196">    <span class="tok-kw">return</span> <span class="tok-kw">comptime</span> blk: {</span>
+<span class="line" id="L197">        <span class="tok-kw">const</span> V = <span class="tok-builtin">@TypeOf</span>(value);</span>
+<span class="line" id="L198">        <span class="tok-kw">if</span> (V == E) <span class="tok-kw">break</span> :blk value;</span>
+<span class="line" id="L199">        <span class="tok-kw">var</span> name: ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> = <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(V)) {</span>
+<span class="line" id="L200">            .EnumLiteral, .Enum =&gt; <span class="tok-builtin">@tagName</span>(value),</span>
+<span class="line" id="L201">            .Pointer =&gt; <span class="tok-kw">if</span> (std.meta.trait.isZigString(V)) value <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L202">            <span class="tok-kw">else</span> =&gt; <span class="tok-null">null</span>,</span>
+<span class="line" id="L203">        };</span>
+<span class="line" id="L204">        <span class="tok-kw">if</span> (name) |n| {</span>
+<span class="line" id="L205">            <span class="tok-kw">if</span> (<span class="tok-builtin">@hasField</span>(E, n)) {</span>
+<span class="line" id="L206">                <span class="tok-kw">break</span> :blk <span class="tok-builtin">@field</span>(E, n);</span>
+<span class="line" id="L207">            }</span>
+<span class="line" id="L208">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Enum &quot;</span> ++ <span class="tok-builtin">@typeName</span>(E) ++ <span class="tok-str">&quot; has no field named &quot;</span> ++ n);</span>
+<span class="line" id="L209">        }</span>
+<span class="line" id="L210">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Cannot cast from &quot;</span> ++ <span class="tok-builtin">@typeName</span>(<span class="tok-builtin">@TypeOf</span>(value)) ++ <span class="tok-str">&quot; to &quot;</span> ++ <span class="tok-builtin">@typeName</span>(E));</span>
+<span class="line" id="L211">    };</span>
+<span class="line" id="L212">}</span>
+<span class="line" id="L213"></span>
+<span class="line" id="L214"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.nameCast&quot;</span> {</span>
+<span class="line" id="L215">    <span class="tok-kw">const</span> A = <span class="tok-kw">enum</span>(<span class="tok-type">u1</span>) { a = <span class="tok-number">0</span>, b = <span class="tok-number">1</span> };</span>
+<span class="line" id="L216">    <span class="tok-kw">const</span> B = <span class="tok-kw">enum</span>(<span class="tok-type">u1</span>) { a = <span class="tok-number">1</span>, b = <span class="tok-number">0</span> };</span>
+<span class="line" id="L217">    <span class="tok-kw">try</span> testing.expectEqual(A.a, nameCast(A, .a));</span>
+<span class="line" id="L218">    <span class="tok-kw">try</span> testing.expectEqual(A.a, nameCast(A, A.a));</span>
+<span class="line" id="L219">    <span class="tok-kw">try</span> testing.expectEqual(A.a, nameCast(A, B.a));</span>
+<span class="line" id="L220">    <span class="tok-kw">try</span> testing.expectEqual(A.a, nameCast(A, <span class="tok-str">&quot;a&quot;</span>));</span>
+<span class="line" id="L221">    <span class="tok-kw">try</span> testing.expectEqual(A.a, nameCast(A, <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> [<span class="tok-number">1</span>]<span class="tok-type">u8</span>, <span class="tok-str">&quot;a&quot;</span>)));</span>
+<span class="line" id="L222">    <span class="tok-kw">try</span> testing.expectEqual(A.a, nameCast(A, <span class="tok-builtin">@as</span>([:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-str">&quot;a&quot;</span>)));</span>
+<span class="line" id="L223">    <span class="tok-kw">try</span> testing.expectEqual(A.a, nameCast(A, <span class="tok-builtin">@as</span>([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-str">&quot;a&quot;</span>)));</span>
+<span class="line" id="L224"></span>
+<span class="line" id="L225">    <span class="tok-kw">try</span> testing.expectEqual(B.a, nameCast(B, .a));</span>
+<span class="line" id="L226">    <span class="tok-kw">try</span> testing.expectEqual(B.a, nameCast(B, A.a));</span>
+<span class="line" id="L227">    <span class="tok-kw">try</span> testing.expectEqual(B.a, nameCast(B, B.a));</span>
+<span class="line" id="L228">    <span class="tok-kw">try</span> testing.expectEqual(B.a, nameCast(B, <span class="tok-str">&quot;a&quot;</span>));</span>
+<span class="line" id="L229"></span>
+<span class="line" id="L230">    <span class="tok-kw">try</span> testing.expectEqual(B.b, nameCast(B, .b));</span>
+<span class="line" id="L231">    <span class="tok-kw">try</span> testing.expectEqual(B.b, nameCast(B, A.b));</span>
+<span class="line" id="L232">    <span class="tok-kw">try</span> testing.expectEqual(B.b, nameCast(B, B.b));</span>
+<span class="line" id="L233">    <span class="tok-kw">try</span> testing.expectEqual(B.b, nameCast(B, <span class="tok-str">&quot;b&quot;</span>));</span>
+<span class="line" id="L234">}</span>
+<span class="line" id="L235"></span>
+<span class="line" id="L236"><span class="tok-comment">/// A set of enum elements, backed by a bitfield.  If the enum</span></span>
+<span class="line" id="L237"><span class="tok-comment">/// is not dense, a mapping will be constructed from enum values</span></span>
+<span class="line" id="L238"><span class="tok-comment">/// to dense indices.  This type does no dynamic allocation and</span></span>
+<span class="line" id="L239"><span class="tok-comment">/// can be copied by value.</span></span>
+<span class="line" id="L240"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">EnumSet</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L241">    <span class="tok-kw">const</span> mixin = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L242">        <span class="tok-kw">fn</span> <span class="tok-fn">EnumSetExt</span>(<span class="tok-kw">comptime</span> Self: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L243">            <span class="tok-kw">const</span> Indexer = Self.Indexer;</span>
+<span class="line" id="L244">            <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L245">                <span class="tok-comment">/// Initializes the set using a struct of bools</span></span>
+<span class="line" id="L246">                <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(init_values: EnumFieldStruct(E, <span class="tok-type">bool</span>, <span class="tok-null">false</span>)) Self {</span>
+<span class="line" id="L247">                    <span class="tok-kw">var</span> result = Self{};</span>
+<span class="line" id="L248">                    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L249">                    <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (i &lt; Self.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L250">                        <span class="tok-kw">const</span> key = <span class="tok-kw">comptime</span> Indexer.keyForIndex(i);</span>
+<span class="line" id="L251">                        <span class="tok-kw">const</span> tag = <span class="tok-kw">comptime</span> <span class="tok-builtin">@tagName</span>(key);</span>
+<span class="line" id="L252">                        <span class="tok-kw">if</span> (<span class="tok-builtin">@field</span>(init_values, tag)) {</span>
+<span class="line" id="L253">                            result.bits.set(i);</span>
+<span class="line" id="L254">                        }</span>
+<span class="line" id="L255">                    }</span>
+<span class="line" id="L256">                    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L257">                }</span>
+<span class="line" id="L258">            };</span>
+<span class="line" id="L259">        }</span>
+<span class="line" id="L260">    };</span>
+<span class="line" id="L261">    <span class="tok-kw">return</span> IndexedSet(EnumIndexer(E), mixin.EnumSetExt);</span>
+<span class="line" id="L262">}</span>
+<span class="line" id="L263"></span>
+<span class="line" id="L264"><span class="tok-comment">/// A map keyed by an enum, backed by a bitfield and a dense array.</span></span>
+<span class="line" id="L265"><span class="tok-comment">/// If the enum is not dense, a mapping will be constructed from</span></span>
+<span class="line" id="L266"><span class="tok-comment">/// enum values to dense indices.  This type does no dynamic</span></span>
+<span class="line" id="L267"><span class="tok-comment">/// allocation and can be copied by value.</span></span>
+<span class="line" id="L268"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">EnumMap</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> V: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L269">    <span class="tok-kw">const</span> mixin = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L270">        <span class="tok-kw">fn</span> <span class="tok-fn">EnumMapExt</span>(<span class="tok-kw">comptime</span> Self: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L271">            <span class="tok-kw">const</span> Indexer = Self.Indexer;</span>
+<span class="line" id="L272">            <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L273">                <span class="tok-comment">/// Initializes the map using a sparse struct of optionals</span></span>
+<span class="line" id="L274">                <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(init_values: EnumFieldStruct(E, ?V, <span class="tok-builtin">@as</span>(?V, <span class="tok-null">null</span>))) Self {</span>
+<span class="line" id="L275">                    <span class="tok-kw">var</span> result = Self{};</span>
+<span class="line" id="L276">                    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L277">                    <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (i &lt; Self.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L278">                        <span class="tok-kw">const</span> key = <span class="tok-kw">comptime</span> Indexer.keyForIndex(i);</span>
+<span class="line" id="L279">                        <span class="tok-kw">const</span> tag = <span class="tok-kw">comptime</span> <span class="tok-builtin">@tagName</span>(key);</span>
+<span class="line" id="L280">                        <span class="tok-kw">if</span> (<span class="tok-builtin">@field</span>(init_values, tag)) |*v| {</span>
+<span class="line" id="L281">                            result.bits.set(i);</span>
+<span class="line" id="L282">                            result.values[i] = v.*;</span>
+<span class="line" id="L283">                        }</span>
+<span class="line" id="L284">                    }</span>
+<span class="line" id="L285">                    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L286">                }</span>
+<span class="line" id="L287">                <span class="tok-comment">/// Initializes a full mapping with all keys set to value.</span></span>
+<span class="line" id="L288">                <span class="tok-comment">/// Consider using EnumArray instead if the map will remain full.</span></span>
+<span class="line" id="L289">                <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFull</span>(value: V) Self {</span>
+<span class="line" id="L290">                    <span class="tok-kw">var</span> result = Self{</span>
+<span class="line" id="L291">                        .bits = Self.BitSet.initFull(),</span>
+<span class="line" id="L292">                        .values = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L293">                    };</span>
+<span class="line" id="L294">                    <span class="tok-builtin">@memset</span>(&amp;result.values, value);</span>
+<span class="line" id="L295">                    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L296">                }</span>
+<span class="line" id="L297">                <span class="tok-comment">/// Initializes a full mapping with supplied values.</span></span>
+<span class="line" id="L298">                <span class="tok-comment">/// Consider using EnumArray instead if the map will remain full.</span></span>
+<span class="line" id="L299">                <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFullWith</span>(init_values: EnumFieldStruct(E, V, <span class="tok-builtin">@as</span>(?V, <span class="tok-null">null</span>))) Self {</span>
+<span class="line" id="L300">                    <span class="tok-kw">return</span> initFullWithDefault(<span class="tok-builtin">@as</span>(?V, <span class="tok-null">null</span>), init_values);</span>
+<span class="line" id="L301">                }</span>
+<span class="line" id="L302">                <span class="tok-comment">/// Initializes a full mapping with a provided default.</span></span>
+<span class="line" id="L303">                <span class="tok-comment">/// Consider using EnumArray instead if the map will remain full.</span></span>
+<span class="line" id="L304">                <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFullWithDefault</span>(<span class="tok-kw">comptime</span> default: ?V, init_values: EnumFieldStruct(E, V, default)) Self {</span>
+<span class="line" id="L305">                    <span class="tok-kw">var</span> result = Self{</span>
+<span class="line" id="L306">                        .bits = Self.BitSet.initFull(),</span>
+<span class="line" id="L307">                        .values = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L308">                    };</span>
+<span class="line" id="L309">                    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L310">                    <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (i &lt; Self.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L311">                        <span class="tok-kw">const</span> key = <span class="tok-kw">comptime</span> Indexer.keyForIndex(i);</span>
+<span class="line" id="L312">                        <span class="tok-kw">const</span> tag = <span class="tok-kw">comptime</span> <span class="tok-builtin">@tagName</span>(key);</span>
+<span class="line" id="L313">                        result.values[i] = <span class="tok-builtin">@field</span>(init_values, tag);</span>
+<span class="line" id="L314">                    }</span>
+<span class="line" id="L315">                    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L316">                }</span>
+<span class="line" id="L317">            };</span>
+<span class="line" id="L318">        }</span>
+<span class="line" id="L319">    };</span>
+<span class="line" id="L320">    <span class="tok-kw">return</span> IndexedMap(EnumIndexer(E), V, mixin.EnumMapExt);</span>
+<span class="line" id="L321">}</span>
+<span class="line" id="L322"></span>
+<span class="line" id="L323"><span class="tok-comment">/// A multiset of enum elements up to a count of usize. Backed</span></span>
+<span class="line" id="L324"><span class="tok-comment">/// by an EnumArray. This type does no dynamic allocation and can</span></span>
+<span class="line" id="L325"><span class="tok-comment">/// be copied by value.</span></span>
+<span class="line" id="L326"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">EnumMultiset</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L327">    <span class="tok-kw">return</span> BoundedEnumMultiset(E, <span class="tok-type">usize</span>);</span>
+<span class="line" id="L328">}</span>
+<span class="line" id="L329"></span>
+<span class="line" id="L330"><span class="tok-comment">/// A multiset of enum elements up to CountSize. Backed by an</span></span>
+<span class="line" id="L331"><span class="tok-comment">/// EnumArray. This type does no dynamic allocation and can be</span></span>
+<span class="line" id="L332"><span class="tok-comment">/// copied by value.</span></span>
+<span class="line" id="L333"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">BoundedEnumMultiset</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> CountSize: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L334">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L335">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L336"></span>
+<span class="line" id="L337">        counts: EnumArray(E, CountSize),</span>
+<span class="line" id="L338"></span>
+<span class="line" id="L339">        <span class="tok-comment">/// Initializes the multiset using a struct of counts.</span></span>
+<span class="line" id="L340">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(init_counts: EnumFieldStruct(E, CountSize, <span class="tok-number">0</span>)) Self {</span>
+<span class="line" id="L341">            <span class="tok-kw">var</span> self = initWithCount(<span class="tok-number">0</span>);</span>
+<span class="line" id="L342">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |field| {</span>
+<span class="line" id="L343">                <span class="tok-kw">const</span> c = <span class="tok-builtin">@field</span>(init_counts, field.name);</span>
+<span class="line" id="L344">                <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(field.value));</span>
+<span class="line" id="L345">                self.counts.set(key, c);</span>
+<span class="line" id="L346">            }</span>
+<span class="line" id="L347">            <span class="tok-kw">return</span> self;</span>
+<span class="line" id="L348">        }</span>
+<span class="line" id="L349"></span>
+<span class="line" id="L350">        <span class="tok-comment">/// Initializes the multiset with a count of zero.</span></span>
+<span class="line" id="L351">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initEmpty</span>() Self {</span>
+<span class="line" id="L352">            <span class="tok-kw">return</span> initWithCount(<span class="tok-number">0</span>);</span>
+<span class="line" id="L353">        }</span>
+<span class="line" id="L354"></span>
+<span class="line" id="L355">        <span class="tok-comment">/// Initializes the multiset with all keys at the</span></span>
+<span class="line" id="L356">        <span class="tok-comment">/// same count.</span></span>
+<span class="line" id="L357">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initWithCount</span>(<span class="tok-kw">comptime</span> c: CountSize) Self {</span>
+<span class="line" id="L358">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L359">                .counts = EnumArray(E, CountSize).initDefault(c, .{}),</span>
+<span class="line" id="L360">            };</span>
+<span class="line" id="L361">        }</span>
+<span class="line" id="L362"></span>
+<span class="line" id="L363">        <span class="tok-comment">/// Returns the total number of key counts in the multiset.</span></span>
+<span class="line" id="L364">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">count</span>(self: Self) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L365">            <span class="tok-kw">var</span> sum: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L366">            <span class="tok-kw">for</span> (self.counts.values) |c| {</span>
+<span class="line" id="L367">                sum += c;</span>
+<span class="line" id="L368">            }</span>
+<span class="line" id="L369">            <span class="tok-kw">return</span> sum;</span>
+<span class="line" id="L370">        }</span>
+<span class="line" id="L371"></span>
+<span class="line" id="L372">        <span class="tok-comment">/// Checks if at least one key in multiset.</span></span>
+<span class="line" id="L373">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">contains</span>(self: Self, key: E) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L374">            <span class="tok-kw">return</span> self.counts.get(key) &gt; <span class="tok-number">0</span>;</span>
+<span class="line" id="L375">        }</span>
+<span class="line" id="L376"></span>
+<span class="line" id="L377">        <span class="tok-comment">/// Removes all instance of a key from multiset. Same as</span></span>
+<span class="line" id="L378">        <span class="tok-comment">/// setCount(key, 0).</span></span>
+<span class="line" id="L379">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">removeAll</span>(self: *Self, key: E) <span class="tok-type">void</span> {</span>
+<span class="line" id="L380">            <span class="tok-kw">return</span> self.counts.set(key, <span class="tok-number">0</span>);</span>
+<span class="line" id="L381">        }</span>
+<span class="line" id="L382"></span>
+<span class="line" id="L383">        <span class="tok-comment">/// Increases the key count by given amount. Caller asserts</span></span>
+<span class="line" id="L384">        <span class="tok-comment">/// operation will not overflow.</span></span>
+<span class="line" id="L385">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addAssertSafe</span>(self: *Self, key: E, c: CountSize) <span class="tok-type">void</span> {</span>
+<span class="line" id="L386">            self.counts.getPtr(key).* += c;</span>
+<span class="line" id="L387">        }</span>
+<span class="line" id="L388"></span>
+<span class="line" id="L389">        <span class="tok-comment">/// Increases the key count by given amount.</span></span>
+<span class="line" id="L390">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(self: *Self, key: E, c: CountSize) <span class="tok-kw">error</span>{Overflow}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L391">            self.counts.set(key, <span class="tok-kw">try</span> std.math.add(CountSize, self.counts.get(key), c));</span>
+<span class="line" id="L392">        }</span>
+<span class="line" id="L393"></span>
+<span class="line" id="L394">        <span class="tok-comment">/// Decreases the key count by given amount. If amount is</span></span>
+<span class="line" id="L395">        <span class="tok-comment">/// greater than the number of keys in multset, then key count</span></span>
+<span class="line" id="L396">        <span class="tok-comment">/// will be set to zero.</span></span>
+<span class="line" id="L397">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">remove</span>(self: *Self, key: E, c: CountSize) <span class="tok-type">void</span> {</span>
+<span class="line" id="L398">            self.counts.getPtr(key).* -= <span class="tok-builtin">@min</span>(self.getCount(key), c);</span>
+<span class="line" id="L399">        }</span>
+<span class="line" id="L400"></span>
+<span class="line" id="L401">        <span class="tok-comment">/// Returns the count for a key.</span></span>
+<span class="line" id="L402">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getCount</span>(self: Self, key: E) CountSize {</span>
+<span class="line" id="L403">            <span class="tok-kw">return</span> self.counts.get(key);</span>
+<span class="line" id="L404">        }</span>
+<span class="line" id="L405"></span>
+<span class="line" id="L406">        <span class="tok-comment">/// Set the count for a key.</span></span>
+<span class="line" id="L407">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setCount</span>(self: *Self, key: E, c: CountSize) <span class="tok-type">void</span> {</span>
+<span class="line" id="L408">            self.counts.set(key, c);</span>
+<span class="line" id="L409">        }</span>
+<span class="line" id="L410"></span>
+<span class="line" id="L411">        <span class="tok-comment">/// Increases the all key counts by given multiset. Caller</span></span>
+<span class="line" id="L412">        <span class="tok-comment">/// asserts operation will not overflow any key.</span></span>
+<span class="line" id="L413">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addSetAssertSafe</span>(self: *Self, other: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L414">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |field| {</span>
+<span class="line" id="L415">                <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(field.value));</span>
+<span class="line" id="L416">                self.addAssertSafe(key, other.getCount(key));</span>
+<span class="line" id="L417">            }</span>
+<span class="line" id="L418">        }</span>
+<span class="line" id="L419"></span>
+<span class="line" id="L420">        <span class="tok-comment">/// Increases the all key counts by given multiset.</span></span>
+<span class="line" id="L421">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addSet</span>(self: *Self, other: Self) <span class="tok-kw">error</span>{Overflow}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L422">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |field| {</span>
+<span class="line" id="L423">                <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(field.value));</span>
+<span class="line" id="L424">                <span class="tok-kw">try</span> self.add(key, other.getCount(key));</span>
+<span class="line" id="L425">            }</span>
+<span class="line" id="L426">        }</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">        <span class="tok-comment">/// Deccreases the all key counts by given multiset. If</span></span>
+<span class="line" id="L429">        <span class="tok-comment">/// the given multiset has more key counts than this,</span></span>
+<span class="line" id="L430">        <span class="tok-comment">/// then that key will have a key count of zero.</span></span>
+<span class="line" id="L431">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">removeSet</span>(self: *Self, other: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L432">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |field| {</span>
+<span class="line" id="L433">                <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(field.value));</span>
+<span class="line" id="L434">                self.remove(key, other.getCount(key));</span>
+<span class="line" id="L435">            }</span>
+<span class="line" id="L436">        }</span>
+<span class="line" id="L437"></span>
+<span class="line" id="L438">        <span class="tok-comment">/// Returns true iff all key counts are the same as</span></span>
+<span class="line" id="L439">        <span class="tok-comment">/// given multiset.</span></span>
+<span class="line" id="L440">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(self: Self, other: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L441">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |field| {</span>
+<span class="line" id="L442">                <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(field.value));</span>
+<span class="line" id="L443">                <span class="tok-kw">if</span> (self.getCount(key) != other.getCount(key)) {</span>
+<span class="line" id="L444">                    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L445">                }</span>
+<span class="line" id="L446">            }</span>
+<span class="line" id="L447">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L448">        }</span>
+<span class="line" id="L449"></span>
+<span class="line" id="L450">        <span class="tok-comment">/// Returns true iff all key counts less than or</span></span>
+<span class="line" id="L451">        <span class="tok-comment">/// equal to the given multiset.</span></span>
+<span class="line" id="L452">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">subsetOf</span>(self: Self, other: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L453">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |field| {</span>
+<span class="line" id="L454">                <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(field.value));</span>
+<span class="line" id="L455">                <span class="tok-kw">if</span> (self.getCount(key) &gt; other.getCount(key)) {</span>
+<span class="line" id="L456">                    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L457">                }</span>
+<span class="line" id="L458">            }</span>
+<span class="line" id="L459">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L460">        }</span>
+<span class="line" id="L461"></span>
+<span class="line" id="L462">        <span class="tok-comment">/// Returns true iff all key counts greater than or</span></span>
+<span class="line" id="L463">        <span class="tok-comment">/// equal to the given multiset.</span></span>
+<span class="line" id="L464">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">supersetOf</span>(self: Self, other: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L465">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(E).Enum.fields) |field| {</span>
+<span class="line" id="L466">                <span class="tok-kw">const</span> key = <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(field.value));</span>
+<span class="line" id="L467">                <span class="tok-kw">if</span> (self.getCount(key) &lt; other.getCount(key)) {</span>
+<span class="line" id="L468">                    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L469">                }</span>
+<span class="line" id="L470">            }</span>
+<span class="line" id="L471">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L472">        }</span>
+<span class="line" id="L473"></span>
+<span class="line" id="L474">        <span class="tok-comment">/// Returns a multiset with the total key count of this</span></span>
+<span class="line" id="L475">        <span class="tok-comment">/// multiset and the other multiset. Caller asserts</span></span>
+<span class="line" id="L476">        <span class="tok-comment">/// operation will not overflow any key.</span></span>
+<span class="line" id="L477">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">plusAssertSafe</span>(self: Self, other: Self) Self {</span>
+<span class="line" id="L478">            <span class="tok-kw">var</span> result = self;</span>
+<span class="line" id="L479">            result.addSetAssertSafe(other);</span>
+<span class="line" id="L480">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L481">        }</span>
+<span class="line" id="L482"></span>
+<span class="line" id="L483">        <span class="tok-comment">/// Returns a multiset with the total key count of this</span></span>
+<span class="line" id="L484">        <span class="tok-comment">/// multiset and the other multiset.</span></span>
+<span class="line" id="L485">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">plus</span>(self: Self, other: Self) <span class="tok-kw">error</span>{Overflow}!Self {</span>
+<span class="line" id="L486">            <span class="tok-kw">var</span> result = self;</span>
+<span class="line" id="L487">            <span class="tok-kw">try</span> result.addSet(other);</span>
+<span class="line" id="L488">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L489">        }</span>
+<span class="line" id="L490"></span>
+<span class="line" id="L491">        <span class="tok-comment">/// Returns a multiset with the key count of this</span></span>
+<span class="line" id="L492">        <span class="tok-comment">/// multiset minus the corresponding key count in the</span></span>
+<span class="line" id="L493">        <span class="tok-comment">/// other multiset. If the other multiset contains</span></span>
+<span class="line" id="L494">        <span class="tok-comment">/// more key count than this set, that key will have</span></span>
+<span class="line" id="L495">        <span class="tok-comment">/// a count of zero.</span></span>
+<span class="line" id="L496">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">minus</span>(self: Self, other: Self) Self {</span>
+<span class="line" id="L497">            <span class="tok-kw">var</span> result = self;</span>
+<span class="line" id="L498">            result.removeSet(other);</span>
+<span class="line" id="L499">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L500">        }</span>
+<span class="line" id="L501"></span>
+<span class="line" id="L502">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Entry = EnumArray(E, CountSize).Entry;</span>
+<span class="line" id="L503">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Iterator = EnumArray(E, CountSize).Iterator;</span>
+<span class="line" id="L504"></span>
+<span class="line" id="L505">        <span class="tok-comment">/// Returns an iterator over this multiset. Keys with zero</span></span>
+<span class="line" id="L506">        <span class="tok-comment">/// counts are included. Modifications to the set during</span></span>
+<span class="line" id="L507">        <span class="tok-comment">/// iteration may or may not be observed by the iterator,</span></span>
+<span class="line" id="L508">        <span class="tok-comment">/// but will not invalidate it.</span></span>
+<span class="line" id="L509">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">iterator</span>(self: *Self) Iterator {</span>
+<span class="line" id="L510">            <span class="tok-kw">return</span> self.counts.iterator();</span>
+<span class="line" id="L511">        }</span>
+<span class="line" id="L512">    };</span>
+<span class="line" id="L513">}</span>
+<span class="line" id="L514"></span>
+<span class="line" id="L515"><span class="tok-kw">test</span> <span class="tok-str">&quot;EnumMultiset&quot;</span> {</span>
+<span class="line" id="L516">    <span class="tok-kw">const</span> Ball = <span class="tok-kw">enum</span> { red, green, blue };</span>
+<span class="line" id="L517"></span>
+<span class="line" id="L518">    <span class="tok-kw">const</span> empty = EnumMultiset(Ball).initEmpty();</span>
+<span class="line" id="L519">    <span class="tok-kw">const</span> r0_g1_b2 = EnumMultiset(Ball).init(.{</span>
+<span class="line" id="L520">        .red = <span class="tok-number">0</span>,</span>
+<span class="line" id="L521">        .green = <span class="tok-number">1</span>,</span>
+<span class="line" id="L522">        .blue = <span class="tok-number">2</span>,</span>
+<span class="line" id="L523">    });</span>
+<span class="line" id="L524">    <span class="tok-kw">const</span> ten_of_each = EnumMultiset(Ball).initWithCount(<span class="tok-number">10</span>);</span>
+<span class="line" id="L525"></span>
+<span class="line" id="L526">    <span class="tok-kw">try</span> testing.expectEqual(empty.count(), <span class="tok-number">0</span>);</span>
+<span class="line" id="L527">    <span class="tok-kw">try</span> testing.expectEqual(r0_g1_b2.count(), <span class="tok-number">3</span>);</span>
+<span class="line" id="L528">    <span class="tok-kw">try</span> testing.expectEqual(ten_of_each.count(), <span class="tok-number">30</span>);</span>
+<span class="line" id="L529"></span>
+<span class="line" id="L530">    <span class="tok-kw">try</span> testing.expect(!empty.contains(.red));</span>
+<span class="line" id="L531">    <span class="tok-kw">try</span> testing.expect(!empty.contains(.green));</span>
+<span class="line" id="L532">    <span class="tok-kw">try</span> testing.expect(!empty.contains(.blue));</span>
+<span class="line" id="L533"></span>
+<span class="line" id="L534">    <span class="tok-kw">try</span> testing.expect(!r0_g1_b2.contains(.red));</span>
+<span class="line" id="L535">    <span class="tok-kw">try</span> testing.expect(r0_g1_b2.contains(.green));</span>
+<span class="line" id="L536">    <span class="tok-kw">try</span> testing.expect(r0_g1_b2.contains(.blue));</span>
+<span class="line" id="L537"></span>
+<span class="line" id="L538">    <span class="tok-kw">try</span> testing.expect(ten_of_each.contains(.red));</span>
+<span class="line" id="L539">    <span class="tok-kw">try</span> testing.expect(ten_of_each.contains(.green));</span>
+<span class="line" id="L540">    <span class="tok-kw">try</span> testing.expect(ten_of_each.contains(.blue));</span>
+<span class="line" id="L541"></span>
+<span class="line" id="L542">    {</span>
+<span class="line" id="L543">        <span class="tok-kw">var</span> copy = ten_of_each;</span>
+<span class="line" id="L544">        copy.removeAll(.red);</span>
+<span class="line" id="L545">        <span class="tok-kw">try</span> testing.expect(!copy.contains(.red));</span>
+<span class="line" id="L546"></span>
+<span class="line" id="L547">        <span class="tok-comment">// removeAll second time does nothing</span>
+</span>
+<span class="line" id="L548">        copy.removeAll(.red);</span>
+<span class="line" id="L549">        <span class="tok-kw">try</span> testing.expect(!copy.contains(.red));</span>
+<span class="line" id="L550">    }</span>
+<span class="line" id="L551"></span>
+<span class="line" id="L552">    {</span>
+<span class="line" id="L553">        <span class="tok-kw">var</span> copy = ten_of_each;</span>
+<span class="line" id="L554">        copy.addAssertSafe(.red, <span class="tok-number">6</span>);</span>
+<span class="line" id="L555">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">16</span>);</span>
+<span class="line" id="L556">    }</span>
+<span class="line" id="L557"></span>
+<span class="line" id="L558">    {</span>
+<span class="line" id="L559">        <span class="tok-kw">var</span> copy = ten_of_each;</span>
+<span class="line" id="L560">        <span class="tok-kw">try</span> copy.add(.red, <span class="tok-number">6</span>);</span>
+<span class="line" id="L561">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">16</span>);</span>
+<span class="line" id="L562"></span>
+<span class="line" id="L563">        <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, copy.add(.red, std.math.maxInt(<span class="tok-type">usize</span>)));</span>
+<span class="line" id="L564">    }</span>
+<span class="line" id="L565"></span>
+<span class="line" id="L566">    {</span>
+<span class="line" id="L567">        <span class="tok-kw">var</span> copy = ten_of_each;</span>
+<span class="line" id="L568">        copy.remove(.red, <span class="tok-number">4</span>);</span>
+<span class="line" id="L569">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">6</span>);</span>
+<span class="line" id="L570"></span>
+<span class="line" id="L571">        <span class="tok-comment">// subtracting more it contains does not underflow</span>
+</span>
+<span class="line" id="L572">        copy.remove(.green, <span class="tok-number">14</span>);</span>
+<span class="line" id="L573">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.green), <span class="tok-number">0</span>);</span>
+<span class="line" id="L574">    }</span>
+<span class="line" id="L575"></span>
+<span class="line" id="L576">    <span class="tok-kw">try</span> testing.expectEqual(empty.getCount(.green), <span class="tok-number">0</span>);</span>
+<span class="line" id="L577">    <span class="tok-kw">try</span> testing.expectEqual(r0_g1_b2.getCount(.green), <span class="tok-number">1</span>);</span>
+<span class="line" id="L578">    <span class="tok-kw">try</span> testing.expectEqual(ten_of_each.getCount(.green), <span class="tok-number">10</span>);</span>
+<span class="line" id="L579"></span>
+<span class="line" id="L580">    {</span>
+<span class="line" id="L581">        <span class="tok-kw">var</span> copy = empty;</span>
+<span class="line" id="L582">        copy.setCount(.red, <span class="tok-number">6</span>);</span>
+<span class="line" id="L583">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">6</span>);</span>
+<span class="line" id="L584">    }</span>
+<span class="line" id="L585"></span>
+<span class="line" id="L586">    {</span>
+<span class="line" id="L587">        <span class="tok-kw">var</span> copy = r0_g1_b2;</span>
+<span class="line" id="L588">        copy.addSetAssertSafe(ten_of_each);</span>
+<span class="line" id="L589">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">10</span>);</span>
+<span class="line" id="L590">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.green), <span class="tok-number">11</span>);</span>
+<span class="line" id="L591">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.blue), <span class="tok-number">12</span>);</span>
+<span class="line" id="L592">    }</span>
+<span class="line" id="L593"></span>
+<span class="line" id="L594">    {</span>
+<span class="line" id="L595">        <span class="tok-kw">var</span> copy = r0_g1_b2;</span>
+<span class="line" id="L596">        <span class="tok-kw">try</span> copy.addSet(ten_of_each);</span>
+<span class="line" id="L597">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">10</span>);</span>
+<span class="line" id="L598">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.green), <span class="tok-number">11</span>);</span>
+<span class="line" id="L599">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.blue), <span class="tok-number">12</span>);</span>
+<span class="line" id="L600"></span>
+<span class="line" id="L601">        <span class="tok-kw">const</span> full = EnumMultiset(Ball).initWithCount(std.math.maxInt(<span class="tok-type">usize</span>));</span>
+<span class="line" id="L602">        <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, copy.addSet(full));</span>
+<span class="line" id="L603">    }</span>
+<span class="line" id="L604"></span>
+<span class="line" id="L605">    {</span>
+<span class="line" id="L606">        <span class="tok-kw">var</span> copy = ten_of_each;</span>
+<span class="line" id="L607">        copy.removeSet(r0_g1_b2);</span>
+<span class="line" id="L608">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">10</span>);</span>
+<span class="line" id="L609">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.green), <span class="tok-number">9</span>);</span>
+<span class="line" id="L610">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.blue), <span class="tok-number">8</span>);</span>
+<span class="line" id="L611"></span>
+<span class="line" id="L612">        copy.removeSet(ten_of_each);</span>
+<span class="line" id="L613">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.red), <span class="tok-number">0</span>);</span>
+<span class="line" id="L614">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.green), <span class="tok-number">0</span>);</span>
+<span class="line" id="L615">        <span class="tok-kw">try</span> testing.expectEqual(copy.getCount(.blue), <span class="tok-number">0</span>);</span>
+<span class="line" id="L616">    }</span>
+<span class="line" id="L617"></span>
+<span class="line" id="L618">    <span class="tok-kw">try</span> testing.expect(empty.eql(empty));</span>
+<span class="line" id="L619">    <span class="tok-kw">try</span> testing.expect(r0_g1_b2.eql(r0_g1_b2));</span>
+<span class="line" id="L620">    <span class="tok-kw">try</span> testing.expect(ten_of_each.eql(ten_of_each));</span>
+<span class="line" id="L621">    <span class="tok-kw">try</span> testing.expect(!empty.eql(r0_g1_b2));</span>
+<span class="line" id="L622">    <span class="tok-kw">try</span> testing.expect(!r0_g1_b2.eql(ten_of_each));</span>
+<span class="line" id="L623">    <span class="tok-kw">try</span> testing.expect(!ten_of_each.eql(empty));</span>
+<span class="line" id="L624"></span>
+<span class="line" id="L625">    <span class="tok-kw">try</span> testing.expect(empty.subsetOf(empty));</span>
+<span class="line" id="L626">    <span class="tok-kw">try</span> testing.expect(r0_g1_b2.subsetOf(r0_g1_b2));</span>
+<span class="line" id="L627">    <span class="tok-kw">try</span> testing.expect(empty.subsetOf(r0_g1_b2));</span>
+<span class="line" id="L628">    <span class="tok-kw">try</span> testing.expect(r0_g1_b2.subsetOf(ten_of_each));</span>
+<span class="line" id="L629">    <span class="tok-kw">try</span> testing.expect(!ten_of_each.subsetOf(r0_g1_b2));</span>
+<span class="line" id="L630">    <span class="tok-kw">try</span> testing.expect(!r0_g1_b2.subsetOf(empty));</span>
+<span class="line" id="L631"></span>
+<span class="line" id="L632">    <span class="tok-kw">try</span> testing.expect(empty.supersetOf(empty));</span>
+<span class="line" id="L633">    <span class="tok-kw">try</span> testing.expect(r0_g1_b2.supersetOf(r0_g1_b2));</span>
+<span class="line" id="L634">    <span class="tok-kw">try</span> testing.expect(r0_g1_b2.supersetOf(empty));</span>
+<span class="line" id="L635">    <span class="tok-kw">try</span> testing.expect(ten_of_each.supersetOf(r0_g1_b2));</span>
+<span class="line" id="L636">    <span class="tok-kw">try</span> testing.expect(!r0_g1_b2.supersetOf(ten_of_each));</span>
+<span class="line" id="L637">    <span class="tok-kw">try</span> testing.expect(!empty.supersetOf(r0_g1_b2));</span>
+<span class="line" id="L638"></span>
+<span class="line" id="L639">    {</span>
+<span class="line" id="L640">        <span class="tok-comment">// with multisets it could be the case where two</span>
+</span>
+<span class="line" id="L641">        <span class="tok-comment">// multisets are neither subset nor superset of each</span>
+</span>
+<span class="line" id="L642">        <span class="tok-comment">// other.</span>
+</span>
+<span class="line" id="L643"></span>
+<span class="line" id="L644">        <span class="tok-kw">const</span> r10 = EnumMultiset(Ball).init(.{</span>
+<span class="line" id="L645">            .red = <span class="tok-number">10</span>,</span>
+<span class="line" id="L646">        });</span>
+<span class="line" id="L647">        <span class="tok-kw">const</span> b10 = EnumMultiset(Ball).init(.{</span>
+<span class="line" id="L648">            .blue = <span class="tok-number">10</span>,</span>
+<span class="line" id="L649">        });</span>
+<span class="line" id="L650"></span>
+<span class="line" id="L651">        <span class="tok-kw">try</span> testing.expect(!r10.subsetOf(b10));</span>
+<span class="line" id="L652">        <span class="tok-kw">try</span> testing.expect(!b10.subsetOf(r10));</span>
+<span class="line" id="L653">        <span class="tok-kw">try</span> testing.expect(!r10.supersetOf(b10));</span>
+<span class="line" id="L654">        <span class="tok-kw">try</span> testing.expect(!b10.supersetOf(r10));</span>
+<span class="line" id="L655">    }</span>
+<span class="line" id="L656"></span>
+<span class="line" id="L657">    {</span>
+<span class="line" id="L658">        <span class="tok-kw">const</span> result = r0_g1_b2.plusAssertSafe(ten_of_each);</span>
+<span class="line" id="L659">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.red), <span class="tok-number">10</span>);</span>
+<span class="line" id="L660">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.green), <span class="tok-number">11</span>);</span>
+<span class="line" id="L661">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.blue), <span class="tok-number">12</span>);</span>
+<span class="line" id="L662">    }</span>
+<span class="line" id="L663"></span>
+<span class="line" id="L664">    {</span>
+<span class="line" id="L665">        <span class="tok-kw">const</span> result = <span class="tok-kw">try</span> r0_g1_b2.plus(ten_of_each);</span>
+<span class="line" id="L666">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.red), <span class="tok-number">10</span>);</span>
+<span class="line" id="L667">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.green), <span class="tok-number">11</span>);</span>
+<span class="line" id="L668">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.blue), <span class="tok-number">12</span>);</span>
+<span class="line" id="L669"></span>
+<span class="line" id="L670">        <span class="tok-kw">const</span> full = EnumMultiset(Ball).initWithCount(std.math.maxInt(<span class="tok-type">usize</span>));</span>
+<span class="line" id="L671">        <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, result.plus(full));</span>
+<span class="line" id="L672">    }</span>
+<span class="line" id="L673"></span>
+<span class="line" id="L674">    {</span>
+<span class="line" id="L675">        <span class="tok-kw">const</span> result = ten_of_each.minus(r0_g1_b2);</span>
+<span class="line" id="L676">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.red), <span class="tok-number">10</span>);</span>
+<span class="line" id="L677">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.green), <span class="tok-number">9</span>);</span>
+<span class="line" id="L678">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.blue), <span class="tok-number">8</span>);</span>
+<span class="line" id="L679">    }</span>
+<span class="line" id="L680"></span>
+<span class="line" id="L681">    {</span>
+<span class="line" id="L682">        <span class="tok-kw">const</span> result = ten_of_each.minus(r0_g1_b2).minus(ten_of_each);</span>
+<span class="line" id="L683">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.red), <span class="tok-number">0</span>);</span>
+<span class="line" id="L684">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.green), <span class="tok-number">0</span>);</span>
+<span class="line" id="L685">        <span class="tok-kw">try</span> testing.expectEqual(result.getCount(.blue), <span class="tok-number">0</span>);</span>
+<span class="line" id="L686">    }</span>
+<span class="line" id="L687"></span>
+<span class="line" id="L688">    {</span>
+<span class="line" id="L689">        <span class="tok-kw">var</span> copy = empty;</span>
+<span class="line" id="L690">        <span class="tok-kw">var</span> it = copy.iterator();</span>
+<span class="line" id="L691">        <span class="tok-kw">var</span> entry = it.next().?;</span>
+<span class="line" id="L692">        <span class="tok-kw">try</span> testing.expectEqual(entry.key, .red);</span>
+<span class="line" id="L693">        <span class="tok-kw">try</span> testing.expectEqual(entry.value.*, <span class="tok-number">0</span>);</span>
+<span class="line" id="L694">        entry = it.next().?;</span>
+<span class="line" id="L695">        <span class="tok-kw">try</span> testing.expectEqual(entry.key, .green);</span>
+<span class="line" id="L696">        <span class="tok-kw">try</span> testing.expectEqual(entry.value.*, <span class="tok-number">0</span>);</span>
+<span class="line" id="L697">        entry = it.next().?;</span>
+<span class="line" id="L698">        <span class="tok-kw">try</span> testing.expectEqual(entry.key, .blue);</span>
+<span class="line" id="L699">        <span class="tok-kw">try</span> testing.expectEqual(entry.value.*, <span class="tok-number">0</span>);</span>
+<span class="line" id="L700">        <span class="tok-kw">try</span> testing.expectEqual(it.next(), <span class="tok-null">null</span>);</span>
+<span class="line" id="L701">    }</span>
+<span class="line" id="L702"></span>
+<span class="line" id="L703">    {</span>
+<span class="line" id="L704">        <span class="tok-kw">var</span> copy = r0_g1_b2;</span>
+<span class="line" id="L705">        <span class="tok-kw">var</span> it = copy.iterator();</span>
+<span class="line" id="L706">        <span class="tok-kw">var</span> entry = it.next().?;</span>
+<span class="line" id="L707">        <span class="tok-kw">try</span> testing.expectEqual(entry.key, .red);</span>
+<span class="line" id="L708">        <span class="tok-kw">try</span> testing.expectEqual(entry.value.*, <span class="tok-number">0</span>);</span>
+<span class="line" id="L709">        entry = it.next().?;</span>
+<span class="line" id="L710">        <span class="tok-kw">try</span> testing.expectEqual(entry.key, .green);</span>
+<span class="line" id="L711">        <span class="tok-kw">try</span> testing.expectEqual(entry.value.*, <span class="tok-number">1</span>);</span>
+<span class="line" id="L712">        entry = it.next().?;</span>
+<span class="line" id="L713">        <span class="tok-kw">try</span> testing.expectEqual(entry.key, .blue);</span>
+<span class="line" id="L714">        <span class="tok-kw">try</span> testing.expectEqual(entry.value.*, <span class="tok-number">2</span>);</span>
+<span class="line" id="L715">        <span class="tok-kw">try</span> testing.expectEqual(it.next(), <span class="tok-null">null</span>);</span>
+<span class="line" id="L716">    }</span>
+<span class="line" id="L717">}</span>
+<span class="line" id="L718"></span>
+<span class="line" id="L719"><span class="tok-comment">/// An array keyed by an enum, backed by a dense array.</span></span>
+<span class="line" id="L720"><span class="tok-comment">/// If the enum is not dense, a mapping will be constructed from</span></span>
+<span class="line" id="L721"><span class="tok-comment">/// enum values to dense indices.  This type does no dynamic</span></span>
+<span class="line" id="L722"><span class="tok-comment">/// allocation and can be copied by value.</span></span>
+<span class="line" id="L723"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">EnumArray</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> V: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L724">    <span class="tok-kw">const</span> mixin = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L725">        <span class="tok-kw">fn</span> <span class="tok-fn">EnumArrayExt</span>(<span class="tok-kw">comptime</span> Self: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L726">            <span class="tok-kw">const</span> Indexer = Self.Indexer;</span>
+<span class="line" id="L727">            <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L728">                <span class="tok-comment">/// Initializes all values in the enum array</span></span>
+<span class="line" id="L729">                <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(init_values: EnumFieldStruct(E, V, <span class="tok-builtin">@as</span>(?V, <span class="tok-null">null</span>))) Self {</span>
+<span class="line" id="L730">                    <span class="tok-kw">return</span> initDefault(<span class="tok-builtin">@as</span>(?V, <span class="tok-null">null</span>), init_values);</span>
+<span class="line" id="L731">                }</span>
+<span class="line" id="L732"></span>
+<span class="line" id="L733">                <span class="tok-comment">/// Initializes values in the enum array, with the specified default.</span></span>
+<span class="line" id="L734">                <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initDefault</span>(<span class="tok-kw">comptime</span> default: ?V, init_values: EnumFieldStruct(E, V, default)) Self {</span>
+<span class="line" id="L735">                    <span class="tok-kw">var</span> result = Self{ .values = <span class="tok-null">undefined</span> };</span>
+<span class="line" id="L736">                    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L737">                    <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (i &lt; Self.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L738">                        <span class="tok-kw">const</span> key = <span class="tok-kw">comptime</span> Indexer.keyForIndex(i);</span>
+<span class="line" id="L739">                        <span class="tok-kw">const</span> tag = <span class="tok-builtin">@tagName</span>(key);</span>
+<span class="line" id="L740">                        result.values[i] = <span class="tok-builtin">@field</span>(init_values, tag);</span>
+<span class="line" id="L741">                    }</span>
+<span class="line" id="L742">                    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L743">                }</span>
+<span class="line" id="L744">            };</span>
+<span class="line" id="L745">        }</span>
+<span class="line" id="L746">    };</span>
+<span class="line" id="L747">    <span class="tok-kw">return</span> IndexedArray(EnumIndexer(E), V, mixin.EnumArrayExt);</span>
+<span class="line" id="L748">}</span>
+<span class="line" id="L749"></span>
+<span class="line" id="L750"><span class="tok-kw">fn</span> <span class="tok-fn">NoExtension</span>(<span class="tok-kw">comptime</span> Self: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L751">    _ = Self;</span>
+<span class="line" id="L752">    <span class="tok-kw">return</span> NoExt;</span>
+<span class="line" id="L753">}</span>
+<span class="line" id="L754"><span class="tok-kw">const</span> NoExt = <span class="tok-kw">struct</span> {};</span>
+<span class="line" id="L755"></span>
+<span class="line" id="L756"><span class="tok-comment">/// A set type with an Indexer mapping from keys to indices.</span></span>
+<span class="line" id="L757"><span class="tok-comment">/// Presence or absence is stored as a dense bitfield.  This</span></span>
+<span class="line" id="L758"><span class="tok-comment">/// type does no allocation and can be copied by value.</span></span>
+<span class="line" id="L759"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">IndexedSet</span>(<span class="tok-kw">comptime</span> I: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> Ext: ?<span class="tok-kw">fn</span> (<span class="tok-type">type</span>) <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L760">    <span class="tok-kw">comptime</span> ensureIndexer(I);</span>
+<span class="line" id="L761">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L762">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L763"></span>
+<span class="line" id="L764">        <span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> (Ext <span class="tok-kw">orelse</span> NoExtension)(Self);</span>
+<span class="line" id="L765"></span>
+<span class="line" id="L766">        <span class="tok-comment">/// The indexing rules for converting between keys and indices.</span></span>
+<span class="line" id="L767">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Indexer = I;</span>
+<span class="line" id="L768">        <span class="tok-comment">/// The element type for this set.</span></span>
+<span class="line" id="L769">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Key = Indexer.Key;</span>
+<span class="line" id="L770"></span>
+<span class="line" id="L771">        <span class="tok-kw">const</span> BitSet = std.StaticBitSet(Indexer.count);</span>
+<span class="line" id="L772"></span>
+<span class="line" id="L773">        <span class="tok-comment">/// The maximum number of items in this set.</span></span>
+<span class="line" id="L774">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> len = Indexer.count;</span>
+<span class="line" id="L775"></span>
+<span class="line" id="L776">        bits: BitSet = BitSet.initEmpty(),</span>
+<span class="line" id="L777"></span>
+<span class="line" id="L778">        <span class="tok-comment">/// Returns a set containing no keys.</span></span>
+<span class="line" id="L779">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initEmpty</span>() Self {</span>
+<span class="line" id="L780">            <span class="tok-kw">return</span> .{ .bits = BitSet.initEmpty() };</span>
+<span class="line" id="L781">        }</span>
+<span class="line" id="L782"></span>
+<span class="line" id="L783">        <span class="tok-comment">/// Returns a set containing all possible keys.</span></span>
+<span class="line" id="L784">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFull</span>() Self {</span>
+<span class="line" id="L785">            <span class="tok-kw">return</span> .{ .bits = BitSet.initFull() };</span>
+<span class="line" id="L786">        }</span>
+<span class="line" id="L787"></span>
+<span class="line" id="L788">        <span class="tok-comment">/// Returns a set containing multiple keys.</span></span>
+<span class="line" id="L789">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initMany</span>(keys: []<span class="tok-kw">const</span> Key) Self {</span>
+<span class="line" id="L790">            <span class="tok-kw">var</span> set = initEmpty();</span>
+<span class="line" id="L791">            <span class="tok-kw">for</span> (keys) |key| set.insert(key);</span>
+<span class="line" id="L792">            <span class="tok-kw">return</span> set;</span>
+<span class="line" id="L793">        }</span>
+<span class="line" id="L794"></span>
+<span class="line" id="L795">        <span class="tok-comment">/// Returns a set containing a single key.</span></span>
+<span class="line" id="L796">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initOne</span>(key: Key) Self {</span>
+<span class="line" id="L797">            <span class="tok-kw">return</span> initMany(&amp;[_]Key{key});</span>
+<span class="line" id="L798">        }</span>
+<span class="line" id="L799"></span>
+<span class="line" id="L800">        <span class="tok-comment">/// Returns the number of keys in the set.</span></span>
+<span class="line" id="L801">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">count</span>(self: Self) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L802">            <span class="tok-kw">return</span> self.bits.count();</span>
+<span class="line" id="L803">        }</span>
+<span class="line" id="L804"></span>
+<span class="line" id="L805">        <span class="tok-comment">/// Checks if a key is in the set.</span></span>
+<span class="line" id="L806">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">contains</span>(self: Self, key: Key) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L807">            <span class="tok-kw">return</span> self.bits.isSet(Indexer.indexOf(key));</span>
+<span class="line" id="L808">        }</span>
+<span class="line" id="L809"></span>
+<span class="line" id="L810">        <span class="tok-comment">/// Puts a key in the set.</span></span>
+<span class="line" id="L811">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">insert</span>(self: *Self, key: Key) <span class="tok-type">void</span> {</span>
+<span class="line" id="L812">            self.bits.set(Indexer.indexOf(key));</span>
+<span class="line" id="L813">        }</span>
+<span class="line" id="L814"></span>
+<span class="line" id="L815">        <span class="tok-comment">/// Removes a key from the set.</span></span>
+<span class="line" id="L816">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">remove</span>(self: *Self, key: Key) <span class="tok-type">void</span> {</span>
+<span class="line" id="L817">            self.bits.unset(Indexer.indexOf(key));</span>
+<span class="line" id="L818">        }</span>
+<span class="line" id="L819"></span>
+<span class="line" id="L820">        <span class="tok-comment">/// Changes the presence of a key in the set to match the passed bool.</span></span>
+<span class="line" id="L821">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setPresent</span>(self: *Self, key: Key, present: <span class="tok-type">bool</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L822">            self.bits.setValue(Indexer.indexOf(key), present);</span>
+<span class="line" id="L823">        }</span>
+<span class="line" id="L824"></span>
+<span class="line" id="L825">        <span class="tok-comment">/// Toggles the presence of a key in the set.  If the key is in</span></span>
+<span class="line" id="L826">        <span class="tok-comment">/// the set, removes it.  Otherwise adds it.</span></span>
+<span class="line" id="L827">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toggle</span>(self: *Self, key: Key) <span class="tok-type">void</span> {</span>
+<span class="line" id="L828">            self.bits.toggle(Indexer.indexOf(key));</span>
+<span class="line" id="L829">        }</span>
+<span class="line" id="L830"></span>
+<span class="line" id="L831">        <span class="tok-comment">/// Toggles the presence of all keys in the passed set.</span></span>
+<span class="line" id="L832">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toggleSet</span>(self: *Self, other: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L833">            self.bits.toggleSet(other.bits);</span>
+<span class="line" id="L834">        }</span>
+<span class="line" id="L835"></span>
+<span class="line" id="L836">        <span class="tok-comment">/// Toggles all possible keys in the set.</span></span>
+<span class="line" id="L837">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toggleAll</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L838">            self.bits.toggleAll();</span>
+<span class="line" id="L839">        }</span>
+<span class="line" id="L840"></span>
+<span class="line" id="L841">        <span class="tok-comment">/// Adds all keys in the passed set to this set.</span></span>
+<span class="line" id="L842">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setUnion</span>(self: *Self, other: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L843">            self.bits.setUnion(other.bits);</span>
+<span class="line" id="L844">        }</span>
+<span class="line" id="L845"></span>
+<span class="line" id="L846">        <span class="tok-comment">/// Removes all keys which are not in the passed set.</span></span>
+<span class="line" id="L847">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setIntersection</span>(self: *Self, other: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L848">            self.bits.setIntersection(other.bits);</span>
+<span class="line" id="L849">        }</span>
+<span class="line" id="L850"></span>
+<span class="line" id="L851">        <span class="tok-comment">/// Returns true iff both sets have the same keys.</span></span>
+<span class="line" id="L852">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(self: Self, other: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L853">            <span class="tok-kw">return</span> self.bits.eql(other.bits);</span>
+<span class="line" id="L854">        }</span>
+<span class="line" id="L855"></span>
+<span class="line" id="L856">        <span class="tok-comment">/// Returns true iff all the keys in this set are</span></span>
+<span class="line" id="L857">        <span class="tok-comment">/// in the other set. The other set may have keys</span></span>
+<span class="line" id="L858">        <span class="tok-comment">/// not found in this set.</span></span>
+<span class="line" id="L859">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">subsetOf</span>(self: Self, other: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L860">            <span class="tok-kw">return</span> self.bits.subsetOf(other.bits);</span>
+<span class="line" id="L861">        }</span>
+<span class="line" id="L862"></span>
+<span class="line" id="L863">        <span class="tok-comment">/// Returns true iff this set contains all the keys</span></span>
+<span class="line" id="L864">        <span class="tok-comment">/// in the other set. This set may have keys not</span></span>
+<span class="line" id="L865">        <span class="tok-comment">/// found in the other set.</span></span>
+<span class="line" id="L866">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">supersetOf</span>(self: Self, other: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L867">            <span class="tok-kw">return</span> self.bits.supersetOf(other.bits);</span>
+<span class="line" id="L868">        }</span>
+<span class="line" id="L869"></span>
+<span class="line" id="L870">        <span class="tok-comment">/// Returns a set with all the keys not in this set.</span></span>
+<span class="line" id="L871">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">complement</span>(self: Self) Self {</span>
+<span class="line" id="L872">            <span class="tok-kw">return</span> .{ .bits = self.bits.complement() };</span>
+<span class="line" id="L873">        }</span>
+<span class="line" id="L874"></span>
+<span class="line" id="L875">        <span class="tok-comment">/// Returns a set with keys that are in either this</span></span>
+<span class="line" id="L876">        <span class="tok-comment">/// set or the other set.</span></span>
+<span class="line" id="L877">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">unionWith</span>(self: Self, other: Self) Self {</span>
+<span class="line" id="L878">            <span class="tok-kw">return</span> .{ .bits = self.bits.unionWith(other.bits) };</span>
+<span class="line" id="L879">        }</span>
+<span class="line" id="L880"></span>
+<span class="line" id="L881">        <span class="tok-comment">/// Returns a set with keys that are in both this</span></span>
+<span class="line" id="L882">        <span class="tok-comment">/// set and the other set.</span></span>
+<span class="line" id="L883">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">intersectWith</span>(self: Self, other: Self) Self {</span>
+<span class="line" id="L884">            <span class="tok-kw">return</span> .{ .bits = self.bits.intersectWith(other.bits) };</span>
+<span class="line" id="L885">        }</span>
+<span class="line" id="L886"></span>
+<span class="line" id="L887">        <span class="tok-comment">/// Returns a set with keys that are in either this</span></span>
+<span class="line" id="L888">        <span class="tok-comment">/// set or the other set, but not both.</span></span>
+<span class="line" id="L889">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">xorWith</span>(self: Self, other: Self) Self {</span>
+<span class="line" id="L890">            <span class="tok-kw">return</span> .{ .bits = self.bits.xorWith(other.bits) };</span>
+<span class="line" id="L891">        }</span>
+<span class="line" id="L892"></span>
+<span class="line" id="L893">        <span class="tok-comment">/// Returns a set with keys that are in this set</span></span>
+<span class="line" id="L894">        <span class="tok-comment">/// except for keys in the other set.</span></span>
+<span class="line" id="L895">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">differenceWith</span>(self: Self, other: Self) Self {</span>
+<span class="line" id="L896">            <span class="tok-kw">return</span> .{ .bits = self.bits.differenceWith(other.bits) };</span>
+<span class="line" id="L897">        }</span>
+<span class="line" id="L898"></span>
+<span class="line" id="L899">        <span class="tok-comment">/// Returns an iterator over this set, which iterates in</span></span>
+<span class="line" id="L900">        <span class="tok-comment">/// index order.  Modifications to the set during iteration</span></span>
+<span class="line" id="L901">        <span class="tok-comment">/// may or may not be observed by the iterator, but will</span></span>
+<span class="line" id="L902">        <span class="tok-comment">/// not invalidate it.</span></span>
+<span class="line" id="L903">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">iterator</span>(self: *<span class="tok-kw">const</span> Self) Iterator {</span>
+<span class="line" id="L904">            <span class="tok-kw">return</span> .{ .inner = self.bits.iterator(.{}) };</span>
+<span class="line" id="L905">        }</span>
+<span class="line" id="L906"></span>
+<span class="line" id="L907">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Iterator = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L908">            inner: BitSet.Iterator(.{}),</span>
+<span class="line" id="L909"></span>
+<span class="line" id="L910">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(self: *Iterator) ?Key {</span>
+<span class="line" id="L911">                <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.inner.next()) |index|</span>
+<span class="line" id="L912">                    Indexer.keyForIndex(index)</span>
+<span class="line" id="L913">                <span class="tok-kw">else</span></span>
+<span class="line" id="L914">                    <span class="tok-null">null</span>;</span>
+<span class="line" id="L915">            }</span>
+<span class="line" id="L916">        };</span>
+<span class="line" id="L917">    };</span>
+<span class="line" id="L918">}</span>
+<span class="line" id="L919"></span>
+<span class="line" id="L920"><span class="tok-kw">test</span> <span class="tok-str">&quot;pure EnumSet fns&quot;</span> {</span>
+<span class="line" id="L921">    <span class="tok-kw">const</span> Suit = <span class="tok-kw">enum</span> { spades, hearts, clubs, diamonds };</span>
+<span class="line" id="L922"></span>
+<span class="line" id="L923">    <span class="tok-kw">const</span> empty = EnumSet(Suit).initEmpty();</span>
+<span class="line" id="L924">    <span class="tok-kw">const</span> full = EnumSet(Suit).initFull();</span>
+<span class="line" id="L925">    <span class="tok-kw">const</span> black = EnumSet(Suit).initMany(&amp;[_]Suit{ .spades, .clubs });</span>
+<span class="line" id="L926">    <span class="tok-kw">const</span> red = EnumSet(Suit).initMany(&amp;[_]Suit{ .hearts, .diamonds });</span>
+<span class="line" id="L927"></span>
+<span class="line" id="L928">    <span class="tok-kw">try</span> testing.expect(empty.eql(empty));</span>
+<span class="line" id="L929">    <span class="tok-kw">try</span> testing.expect(full.eql(full));</span>
+<span class="line" id="L930">    <span class="tok-kw">try</span> testing.expect(!empty.eql(full));</span>
+<span class="line" id="L931">    <span class="tok-kw">try</span> testing.expect(!full.eql(empty));</span>
+<span class="line" id="L932">    <span class="tok-kw">try</span> testing.expect(!empty.eql(black));</span>
+<span class="line" id="L933">    <span class="tok-kw">try</span> testing.expect(!full.eql(red));</span>
+<span class="line" id="L934">    <span class="tok-kw">try</span> testing.expect(!red.eql(empty));</span>
+<span class="line" id="L935">    <span class="tok-kw">try</span> testing.expect(!black.eql(full));</span>
+<span class="line" id="L936"></span>
+<span class="line" id="L937">    <span class="tok-kw">try</span> testing.expect(empty.subsetOf(empty));</span>
+<span class="line" id="L938">    <span class="tok-kw">try</span> testing.expect(empty.subsetOf(full));</span>
+<span class="line" id="L939">    <span class="tok-kw">try</span> testing.expect(full.subsetOf(full));</span>
+<span class="line" id="L940">    <span class="tok-kw">try</span> testing.expect(!black.subsetOf(red));</span>
+<span class="line" id="L941">    <span class="tok-kw">try</span> testing.expect(!red.subsetOf(black));</span>
+<span class="line" id="L942"></span>
+<span class="line" id="L943">    <span class="tok-kw">try</span> testing.expect(full.supersetOf(full));</span>
+<span class="line" id="L944">    <span class="tok-kw">try</span> testing.expect(full.supersetOf(empty));</span>
+<span class="line" id="L945">    <span class="tok-kw">try</span> testing.expect(empty.supersetOf(empty));</span>
+<span class="line" id="L946">    <span class="tok-kw">try</span> testing.expect(!black.supersetOf(red));</span>
+<span class="line" id="L947">    <span class="tok-kw">try</span> testing.expect(!red.supersetOf(black));</span>
+<span class="line" id="L948"></span>
+<span class="line" id="L949">    <span class="tok-kw">try</span> testing.expect(empty.complement().eql(full));</span>
+<span class="line" id="L950">    <span class="tok-kw">try</span> testing.expect(full.complement().eql(empty));</span>
+<span class="line" id="L951">    <span class="tok-kw">try</span> testing.expect(black.complement().eql(red));</span>
+<span class="line" id="L952">    <span class="tok-kw">try</span> testing.expect(red.complement().eql(black));</span>
+<span class="line" id="L953"></span>
+<span class="line" id="L954">    <span class="tok-kw">try</span> testing.expect(empty.unionWith(empty).eql(empty));</span>
+<span class="line" id="L955">    <span class="tok-kw">try</span> testing.expect(empty.unionWith(full).eql(full));</span>
+<span class="line" id="L956">    <span class="tok-kw">try</span> testing.expect(full.unionWith(full).eql(full));</span>
+<span class="line" id="L957">    <span class="tok-kw">try</span> testing.expect(full.unionWith(empty).eql(full));</span>
+<span class="line" id="L958">    <span class="tok-kw">try</span> testing.expect(black.unionWith(red).eql(full));</span>
+<span class="line" id="L959">    <span class="tok-kw">try</span> testing.expect(red.unionWith(black).eql(full));</span>
+<span class="line" id="L960"></span>
+<span class="line" id="L961">    <span class="tok-kw">try</span> testing.expect(empty.intersectWith(empty).eql(empty));</span>
+<span class="line" id="L962">    <span class="tok-kw">try</span> testing.expect(empty.intersectWith(full).eql(empty));</span>
+<span class="line" id="L963">    <span class="tok-kw">try</span> testing.expect(full.intersectWith(full).eql(full));</span>
+<span class="line" id="L964">    <span class="tok-kw">try</span> testing.expect(full.intersectWith(empty).eql(empty));</span>
+<span class="line" id="L965">    <span class="tok-kw">try</span> testing.expect(black.intersectWith(red).eql(empty));</span>
+<span class="line" id="L966">    <span class="tok-kw">try</span> testing.expect(red.intersectWith(black).eql(empty));</span>
+<span class="line" id="L967"></span>
+<span class="line" id="L968">    <span class="tok-kw">try</span> testing.expect(empty.xorWith(empty).eql(empty));</span>
+<span class="line" id="L969">    <span class="tok-kw">try</span> testing.expect(empty.xorWith(full).eql(full));</span>
+<span class="line" id="L970">    <span class="tok-kw">try</span> testing.expect(full.xorWith(full).eql(empty));</span>
+<span class="line" id="L971">    <span class="tok-kw">try</span> testing.expect(full.xorWith(empty).eql(full));</span>
+<span class="line" id="L972">    <span class="tok-kw">try</span> testing.expect(black.xorWith(red).eql(full));</span>
+<span class="line" id="L973">    <span class="tok-kw">try</span> testing.expect(red.xorWith(black).eql(full));</span>
+<span class="line" id="L974"></span>
+<span class="line" id="L975">    <span class="tok-kw">try</span> testing.expect(empty.differenceWith(empty).eql(empty));</span>
+<span class="line" id="L976">    <span class="tok-kw">try</span> testing.expect(empty.differenceWith(full).eql(empty));</span>
+<span class="line" id="L977">    <span class="tok-kw">try</span> testing.expect(full.differenceWith(full).eql(empty));</span>
+<span class="line" id="L978">    <span class="tok-kw">try</span> testing.expect(full.differenceWith(empty).eql(full));</span>
+<span class="line" id="L979">    <span class="tok-kw">try</span> testing.expect(full.differenceWith(red).eql(black));</span>
+<span class="line" id="L980">    <span class="tok-kw">try</span> testing.expect(full.differenceWith(black).eql(red));</span>
+<span class="line" id="L981">}</span>
+<span class="line" id="L982"></span>
+<span class="line" id="L983"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.EnumSet const iterator&quot;</span> {</span>
+<span class="line" id="L984">    <span class="tok-kw">const</span> Direction = <span class="tok-kw">enum</span> { up, down, left, right };</span>
+<span class="line" id="L985">    <span class="tok-kw">const</span> diag_move = init: {</span>
+<span class="line" id="L986">        <span class="tok-kw">var</span> move = EnumSet(Direction).initEmpty();</span>
+<span class="line" id="L987">        move.insert(.right);</span>
+<span class="line" id="L988">        move.insert(.up);</span>
+<span class="line" id="L989">        <span class="tok-kw">break</span> :init move;</span>
+<span class="line" id="L990">    };</span>
+<span class="line" id="L991"></span>
+<span class="line" id="L992">    <span class="tok-kw">var</span> result = EnumSet(Direction).initEmpty();</span>
+<span class="line" id="L993">    <span class="tok-kw">var</span> it = diag_move.iterator();</span>
+<span class="line" id="L994">    <span class="tok-kw">while</span> (it.next()) |dir| {</span>
+<span class="line" id="L995">        result.insert(dir);</span>
+<span class="line" id="L996">    }</span>
+<span class="line" id="L997"></span>
+<span class="line" id="L998">    <span class="tok-kw">try</span> testing.expect(result.eql(diag_move));</span>
+<span class="line" id="L999">}</span>
+<span class="line" id="L1000"></span>
+<span class="line" id="L1001"><span class="tok-comment">/// A map from keys to values, using an index lookup.  Uses a</span></span>
+<span class="line" id="L1002"><span class="tok-comment">/// bitfield to track presence and a dense array of values.</span></span>
+<span class="line" id="L1003"><span class="tok-comment">/// This type does no allocation and can be copied by value.</span></span>
+<span class="line" id="L1004"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">IndexedMap</span>(<span class="tok-kw">comptime</span> I: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> V: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> Ext: ?<span class="tok-kw">fn</span> (<span class="tok-type">type</span>) <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L1005">    <span class="tok-kw">comptime</span> ensureIndexer(I);</span>
+<span class="line" id="L1006">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1007">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L1008"></span>
+<span class="line" id="L1009">        <span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> (Ext <span class="tok-kw">orelse</span> NoExtension)(Self);</span>
+<span class="line" id="L1010"></span>
+<span class="line" id="L1011">        <span class="tok-comment">/// The index mapping for this map</span></span>
+<span class="line" id="L1012">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Indexer = I;</span>
+<span class="line" id="L1013">        <span class="tok-comment">/// The key type used to index this map</span></span>
+<span class="line" id="L1014">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Key = Indexer.Key;</span>
+<span class="line" id="L1015">        <span class="tok-comment">/// The value type stored in this map</span></span>
+<span class="line" id="L1016">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Value = V;</span>
+<span class="line" id="L1017">        <span class="tok-comment">/// The number of possible keys in the map</span></span>
+<span class="line" id="L1018">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> len = Indexer.count;</span>
+<span class="line" id="L1019"></span>
+<span class="line" id="L1020">        <span class="tok-kw">const</span> BitSet = std.StaticBitSet(Indexer.count);</span>
+<span class="line" id="L1021"></span>
+<span class="line" id="L1022">        <span class="tok-comment">/// Bits determining whether items are in the map</span></span>
+<span class="line" id="L1023">        bits: BitSet = BitSet.initEmpty(),</span>
+<span class="line" id="L1024">        <span class="tok-comment">/// Values of items in the map.  If the associated</span></span>
+<span class="line" id="L1025">        <span class="tok-comment">/// bit is zero, the value is undefined.</span></span>
+<span class="line" id="L1026">        values: [Indexer.count]Value = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1027"></span>
+<span class="line" id="L1028">        <span class="tok-comment">/// The number of items in the map.</span></span>
+<span class="line" id="L1029">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">count</span>(self: Self) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1030">            <span class="tok-kw">return</span> self.bits.count();</span>
+<span class="line" id="L1031">        }</span>
+<span class="line" id="L1032"></span>
+<span class="line" id="L1033">        <span class="tok-comment">/// Checks if the map contains an item.</span></span>
+<span class="line" id="L1034">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">contains</span>(self: Self, key: Key) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L1035">            <span class="tok-kw">return</span> self.bits.isSet(Indexer.indexOf(key));</span>
+<span class="line" id="L1036">        }</span>
+<span class="line" id="L1037"></span>
+<span class="line" id="L1038">        <span class="tok-comment">/// Gets the value associated with a key.</span></span>
+<span class="line" id="L1039">        <span class="tok-comment">/// If the key is not in the map, returns null.</span></span>
+<span class="line" id="L1040">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">get</span>(self: Self, key: Key) ?Value {</span>
+<span class="line" id="L1041">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1042">            <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.bits.isSet(index)) self.values[index] <span class="tok-kw">else</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1043">        }</span>
+<span class="line" id="L1044"></span>
+<span class="line" id="L1045">        <span class="tok-comment">/// Gets the value associated with a key, which must</span></span>
+<span class="line" id="L1046">        <span class="tok-comment">/// exist in the map.</span></span>
+<span class="line" id="L1047">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getAssertContains</span>(self: Self, key: Key) Value {</span>
+<span class="line" id="L1048">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1049">            assert(self.bits.isSet(index));</span>
+<span class="line" id="L1050">            <span class="tok-kw">return</span> self.values[index];</span>
+<span class="line" id="L1051">        }</span>
+<span class="line" id="L1052"></span>
+<span class="line" id="L1053">        <span class="tok-comment">/// Gets the address of the value associated with a key.</span></span>
+<span class="line" id="L1054">        <span class="tok-comment">/// If the key is not in the map, returns null.</span></span>
+<span class="line" id="L1055">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPtr</span>(self: *Self, key: Key) ?*Value {</span>
+<span class="line" id="L1056">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1057">            <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.bits.isSet(index)) &amp;self.values[index] <span class="tok-kw">else</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1058">        }</span>
+<span class="line" id="L1059"></span>
+<span class="line" id="L1060">        <span class="tok-comment">/// Gets the address of the const value associated with a key.</span></span>
+<span class="line" id="L1061">        <span class="tok-comment">/// If the key is not in the map, returns null.</span></span>
+<span class="line" id="L1062">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPtrConst</span>(self: *<span class="tok-kw">const</span> Self, key: Key) ?*<span class="tok-kw">const</span> Value {</span>
+<span class="line" id="L1063">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1064">            <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.bits.isSet(index)) &amp;self.values[index] <span class="tok-kw">else</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1065">        }</span>
+<span class="line" id="L1066"></span>
+<span class="line" id="L1067">        <span class="tok-comment">/// Gets the address of the value associated with a key.</span></span>
+<span class="line" id="L1068">        <span class="tok-comment">/// The key must be present in the map.</span></span>
+<span class="line" id="L1069">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPtrAssertContains</span>(self: *Self, key: Key) *Value {</span>
+<span class="line" id="L1070">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1071">            assert(self.bits.isSet(index));</span>
+<span class="line" id="L1072">            <span class="tok-kw">return</span> &amp;self.values[index];</span>
+<span class="line" id="L1073">        }</span>
+<span class="line" id="L1074"></span>
+<span class="line" id="L1075">        <span class="tok-comment">/// Adds the key to the map with the supplied value.</span></span>
+<span class="line" id="L1076">        <span class="tok-comment">/// If the key is already in the map, overwrites the value.</span></span>
+<span class="line" id="L1077">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">put</span>(self: *Self, key: Key, value: Value) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1078">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1079">            self.bits.set(index);</span>
+<span class="line" id="L1080">            self.values[index] = value;</span>
+<span class="line" id="L1081">        }</span>
+<span class="line" id="L1082"></span>
+<span class="line" id="L1083">        <span class="tok-comment">/// Adds the key to the map with an undefined value.</span></span>
+<span class="line" id="L1084">        <span class="tok-comment">/// If the key is already in the map, the value becomes undefined.</span></span>
+<span class="line" id="L1085">        <span class="tok-comment">/// A pointer to the value is returned, which should be</span></span>
+<span class="line" id="L1086">        <span class="tok-comment">/// used to initialize the value.</span></span>
+<span class="line" id="L1087">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">putUninitialized</span>(self: *Self, key: Key) *Value {</span>
+<span class="line" id="L1088">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1089">            self.bits.set(index);</span>
+<span class="line" id="L1090">            self.values[index] = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1091">            <span class="tok-kw">return</span> &amp;self.values[index];</span>
+<span class="line" id="L1092">        }</span>
+<span class="line" id="L1093"></span>
+<span class="line" id="L1094">        <span class="tok-comment">/// Sets the value associated with the key in the map,</span></span>
+<span class="line" id="L1095">        <span class="tok-comment">/// and returns the old value.  If the key was not in</span></span>
+<span class="line" id="L1096">        <span class="tok-comment">/// the map, returns null.</span></span>
+<span class="line" id="L1097">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fetchPut</span>(self: *Self, key: Key, value: Value) ?Value {</span>
+<span class="line" id="L1098">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1099">            <span class="tok-kw">const</span> result: ?Value = <span class="tok-kw">if</span> (self.bits.isSet(index)) self.values[index] <span class="tok-kw">else</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1100">            self.bits.set(index);</span>
+<span class="line" id="L1101">            self.values[index] = value;</span>
+<span class="line" id="L1102">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L1103">        }</span>
+<span class="line" id="L1104"></span>
+<span class="line" id="L1105">        <span class="tok-comment">/// Removes a key from the map.  If the key was not in the map,</span></span>
+<span class="line" id="L1106">        <span class="tok-comment">/// does nothing.</span></span>
+<span class="line" id="L1107">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">remove</span>(self: *Self, key: Key) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1108">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1109">            self.bits.unset(index);</span>
+<span class="line" id="L1110">            self.values[index] = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1111">        }</span>
+<span class="line" id="L1112"></span>
+<span class="line" id="L1113">        <span class="tok-comment">/// Removes a key from the map, and returns the old value.</span></span>
+<span class="line" id="L1114">        <span class="tok-comment">/// If the key was not in the map, returns null.</span></span>
+<span class="line" id="L1115">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fetchRemove</span>(self: *Self, key: Key) ?Value {</span>
+<span class="line" id="L1116">            <span class="tok-kw">const</span> index = Indexer.indexOf(key);</span>
+<span class="line" id="L1117">            <span class="tok-kw">const</span> result: ?Value = <span class="tok-kw">if</span> (self.bits.isSet(index)) self.values[index] <span class="tok-kw">else</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1118">            self.bits.unset(index);</span>
+<span class="line" id="L1119">            self.values[index] = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1120">            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L1121">        }</span>
+<span class="line" id="L1122"></span>
+<span class="line" id="L1123">        <span class="tok-comment">/// Returns an iterator over the map, which visits items in index order.</span></span>
+<span class="line" id="L1124">        <span class="tok-comment">/// Modifications to the underlying map may or may not be observed by</span></span>
+<span class="line" id="L1125">        <span class="tok-comment">/// the iterator, but will not invalidate it.</span></span>
+<span class="line" id="L1126">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">iterator</span>(self: *Self) Iterator {</span>
+<span class="line" id="L1127">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1128">                .inner = self.bits.iterator(.{}),</span>
+<span class="line" id="L1129">                .values = &amp;self.values,</span>
+<span class="line" id="L1130">            };</span>
+<span class="line" id="L1131">        }</span>
+<span class="line" id="L1132"></span>
+<span class="line" id="L1133">        <span class="tok-comment">/// An entry in the map.</span></span>
+<span class="line" id="L1134">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Entry = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1135">            <span class="tok-comment">/// The key associated with this entry.</span></span>
+<span class="line" id="L1136">            <span class="tok-comment">/// Modifying this key will not change the map.</span></span>
+<span class="line" id="L1137">            key: Key,</span>
+<span class="line" id="L1138"></span>
+<span class="line" id="L1139">            <span class="tok-comment">/// A pointer to the value in the map associated</span></span>
+<span class="line" id="L1140">            <span class="tok-comment">/// with this key.  Modifications through this</span></span>
+<span class="line" id="L1141">            <span class="tok-comment">/// pointer will modify the underlying data.</span></span>
+<span class="line" id="L1142">            value: *Value,</span>
+<span class="line" id="L1143">        };</span>
+<span class="line" id="L1144"></span>
+<span class="line" id="L1145">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Iterator = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1146">            inner: BitSet.Iterator(.{}),</span>
+<span class="line" id="L1147">            values: *[Indexer.count]Value,</span>
+<span class="line" id="L1148"></span>
+<span class="line" id="L1149">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(self: *Iterator) ?Entry {</span>
+<span class="line" id="L1150">                <span class="tok-kw">return</span> <span class="tok-kw">if</span> (self.inner.next()) |index|</span>
+<span class="line" id="L1151">                    Entry{</span>
+<span class="line" id="L1152">                        .key = Indexer.keyForIndex(index),</span>
+<span class="line" id="L1153">                        .value = &amp;self.values[index],</span>
+<span class="line" id="L1154">                    }</span>
+<span class="line" id="L1155">                <span class="tok-kw">else</span></span>
+<span class="line" id="L1156">                    <span class="tok-null">null</span>;</span>
+<span class="line" id="L1157">            }</span>
+<span class="line" id="L1158">        };</span>
+<span class="line" id="L1159">    };</span>
+<span class="line" id="L1160">}</span>
+<span class="line" id="L1161"></span>
+<span class="line" id="L1162"><span class="tok-comment">/// A dense array of values, using an indexed lookup.</span></span>
+<span class="line" id="L1163"><span class="tok-comment">/// This type does no allocation and can be copied by value.</span></span>
+<span class="line" id="L1164"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">IndexedArray</span>(<span class="tok-kw">comptime</span> I: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> V: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> Ext: ?<span class="tok-kw">fn</span> (<span class="tok-type">type</span>) <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L1165">    <span class="tok-kw">comptime</span> ensureIndexer(I);</span>
+<span class="line" id="L1166">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1167">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L1168"></span>
+<span class="line" id="L1169">        <span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> (Ext <span class="tok-kw">orelse</span> NoExtension)(Self);</span>
+<span class="line" id="L1170"></span>
+<span class="line" id="L1171">        <span class="tok-comment">/// The index mapping for this map</span></span>
+<span class="line" id="L1172">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Indexer = I;</span>
+<span class="line" id="L1173">        <span class="tok-comment">/// The key type used to index this map</span></span>
+<span class="line" id="L1174">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Key = Indexer.Key;</span>
+<span class="line" id="L1175">        <span class="tok-comment">/// The value type stored in this map</span></span>
+<span class="line" id="L1176">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Value = V;</span>
+<span class="line" id="L1177">        <span class="tok-comment">/// The number of possible keys in the map</span></span>
+<span class="line" id="L1178">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> len = Indexer.count;</span>
+<span class="line" id="L1179"></span>
+<span class="line" id="L1180">        values: [Indexer.count]Value,</span>
+<span class="line" id="L1181"></span>
+<span class="line" id="L1182">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initUndefined</span>() Self {</span>
+<span class="line" id="L1183">            <span class="tok-kw">return</span> Self{ .values = <span class="tok-null">undefined</span> };</span>
+<span class="line" id="L1184">        }</span>
+<span class="line" id="L1185"></span>
+<span class="line" id="L1186">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initFill</span>(v: Value) Self {</span>
+<span class="line" id="L1187">            <span class="tok-kw">var</span> self: Self = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1188">            <span class="tok-builtin">@memset</span>(&amp;self.values, v);</span>
+<span class="line" id="L1189">            <span class="tok-kw">return</span> self;</span>
+<span class="line" id="L1190">        }</span>
+<span class="line" id="L1191"></span>
+<span class="line" id="L1192">        <span class="tok-comment">/// Returns the value in the array associated with a key.</span></span>
+<span class="line" id="L1193">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">get</span>(self: Self, key: Key) Value {</span>
+<span class="line" id="L1194">            <span class="tok-kw">return</span> self.values[Indexer.indexOf(key)];</span>
+<span class="line" id="L1195">        }</span>
+<span class="line" id="L1196"></span>
+<span class="line" id="L1197">        <span class="tok-comment">/// Returns a pointer to the slot in the array associated with a key.</span></span>
+<span class="line" id="L1198">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPtr</span>(self: *Self, key: Key) *Value {</span>
+<span class="line" id="L1199">            <span class="tok-kw">return</span> &amp;self.values[Indexer.indexOf(key)];</span>
+<span class="line" id="L1200">        }</span>
+<span class="line" id="L1201"></span>
+<span class="line" id="L1202">        <span class="tok-comment">/// Returns a const pointer to the slot in the array associated with a key.</span></span>
+<span class="line" id="L1203">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPtrConst</span>(self: *<span class="tok-kw">const</span> Self, key: Key) *<span class="tok-kw">const</span> Value {</span>
+<span class="line" id="L1204">            <span class="tok-kw">return</span> &amp;self.values[Indexer.indexOf(key)];</span>
+<span class="line" id="L1205">        }</span>
+<span class="line" id="L1206"></span>
+<span class="line" id="L1207">        <span class="tok-comment">/// Sets the value in the slot associated with a key.</span></span>
+<span class="line" id="L1208">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">set</span>(self: *Self, key: Key, value: Value) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1209">            self.values[Indexer.indexOf(key)] = value;</span>
+<span class="line" id="L1210">        }</span>
+<span class="line" id="L1211"></span>
+<span class="line" id="L1212">        <span class="tok-comment">/// Iterates over the items in the array, in index order.</span></span>
+<span class="line" id="L1213">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">iterator</span>(self: *Self) Iterator {</span>
+<span class="line" id="L1214">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L1215">                .values = &amp;self.values,</span>
+<span class="line" id="L1216">            };</span>
+<span class="line" id="L1217">        }</span>
+<span class="line" id="L1218"></span>
+<span class="line" id="L1219">        <span class="tok-comment">/// An entry in the array.</span></span>
+<span class="line" id="L1220">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Entry = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1221">            <span class="tok-comment">/// The key associated with this entry.</span></span>
+<span class="line" id="L1222">            <span class="tok-comment">/// Modifying this key will not change the array.</span></span>
+<span class="line" id="L1223">            key: Key,</span>
+<span class="line" id="L1224"></span>
+<span class="line" id="L1225">            <span class="tok-comment">/// A pointer to the value in the array associated</span></span>
+<span class="line" id="L1226">            <span class="tok-comment">/// with this key.  Modifications through this</span></span>
+<span class="line" id="L1227">            <span class="tok-comment">/// pointer will modify the underlying data.</span></span>
+<span class="line" id="L1228">            value: *Value,</span>
+<span class="line" id="L1229">        };</span>
+<span class="line" id="L1230"></span>
+<span class="line" id="L1231">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Iterator = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1232">            index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1233">            values: *[Indexer.count]Value,</span>
+<span class="line" id="L1234"></span>
+<span class="line" id="L1235">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(self: *Iterator) ?Entry {</span>
+<span class="line" id="L1236">                <span class="tok-kw">const</span> index = self.index;</span>
+<span class="line" id="L1237">                <span class="tok-kw">if</span> (index &lt; Indexer.count) {</span>
+<span class="line" id="L1238">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1239">                    <span class="tok-kw">return</span> Entry{</span>
+<span class="line" id="L1240">                        .key = Indexer.keyForIndex(index),</span>
+<span class="line" id="L1241">                        .value = &amp;self.values[index],</span>
+<span class="line" id="L1242">                    };</span>
+<span class="line" id="L1243">                }</span>
+<span class="line" id="L1244">                <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L1245">            }</span>
+<span class="line" id="L1246">        };</span>
+<span class="line" id="L1247">    };</span>
+<span class="line" id="L1248">}</span>
+<span class="line" id="L1249"></span>
+<span class="line" id="L1250"><span class="tok-comment">/// Verifies that a type is a valid Indexer, providing a helpful</span></span>
+<span class="line" id="L1251"><span class="tok-comment">/// compile error if not.  An Indexer maps a comptime-known set</span></span>
+<span class="line" id="L1252"><span class="tok-comment">/// of keys to a dense set of zero-based indices.</span></span>
+<span class="line" id="L1253"><span class="tok-comment">/// The indexer interface must look like this:</span></span>
+<span class="line" id="L1254"><span class="tok-comment">/// ```</span></span>
+<span class="line" id="L1255"><span class="tok-comment">/// struct {</span></span>
+<span class="line" id="L1256"><span class="tok-comment">///     /// The key type which this indexer converts to indices</span></span>
+<span class="line" id="L1257"><span class="tok-comment">///     pub const Key: type,</span></span>
+<span class="line" id="L1258"><span class="tok-comment">///     /// The number of indexes in the dense mapping</span></span>
+<span class="line" id="L1259"><span class="tok-comment">///     pub const count: usize,</span></span>
+<span class="line" id="L1260"><span class="tok-comment">///     /// Converts from a key to an index</span></span>
+<span class="line" id="L1261"><span class="tok-comment">///     pub fn indexOf(Key) usize;</span></span>
+<span class="line" id="L1262"><span class="tok-comment">///     /// Converts from an index to a key</span></span>
+<span class="line" id="L1263"><span class="tok-comment">///     pub fn keyForIndex(usize) Key;</span></span>
+<span class="line" id="L1264"><span class="tok-comment">/// }</span></span>
+<span class="line" id="L1265"><span class="tok-comment">/// ```</span></span>
+<span class="line" id="L1266"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">ensureIndexer</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1267">    <span class="tok-kw">comptime</span> {</span>
+<span class="line" id="L1268">        <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(T, <span class="tok-str">&quot;Key&quot;</span>)) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer must have decl Key: type.&quot;</span>);</span>
+<span class="line" id="L1269">        <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(T.Key) != <span class="tok-type">type</span>) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer.Key must be a type.&quot;</span>);</span>
+<span class="line" id="L1270">        <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(T, <span class="tok-str">&quot;count&quot;</span>)) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer must have decl count: usize.&quot;</span>);</span>
+<span class="line" id="L1271">        <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(T.count) != <span class="tok-type">usize</span>) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer.count must be a usize.&quot;</span>);</span>
+<span class="line" id="L1272">        <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(T, <span class="tok-str">&quot;indexOf&quot;</span>)) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer.indexOf must be a fn(Key)usize.&quot;</span>);</span>
+<span class="line" id="L1273">        <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(T.indexOf) != <span class="tok-kw">fn</span> (T.Key) <span class="tok-type">usize</span>) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer must have decl indexOf: fn(Key)usize.&quot;</span>);</span>
+<span class="line" id="L1274">        <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(T, <span class="tok-str">&quot;keyForIndex&quot;</span>)) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer must have decl keyForIndex: fn(usize)Key.&quot;</span>);</span>
+<span class="line" id="L1275">        <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(T.keyForIndex) != <span class="tok-kw">fn</span> (<span class="tok-type">usize</span>) T.Key) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Indexer.keyForIndex must be a fn(usize)Key.&quot;</span>);</span>
+<span class="line" id="L1276">    }</span>
+<span class="line" id="L1277">}</span>
+<span class="line" id="L1278"></span>
+<span class="line" id="L1279"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.ensureIndexer&quot;</span> {</span>
+<span class="line" id="L1280">    ensureIndexer(<span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1281">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Key = <span class="tok-type">u32</span>;</span>
+<span class="line" id="L1282">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> count: <span class="tok-type">usize</span> = <span class="tok-number">8</span>;</span>
+<span class="line" id="L1283">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">indexOf</span>(k: Key) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1284">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(k));</span>
+<span class="line" id="L1285">        }</span>
+<span class="line" id="L1286">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">keyForIndex</span>(index: <span class="tok-type">usize</span>) Key {</span>
+<span class="line" id="L1287">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(Key, <span class="tok-builtin">@intCast</span>(index));</span>
+<span class="line" id="L1288">        }</span>
+<span class="line" id="L1289">    });</span>
+<span class="line" id="L1290">}</span>
+<span class="line" id="L1291"></span>
+<span class="line" id="L1292"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">EnumIndexer</span>(<span class="tok-kw">comptime</span> E: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L1293">    <span class="tok-kw">if</span> (!<span class="tok-builtin">@typeInfo</span>(E).Enum.is_exhaustive) {</span>
+<span class="line" id="L1294">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Cannot create an enum indexer for a non-exhaustive enum.&quot;</span>);</span>
+<span class="line" id="L1295">    }</span>
+<span class="line" id="L1296"></span>
+<span class="line" id="L1297">    <span class="tok-kw">const</span> const_fields = std.meta.fields(E);</span>
+<span class="line" id="L1298">    <span class="tok-kw">var</span> fields = const_fields[<span class="tok-number">0</span>..const_fields.len].*;</span>
+<span class="line" id="L1299">    <span class="tok-kw">const</span> min = fields[<span class="tok-number">0</span>].value;</span>
+<span class="line" id="L1300">    <span class="tok-kw">const</span> max = fields[fields.len - <span class="tok-number">1</span>].value;</span>
+<span class="line" id="L1301">    <span class="tok-kw">const</span> fields_len = fields.len;</span>
+<span class="line" id="L1302">    <span class="tok-kw">if</span> (fields_len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L1303">        <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1304">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Key = E;</span>
+<span class="line" id="L1305">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1306">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">indexOf</span>(e: E) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1307">                _ = e;</span>
+<span class="line" id="L1308">                <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L1309">            }</span>
+<span class="line" id="L1310">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">keyForIndex</span>(i: <span class="tok-type">usize</span>) E {</span>
+<span class="line" id="L1311">                _ = i;</span>
+<span class="line" id="L1312">                <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L1313">            }</span>
+<span class="line" id="L1314">        };</span>
+<span class="line" id="L1315">    }</span>
+<span class="line" id="L1316"></span>
+<span class="line" id="L1317">    <span class="tok-kw">const</span> SortContext = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1318">        fields: []EnumField,</span>
+<span class="line" id="L1319"></span>
+<span class="line" id="L1320">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">lessThan</span>(<span class="tok-kw">comptime</span> ctx: <span class="tok-builtin">@This</span>(), <span class="tok-kw">comptime</span> a: <span class="tok-type">usize</span>, <span class="tok-kw">comptime</span> b: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L1321">            <span class="tok-kw">return</span> ctx.fields[a].value &lt; ctx.fields[b].value;</span>
+<span class="line" id="L1322">        }</span>
+<span class="line" id="L1323"></span>
+<span class="line" id="L1324">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">swap</span>(<span class="tok-kw">comptime</span> ctx: <span class="tok-builtin">@This</span>(), <span class="tok-kw">comptime</span> a: <span class="tok-type">usize</span>, <span class="tok-kw">comptime</span> b: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1325">            <span class="tok-kw">return</span> std.mem.swap(EnumField, &amp;ctx.fields[a], &amp;ctx.fields[b]);</span>
+<span class="line" id="L1326">        }</span>
+<span class="line" id="L1327">    };</span>
+<span class="line" id="L1328">    std.sort.insertionContext(<span class="tok-number">0</span>, fields_len, SortContext{ .fields = &amp;fields });</span>
+<span class="line" id="L1329"></span>
+<span class="line" id="L1330">    <span class="tok-kw">if</span> (max - min == fields.len - <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1331">        <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1332">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Key = E;</span>
+<span class="line" id="L1333">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> count = fields_len;</span>
+<span class="line" id="L1334">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">indexOf</span>(e: E) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1335">                <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(<span class="tok-builtin">@intFromEnum</span>(e) - min));</span>
+<span class="line" id="L1336">            }</span>
+<span class="line" id="L1337">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">keyForIndex</span>(i: <span class="tok-type">usize</span>) E {</span>
+<span class="line" id="L1338">                <span class="tok-comment">// TODO fix addition semantics.  This calculation</span>
+</span>
+<span class="line" id="L1339">                <span class="tok-comment">// gives up some safety to avoid artificially limiting</span>
+</span>
+<span class="line" id="L1340">                <span class="tok-comment">// the range of signed enum values to max_isize.</span>
+</span>
+<span class="line" id="L1341">                <span class="tok-kw">const</span> enum_value = <span class="tok-kw">if</span> (min &lt; <span class="tok-number">0</span>) <span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-builtin">@bitCast</span>(i)) +% min <span class="tok-kw">else</span> i + min;</span>
+<span class="line" id="L1342">                <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(E, <span class="tok-builtin">@enumFromInt</span>(<span class="tok-builtin">@as</span>(std.meta.Tag(E), <span class="tok-builtin">@intCast</span>(enum_value))));</span>
+<span class="line" id="L1343">            }</span>
+<span class="line" id="L1344">        };</span>
+<span class="line" id="L1345">    }</span>
+<span class="line" id="L1346"></span>
+<span class="line" id="L1347">    <span class="tok-kw">const</span> keys = valuesFromFields(E, &amp;fields);</span>
+<span class="line" id="L1348"></span>
+<span class="line" id="L1349">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1350">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Key = E;</span>
+<span class="line" id="L1351">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> count = fields_len;</span>
+<span class="line" id="L1352">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">indexOf</span>(e: E) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L1353">            <span class="tok-kw">for</span> (keys, <span class="tok-number">0</span>..) |k, i| {</span>
+<span class="line" id="L1354">                <span class="tok-kw">if</span> (k == e) <span class="tok-kw">return</span> i;</span>
+<span class="line" id="L1355">            }</span>
+<span class="line" id="L1356">            <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L1357">        }</span>
+<span class="line" id="L1358">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">keyForIndex</span>(i: <span class="tok-type">usize</span>) E {</span>
+<span class="line" id="L1359">            <span class="tok-kw">return</span> keys[i];</span>
+<span class="line" id="L1360">        }</span>
+<span class="line" id="L1361">    };</span>
+<span class="line" id="L1362">}</span>
+<span class="line" id="L1363"></span>
+<span class="line" id="L1364"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.EnumIndexer dense zeroed&quot;</span> {</span>
+<span class="line" id="L1365">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">u2</span>) { b = <span class="tok-number">1</span>, a = <span class="tok-number">0</span>, c = <span class="tok-number">2</span> };</span>
+<span class="line" id="L1366">    <span class="tok-kw">const</span> Indexer = EnumIndexer(E);</span>
+<span class="line" id="L1367">    ensureIndexer(Indexer);</span>
+<span class="line" id="L1368">    <span class="tok-kw">try</span> testing.expectEqual(E, Indexer.Key);</span>
+<span class="line" id="L1369">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">3</span>), Indexer.count);</span>
+<span class="line" id="L1370"></span>
+<span class="line" id="L1371">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">0</span>), Indexer.indexOf(.a));</span>
+<span class="line" id="L1372">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>), Indexer.indexOf(.b));</span>
+<span class="line" id="L1373">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">2</span>), Indexer.indexOf(.c));</span>
+<span class="line" id="L1374"></span>
+<span class="line" id="L1375">    <span class="tok-kw">try</span> testing.expectEqual(E.a, Indexer.keyForIndex(<span class="tok-number">0</span>));</span>
+<span class="line" id="L1376">    <span class="tok-kw">try</span> testing.expectEqual(E.b, Indexer.keyForIndex(<span class="tok-number">1</span>));</span>
+<span class="line" id="L1377">    <span class="tok-kw">try</span> testing.expectEqual(E.c, Indexer.keyForIndex(<span class="tok-number">2</span>));</span>
+<span class="line" id="L1378">}</span>
+<span class="line" id="L1379"></span>
+<span class="line" id="L1380"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.EnumIndexer dense positive&quot;</span> {</span>
+<span class="line" id="L1381">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">u4</span>) { c = <span class="tok-number">6</span>, a = <span class="tok-number">4</span>, b = <span class="tok-number">5</span> };</span>
+<span class="line" id="L1382">    <span class="tok-kw">const</span> Indexer = EnumIndexer(E);</span>
+<span class="line" id="L1383">    ensureIndexer(Indexer);</span>
+<span class="line" id="L1384">    <span class="tok-kw">try</span> testing.expectEqual(E, Indexer.Key);</span>
+<span class="line" id="L1385">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">3</span>), Indexer.count);</span>
+<span class="line" id="L1386"></span>
+<span class="line" id="L1387">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">0</span>), Indexer.indexOf(.a));</span>
+<span class="line" id="L1388">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>), Indexer.indexOf(.b));</span>
+<span class="line" id="L1389">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">2</span>), Indexer.indexOf(.c));</span>
+<span class="line" id="L1390"></span>
+<span class="line" id="L1391">    <span class="tok-kw">try</span> testing.expectEqual(E.a, Indexer.keyForIndex(<span class="tok-number">0</span>));</span>
+<span class="line" id="L1392">    <span class="tok-kw">try</span> testing.expectEqual(E.b, Indexer.keyForIndex(<span class="tok-number">1</span>));</span>
+<span class="line" id="L1393">    <span class="tok-kw">try</span> testing.expectEqual(E.c, Indexer.keyForIndex(<span class="tok-number">2</span>));</span>
+<span class="line" id="L1394">}</span>
+<span class="line" id="L1395"></span>
+<span class="line" id="L1396"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.EnumIndexer dense negative&quot;</span> {</span>
+<span class="line" id="L1397">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">i4</span>) { a = -<span class="tok-number">6</span>, c = -<span class="tok-number">4</span>, b = -<span class="tok-number">5</span> };</span>
+<span class="line" id="L1398">    <span class="tok-kw">const</span> Indexer = EnumIndexer(E);</span>
+<span class="line" id="L1399">    ensureIndexer(Indexer);</span>
+<span class="line" id="L1400">    <span class="tok-kw">try</span> testing.expectEqual(E, Indexer.Key);</span>
+<span class="line" id="L1401">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">3</span>), Indexer.count);</span>
+<span class="line" id="L1402"></span>
+<span class="line" id="L1403">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">0</span>), Indexer.indexOf(.a));</span>
+<span class="line" id="L1404">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>), Indexer.indexOf(.b));</span>
+<span class="line" id="L1405">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">2</span>), Indexer.indexOf(.c));</span>
+<span class="line" id="L1406"></span>
+<span class="line" id="L1407">    <span class="tok-kw">try</span> testing.expectEqual(E.a, Indexer.keyForIndex(<span class="tok-number">0</span>));</span>
+<span class="line" id="L1408">    <span class="tok-kw">try</span> testing.expectEqual(E.b, Indexer.keyForIndex(<span class="tok-number">1</span>));</span>
+<span class="line" id="L1409">    <span class="tok-kw">try</span> testing.expectEqual(E.c, Indexer.keyForIndex(<span class="tok-number">2</span>));</span>
+<span class="line" id="L1410">}</span>
+<span class="line" id="L1411"></span>
+<span class="line" id="L1412"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.enums.EnumIndexer sparse&quot;</span> {</span>
+<span class="line" id="L1413">    <span class="tok-kw">const</span> E = <span class="tok-kw">enum</span>(<span class="tok-type">i4</span>) { a = -<span class="tok-number">2</span>, c = <span class="tok-number">6</span>, b = <span class="tok-number">4</span> };</span>
+<span class="line" id="L1414">    <span class="tok-kw">const</span> Indexer = EnumIndexer(E);</span>
+<span class="line" id="L1415">    ensureIndexer(Indexer);</span>
+<span class="line" id="L1416">    <span class="tok-kw">try</span> testing.expectEqual(E, Indexer.Key);</span>
+<span class="line" id="L1417">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">3</span>), Indexer.count);</span>
+<span class="line" id="L1418"></span>
+<span class="line" id="L1419">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">0</span>), Indexer.indexOf(.a));</span>
+<span class="line" id="L1420">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>), Indexer.indexOf(.b));</span>
+<span class="line" id="L1421">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">2</span>), Indexer.indexOf(.c));</span>
+<span class="line" id="L1422"></span>
+<span class="line" id="L1423">    <span class="tok-kw">try</span> testing.expectEqual(E.a, Indexer.keyForIndex(<span class="tok-number">0</span>));</span>
+<span class="line" id="L1424">    <span class="tok-kw">try</span> testing.expectEqual(E.b, Indexer.keyForIndex(<span class="tok-number">1</span>));</span>
+<span class="line" id="L1425">    <span class="tok-kw">try</span> testing.expectEqual(E.c, Indexer.keyForIndex(<span class="tok-number">2</span>));</span>
+<span class="line" id="L1426">}</span>
+<span class="line" id="L1427"></span>
+</code></pre></body>
+</html>

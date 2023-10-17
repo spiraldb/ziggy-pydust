@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>fmt/parse_float/common.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3"><span class="tok-comment">/// A custom N-bit floating point type, representing `f * 2^e`.</span></span>
+<span class="line" id="L4"><span class="tok-comment">/// e is biased, so it be directly shifted into the exponent bits.</span></span>
+<span class="line" id="L5"><span class="tok-comment">/// Negative exponent indicates an invalid result.</span></span>
+<span class="line" id="L6"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">BiasedFp</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L7">    <span class="tok-kw">const</span> MantissaT = mantissaType(T);</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L10">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12">        <span class="tok-comment">/// The significant digits.</span></span>
+<span class="line" id="L13">        f: MantissaT,</span>
+<span class="line" id="L14">        <span class="tok-comment">/// The biased, binary exponent.</span></span>
+<span class="line" id="L15">        e: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">zero</span>() Self {</span>
+<span class="line" id="L18">            <span class="tok-kw">return</span> .{ .f = <span class="tok-number">0</span>, .e = <span class="tok-number">0</span> };</span>
+<span class="line" id="L19">        }</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">zeroPow2</span>(e: <span class="tok-type">i32</span>) Self {</span>
+<span class="line" id="L22">            <span class="tok-kw">return</span> .{ .f = <span class="tok-number">0</span>, .e = e };</span>
+<span class="line" id="L23">        }</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">inf</span>(<span class="tok-kw">comptime</span> FloatT: <span class="tok-type">type</span>) Self {</span>
+<span class="line" id="L26">            <span class="tok-kw">return</span> .{ .f = <span class="tok-number">0</span>, .e = (<span class="tok-number">1</span> &lt;&lt; std.math.floatExponentBits(FloatT)) - <span class="tok-number">1</span> };</span>
+<span class="line" id="L27">        }</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(self: Self, other: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L30">            <span class="tok-kw">return</span> self.f == other.f <span class="tok-kw">and</span> self.e == other.e;</span>
+<span class="line" id="L31">        }</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toFloat</span>(self: Self, <span class="tok-kw">comptime</span> FloatT: <span class="tok-type">type</span>, negative: <span class="tok-type">bool</span>) FloatT {</span>
+<span class="line" id="L34">            <span class="tok-kw">var</span> word = self.f;</span>
+<span class="line" id="L35">            word |= <span class="tok-builtin">@as</span>(MantissaT, <span class="tok-builtin">@intCast</span>(self.e)) &lt;&lt; std.math.floatMantissaBits(FloatT);</span>
+<span class="line" id="L36">            <span class="tok-kw">var</span> f = floatFromUnsigned(FloatT, MantissaT, word);</span>
+<span class="line" id="L37">            <span class="tok-kw">if</span> (negative) f = -f;</span>
+<span class="line" id="L38">            <span class="tok-kw">return</span> f;</span>
+<span class="line" id="L39">        }</span>
+<span class="line" id="L40">    };</span>
+<span class="line" id="L41">}</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">floatFromUnsigned</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> MantissaT: <span class="tok-type">type</span>, v: MantissaT) T {</span>
+<span class="line" id="L44">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (T) {</span>
+<span class="line" id="L45">        <span class="tok-type">f16</span> =&gt; <span class="tok-builtin">@as</span>(<span class="tok-type">f16</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u16</span>, <span class="tok-builtin">@truncate</span>(v)))),</span>
+<span class="line" id="L46">        <span class="tok-type">f32</span> =&gt; <span class="tok-builtin">@as</span>(<span class="tok-type">f32</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@truncate</span>(v)))),</span>
+<span class="line" id="L47">        <span class="tok-type">f64</span> =&gt; <span class="tok-builtin">@as</span>(<span class="tok-type">f64</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(v)))),</span>
+<span class="line" id="L48">        <span class="tok-type">f128</span> =&gt; <span class="tok-builtin">@as</span>(<span class="tok-type">f128</span>, <span class="tok-builtin">@bitCast</span>(v)),</span>
+<span class="line" id="L49">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L50">    };</span>
+<span class="line" id="L51">}</span>
+<span class="line" id="L52"></span>
+<span class="line" id="L53"><span class="tok-comment">/// Represents a parsed floating point value as its components.</span></span>
+<span class="line" id="L54"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Number</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L55">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L56">        exponent: <span class="tok-type">i64</span>,</span>
+<span class="line" id="L57">        mantissa: mantissaType(T),</span>
+<span class="line" id="L58">        negative: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L59">        <span class="tok-comment">/// More than max_mantissa digits were found during parse</span></span>
+<span class="line" id="L60">        many_digits: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L61">        <span class="tok-comment">/// The number was a hex-float (e.g. 0x1.234p567)</span></span>
+<span class="line" id="L62">        hex: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L63">    };</span>
+<span class="line" id="L64">}</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66"><span class="tok-comment">/// Determine if 8 bytes are all decimal digits.</span></span>
+<span class="line" id="L67"><span class="tok-comment">/// This does not care about the order in which the bytes were loaded.</span></span>
+<span class="line" id="L68"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isEightDigits</span>(v: <span class="tok-type">u64</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L69">    <span class="tok-kw">const</span> a = v +% <span class="tok-number">0x4646_4646_4646_4646</span>;</span>
+<span class="line" id="L70">    <span class="tok-kw">const</span> b = v -% <span class="tok-number">0x3030_3030_3030_3030</span>;</span>
+<span class="line" id="L71">    <span class="tok-kw">return</span> ((a | b) &amp; <span class="tok-number">0x8080_8080_8080_8080</span>) == <span class="tok-number">0</span>;</span>
+<span class="line" id="L72">}</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isDigit</span>(c: <span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> base: <span class="tok-type">u8</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L75">    std.debug.assert(base == <span class="tok-number">10</span> <span class="tok-kw">or</span> base == <span class="tok-number">16</span>);</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77">    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (base == <span class="tok-number">10</span>)</span>
+<span class="line" id="L78">        <span class="tok-str">'0'</span> &lt;= c <span class="tok-kw">and</span> c &lt;= <span class="tok-str">'9'</span></span>
+<span class="line" id="L79">    <span class="tok-kw">else</span></span>
+<span class="line" id="L80">        <span class="tok-str">'0'</span> &lt;= c <span class="tok-kw">and</span> c &lt;= <span class="tok-str">'9'</span> <span class="tok-kw">or</span> <span class="tok-str">'a'</span> &lt;= c <span class="tok-kw">and</span> c &lt;= <span class="tok-str">'f'</span> <span class="tok-kw">or</span> <span class="tok-str">'A'</span> &lt;= c <span class="tok-kw">and</span> c &lt;= <span class="tok-str">'F'</span>;</span>
+<span class="line" id="L81">}</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83"><span class="tok-comment">/// Returns the underlying storage type used for the mantissa of floating-point type.</span></span>
+<span class="line" id="L84"><span class="tok-comment">/// The output unsigned type must have at least as many bits as the input floating-point type.</span></span>
+<span class="line" id="L85"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mantissaType</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L86">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (T) {</span>
+<span class="line" id="L87">        <span class="tok-type">f16</span>, <span class="tok-type">f32</span>, <span class="tok-type">f64</span> =&gt; <span class="tok-type">u64</span>,</span>
+<span class="line" id="L88">        <span class="tok-type">f128</span> =&gt; <span class="tok-type">u128</span>,</span>
+<span class="line" id="L89">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L90">    };</span>
+<span class="line" id="L91">}</span>
+<span class="line" id="L92"></span>
+</code></pre></body>
+</html>

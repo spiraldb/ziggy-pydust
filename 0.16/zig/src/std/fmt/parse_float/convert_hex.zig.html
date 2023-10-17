@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>fmt/parse_float/convert_hex.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! Conversion of hex-float representation into an accurate value.</span></span>
+<span class="line" id="L2"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L3"><span class="tok-comment">// Derived from golang strconv/atof.go.</span>
+</span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> common = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;common.zig&quot;</span>);</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> Number = common.Number;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> floatFromUnsigned = common.floatFromUnsigned;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-comment">// converts the form 0xMMM.NNNpEEE.</span>
+</span>
+<span class="line" id="L12"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L13"><span class="tok-comment">// MMM.NNN = mantissa</span>
+</span>
+<span class="line" id="L14"><span class="tok-comment">// EEE = exponent</span>
+</span>
+<span class="line" id="L15"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L16"><span class="tok-comment">// MMM.NNN is stored as an integer, the exponent is offset.</span>
+</span>
+<span class="line" id="L17"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">convertHex</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, n_: Number(T)) T {</span>
+<span class="line" id="L18">    <span class="tok-kw">const</span> MantissaT = common.mantissaType(T);</span>
+<span class="line" id="L19">    <span class="tok-kw">var</span> n = n_;</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21">    <span class="tok-kw">if</span> (n.mantissa == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L22">        <span class="tok-kw">return</span> <span class="tok-kw">if</span> (n.negative) -<span class="tok-number">0.0</span> <span class="tok-kw">else</span> <span class="tok-number">0.0</span>;</span>
+<span class="line" id="L23">    }</span>
+<span class="line" id="L24"></span>
+<span class="line" id="L25">    <span class="tok-kw">const</span> max_exp = math.floatExponentMax(T);</span>
+<span class="line" id="L26">    <span class="tok-kw">const</span> min_exp = math.floatExponentMin(T);</span>
+<span class="line" id="L27">    <span class="tok-kw">const</span> mantissa_bits = math.floatMantissaBits(T);</span>
+<span class="line" id="L28">    <span class="tok-kw">const</span> exp_bits = math.floatExponentBits(T);</span>
+<span class="line" id="L29">    <span class="tok-kw">const</span> exp_bias = min_exp - <span class="tok-number">1</span>;</span>
+<span class="line" id="L30"></span>
+<span class="line" id="L31">    <span class="tok-comment">// mantissa now implicitly divided by 2^mantissa_bits</span>
+</span>
+<span class="line" id="L32">    n.exponent += mantissa_bits;</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">    <span class="tok-comment">// Shift mantissa and exponent to bring representation into float range.</span>
+</span>
+<span class="line" id="L35">    <span class="tok-comment">// Eventually we want a mantissa with a leading 1-bit followed by mantbits other bits.</span>
+</span>
+<span class="line" id="L36">    <span class="tok-comment">// For rounding, we need two more, where the bottom bit represents</span>
+</span>
+<span class="line" id="L37">    <span class="tok-comment">// whether that bit or any later bit was non-zero.</span>
+</span>
+<span class="line" id="L38">    <span class="tok-comment">// (If the mantissa has already lost non-zero bits, trunc is true,</span>
+</span>
+<span class="line" id="L39">    <span class="tok-comment">// and we OR in a 1 below after shifting left appropriately.)</span>
+</span>
+<span class="line" id="L40">    <span class="tok-kw">while</span> (n.mantissa != <span class="tok-number">0</span> <span class="tok-kw">and</span> n.mantissa &gt;&gt; (mantissa_bits + <span class="tok-number">2</span>) == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L41">        n.mantissa &lt;&lt;= <span class="tok-number">1</span>;</span>
+<span class="line" id="L42">        n.exponent -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L43">    }</span>
+<span class="line" id="L44">    <span class="tok-kw">if</span> (n.many_digits) {</span>
+<span class="line" id="L45">        n.mantissa |= <span class="tok-number">1</span>;</span>
+<span class="line" id="L46">    }</span>
+<span class="line" id="L47">    <span class="tok-kw">while</span> (n.mantissa &gt;&gt; (<span class="tok-number">1</span> + mantissa_bits + <span class="tok-number">2</span>) != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L48">        n.mantissa = (n.mantissa &gt;&gt; <span class="tok-number">1</span>) | (n.mantissa &amp; <span class="tok-number">1</span>);</span>
+<span class="line" id="L49">        n.exponent += <span class="tok-number">1</span>;</span>
+<span class="line" id="L50">    }</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52">    <span class="tok-comment">// If exponent is too negative,</span>
+</span>
+<span class="line" id="L53">    <span class="tok-comment">// denormalize in hopes of making it representable.</span>
+</span>
+<span class="line" id="L54">    <span class="tok-comment">// (The -2 is for the rounding bits.)</span>
+</span>
+<span class="line" id="L55">    <span class="tok-kw">while</span> (n.mantissa &gt; <span class="tok-number">1</span> <span class="tok-kw">and</span> n.exponent &lt; min_exp - <span class="tok-number">2</span>) {</span>
+<span class="line" id="L56">        n.mantissa = (n.mantissa &gt;&gt; <span class="tok-number">1</span>) | (n.mantissa &amp; <span class="tok-number">1</span>);</span>
+<span class="line" id="L57">        n.exponent += <span class="tok-number">1</span>;</span>
+<span class="line" id="L58">    }</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60">    <span class="tok-comment">// Round using two bottom bits.</span>
+</span>
+<span class="line" id="L61">    <span class="tok-kw">var</span> round = n.mantissa &amp; <span class="tok-number">3</span>;</span>
+<span class="line" id="L62">    n.mantissa &gt;&gt;= <span class="tok-number">2</span>;</span>
+<span class="line" id="L63">    round |= n.mantissa &amp; <span class="tok-number">1</span>; <span class="tok-comment">// round to even (round up if mantissa is odd)</span>
+</span>
+<span class="line" id="L64">    n.exponent += <span class="tok-number">2</span>;</span>
+<span class="line" id="L65">    <span class="tok-kw">if</span> (round == <span class="tok-number">3</span>) {</span>
+<span class="line" id="L66">        n.mantissa += <span class="tok-number">1</span>;</span>
+<span class="line" id="L67">        <span class="tok-kw">if</span> (n.mantissa == <span class="tok-number">1</span> &lt;&lt; (<span class="tok-number">1</span> + mantissa_bits)) {</span>
+<span class="line" id="L68">            n.mantissa &gt;&gt;= <span class="tok-number">1</span>;</span>
+<span class="line" id="L69">            n.exponent += <span class="tok-number">1</span>;</span>
+<span class="line" id="L70">        }</span>
+<span class="line" id="L71">    }</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-comment">// Denormal or zero</span>
+</span>
+<span class="line" id="L74">    <span class="tok-kw">if</span> (n.mantissa &gt;&gt; mantissa_bits == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L75">        n.exponent = exp_bias;</span>
+<span class="line" id="L76">    }</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">    <span class="tok-comment">// Infinity and range error</span>
+</span>
+<span class="line" id="L79">    <span class="tok-kw">if</span> (n.exponent &gt; max_exp) {</span>
+<span class="line" id="L80">        <span class="tok-kw">return</span> math.inf(T);</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    <span class="tok-kw">var</span> bits = n.mantissa &amp; ((<span class="tok-number">1</span> &lt;&lt; mantissa_bits) - <span class="tok-number">1</span>);</span>
+<span class="line" id="L84">    bits |= <span class="tok-builtin">@as</span>(MantissaT, <span class="tok-builtin">@intCast</span>((n.exponent - exp_bias) &amp; ((<span class="tok-number">1</span> &lt;&lt; exp_bits) - <span class="tok-number">1</span>))) &lt;&lt; mantissa_bits;</span>
+<span class="line" id="L85">    <span class="tok-kw">if</span> (n.negative) {</span>
+<span class="line" id="L86">        bits |= <span class="tok-number">1</span> &lt;&lt; (mantissa_bits + exp_bits);</span>
+<span class="line" id="L87">    }</span>
+<span class="line" id="L88">    <span class="tok-kw">return</span> floatFromUnsigned(T, MantissaT, bits);</span>
+<span class="line" id="L89">}</span>
+<span class="line" id="L90"></span>
+</code></pre></body>
+</html>

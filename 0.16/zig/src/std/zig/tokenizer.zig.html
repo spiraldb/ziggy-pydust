@@ -1,0 +1,2104 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>zig/tokenizer.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Token = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L4">    tag: Tag,</span>
+<span class="line" id="L5">    loc: Loc,</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Loc = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L8">        start: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L9">        end: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L10">    };</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> keywords = std.ComptimeStringMap(Tag, .{</span>
+<span class="line" id="L13">        .{ <span class="tok-str">&quot;addrspace&quot;</span>, .keyword_addrspace },</span>
+<span class="line" id="L14">        .{ <span class="tok-str">&quot;align&quot;</span>, .keyword_align },</span>
+<span class="line" id="L15">        .{ <span class="tok-str">&quot;allowzero&quot;</span>, .keyword_allowzero },</span>
+<span class="line" id="L16">        .{ <span class="tok-str">&quot;and&quot;</span>, .keyword_and },</span>
+<span class="line" id="L17">        .{ <span class="tok-str">&quot;anyframe&quot;</span>, .keyword_anyframe },</span>
+<span class="line" id="L18">        .{ <span class="tok-str">&quot;anytype&quot;</span>, .keyword_anytype },</span>
+<span class="line" id="L19">        .{ <span class="tok-str">&quot;asm&quot;</span>, .keyword_asm },</span>
+<span class="line" id="L20">        .{ <span class="tok-str">&quot;async&quot;</span>, .keyword_async },</span>
+<span class="line" id="L21">        .{ <span class="tok-str">&quot;await&quot;</span>, .keyword_await },</span>
+<span class="line" id="L22">        .{ <span class="tok-str">&quot;break&quot;</span>, .keyword_break },</span>
+<span class="line" id="L23">        .{ <span class="tok-str">&quot;callconv&quot;</span>, .keyword_callconv },</span>
+<span class="line" id="L24">        .{ <span class="tok-str">&quot;catch&quot;</span>, .keyword_catch },</span>
+<span class="line" id="L25">        .{ <span class="tok-str">&quot;comptime&quot;</span>, .keyword_comptime },</span>
+<span class="line" id="L26">        .{ <span class="tok-str">&quot;const&quot;</span>, .keyword_const },</span>
+<span class="line" id="L27">        .{ <span class="tok-str">&quot;continue&quot;</span>, .keyword_continue },</span>
+<span class="line" id="L28">        .{ <span class="tok-str">&quot;defer&quot;</span>, .keyword_defer },</span>
+<span class="line" id="L29">        .{ <span class="tok-str">&quot;else&quot;</span>, .keyword_else },</span>
+<span class="line" id="L30">        .{ <span class="tok-str">&quot;enum&quot;</span>, .keyword_enum },</span>
+<span class="line" id="L31">        .{ <span class="tok-str">&quot;errdefer&quot;</span>, .keyword_errdefer },</span>
+<span class="line" id="L32">        .{ <span class="tok-str">&quot;error&quot;</span>, .keyword_error },</span>
+<span class="line" id="L33">        .{ <span class="tok-str">&quot;export&quot;</span>, .keyword_export },</span>
+<span class="line" id="L34">        .{ <span class="tok-str">&quot;extern&quot;</span>, .keyword_extern },</span>
+<span class="line" id="L35">        .{ <span class="tok-str">&quot;fn&quot;</span>, .keyword_fn },</span>
+<span class="line" id="L36">        .{ <span class="tok-str">&quot;for&quot;</span>, .keyword_for },</span>
+<span class="line" id="L37">        .{ <span class="tok-str">&quot;if&quot;</span>, .keyword_if },</span>
+<span class="line" id="L38">        .{ <span class="tok-str">&quot;inline&quot;</span>, .keyword_inline },</span>
+<span class="line" id="L39">        .{ <span class="tok-str">&quot;noalias&quot;</span>, .keyword_noalias },</span>
+<span class="line" id="L40">        .{ <span class="tok-str">&quot;noinline&quot;</span>, .keyword_noinline },</span>
+<span class="line" id="L41">        .{ <span class="tok-str">&quot;nosuspend&quot;</span>, .keyword_nosuspend },</span>
+<span class="line" id="L42">        .{ <span class="tok-str">&quot;opaque&quot;</span>, .keyword_opaque },</span>
+<span class="line" id="L43">        .{ <span class="tok-str">&quot;or&quot;</span>, .keyword_or },</span>
+<span class="line" id="L44">        .{ <span class="tok-str">&quot;orelse&quot;</span>, .keyword_orelse },</span>
+<span class="line" id="L45">        .{ <span class="tok-str">&quot;packed&quot;</span>, .keyword_packed },</span>
+<span class="line" id="L46">        .{ <span class="tok-str">&quot;pub&quot;</span>, .keyword_pub },</span>
+<span class="line" id="L47">        .{ <span class="tok-str">&quot;resume&quot;</span>, .keyword_resume },</span>
+<span class="line" id="L48">        .{ <span class="tok-str">&quot;return&quot;</span>, .keyword_return },</span>
+<span class="line" id="L49">        .{ <span class="tok-str">&quot;linksection&quot;</span>, .keyword_linksection },</span>
+<span class="line" id="L50">        .{ <span class="tok-str">&quot;struct&quot;</span>, .keyword_struct },</span>
+<span class="line" id="L51">        .{ <span class="tok-str">&quot;suspend&quot;</span>, .keyword_suspend },</span>
+<span class="line" id="L52">        .{ <span class="tok-str">&quot;switch&quot;</span>, .keyword_switch },</span>
+<span class="line" id="L53">        .{ <span class="tok-str">&quot;test&quot;</span>, .keyword_test },</span>
+<span class="line" id="L54">        .{ <span class="tok-str">&quot;threadlocal&quot;</span>, .keyword_threadlocal },</span>
+<span class="line" id="L55">        .{ <span class="tok-str">&quot;try&quot;</span>, .keyword_try },</span>
+<span class="line" id="L56">        .{ <span class="tok-str">&quot;union&quot;</span>, .keyword_union },</span>
+<span class="line" id="L57">        .{ <span class="tok-str">&quot;unreachable&quot;</span>, .keyword_unreachable },</span>
+<span class="line" id="L58">        .{ <span class="tok-str">&quot;usingnamespace&quot;</span>, .keyword_usingnamespace },</span>
+<span class="line" id="L59">        .{ <span class="tok-str">&quot;var&quot;</span>, .keyword_var },</span>
+<span class="line" id="L60">        .{ <span class="tok-str">&quot;volatile&quot;</span>, .keyword_volatile },</span>
+<span class="line" id="L61">        .{ <span class="tok-str">&quot;while&quot;</span>, .keyword_while },</span>
+<span class="line" id="L62">    });</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getKeyword</span>(bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ?Tag {</span>
+<span class="line" id="L65">        <span class="tok-kw">return</span> keywords.get(bytes);</span>
+<span class="line" id="L66">    }</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Tag = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L69">        invalid,</span>
+<span class="line" id="L70">        invalid_periodasterisks,</span>
+<span class="line" id="L71">        identifier,</span>
+<span class="line" id="L72">        string_literal,</span>
+<span class="line" id="L73">        multiline_string_literal_line,</span>
+<span class="line" id="L74">        char_literal,</span>
+<span class="line" id="L75">        eof,</span>
+<span class="line" id="L76">        builtin,</span>
+<span class="line" id="L77">        bang,</span>
+<span class="line" id="L78">        pipe,</span>
+<span class="line" id="L79">        pipe_pipe,</span>
+<span class="line" id="L80">        pipe_equal,</span>
+<span class="line" id="L81">        equal,</span>
+<span class="line" id="L82">        equal_equal,</span>
+<span class="line" id="L83">        equal_angle_bracket_right,</span>
+<span class="line" id="L84">        bang_equal,</span>
+<span class="line" id="L85">        l_paren,</span>
+<span class="line" id="L86">        r_paren,</span>
+<span class="line" id="L87">        semicolon,</span>
+<span class="line" id="L88">        percent,</span>
+<span class="line" id="L89">        percent_equal,</span>
+<span class="line" id="L90">        l_brace,</span>
+<span class="line" id="L91">        r_brace,</span>
+<span class="line" id="L92">        l_bracket,</span>
+<span class="line" id="L93">        r_bracket,</span>
+<span class="line" id="L94">        period,</span>
+<span class="line" id="L95">        period_asterisk,</span>
+<span class="line" id="L96">        ellipsis2,</span>
+<span class="line" id="L97">        ellipsis3,</span>
+<span class="line" id="L98">        caret,</span>
+<span class="line" id="L99">        caret_equal,</span>
+<span class="line" id="L100">        plus,</span>
+<span class="line" id="L101">        plus_plus,</span>
+<span class="line" id="L102">        plus_equal,</span>
+<span class="line" id="L103">        plus_percent,</span>
+<span class="line" id="L104">        plus_percent_equal,</span>
+<span class="line" id="L105">        plus_pipe,</span>
+<span class="line" id="L106">        plus_pipe_equal,</span>
+<span class="line" id="L107">        minus,</span>
+<span class="line" id="L108">        minus_equal,</span>
+<span class="line" id="L109">        minus_percent,</span>
+<span class="line" id="L110">        minus_percent_equal,</span>
+<span class="line" id="L111">        minus_pipe,</span>
+<span class="line" id="L112">        minus_pipe_equal,</span>
+<span class="line" id="L113">        asterisk,</span>
+<span class="line" id="L114">        asterisk_equal,</span>
+<span class="line" id="L115">        asterisk_asterisk,</span>
+<span class="line" id="L116">        asterisk_percent,</span>
+<span class="line" id="L117">        asterisk_percent_equal,</span>
+<span class="line" id="L118">        asterisk_pipe,</span>
+<span class="line" id="L119">        asterisk_pipe_equal,</span>
+<span class="line" id="L120">        arrow,</span>
+<span class="line" id="L121">        colon,</span>
+<span class="line" id="L122">        slash,</span>
+<span class="line" id="L123">        slash_equal,</span>
+<span class="line" id="L124">        comma,</span>
+<span class="line" id="L125">        ampersand,</span>
+<span class="line" id="L126">        ampersand_equal,</span>
+<span class="line" id="L127">        question_mark,</span>
+<span class="line" id="L128">        angle_bracket_left,</span>
+<span class="line" id="L129">        angle_bracket_left_equal,</span>
+<span class="line" id="L130">        angle_bracket_angle_bracket_left,</span>
+<span class="line" id="L131">        angle_bracket_angle_bracket_left_equal,</span>
+<span class="line" id="L132">        angle_bracket_angle_bracket_left_pipe,</span>
+<span class="line" id="L133">        angle_bracket_angle_bracket_left_pipe_equal,</span>
+<span class="line" id="L134">        angle_bracket_right,</span>
+<span class="line" id="L135">        angle_bracket_right_equal,</span>
+<span class="line" id="L136">        angle_bracket_angle_bracket_right,</span>
+<span class="line" id="L137">        angle_bracket_angle_bracket_right_equal,</span>
+<span class="line" id="L138">        tilde,</span>
+<span class="line" id="L139">        number_literal,</span>
+<span class="line" id="L140">        doc_comment,</span>
+<span class="line" id="L141">        container_doc_comment,</span>
+<span class="line" id="L142">        keyword_addrspace,</span>
+<span class="line" id="L143">        keyword_align,</span>
+<span class="line" id="L144">        keyword_allowzero,</span>
+<span class="line" id="L145">        keyword_and,</span>
+<span class="line" id="L146">        keyword_anyframe,</span>
+<span class="line" id="L147">        keyword_anytype,</span>
+<span class="line" id="L148">        keyword_asm,</span>
+<span class="line" id="L149">        keyword_async,</span>
+<span class="line" id="L150">        keyword_await,</span>
+<span class="line" id="L151">        keyword_break,</span>
+<span class="line" id="L152">        keyword_callconv,</span>
+<span class="line" id="L153">        keyword_catch,</span>
+<span class="line" id="L154">        keyword_comptime,</span>
+<span class="line" id="L155">        keyword_const,</span>
+<span class="line" id="L156">        keyword_continue,</span>
+<span class="line" id="L157">        keyword_defer,</span>
+<span class="line" id="L158">        keyword_else,</span>
+<span class="line" id="L159">        keyword_enum,</span>
+<span class="line" id="L160">        keyword_errdefer,</span>
+<span class="line" id="L161">        keyword_error,</span>
+<span class="line" id="L162">        keyword_export,</span>
+<span class="line" id="L163">        keyword_extern,</span>
+<span class="line" id="L164">        keyword_fn,</span>
+<span class="line" id="L165">        keyword_for,</span>
+<span class="line" id="L166">        keyword_if,</span>
+<span class="line" id="L167">        keyword_inline,</span>
+<span class="line" id="L168">        keyword_noalias,</span>
+<span class="line" id="L169">        keyword_noinline,</span>
+<span class="line" id="L170">        keyword_nosuspend,</span>
+<span class="line" id="L171">        keyword_opaque,</span>
+<span class="line" id="L172">        keyword_or,</span>
+<span class="line" id="L173">        keyword_orelse,</span>
+<span class="line" id="L174">        keyword_packed,</span>
+<span class="line" id="L175">        keyword_pub,</span>
+<span class="line" id="L176">        keyword_resume,</span>
+<span class="line" id="L177">        keyword_return,</span>
+<span class="line" id="L178">        keyword_linksection,</span>
+<span class="line" id="L179">        keyword_struct,</span>
+<span class="line" id="L180">        keyword_suspend,</span>
+<span class="line" id="L181">        keyword_switch,</span>
+<span class="line" id="L182">        keyword_test,</span>
+<span class="line" id="L183">        keyword_threadlocal,</span>
+<span class="line" id="L184">        keyword_try,</span>
+<span class="line" id="L185">        keyword_union,</span>
+<span class="line" id="L186">        keyword_unreachable,</span>
+<span class="line" id="L187">        keyword_usingnamespace,</span>
+<span class="line" id="L188">        keyword_var,</span>
+<span class="line" id="L189">        keyword_volatile,</span>
+<span class="line" id="L190">        keyword_while,</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">lexeme</span>(tag: Tag) ?[]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L193">            <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (tag) {</span>
+<span class="line" id="L194">                .invalid,</span>
+<span class="line" id="L195">                .identifier,</span>
+<span class="line" id="L196">                .string_literal,</span>
+<span class="line" id="L197">                .multiline_string_literal_line,</span>
+<span class="line" id="L198">                .char_literal,</span>
+<span class="line" id="L199">                .eof,</span>
+<span class="line" id="L200">                .builtin,</span>
+<span class="line" id="L201">                .number_literal,</span>
+<span class="line" id="L202">                .doc_comment,</span>
+<span class="line" id="L203">                .container_doc_comment,</span>
+<span class="line" id="L204">                =&gt; <span class="tok-null">null</span>,</span>
+<span class="line" id="L205"></span>
+<span class="line" id="L206">                .invalid_periodasterisks =&gt; <span class="tok-str">&quot;.**&quot;</span>,</span>
+<span class="line" id="L207">                .bang =&gt; <span class="tok-str">&quot;!&quot;</span>,</span>
+<span class="line" id="L208">                .pipe =&gt; <span class="tok-str">&quot;|&quot;</span>,</span>
+<span class="line" id="L209">                .pipe_pipe =&gt; <span class="tok-str">&quot;||&quot;</span>,</span>
+<span class="line" id="L210">                .pipe_equal =&gt; <span class="tok-str">&quot;|=&quot;</span>,</span>
+<span class="line" id="L211">                .equal =&gt; <span class="tok-str">&quot;=&quot;</span>,</span>
+<span class="line" id="L212">                .equal_equal =&gt; <span class="tok-str">&quot;==&quot;</span>,</span>
+<span class="line" id="L213">                .equal_angle_bracket_right =&gt; <span class="tok-str">&quot;=&gt;&quot;</span>,</span>
+<span class="line" id="L214">                .bang_equal =&gt; <span class="tok-str">&quot;!=&quot;</span>,</span>
+<span class="line" id="L215">                .l_paren =&gt; <span class="tok-str">&quot;(&quot;</span>,</span>
+<span class="line" id="L216">                .r_paren =&gt; <span class="tok-str">&quot;)&quot;</span>,</span>
+<span class="line" id="L217">                .semicolon =&gt; <span class="tok-str">&quot;;&quot;</span>,</span>
+<span class="line" id="L218">                .percent =&gt; <span class="tok-str">&quot;%&quot;</span>,</span>
+<span class="line" id="L219">                .percent_equal =&gt; <span class="tok-str">&quot;%=&quot;</span>,</span>
+<span class="line" id="L220">                .l_brace =&gt; <span class="tok-str">&quot;{&quot;</span>,</span>
+<span class="line" id="L221">                .r_brace =&gt; <span class="tok-str">&quot;}&quot;</span>,</span>
+<span class="line" id="L222">                .l_bracket =&gt; <span class="tok-str">&quot;[&quot;</span>,</span>
+<span class="line" id="L223">                .r_bracket =&gt; <span class="tok-str">&quot;]&quot;</span>,</span>
+<span class="line" id="L224">                .period =&gt; <span class="tok-str">&quot;.&quot;</span>,</span>
+<span class="line" id="L225">                .period_asterisk =&gt; <span class="tok-str">&quot;.*&quot;</span>,</span>
+<span class="line" id="L226">                .ellipsis2 =&gt; <span class="tok-str">&quot;..&quot;</span>,</span>
+<span class="line" id="L227">                .ellipsis3 =&gt; <span class="tok-str">&quot;...&quot;</span>,</span>
+<span class="line" id="L228">                .caret =&gt; <span class="tok-str">&quot;^&quot;</span>,</span>
+<span class="line" id="L229">                .caret_equal =&gt; <span class="tok-str">&quot;^=&quot;</span>,</span>
+<span class="line" id="L230">                .plus =&gt; <span class="tok-str">&quot;+&quot;</span>,</span>
+<span class="line" id="L231">                .plus_plus =&gt; <span class="tok-str">&quot;++&quot;</span>,</span>
+<span class="line" id="L232">                .plus_equal =&gt; <span class="tok-str">&quot;+=&quot;</span>,</span>
+<span class="line" id="L233">                .plus_percent =&gt; <span class="tok-str">&quot;+%&quot;</span>,</span>
+<span class="line" id="L234">                .plus_percent_equal =&gt; <span class="tok-str">&quot;+%=&quot;</span>,</span>
+<span class="line" id="L235">                .plus_pipe =&gt; <span class="tok-str">&quot;+|&quot;</span>,</span>
+<span class="line" id="L236">                .plus_pipe_equal =&gt; <span class="tok-str">&quot;+|=&quot;</span>,</span>
+<span class="line" id="L237">                .minus =&gt; <span class="tok-str">&quot;-&quot;</span>,</span>
+<span class="line" id="L238">                .minus_equal =&gt; <span class="tok-str">&quot;-=&quot;</span>,</span>
+<span class="line" id="L239">                .minus_percent =&gt; <span class="tok-str">&quot;-%&quot;</span>,</span>
+<span class="line" id="L240">                .minus_percent_equal =&gt; <span class="tok-str">&quot;-%=&quot;</span>,</span>
+<span class="line" id="L241">                .minus_pipe =&gt; <span class="tok-str">&quot;-|&quot;</span>,</span>
+<span class="line" id="L242">                .minus_pipe_equal =&gt; <span class="tok-str">&quot;-|=&quot;</span>,</span>
+<span class="line" id="L243">                .asterisk =&gt; <span class="tok-str">&quot;*&quot;</span>,</span>
+<span class="line" id="L244">                .asterisk_equal =&gt; <span class="tok-str">&quot;*=&quot;</span>,</span>
+<span class="line" id="L245">                .asterisk_asterisk =&gt; <span class="tok-str">&quot;**&quot;</span>,</span>
+<span class="line" id="L246">                .asterisk_percent =&gt; <span class="tok-str">&quot;*%&quot;</span>,</span>
+<span class="line" id="L247">                .asterisk_percent_equal =&gt; <span class="tok-str">&quot;*%=&quot;</span>,</span>
+<span class="line" id="L248">                .asterisk_pipe =&gt; <span class="tok-str">&quot;*|&quot;</span>,</span>
+<span class="line" id="L249">                .asterisk_pipe_equal =&gt; <span class="tok-str">&quot;*|=&quot;</span>,</span>
+<span class="line" id="L250">                .arrow =&gt; <span class="tok-str">&quot;-&gt;&quot;</span>,</span>
+<span class="line" id="L251">                .colon =&gt; <span class="tok-str">&quot;:&quot;</span>,</span>
+<span class="line" id="L252">                .slash =&gt; <span class="tok-str">&quot;/&quot;</span>,</span>
+<span class="line" id="L253">                .slash_equal =&gt; <span class="tok-str">&quot;/=&quot;</span>,</span>
+<span class="line" id="L254">                .comma =&gt; <span class="tok-str">&quot;,&quot;</span>,</span>
+<span class="line" id="L255">                .ampersand =&gt; <span class="tok-str">&quot;&amp;&quot;</span>,</span>
+<span class="line" id="L256">                .ampersand_equal =&gt; <span class="tok-str">&quot;&amp;=&quot;</span>,</span>
+<span class="line" id="L257">                .question_mark =&gt; <span class="tok-str">&quot;?&quot;</span>,</span>
+<span class="line" id="L258">                .angle_bracket_left =&gt; <span class="tok-str">&quot;&lt;&quot;</span>,</span>
+<span class="line" id="L259">                .angle_bracket_left_equal =&gt; <span class="tok-str">&quot;&lt;=&quot;</span>,</span>
+<span class="line" id="L260">                .angle_bracket_angle_bracket_left =&gt; <span class="tok-str">&quot;&lt;&lt;&quot;</span>,</span>
+<span class="line" id="L261">                .angle_bracket_angle_bracket_left_equal =&gt; <span class="tok-str">&quot;&lt;&lt;=&quot;</span>,</span>
+<span class="line" id="L262">                .angle_bracket_angle_bracket_left_pipe =&gt; <span class="tok-str">&quot;&lt;&lt;|&quot;</span>,</span>
+<span class="line" id="L263">                .angle_bracket_angle_bracket_left_pipe_equal =&gt; <span class="tok-str">&quot;&lt;&lt;|=&quot;</span>,</span>
+<span class="line" id="L264">                .angle_bracket_right =&gt; <span class="tok-str">&quot;&gt;&quot;</span>,</span>
+<span class="line" id="L265">                .angle_bracket_right_equal =&gt; <span class="tok-str">&quot;&gt;=&quot;</span>,</span>
+<span class="line" id="L266">                .angle_bracket_angle_bracket_right =&gt; <span class="tok-str">&quot;&gt;&gt;&quot;</span>,</span>
+<span class="line" id="L267">                .angle_bracket_angle_bracket_right_equal =&gt; <span class="tok-str">&quot;&gt;&gt;=&quot;</span>,</span>
+<span class="line" id="L268">                .tilde =&gt; <span class="tok-str">&quot;~&quot;</span>,</span>
+<span class="line" id="L269">                .keyword_addrspace =&gt; <span class="tok-str">&quot;addrspace&quot;</span>,</span>
+<span class="line" id="L270">                .keyword_align =&gt; <span class="tok-str">&quot;align&quot;</span>,</span>
+<span class="line" id="L271">                .keyword_allowzero =&gt; <span class="tok-str">&quot;allowzero&quot;</span>,</span>
+<span class="line" id="L272">                .keyword_and =&gt; <span class="tok-str">&quot;and&quot;</span>,</span>
+<span class="line" id="L273">                .keyword_anyframe =&gt; <span class="tok-str">&quot;anyframe&quot;</span>,</span>
+<span class="line" id="L274">                .keyword_anytype =&gt; <span class="tok-str">&quot;anytype&quot;</span>,</span>
+<span class="line" id="L275">                .keyword_asm =&gt; <span class="tok-str">&quot;asm&quot;</span>,</span>
+<span class="line" id="L276">                .keyword_async =&gt; <span class="tok-str">&quot;async&quot;</span>,</span>
+<span class="line" id="L277">                .keyword_await =&gt; <span class="tok-str">&quot;await&quot;</span>,</span>
+<span class="line" id="L278">                .keyword_break =&gt; <span class="tok-str">&quot;break&quot;</span>,</span>
+<span class="line" id="L279">                .keyword_callconv =&gt; <span class="tok-str">&quot;callconv&quot;</span>,</span>
+<span class="line" id="L280">                .keyword_catch =&gt; <span class="tok-str">&quot;catch&quot;</span>,</span>
+<span class="line" id="L281">                .keyword_comptime =&gt; <span class="tok-str">&quot;comptime&quot;</span>,</span>
+<span class="line" id="L282">                .keyword_const =&gt; <span class="tok-str">&quot;const&quot;</span>,</span>
+<span class="line" id="L283">                .keyword_continue =&gt; <span class="tok-str">&quot;continue&quot;</span>,</span>
+<span class="line" id="L284">                .keyword_defer =&gt; <span class="tok-str">&quot;defer&quot;</span>,</span>
+<span class="line" id="L285">                .keyword_else =&gt; <span class="tok-str">&quot;else&quot;</span>,</span>
+<span class="line" id="L286">                .keyword_enum =&gt; <span class="tok-str">&quot;enum&quot;</span>,</span>
+<span class="line" id="L287">                .keyword_errdefer =&gt; <span class="tok-str">&quot;errdefer&quot;</span>,</span>
+<span class="line" id="L288">                .keyword_error =&gt; <span class="tok-str">&quot;error&quot;</span>,</span>
+<span class="line" id="L289">                .keyword_export =&gt; <span class="tok-str">&quot;export&quot;</span>,</span>
+<span class="line" id="L290">                .keyword_extern =&gt; <span class="tok-str">&quot;extern&quot;</span>,</span>
+<span class="line" id="L291">                .keyword_fn =&gt; <span class="tok-str">&quot;fn&quot;</span>,</span>
+<span class="line" id="L292">                .keyword_for =&gt; <span class="tok-str">&quot;for&quot;</span>,</span>
+<span class="line" id="L293">                .keyword_if =&gt; <span class="tok-str">&quot;if&quot;</span>,</span>
+<span class="line" id="L294">                .keyword_inline =&gt; <span class="tok-str">&quot;inline&quot;</span>,</span>
+<span class="line" id="L295">                .keyword_noalias =&gt; <span class="tok-str">&quot;noalias&quot;</span>,</span>
+<span class="line" id="L296">                .keyword_noinline =&gt; <span class="tok-str">&quot;noinline&quot;</span>,</span>
+<span class="line" id="L297">                .keyword_nosuspend =&gt; <span class="tok-str">&quot;nosuspend&quot;</span>,</span>
+<span class="line" id="L298">                .keyword_opaque =&gt; <span class="tok-str">&quot;opaque&quot;</span>,</span>
+<span class="line" id="L299">                .keyword_or =&gt; <span class="tok-str">&quot;or&quot;</span>,</span>
+<span class="line" id="L300">                .keyword_orelse =&gt; <span class="tok-str">&quot;orelse&quot;</span>,</span>
+<span class="line" id="L301">                .keyword_packed =&gt; <span class="tok-str">&quot;packed&quot;</span>,</span>
+<span class="line" id="L302">                .keyword_pub =&gt; <span class="tok-str">&quot;pub&quot;</span>,</span>
+<span class="line" id="L303">                .keyword_resume =&gt; <span class="tok-str">&quot;resume&quot;</span>,</span>
+<span class="line" id="L304">                .keyword_return =&gt; <span class="tok-str">&quot;return&quot;</span>,</span>
+<span class="line" id="L305">                .keyword_linksection =&gt; <span class="tok-str">&quot;linksection&quot;</span>,</span>
+<span class="line" id="L306">                .keyword_struct =&gt; <span class="tok-str">&quot;struct&quot;</span>,</span>
+<span class="line" id="L307">                .keyword_suspend =&gt; <span class="tok-str">&quot;suspend&quot;</span>,</span>
+<span class="line" id="L308">                .keyword_switch =&gt; <span class="tok-str">&quot;switch&quot;</span>,</span>
+<span class="line" id="L309">                .keyword_test =&gt; <span class="tok-str">&quot;test&quot;</span>,</span>
+<span class="line" id="L310">                .keyword_threadlocal =&gt; <span class="tok-str">&quot;threadlocal&quot;</span>,</span>
+<span class="line" id="L311">                .keyword_try =&gt; <span class="tok-str">&quot;try&quot;</span>,</span>
+<span class="line" id="L312">                .keyword_union =&gt; <span class="tok-str">&quot;union&quot;</span>,</span>
+<span class="line" id="L313">                .keyword_unreachable =&gt; <span class="tok-str">&quot;unreachable&quot;</span>,</span>
+<span class="line" id="L314">                .keyword_usingnamespace =&gt; <span class="tok-str">&quot;usingnamespace&quot;</span>,</span>
+<span class="line" id="L315">                .keyword_var =&gt; <span class="tok-str">&quot;var&quot;</span>,</span>
+<span class="line" id="L316">                .keyword_volatile =&gt; <span class="tok-str">&quot;volatile&quot;</span>,</span>
+<span class="line" id="L317">                .keyword_while =&gt; <span class="tok-str">&quot;while&quot;</span>,</span>
+<span class="line" id="L318">            };</span>
+<span class="line" id="L319">        }</span>
+<span class="line" id="L320"></span>
+<span class="line" id="L321">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">symbol</span>(tag: Tag) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L322">            <span class="tok-kw">return</span> tag.lexeme() <span class="tok-kw">orelse</span> <span class="tok-kw">switch</span> (tag) {</span>
+<span class="line" id="L323">                .invalid =&gt; <span class="tok-str">&quot;invalid bytes&quot;</span>,</span>
+<span class="line" id="L324">                .identifier =&gt; <span class="tok-str">&quot;an identifier&quot;</span>,</span>
+<span class="line" id="L325">                .string_literal, .multiline_string_literal_line =&gt; <span class="tok-str">&quot;a string literal&quot;</span>,</span>
+<span class="line" id="L326">                .char_literal =&gt; <span class="tok-str">&quot;a character literal&quot;</span>,</span>
+<span class="line" id="L327">                .eof =&gt; <span class="tok-str">&quot;EOF&quot;</span>,</span>
+<span class="line" id="L328">                .builtin =&gt; <span class="tok-str">&quot;a builtin function&quot;</span>,</span>
+<span class="line" id="L329">                .number_literal =&gt; <span class="tok-str">&quot;a number literal&quot;</span>,</span>
+<span class="line" id="L330">                .doc_comment, .container_doc_comment =&gt; <span class="tok-str">&quot;a document comment&quot;</span>,</span>
+<span class="line" id="L331">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L332">            };</span>
+<span class="line" id="L333">        }</span>
+<span class="line" id="L334">    };</span>
+<span class="line" id="L335">};</span>
+<span class="line" id="L336"></span>
+<span class="line" id="L337"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Tokenizer = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L338">    buffer: [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L339">    index: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L340">    pending_invalid_token: ?Token,</span>
+<span class="line" id="L341"></span>
+<span class="line" id="L342">    <span class="tok-comment">/// For debugging purposes</span></span>
+<span class="line" id="L343">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">dump</span>(self: *Tokenizer, token: *<span class="tok-kw">const</span> Token) <span class="tok-type">void</span> {</span>
+<span class="line" id="L344">        std.debug.print(<span class="tok-str">&quot;{s} \&quot;{s}\&quot;\n&quot;</span>, .{ <span class="tok-builtin">@tagName</span>(token.tag), self.buffer[token.loc.start..token.loc.end] });</span>
+<span class="line" id="L345">    }</span>
+<span class="line" id="L346"></span>
+<span class="line" id="L347">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(buffer: [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Tokenizer {</span>
+<span class="line" id="L348">        <span class="tok-comment">// Skip the UTF-8 BOM if present</span>
+</span>
+<span class="line" id="L349">        <span class="tok-kw">const</span> src_start: <span class="tok-type">usize</span> = <span class="tok-kw">if</span> (std.mem.startsWith(<span class="tok-type">u8</span>, buffer, <span class="tok-str">&quot;\xEF\xBB\xBF&quot;</span>)) <span class="tok-number">3</span> <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L350">        <span class="tok-kw">return</span> Tokenizer{</span>
+<span class="line" id="L351">            .buffer = buffer,</span>
+<span class="line" id="L352">            .index = src_start,</span>
+<span class="line" id="L353">            .pending_invalid_token = <span class="tok-null">null</span>,</span>
+<span class="line" id="L354">        };</span>
+<span class="line" id="L355">    }</span>
+<span class="line" id="L356"></span>
+<span class="line" id="L357">    <span class="tok-kw">const</span> State = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L358">        start,</span>
+<span class="line" id="L359">        identifier,</span>
+<span class="line" id="L360">        builtin,</span>
+<span class="line" id="L361">        string_literal,</span>
+<span class="line" id="L362">        string_literal_backslash,</span>
+<span class="line" id="L363">        multiline_string_literal_line,</span>
+<span class="line" id="L364">        char_literal,</span>
+<span class="line" id="L365">        char_literal_backslash,</span>
+<span class="line" id="L366">        char_literal_hex_escape,</span>
+<span class="line" id="L367">        char_literal_unicode_escape_saw_u,</span>
+<span class="line" id="L368">        char_literal_unicode_escape,</span>
+<span class="line" id="L369">        char_literal_unicode_invalid,</span>
+<span class="line" id="L370">        char_literal_unicode,</span>
+<span class="line" id="L371">        char_literal_end,</span>
+<span class="line" id="L372">        backslash,</span>
+<span class="line" id="L373">        equal,</span>
+<span class="line" id="L374">        bang,</span>
+<span class="line" id="L375">        pipe,</span>
+<span class="line" id="L376">        minus,</span>
+<span class="line" id="L377">        minus_percent,</span>
+<span class="line" id="L378">        minus_pipe,</span>
+<span class="line" id="L379">        asterisk,</span>
+<span class="line" id="L380">        asterisk_percent,</span>
+<span class="line" id="L381">        asterisk_pipe,</span>
+<span class="line" id="L382">        slash,</span>
+<span class="line" id="L383">        line_comment_start,</span>
+<span class="line" id="L384">        line_comment,</span>
+<span class="line" id="L385">        doc_comment_start,</span>
+<span class="line" id="L386">        doc_comment,</span>
+<span class="line" id="L387">        int,</span>
+<span class="line" id="L388">        int_exponent,</span>
+<span class="line" id="L389">        int_period,</span>
+<span class="line" id="L390">        float,</span>
+<span class="line" id="L391">        float_exponent,</span>
+<span class="line" id="L392">        ampersand,</span>
+<span class="line" id="L393">        caret,</span>
+<span class="line" id="L394">        percent,</span>
+<span class="line" id="L395">        plus,</span>
+<span class="line" id="L396">        plus_percent,</span>
+<span class="line" id="L397">        plus_pipe,</span>
+<span class="line" id="L398">        angle_bracket_left,</span>
+<span class="line" id="L399">        angle_bracket_angle_bracket_left,</span>
+<span class="line" id="L400">        angle_bracket_angle_bracket_left_pipe,</span>
+<span class="line" id="L401">        angle_bracket_right,</span>
+<span class="line" id="L402">        angle_bracket_angle_bracket_right,</span>
+<span class="line" id="L403">        period,</span>
+<span class="line" id="L404">        period_2,</span>
+<span class="line" id="L405">        period_asterisk,</span>
+<span class="line" id="L406">        saw_at_sign,</span>
+<span class="line" id="L407">    };</span>
+<span class="line" id="L408"></span>
+<span class="line" id="L409">    <span class="tok-comment">/// This is a workaround to the fact that the tokenizer can queue up</span></span>
+<span class="line" id="L410">    <span class="tok-comment">/// 'pending_invalid_token's when parsing literals, which means that we need</span></span>
+<span class="line" id="L411">    <span class="tok-comment">/// to scan from the start of the current line to find a matching tag - just</span></span>
+<span class="line" id="L412">    <span class="tok-comment">/// in case it was an invalid character generated during literal</span></span>
+<span class="line" id="L413">    <span class="tok-comment">/// tokenization. Ideally this processing of this would be pushed to the AST</span></span>
+<span class="line" id="L414">    <span class="tok-comment">/// parser or another later stage, both to give more useful error messages</span></span>
+<span class="line" id="L415">    <span class="tok-comment">/// with that extra context and in order to be able to remove this</span></span>
+<span class="line" id="L416">    <span class="tok-comment">/// workaround.</span></span>
+<span class="line" id="L417">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">findTagAtCurrentIndex</span>(self: *Tokenizer, tag: Token.Tag) Token {</span>
+<span class="line" id="L418">        <span class="tok-kw">if</span> (tag == .invalid) {</span>
+<span class="line" id="L419">            <span class="tok-kw">const</span> target_index = self.index;</span>
+<span class="line" id="L420">            <span class="tok-kw">var</span> starting_index = target_index;</span>
+<span class="line" id="L421">            <span class="tok-kw">while</span> (starting_index &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L422">                <span class="tok-kw">if</span> (self.buffer[starting_index] == <span class="tok-str">'\n'</span>) {</span>
+<span class="line" id="L423">                    <span class="tok-kw">break</span>;</span>
+<span class="line" id="L424">                }</span>
+<span class="line" id="L425">                starting_index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L426">            }</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">            self.index = starting_index;</span>
+<span class="line" id="L429">            <span class="tok-kw">while</span> (self.index &lt;= target_index <span class="tok-kw">or</span> self.pending_invalid_token != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L430">                <span class="tok-kw">const</span> result = self.next();</span>
+<span class="line" id="L431">                <span class="tok-kw">if</span> (result.loc.start == target_index <span class="tok-kw">and</span> result.tag == tag) {</span>
+<span class="line" id="L432">                    <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L433">                }</span>
+<span class="line" id="L434">            }</span>
+<span class="line" id="L435">            <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L436">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L437">            <span class="tok-kw">return</span> self.next();</span>
+<span class="line" id="L438">        }</span>
+<span class="line" id="L439">    }</span>
+<span class="line" id="L440"></span>
+<span class="line" id="L441">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(self: *Tokenizer) Token {</span>
+<span class="line" id="L442">        <span class="tok-kw">if</span> (self.pending_invalid_token) |token| {</span>
+<span class="line" id="L443">            self.pending_invalid_token = <span class="tok-null">null</span>;</span>
+<span class="line" id="L444">            <span class="tok-kw">return</span> token;</span>
+<span class="line" id="L445">        }</span>
+<span class="line" id="L446">        <span class="tok-kw">var</span> state: State = .start;</span>
+<span class="line" id="L447">        <span class="tok-kw">var</span> result = Token{</span>
+<span class="line" id="L448">            .tag = .eof,</span>
+<span class="line" id="L449">            .loc = .{</span>
+<span class="line" id="L450">                .start = self.index,</span>
+<span class="line" id="L451">                .end = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L452">            },</span>
+<span class="line" id="L453">        };</span>
+<span class="line" id="L454">        <span class="tok-kw">var</span> seen_escape_digits: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L455">        <span class="tok-kw">var</span> remaining_code_units: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L456">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : (self.index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L457">            <span class="tok-kw">const</span> c = self.buffer[self.index];</span>
+<span class="line" id="L458">            <span class="tok-kw">switch</span> (state) {</span>
+<span class="line" id="L459">                .start =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L460">                    <span class="tok-number">0</span> =&gt; {</span>
+<span class="line" id="L461">                        <span class="tok-kw">if</span> (self.index != self.buffer.len) {</span>
+<span class="line" id="L462">                            result.tag = .invalid;</span>
+<span class="line" id="L463">                            result.loc.start = self.index;</span>
+<span class="line" id="L464">                            self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L465">                            result.loc.end = self.index;</span>
+<span class="line" id="L466">                            <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L467">                        }</span>
+<span class="line" id="L468">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L469">                    },</span>
+<span class="line" id="L470">                    <span class="tok-str">' '</span>, <span class="tok-str">'\n'</span>, <span class="tok-str">'\t'</span>, <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L471">                        result.loc.start = self.index + <span class="tok-number">1</span>;</span>
+<span class="line" id="L472">                    },</span>
+<span class="line" id="L473">                    <span class="tok-str">'&quot;'</span> =&gt; {</span>
+<span class="line" id="L474">                        state = .string_literal;</span>
+<span class="line" id="L475">                        result.tag = .string_literal;</span>
+<span class="line" id="L476">                    },</span>
+<span class="line" id="L477">                    <span class="tok-str">'\''</span> =&gt; {</span>
+<span class="line" id="L478">                        state = .char_literal;</span>
+<span class="line" id="L479">                    },</span>
+<span class="line" id="L480">                    <span class="tok-str">'a'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'_'</span> =&gt; {</span>
+<span class="line" id="L481">                        state = .identifier;</span>
+<span class="line" id="L482">                        result.tag = .identifier;</span>
+<span class="line" id="L483">                    },</span>
+<span class="line" id="L484">                    <span class="tok-str">'@'</span> =&gt; {</span>
+<span class="line" id="L485">                        state = .saw_at_sign;</span>
+<span class="line" id="L486">                    },</span>
+<span class="line" id="L487">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L488">                        state = .equal;</span>
+<span class="line" id="L489">                    },</span>
+<span class="line" id="L490">                    <span class="tok-str">'!'</span> =&gt; {</span>
+<span class="line" id="L491">                        state = .bang;</span>
+<span class="line" id="L492">                    },</span>
+<span class="line" id="L493">                    <span class="tok-str">'|'</span> =&gt; {</span>
+<span class="line" id="L494">                        state = .pipe;</span>
+<span class="line" id="L495">                    },</span>
+<span class="line" id="L496">                    <span class="tok-str">'('</span> =&gt; {</span>
+<span class="line" id="L497">                        result.tag = .l_paren;</span>
+<span class="line" id="L498">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L499">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L500">                    },</span>
+<span class="line" id="L501">                    <span class="tok-str">')'</span> =&gt; {</span>
+<span class="line" id="L502">                        result.tag = .r_paren;</span>
+<span class="line" id="L503">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L504">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L505">                    },</span>
+<span class="line" id="L506">                    <span class="tok-str">'['</span> =&gt; {</span>
+<span class="line" id="L507">                        result.tag = .l_bracket;</span>
+<span class="line" id="L508">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L509">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L510">                    },</span>
+<span class="line" id="L511">                    <span class="tok-str">']'</span> =&gt; {</span>
+<span class="line" id="L512">                        result.tag = .r_bracket;</span>
+<span class="line" id="L513">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L514">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L515">                    },</span>
+<span class="line" id="L516">                    <span class="tok-str">';'</span> =&gt; {</span>
+<span class="line" id="L517">                        result.tag = .semicolon;</span>
+<span class="line" id="L518">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L519">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L520">                    },</span>
+<span class="line" id="L521">                    <span class="tok-str">','</span> =&gt; {</span>
+<span class="line" id="L522">                        result.tag = .comma;</span>
+<span class="line" id="L523">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L524">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L525">                    },</span>
+<span class="line" id="L526">                    <span class="tok-str">'?'</span> =&gt; {</span>
+<span class="line" id="L527">                        result.tag = .question_mark;</span>
+<span class="line" id="L528">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L529">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L530">                    },</span>
+<span class="line" id="L531">                    <span class="tok-str">':'</span> =&gt; {</span>
+<span class="line" id="L532">                        result.tag = .colon;</span>
+<span class="line" id="L533">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L534">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L535">                    },</span>
+<span class="line" id="L536">                    <span class="tok-str">'%'</span> =&gt; {</span>
+<span class="line" id="L537">                        state = .percent;</span>
+<span class="line" id="L538">                    },</span>
+<span class="line" id="L539">                    <span class="tok-str">'*'</span> =&gt; {</span>
+<span class="line" id="L540">                        state = .asterisk;</span>
+<span class="line" id="L541">                    },</span>
+<span class="line" id="L542">                    <span class="tok-str">'+'</span> =&gt; {</span>
+<span class="line" id="L543">                        state = .plus;</span>
+<span class="line" id="L544">                    },</span>
+<span class="line" id="L545">                    <span class="tok-str">'&lt;'</span> =&gt; {</span>
+<span class="line" id="L546">                        state = .angle_bracket_left;</span>
+<span class="line" id="L547">                    },</span>
+<span class="line" id="L548">                    <span class="tok-str">'&gt;'</span> =&gt; {</span>
+<span class="line" id="L549">                        state = .angle_bracket_right;</span>
+<span class="line" id="L550">                    },</span>
+<span class="line" id="L551">                    <span class="tok-str">'^'</span> =&gt; {</span>
+<span class="line" id="L552">                        state = .caret;</span>
+<span class="line" id="L553">                    },</span>
+<span class="line" id="L554">                    <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L555">                        state = .backslash;</span>
+<span class="line" id="L556">                        result.tag = .multiline_string_literal_line;</span>
+<span class="line" id="L557">                    },</span>
+<span class="line" id="L558">                    <span class="tok-str">'{'</span> =&gt; {</span>
+<span class="line" id="L559">                        result.tag = .l_brace;</span>
+<span class="line" id="L560">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L561">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L562">                    },</span>
+<span class="line" id="L563">                    <span class="tok-str">'}'</span> =&gt; {</span>
+<span class="line" id="L564">                        result.tag = .r_brace;</span>
+<span class="line" id="L565">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L566">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L567">                    },</span>
+<span class="line" id="L568">                    <span class="tok-str">'~'</span> =&gt; {</span>
+<span class="line" id="L569">                        result.tag = .tilde;</span>
+<span class="line" id="L570">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L571">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L572">                    },</span>
+<span class="line" id="L573">                    <span class="tok-str">'.'</span> =&gt; {</span>
+<span class="line" id="L574">                        state = .period;</span>
+<span class="line" id="L575">                    },</span>
+<span class="line" id="L576">                    <span class="tok-str">'-'</span> =&gt; {</span>
+<span class="line" id="L577">                        state = .minus;</span>
+<span class="line" id="L578">                    },</span>
+<span class="line" id="L579">                    <span class="tok-str">'/'</span> =&gt; {</span>
+<span class="line" id="L580">                        state = .slash;</span>
+<span class="line" id="L581">                    },</span>
+<span class="line" id="L582">                    <span class="tok-str">'&amp;'</span> =&gt; {</span>
+<span class="line" id="L583">                        state = .ampersand;</span>
+<span class="line" id="L584">                    },</span>
+<span class="line" id="L585">                    <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {</span>
+<span class="line" id="L586">                        state = .int;</span>
+<span class="line" id="L587">                        result.tag = .number_literal;</span>
+<span class="line" id="L588">                    },</span>
+<span class="line" id="L589">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L590">                        result.tag = .invalid;</span>
+<span class="line" id="L591">                        result.loc.end = self.index;</span>
+<span class="line" id="L592">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L593">                        <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L594">                    },</span>
+<span class="line" id="L595">                },</span>
+<span class="line" id="L596"></span>
+<span class="line" id="L597">                .saw_at_sign =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L598">                    <span class="tok-str">'&quot;'</span> =&gt; {</span>
+<span class="line" id="L599">                        result.tag = .identifier;</span>
+<span class="line" id="L600">                        state = .string_literal;</span>
+<span class="line" id="L601">                    },</span>
+<span class="line" id="L602">                    <span class="tok-str">'a'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'_'</span> =&gt; {</span>
+<span class="line" id="L603">                        state = .builtin;</span>
+<span class="line" id="L604">                        result.tag = .builtin;</span>
+<span class="line" id="L605">                    },</span>
+<span class="line" id="L606">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L607">                        result.tag = .invalid;</span>
+<span class="line" id="L608">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L609">                    },</span>
+<span class="line" id="L610">                },</span>
+<span class="line" id="L611"></span>
+<span class="line" id="L612">                .ampersand =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L613">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L614">                        result.tag = .ampersand_equal;</span>
+<span class="line" id="L615">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L616">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L617">                    },</span>
+<span class="line" id="L618">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L619">                        result.tag = .ampersand;</span>
+<span class="line" id="L620">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L621">                    },</span>
+<span class="line" id="L622">                },</span>
+<span class="line" id="L623"></span>
+<span class="line" id="L624">                .asterisk =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L625">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L626">                        result.tag = .asterisk_equal;</span>
+<span class="line" id="L627">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L628">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L629">                    },</span>
+<span class="line" id="L630">                    <span class="tok-str">'*'</span> =&gt; {</span>
+<span class="line" id="L631">                        result.tag = .asterisk_asterisk;</span>
+<span class="line" id="L632">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L633">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L634">                    },</span>
+<span class="line" id="L635">                    <span class="tok-str">'%'</span> =&gt; {</span>
+<span class="line" id="L636">                        state = .asterisk_percent;</span>
+<span class="line" id="L637">                    },</span>
+<span class="line" id="L638">                    <span class="tok-str">'|'</span> =&gt; {</span>
+<span class="line" id="L639">                        state = .asterisk_pipe;</span>
+<span class="line" id="L640">                    },</span>
+<span class="line" id="L641">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L642">                        result.tag = .asterisk;</span>
+<span class="line" id="L643">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L644">                    },</span>
+<span class="line" id="L645">                },</span>
+<span class="line" id="L646"></span>
+<span class="line" id="L647">                .asterisk_percent =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L648">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L649">                        result.tag = .asterisk_percent_equal;</span>
+<span class="line" id="L650">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L651">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L652">                    },</span>
+<span class="line" id="L653">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L654">                        result.tag = .asterisk_percent;</span>
+<span class="line" id="L655">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L656">                    },</span>
+<span class="line" id="L657">                },</span>
+<span class="line" id="L658"></span>
+<span class="line" id="L659">                .asterisk_pipe =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L660">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L661">                        result.tag = .asterisk_pipe_equal;</span>
+<span class="line" id="L662">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L663">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L664">                    },</span>
+<span class="line" id="L665">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L666">                        result.tag = .asterisk_pipe;</span>
+<span class="line" id="L667">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L668">                    },</span>
+<span class="line" id="L669">                },</span>
+<span class="line" id="L670"></span>
+<span class="line" id="L671">                .percent =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L672">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L673">                        result.tag = .percent_equal;</span>
+<span class="line" id="L674">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L675">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L676">                    },</span>
+<span class="line" id="L677">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L678">                        result.tag = .percent;</span>
+<span class="line" id="L679">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L680">                    },</span>
+<span class="line" id="L681">                },</span>
+<span class="line" id="L682"></span>
+<span class="line" id="L683">                .plus =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L684">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L685">                        result.tag = .plus_equal;</span>
+<span class="line" id="L686">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L687">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L688">                    },</span>
+<span class="line" id="L689">                    <span class="tok-str">'+'</span> =&gt; {</span>
+<span class="line" id="L690">                        result.tag = .plus_plus;</span>
+<span class="line" id="L691">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L692">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L693">                    },</span>
+<span class="line" id="L694">                    <span class="tok-str">'%'</span> =&gt; {</span>
+<span class="line" id="L695">                        state = .plus_percent;</span>
+<span class="line" id="L696">                    },</span>
+<span class="line" id="L697">                    <span class="tok-str">'|'</span> =&gt; {</span>
+<span class="line" id="L698">                        state = .plus_pipe;</span>
+<span class="line" id="L699">                    },</span>
+<span class="line" id="L700">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L701">                        result.tag = .plus;</span>
+<span class="line" id="L702">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L703">                    },</span>
+<span class="line" id="L704">                },</span>
+<span class="line" id="L705"></span>
+<span class="line" id="L706">                .plus_percent =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L707">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L708">                        result.tag = .plus_percent_equal;</span>
+<span class="line" id="L709">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L710">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L711">                    },</span>
+<span class="line" id="L712">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L713">                        result.tag = .plus_percent;</span>
+<span class="line" id="L714">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L715">                    },</span>
+<span class="line" id="L716">                },</span>
+<span class="line" id="L717"></span>
+<span class="line" id="L718">                .plus_pipe =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L719">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L720">                        result.tag = .plus_pipe_equal;</span>
+<span class="line" id="L721">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L722">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L723">                    },</span>
+<span class="line" id="L724">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L725">                        result.tag = .plus_pipe;</span>
+<span class="line" id="L726">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L727">                    },</span>
+<span class="line" id="L728">                },</span>
+<span class="line" id="L729"></span>
+<span class="line" id="L730">                .caret =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L731">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L732">                        result.tag = .caret_equal;</span>
+<span class="line" id="L733">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L734">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L735">                    },</span>
+<span class="line" id="L736">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L737">                        result.tag = .caret;</span>
+<span class="line" id="L738">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L739">                    },</span>
+<span class="line" id="L740">                },</span>
+<span class="line" id="L741"></span>
+<span class="line" id="L742">                .identifier =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L743">                    <span class="tok-str">'a'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'_'</span>, <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {},</span>
+<span class="line" id="L744">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L745">                        <span class="tok-kw">if</span> (Token.getKeyword(self.buffer[result.loc.start..self.index])) |tag| {</span>
+<span class="line" id="L746">                            result.tag = tag;</span>
+<span class="line" id="L747">                        }</span>
+<span class="line" id="L748">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L749">                    },</span>
+<span class="line" id="L750">                },</span>
+<span class="line" id="L751">                .builtin =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L752">                    <span class="tok-str">'a'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'_'</span>, <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {},</span>
+<span class="line" id="L753">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">break</span>,</span>
+<span class="line" id="L754">                },</span>
+<span class="line" id="L755">                .backslash =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L756">                    <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L757">                        state = .multiline_string_literal_line;</span>
+<span class="line" id="L758">                    },</span>
+<span class="line" id="L759">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L760">                        result.tag = .invalid;</span>
+<span class="line" id="L761">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L762">                    },</span>
+<span class="line" id="L763">                },</span>
+<span class="line" id="L764">                .string_literal =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L765">                    <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L766">                        state = .string_literal_backslash;</span>
+<span class="line" id="L767">                    },</span>
+<span class="line" id="L768">                    <span class="tok-str">'&quot;'</span> =&gt; {</span>
+<span class="line" id="L769">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L770">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L771">                    },</span>
+<span class="line" id="L772">                    <span class="tok-number">0</span> =&gt; {</span>
+<span class="line" id="L773">                        <span class="tok-kw">if</span> (self.index == self.buffer.len) {</span>
+<span class="line" id="L774">                            result.tag = .invalid;</span>
+<span class="line" id="L775">                            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L776">                        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L777">                            self.checkLiteralCharacter();</span>
+<span class="line" id="L778">                        }</span>
+<span class="line" id="L779">                    },</span>
+<span class="line" id="L780">                    <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L781">                        result.tag = .invalid;</span>
+<span class="line" id="L782">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L783">                    },</span>
+<span class="line" id="L784">                    <span class="tok-kw">else</span> =&gt; self.checkLiteralCharacter(),</span>
+<span class="line" id="L785">                },</span>
+<span class="line" id="L786"></span>
+<span class="line" id="L787">                .string_literal_backslash =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L788">                    <span class="tok-number">0</span>, <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L789">                        result.tag = .invalid;</span>
+<span class="line" id="L790">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L791">                    },</span>
+<span class="line" id="L792">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L793">                        state = .string_literal;</span>
+<span class="line" id="L794">                    },</span>
+<span class="line" id="L795">                },</span>
+<span class="line" id="L796"></span>
+<span class="line" id="L797">                .char_literal =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L798">                    <span class="tok-number">0</span> =&gt; {</span>
+<span class="line" id="L799">                        result.tag = .invalid;</span>
+<span class="line" id="L800">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L801">                    },</span>
+<span class="line" id="L802">                    <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L803">                        state = .char_literal_backslash;</span>
+<span class="line" id="L804">                    },</span>
+<span class="line" id="L805">                    <span class="tok-str">'\''</span>, <span class="tok-number">0x80</span>...<span class="tok-number">0xbf</span>, <span class="tok-number">0xf8</span>...<span class="tok-number">0xff</span> =&gt; {</span>
+<span class="line" id="L806">                        result.tag = .invalid;</span>
+<span class="line" id="L807">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L808">                    },</span>
+<span class="line" id="L809">                    <span class="tok-number">0xc0</span>...<span class="tok-number">0xdf</span> =&gt; { <span class="tok-comment">// 110xxxxx</span>
+</span>
+<span class="line" id="L810">                        remaining_code_units = <span class="tok-number">1</span>;</span>
+<span class="line" id="L811">                        state = .char_literal_unicode;</span>
+<span class="line" id="L812">                    },</span>
+<span class="line" id="L813">                    <span class="tok-number">0xe0</span>...<span class="tok-number">0xef</span> =&gt; { <span class="tok-comment">// 1110xxxx</span>
+</span>
+<span class="line" id="L814">                        remaining_code_units = <span class="tok-number">2</span>;</span>
+<span class="line" id="L815">                        state = .char_literal_unicode;</span>
+<span class="line" id="L816">                    },</span>
+<span class="line" id="L817">                    <span class="tok-number">0xf0</span>...<span class="tok-number">0xf7</span> =&gt; { <span class="tok-comment">// 11110xxx</span>
+</span>
+<span class="line" id="L818">                        remaining_code_units = <span class="tok-number">3</span>;</span>
+<span class="line" id="L819">                        state = .char_literal_unicode;</span>
+<span class="line" id="L820">                    },</span>
+<span class="line" id="L821">                    <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L822">                        result.tag = .invalid;</span>
+<span class="line" id="L823">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L824">                    },</span>
+<span class="line" id="L825">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L826">                        state = .char_literal_end;</span>
+<span class="line" id="L827">                    },</span>
+<span class="line" id="L828">                },</span>
+<span class="line" id="L829"></span>
+<span class="line" id="L830">                .char_literal_backslash =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L831">                    <span class="tok-number">0</span>, <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L832">                        result.tag = .invalid;</span>
+<span class="line" id="L833">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L834">                    },</span>
+<span class="line" id="L835">                    <span class="tok-str">'x'</span> =&gt; {</span>
+<span class="line" id="L836">                        state = .char_literal_hex_escape;</span>
+<span class="line" id="L837">                        seen_escape_digits = <span class="tok-number">0</span>;</span>
+<span class="line" id="L838">                    },</span>
+<span class="line" id="L839">                    <span class="tok-str">'u'</span> =&gt; {</span>
+<span class="line" id="L840">                        state = .char_literal_unicode_escape_saw_u;</span>
+<span class="line" id="L841">                    },</span>
+<span class="line" id="L842">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L843">                        state = .char_literal_end;</span>
+<span class="line" id="L844">                    },</span>
+<span class="line" id="L845">                },</span>
+<span class="line" id="L846"></span>
+<span class="line" id="L847">                .char_literal_hex_escape =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L848">                    <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span>, <span class="tok-str">'a'</span>...<span class="tok-str">'f'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'F'</span> =&gt; {</span>
+<span class="line" id="L849">                        seen_escape_digits += <span class="tok-number">1</span>;</span>
+<span class="line" id="L850">                        <span class="tok-kw">if</span> (seen_escape_digits == <span class="tok-number">2</span>) {</span>
+<span class="line" id="L851">                            state = .char_literal_end;</span>
+<span class="line" id="L852">                        }</span>
+<span class="line" id="L853">                    },</span>
+<span class="line" id="L854">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L855">                        result.tag = .invalid;</span>
+<span class="line" id="L856">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L857">                    },</span>
+<span class="line" id="L858">                },</span>
+<span class="line" id="L859"></span>
+<span class="line" id="L860">                .char_literal_unicode_escape_saw_u =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L861">                    <span class="tok-number">0</span> =&gt; {</span>
+<span class="line" id="L862">                        result.tag = .invalid;</span>
+<span class="line" id="L863">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L864">                    },</span>
+<span class="line" id="L865">                    <span class="tok-str">'{'</span> =&gt; {</span>
+<span class="line" id="L866">                        state = .char_literal_unicode_escape;</span>
+<span class="line" id="L867">                    },</span>
+<span class="line" id="L868">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L869">                        result.tag = .invalid;</span>
+<span class="line" id="L870">                        state = .char_literal_unicode_invalid;</span>
+<span class="line" id="L871">                    },</span>
+<span class="line" id="L872">                },</span>
+<span class="line" id="L873"></span>
+<span class="line" id="L874">                .char_literal_unicode_escape =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L875">                    <span class="tok-number">0</span> =&gt; {</span>
+<span class="line" id="L876">                        result.tag = .invalid;</span>
+<span class="line" id="L877">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L878">                    },</span>
+<span class="line" id="L879">                    <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span>, <span class="tok-str">'a'</span>...<span class="tok-str">'f'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'F'</span> =&gt; {},</span>
+<span class="line" id="L880">                    <span class="tok-str">'}'</span> =&gt; {</span>
+<span class="line" id="L881">                        state = .char_literal_end; <span class="tok-comment">// too many/few digits handled later</span>
+</span>
+<span class="line" id="L882">                    },</span>
+<span class="line" id="L883">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L884">                        result.tag = .invalid;</span>
+<span class="line" id="L885">                        state = .char_literal_unicode_invalid;</span>
+<span class="line" id="L886">                    },</span>
+<span class="line" id="L887">                },</span>
+<span class="line" id="L888"></span>
+<span class="line" id="L889">                .char_literal_unicode_invalid =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L890">                    <span class="tok-comment">// Keep consuming characters until an obvious stopping point.</span>
+</span>
+<span class="line" id="L891">                    <span class="tok-comment">// This consolidates e.g. `u{0ab1Q}` into a single invalid token</span>
+</span>
+<span class="line" id="L892">                    <span class="tok-comment">// instead of creating the tokens `u{0ab1`, `Q`, `}`</span>
+</span>
+<span class="line" id="L893">                    <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span>, <span class="tok-str">'a'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'}'</span> =&gt; {},</span>
+<span class="line" id="L894">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">break</span>,</span>
+<span class="line" id="L895">                },</span>
+<span class="line" id="L896"></span>
+<span class="line" id="L897">                .char_literal_end =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L898">                    <span class="tok-str">'\''</span> =&gt; {</span>
+<span class="line" id="L899">                        result.tag = .char_literal;</span>
+<span class="line" id="L900">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L901">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L902">                    },</span>
+<span class="line" id="L903">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L904">                        result.tag = .invalid;</span>
+<span class="line" id="L905">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L906">                    },</span>
+<span class="line" id="L907">                },</span>
+<span class="line" id="L908"></span>
+<span class="line" id="L909">                .char_literal_unicode =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L910">                    <span class="tok-number">0x80</span>...<span class="tok-number">0xbf</span> =&gt; {</span>
+<span class="line" id="L911">                        remaining_code_units -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L912">                        <span class="tok-kw">if</span> (remaining_code_units == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L913">                            state = .char_literal_end;</span>
+<span class="line" id="L914">                        }</span>
+<span class="line" id="L915">                    },</span>
+<span class="line" id="L916">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L917">                        result.tag = .invalid;</span>
+<span class="line" id="L918">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L919">                    },</span>
+<span class="line" id="L920">                },</span>
+<span class="line" id="L921"></span>
+<span class="line" id="L922">                .multiline_string_literal_line =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L923">                    <span class="tok-number">0</span> =&gt; <span class="tok-kw">break</span>,</span>
+<span class="line" id="L924">                    <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L925">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L926">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L927">                    },</span>
+<span class="line" id="L928">                    <span class="tok-str">'\t'</span> =&gt; {},</span>
+<span class="line" id="L929">                    <span class="tok-kw">else</span> =&gt; self.checkLiteralCharacter(),</span>
+<span class="line" id="L930">                },</span>
+<span class="line" id="L931"></span>
+<span class="line" id="L932">                .bang =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L933">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L934">                        result.tag = .bang_equal;</span>
+<span class="line" id="L935">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L936">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L937">                    },</span>
+<span class="line" id="L938">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L939">                        result.tag = .bang;</span>
+<span class="line" id="L940">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L941">                    },</span>
+<span class="line" id="L942">                },</span>
+<span class="line" id="L943"></span>
+<span class="line" id="L944">                .pipe =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L945">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L946">                        result.tag = .pipe_equal;</span>
+<span class="line" id="L947">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L948">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L949">                    },</span>
+<span class="line" id="L950">                    <span class="tok-str">'|'</span> =&gt; {</span>
+<span class="line" id="L951">                        result.tag = .pipe_pipe;</span>
+<span class="line" id="L952">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L953">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L954">                    },</span>
+<span class="line" id="L955">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L956">                        result.tag = .pipe;</span>
+<span class="line" id="L957">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L958">                    },</span>
+<span class="line" id="L959">                },</span>
+<span class="line" id="L960"></span>
+<span class="line" id="L961">                .equal =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L962">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L963">                        result.tag = .equal_equal;</span>
+<span class="line" id="L964">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L965">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L966">                    },</span>
+<span class="line" id="L967">                    <span class="tok-str">'&gt;'</span> =&gt; {</span>
+<span class="line" id="L968">                        result.tag = .equal_angle_bracket_right;</span>
+<span class="line" id="L969">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L970">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L971">                    },</span>
+<span class="line" id="L972">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L973">                        result.tag = .equal;</span>
+<span class="line" id="L974">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L975">                    },</span>
+<span class="line" id="L976">                },</span>
+<span class="line" id="L977"></span>
+<span class="line" id="L978">                .minus =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L979">                    <span class="tok-str">'&gt;'</span> =&gt; {</span>
+<span class="line" id="L980">                        result.tag = .arrow;</span>
+<span class="line" id="L981">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L982">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L983">                    },</span>
+<span class="line" id="L984">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L985">                        result.tag = .minus_equal;</span>
+<span class="line" id="L986">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L987">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L988">                    },</span>
+<span class="line" id="L989">                    <span class="tok-str">'%'</span> =&gt; {</span>
+<span class="line" id="L990">                        state = .minus_percent;</span>
+<span class="line" id="L991">                    },</span>
+<span class="line" id="L992">                    <span class="tok-str">'|'</span> =&gt; {</span>
+<span class="line" id="L993">                        state = .minus_pipe;</span>
+<span class="line" id="L994">                    },</span>
+<span class="line" id="L995">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L996">                        result.tag = .minus;</span>
+<span class="line" id="L997">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L998">                    },</span>
+<span class="line" id="L999">                },</span>
+<span class="line" id="L1000"></span>
+<span class="line" id="L1001">                .minus_percent =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1002">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1003">                        result.tag = .minus_percent_equal;</span>
+<span class="line" id="L1004">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1005">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1006">                    },</span>
+<span class="line" id="L1007">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1008">                        result.tag = .minus_percent;</span>
+<span class="line" id="L1009">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1010">                    },</span>
+<span class="line" id="L1011">                },</span>
+<span class="line" id="L1012">                .minus_pipe =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1013">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1014">                        result.tag = .minus_pipe_equal;</span>
+<span class="line" id="L1015">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1016">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1017">                    },</span>
+<span class="line" id="L1018">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1019">                        result.tag = .minus_pipe;</span>
+<span class="line" id="L1020">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1021">                    },</span>
+<span class="line" id="L1022">                },</span>
+<span class="line" id="L1023"></span>
+<span class="line" id="L1024">                .angle_bracket_left =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1025">                    <span class="tok-str">'&lt;'</span> =&gt; {</span>
+<span class="line" id="L1026">                        state = .angle_bracket_angle_bracket_left;</span>
+<span class="line" id="L1027">                    },</span>
+<span class="line" id="L1028">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1029">                        result.tag = .angle_bracket_left_equal;</span>
+<span class="line" id="L1030">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1031">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1032">                    },</span>
+<span class="line" id="L1033">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1034">                        result.tag = .angle_bracket_left;</span>
+<span class="line" id="L1035">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1036">                    },</span>
+<span class="line" id="L1037">                },</span>
+<span class="line" id="L1038"></span>
+<span class="line" id="L1039">                .angle_bracket_angle_bracket_left =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1040">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1041">                        result.tag = .angle_bracket_angle_bracket_left_equal;</span>
+<span class="line" id="L1042">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1043">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1044">                    },</span>
+<span class="line" id="L1045">                    <span class="tok-str">'|'</span> =&gt; {</span>
+<span class="line" id="L1046">                        state = .angle_bracket_angle_bracket_left_pipe;</span>
+<span class="line" id="L1047">                    },</span>
+<span class="line" id="L1048">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1049">                        result.tag = .angle_bracket_angle_bracket_left;</span>
+<span class="line" id="L1050">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1051">                    },</span>
+<span class="line" id="L1052">                },</span>
+<span class="line" id="L1053"></span>
+<span class="line" id="L1054">                .angle_bracket_angle_bracket_left_pipe =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1055">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1056">                        result.tag = .angle_bracket_angle_bracket_left_pipe_equal;</span>
+<span class="line" id="L1057">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1058">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1059">                    },</span>
+<span class="line" id="L1060">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1061">                        result.tag = .angle_bracket_angle_bracket_left_pipe;</span>
+<span class="line" id="L1062">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1063">                    },</span>
+<span class="line" id="L1064">                },</span>
+<span class="line" id="L1065"></span>
+<span class="line" id="L1066">                .angle_bracket_right =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1067">                    <span class="tok-str">'&gt;'</span> =&gt; {</span>
+<span class="line" id="L1068">                        state = .angle_bracket_angle_bracket_right;</span>
+<span class="line" id="L1069">                    },</span>
+<span class="line" id="L1070">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1071">                        result.tag = .angle_bracket_right_equal;</span>
+<span class="line" id="L1072">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1073">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1074">                    },</span>
+<span class="line" id="L1075">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1076">                        result.tag = .angle_bracket_right;</span>
+<span class="line" id="L1077">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1078">                    },</span>
+<span class="line" id="L1079">                },</span>
+<span class="line" id="L1080"></span>
+<span class="line" id="L1081">                .angle_bracket_angle_bracket_right =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1082">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1083">                        result.tag = .angle_bracket_angle_bracket_right_equal;</span>
+<span class="line" id="L1084">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1085">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1086">                    },</span>
+<span class="line" id="L1087">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1088">                        result.tag = .angle_bracket_angle_bracket_right;</span>
+<span class="line" id="L1089">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1090">                    },</span>
+<span class="line" id="L1091">                },</span>
+<span class="line" id="L1092"></span>
+<span class="line" id="L1093">                .period =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1094">                    <span class="tok-str">'.'</span> =&gt; {</span>
+<span class="line" id="L1095">                        state = .period_2;</span>
+<span class="line" id="L1096">                    },</span>
+<span class="line" id="L1097">                    <span class="tok-str">'*'</span> =&gt; {</span>
+<span class="line" id="L1098">                        state = .period_asterisk;</span>
+<span class="line" id="L1099">                    },</span>
+<span class="line" id="L1100">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1101">                        result.tag = .period;</span>
+<span class="line" id="L1102">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1103">                    },</span>
+<span class="line" id="L1104">                },</span>
+<span class="line" id="L1105"></span>
+<span class="line" id="L1106">                .period_2 =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1107">                    <span class="tok-str">'.'</span> =&gt; {</span>
+<span class="line" id="L1108">                        result.tag = .ellipsis3;</span>
+<span class="line" id="L1109">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1110">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1111">                    },</span>
+<span class="line" id="L1112">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1113">                        result.tag = .ellipsis2;</span>
+<span class="line" id="L1114">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1115">                    },</span>
+<span class="line" id="L1116">                },</span>
+<span class="line" id="L1117"></span>
+<span class="line" id="L1118">                .period_asterisk =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1119">                    <span class="tok-str">'*'</span> =&gt; {</span>
+<span class="line" id="L1120">                        result.tag = .invalid_periodasterisks;</span>
+<span class="line" id="L1121">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1122">                    },</span>
+<span class="line" id="L1123">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1124">                        result.tag = .period_asterisk;</span>
+<span class="line" id="L1125">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1126">                    },</span>
+<span class="line" id="L1127">                },</span>
+<span class="line" id="L1128"></span>
+<span class="line" id="L1129">                .slash =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1130">                    <span class="tok-str">'/'</span> =&gt; {</span>
+<span class="line" id="L1131">                        state = .line_comment_start;</span>
+<span class="line" id="L1132">                    },</span>
+<span class="line" id="L1133">                    <span class="tok-str">'='</span> =&gt; {</span>
+<span class="line" id="L1134">                        result.tag = .slash_equal;</span>
+<span class="line" id="L1135">                        self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1136">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1137">                    },</span>
+<span class="line" id="L1138">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1139">                        result.tag = .slash;</span>
+<span class="line" id="L1140">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1141">                    },</span>
+<span class="line" id="L1142">                },</span>
+<span class="line" id="L1143">                .line_comment_start =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1144">                    <span class="tok-number">0</span> =&gt; {</span>
+<span class="line" id="L1145">                        <span class="tok-kw">if</span> (self.index != self.buffer.len) {</span>
+<span class="line" id="L1146">                            result.tag = .invalid;</span>
+<span class="line" id="L1147">                            self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1148">                        }</span>
+<span class="line" id="L1149">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1150">                    },</span>
+<span class="line" id="L1151">                    <span class="tok-str">'/'</span> =&gt; {</span>
+<span class="line" id="L1152">                        state = .doc_comment_start;</span>
+<span class="line" id="L1153">                    },</span>
+<span class="line" id="L1154">                    <span class="tok-str">'!'</span> =&gt; {</span>
+<span class="line" id="L1155">                        result.tag = .container_doc_comment;</span>
+<span class="line" id="L1156">                        state = .doc_comment;</span>
+<span class="line" id="L1157">                    },</span>
+<span class="line" id="L1158">                    <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L1159">                        state = .start;</span>
+<span class="line" id="L1160">                        result.loc.start = self.index + <span class="tok-number">1</span>;</span>
+<span class="line" id="L1161">                    },</span>
+<span class="line" id="L1162">                    <span class="tok-str">'\t'</span> =&gt; state = .line_comment,</span>
+<span class="line" id="L1163">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1164">                        state = .line_comment;</span>
+<span class="line" id="L1165">                        self.checkLiteralCharacter();</span>
+<span class="line" id="L1166">                    },</span>
+<span class="line" id="L1167">                },</span>
+<span class="line" id="L1168">                .doc_comment_start =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1169">                    <span class="tok-str">'/'</span> =&gt; {</span>
+<span class="line" id="L1170">                        state = .line_comment;</span>
+<span class="line" id="L1171">                    },</span>
+<span class="line" id="L1172">                    <span class="tok-number">0</span>, <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L1173">                        result.tag = .doc_comment;</span>
+<span class="line" id="L1174">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1175">                    },</span>
+<span class="line" id="L1176">                    <span class="tok-str">'\t'</span> =&gt; {</span>
+<span class="line" id="L1177">                        state = .doc_comment;</span>
+<span class="line" id="L1178">                        result.tag = .doc_comment;</span>
+<span class="line" id="L1179">                    },</span>
+<span class="line" id="L1180">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1181">                        state = .doc_comment;</span>
+<span class="line" id="L1182">                        result.tag = .doc_comment;</span>
+<span class="line" id="L1183">                        self.checkLiteralCharacter();</span>
+<span class="line" id="L1184">                    },</span>
+<span class="line" id="L1185">                },</span>
+<span class="line" id="L1186">                .line_comment =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1187">                    <span class="tok-number">0</span> =&gt; {</span>
+<span class="line" id="L1188">                        <span class="tok-kw">if</span> (self.index != self.buffer.len) {</span>
+<span class="line" id="L1189">                            result.tag = .invalid;</span>
+<span class="line" id="L1190">                            self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1191">                        }</span>
+<span class="line" id="L1192">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1193">                    },</span>
+<span class="line" id="L1194">                    <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L1195">                        state = .start;</span>
+<span class="line" id="L1196">                        result.loc.start = self.index + <span class="tok-number">1</span>;</span>
+<span class="line" id="L1197">                    },</span>
+<span class="line" id="L1198">                    <span class="tok-str">'\t'</span> =&gt; {},</span>
+<span class="line" id="L1199">                    <span class="tok-kw">else</span> =&gt; self.checkLiteralCharacter(),</span>
+<span class="line" id="L1200">                },</span>
+<span class="line" id="L1201">                .doc_comment =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1202">                    <span class="tok-number">0</span>, <span class="tok-str">'\n'</span> =&gt; <span class="tok-kw">break</span>,</span>
+<span class="line" id="L1203">                    <span class="tok-str">'\t'</span> =&gt; {},</span>
+<span class="line" id="L1204">                    <span class="tok-kw">else</span> =&gt; self.checkLiteralCharacter(),</span>
+<span class="line" id="L1205">                },</span>
+<span class="line" id="L1206">                .int =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1207">                    <span class="tok-str">'.'</span> =&gt; state = .int_period,</span>
+<span class="line" id="L1208">                    <span class="tok-str">'_'</span>, <span class="tok-str">'a'</span>...<span class="tok-str">'d'</span>, <span class="tok-str">'f'</span>...<span class="tok-str">'o'</span>, <span class="tok-str">'q'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'D'</span>, <span class="tok-str">'F'</span>...<span class="tok-str">'O'</span>, <span class="tok-str">'Q'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {},</span>
+<span class="line" id="L1209">                    <span class="tok-str">'e'</span>, <span class="tok-str">'E'</span>, <span class="tok-str">'p'</span>, <span class="tok-str">'P'</span> =&gt; state = .int_exponent,</span>
+<span class="line" id="L1210">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">break</span>,</span>
+<span class="line" id="L1211">                },</span>
+<span class="line" id="L1212">                .int_exponent =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1213">                    <span class="tok-str">'-'</span>, <span class="tok-str">'+'</span> =&gt; {</span>
+<span class="line" id="L1214">                        state = .float;</span>
+<span class="line" id="L1215">                    },</span>
+<span class="line" id="L1216">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1217">                        self.index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L1218">                        state = .int;</span>
+<span class="line" id="L1219">                    },</span>
+<span class="line" id="L1220">                },</span>
+<span class="line" id="L1221">                .int_period =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1222">                    <span class="tok-str">'_'</span>, <span class="tok-str">'a'</span>...<span class="tok-str">'d'</span>, <span class="tok-str">'f'</span>...<span class="tok-str">'o'</span>, <span class="tok-str">'q'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'D'</span>, <span class="tok-str">'F'</span>...<span class="tok-str">'O'</span>, <span class="tok-str">'Q'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {</span>
+<span class="line" id="L1223">                        state = .float;</span>
+<span class="line" id="L1224">                    },</span>
+<span class="line" id="L1225">                    <span class="tok-str">'e'</span>, <span class="tok-str">'E'</span>, <span class="tok-str">'p'</span>, <span class="tok-str">'P'</span> =&gt; state = .float_exponent,</span>
+<span class="line" id="L1226">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1227">                        self.index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L1228">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1229">                    },</span>
+<span class="line" id="L1230">                },</span>
+<span class="line" id="L1231">                .float =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1232">                    <span class="tok-str">'_'</span>, <span class="tok-str">'a'</span>...<span class="tok-str">'d'</span>, <span class="tok-str">'f'</span>...<span class="tok-str">'o'</span>, <span class="tok-str">'q'</span>...<span class="tok-str">'z'</span>, <span class="tok-str">'A'</span>...<span class="tok-str">'D'</span>, <span class="tok-str">'F'</span>...<span class="tok-str">'O'</span>, <span class="tok-str">'Q'</span>...<span class="tok-str">'Z'</span>, <span class="tok-str">'0'</span>...<span class="tok-str">'9'</span> =&gt; {},</span>
+<span class="line" id="L1233">                    <span class="tok-str">'e'</span>, <span class="tok-str">'E'</span>, <span class="tok-str">'p'</span>, <span class="tok-str">'P'</span> =&gt; state = .float_exponent,</span>
+<span class="line" id="L1234">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">break</span>,</span>
+<span class="line" id="L1235">                },</span>
+<span class="line" id="L1236">                .float_exponent =&gt; <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L1237">                    <span class="tok-str">'-'</span>, <span class="tok-str">'+'</span> =&gt; state = .float,</span>
+<span class="line" id="L1238">                    <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L1239">                        self.index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L1240">                        state = .float;</span>
+<span class="line" id="L1241">                    },</span>
+<span class="line" id="L1242">                },</span>
+<span class="line" id="L1243">            }</span>
+<span class="line" id="L1244">        }</span>
+<span class="line" id="L1245"></span>
+<span class="line" id="L1246">        <span class="tok-kw">if</span> (result.tag == .eof) {</span>
+<span class="line" id="L1247">            <span class="tok-kw">if</span> (self.pending_invalid_token) |token| {</span>
+<span class="line" id="L1248">                self.pending_invalid_token = <span class="tok-null">null</span>;</span>
+<span class="line" id="L1249">                <span class="tok-kw">return</span> token;</span>
+<span class="line" id="L1250">            }</span>
+<span class="line" id="L1251">            result.loc.start = self.index;</span>
+<span class="line" id="L1252">        }</span>
+<span class="line" id="L1253"></span>
+<span class="line" id="L1254">        result.loc.end = self.index;</span>
+<span class="line" id="L1255">        <span class="tok-kw">return</span> result;</span>
+<span class="line" id="L1256">    }</span>
+<span class="line" id="L1257"></span>
+<span class="line" id="L1258">    <span class="tok-kw">fn</span> <span class="tok-fn">checkLiteralCharacter</span>(self: *Tokenizer) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1259">        <span class="tok-kw">if</span> (self.pending_invalid_token != <span class="tok-null">null</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L1260">        <span class="tok-kw">const</span> invalid_length = self.getInvalidCharacterLength();</span>
+<span class="line" id="L1261">        <span class="tok-kw">if</span> (invalid_length == <span class="tok-number">0</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L1262">        self.pending_invalid_token = .{</span>
+<span class="line" id="L1263">            .tag = .invalid,</span>
+<span class="line" id="L1264">            .loc = .{</span>
+<span class="line" id="L1265">                .start = self.index,</span>
+<span class="line" id="L1266">                .end = self.index + invalid_length,</span>
+<span class="line" id="L1267">            },</span>
+<span class="line" id="L1268">        };</span>
+<span class="line" id="L1269">    }</span>
+<span class="line" id="L1270"></span>
+<span class="line" id="L1271">    <span class="tok-kw">fn</span> <span class="tok-fn">getInvalidCharacterLength</span>(self: *Tokenizer) <span class="tok-type">u3</span> {</span>
+<span class="line" id="L1272">        <span class="tok-kw">const</span> c0 = self.buffer[self.index];</span>
+<span class="line" id="L1273">        <span class="tok-kw">if</span> (std.ascii.isASCII(c0)) {</span>
+<span class="line" id="L1274">            <span class="tok-kw">if</span> (c0 == <span class="tok-str">'\r'</span>) {</span>
+<span class="line" id="L1275">                <span class="tok-kw">if</span> (self.index + <span class="tok-number">1</span> &lt; self.buffer.len <span class="tok-kw">and</span> self.buffer[self.index + <span class="tok-number">1</span>] == <span class="tok-str">'\n'</span>) {</span>
+<span class="line" id="L1276">                    <span class="tok-comment">// Carriage returns are *only* allowed just before a linefeed as part of a CRLF pair, otherwise</span>
+</span>
+<span class="line" id="L1277">                    <span class="tok-comment">// they constitute an illegal byte!</span>
+</span>
+<span class="line" id="L1278">                    <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L1279">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1280">                    <span class="tok-kw">return</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L1281">                }</span>
+<span class="line" id="L1282">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (std.ascii.isControl(c0)) {</span>
+<span class="line" id="L1283">                <span class="tok-comment">// ascii control codes are never allowed</span>
+</span>
+<span class="line" id="L1284">                <span class="tok-comment">// (note that \n was checked before we got here)</span>
+</span>
+<span class="line" id="L1285">                <span class="tok-kw">return</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L1286">            }</span>
+<span class="line" id="L1287">            <span class="tok-comment">// looks fine to me.</span>
+</span>
+<span class="line" id="L1288">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L1289">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1290">            <span class="tok-comment">// check utf8-encoded character.</span>
+</span>
+<span class="line" id="L1291">            <span class="tok-kw">const</span> length = std.unicode.utf8ByteSequenceLength(c0) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L1292">            <span class="tok-kw">if</span> (self.index + length &gt; self.buffer.len) {</span>
+<span class="line" id="L1293">                <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(self.buffer.len - self.index));</span>
+<span class="line" id="L1294">            }</span>
+<span class="line" id="L1295">            <span class="tok-kw">const</span> bytes = self.buffer[self.index .. self.index + length];</span>
+<span class="line" id="L1296">            <span class="tok-kw">switch</span> (length) {</span>
+<span class="line" id="L1297">                <span class="tok-number">2</span> =&gt; {</span>
+<span class="line" id="L1298">                    <span class="tok-kw">const</span> value = std.unicode.utf8Decode2(bytes) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> length;</span>
+<span class="line" id="L1299">                    <span class="tok-kw">if</span> (value == <span class="tok-number">0x85</span>) <span class="tok-kw">return</span> length; <span class="tok-comment">// U+0085 (NEL)</span>
+</span>
+<span class="line" id="L1300">                },</span>
+<span class="line" id="L1301">                <span class="tok-number">3</span> =&gt; {</span>
+<span class="line" id="L1302">                    <span class="tok-kw">const</span> value = std.unicode.utf8Decode3(bytes) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> length;</span>
+<span class="line" id="L1303">                    <span class="tok-kw">if</span> (value == <span class="tok-number">0x2028</span>) <span class="tok-kw">return</span> length; <span class="tok-comment">// U+2028 (LS)</span>
+</span>
+<span class="line" id="L1304">                    <span class="tok-kw">if</span> (value == <span class="tok-number">0x2029</span>) <span class="tok-kw">return</span> length; <span class="tok-comment">// U+2029 (PS)</span>
+</span>
+<span class="line" id="L1305">                },</span>
+<span class="line" id="L1306">                <span class="tok-number">4</span> =&gt; {</span>
+<span class="line" id="L1307">                    _ = std.unicode.utf8Decode4(bytes) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> length;</span>
+<span class="line" id="L1308">                },</span>
+<span class="line" id="L1309">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L1310">            }</span>
+<span class="line" id="L1311">            self.index += length - <span class="tok-number">1</span>;</span>
+<span class="line" id="L1312">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L1313">        }</span>
+<span class="line" id="L1314">    }</span>
+<span class="line" id="L1315">};</span>
+<span class="line" id="L1316"></span>
+<span class="line" id="L1317"><span class="tok-kw">test</span> <span class="tok-str">&quot;keywords&quot;</span> {</span>
+<span class="line" id="L1318">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;test const else&quot;</span>, &amp;.{ .keyword_test, .keyword_const, .keyword_else });</span>
+<span class="line" id="L1319">}</span>
+<span class="line" id="L1320"></span>
+<span class="line" id="L1321"><span class="tok-kw">test</span> <span class="tok-str">&quot;line comment followed by top-level comptime&quot;</span> {</span>
+<span class="line" id="L1322">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1323">        <span class="tok-str">\\// line comment</span></span>
+
+<span class="line" id="L1324">        <span class="tok-str">\\comptime {}</span></span>
+
+<span class="line" id="L1325">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L1326">    , &amp;.{</span>
+<span class="line" id="L1327">        .keyword_comptime,</span>
+<span class="line" id="L1328">        .l_brace,</span>
+<span class="line" id="L1329">        .r_brace,</span>
+<span class="line" id="L1330">    });</span>
+<span class="line" id="L1331">}</span>
+<span class="line" id="L1332"></span>
+<span class="line" id="L1333"><span class="tok-kw">test</span> <span class="tok-str">&quot;unknown length pointer and then c pointer&quot;</span> {</span>
+<span class="line" id="L1334">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1335">        <span class="tok-str">\\[*]u8</span></span>
+
+<span class="line" id="L1336">        <span class="tok-str">\\[*c]u8</span></span>
+
+<span class="line" id="L1337">    , &amp;.{</span>
+<span class="line" id="L1338">        .l_bracket,</span>
+<span class="line" id="L1339">        .asterisk,</span>
+<span class="line" id="L1340">        .r_bracket,</span>
+<span class="line" id="L1341">        .identifier,</span>
+<span class="line" id="L1342">        .l_bracket,</span>
+<span class="line" id="L1343">        .asterisk,</span>
+<span class="line" id="L1344">        .identifier,</span>
+<span class="line" id="L1345">        .r_bracket,</span>
+<span class="line" id="L1346">        .identifier,</span>
+<span class="line" id="L1347">    });</span>
+<span class="line" id="L1348">}</span>
+<span class="line" id="L1349"></span>
+<span class="line" id="L1350"><span class="tok-kw">test</span> <span class="tok-str">&quot;code point literal with hex escape&quot;</span> {</span>
+<span class="line" id="L1351">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1352">        <span class="tok-str">\\'\x1b'</span></span>
+
+<span class="line" id="L1353">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1354">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1355">        <span class="tok-str">\\'\x1'</span></span>
+
+<span class="line" id="L1356">    , &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1357">}</span>
+<span class="line" id="L1358"></span>
+<span class="line" id="L1359"><span class="tok-kw">test</span> <span class="tok-str">&quot;newline in char literal&quot;</span> {</span>
+<span class="line" id="L1360">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1361">        <span class="tok-str">\\'</span></span>
+
+<span class="line" id="L1362">        <span class="tok-str">\\'</span></span>
+
+<span class="line" id="L1363">    , &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1364">}</span>
+<span class="line" id="L1365"></span>
+<span class="line" id="L1366"><span class="tok-kw">test</span> <span class="tok-str">&quot;newline in string literal&quot;</span> {</span>
+<span class="line" id="L1367">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1368">        <span class="tok-str">\\&quot;</span></span>
+
+<span class="line" id="L1369">        <span class="tok-str">\\&quot;</span></span>
+
+<span class="line" id="L1370">    , &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1371">}</span>
+<span class="line" id="L1372"></span>
+<span class="line" id="L1373"><span class="tok-kw">test</span> <span class="tok-str">&quot;code point literal with unicode escapes&quot;</span> {</span>
+<span class="line" id="L1374">    <span class="tok-comment">// Valid unicode escapes</span>
+</span>
+<span class="line" id="L1375">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1376">        <span class="tok-str">\\'\u{3}'</span></span>
+
+<span class="line" id="L1377">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1378">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1379">        <span class="tok-str">\\'\u{01}'</span></span>
+
+<span class="line" id="L1380">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1381">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1382">        <span class="tok-str">\\'\u{2a}'</span></span>
+
+<span class="line" id="L1383">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1384">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1385">        <span class="tok-str">\\'\u{3f9}'</span></span>
+
+<span class="line" id="L1386">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1387">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1388">        <span class="tok-str">\\'\u{6E09aBc1523}'</span></span>
+
+<span class="line" id="L1389">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1390">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1391">        <span class="tok-str">\\&quot;\u{440}&quot;</span></span>
+
+<span class="line" id="L1392">    , &amp;.{.string_literal});</span>
+<span class="line" id="L1393"></span>
+<span class="line" id="L1394">    <span class="tok-comment">// Invalid unicode escapes</span>
+</span>
+<span class="line" id="L1395">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1396">        <span class="tok-str">\\'\u'</span></span>
+
+<span class="line" id="L1397">    , &amp;.{.invalid});</span>
+<span class="line" id="L1398">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1399">        <span class="tok-str">\\'\u{{'</span></span>
+
+<span class="line" id="L1400">    , &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1401">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1402">        <span class="tok-str">\\'\u{}'</span></span>
+
+<span class="line" id="L1403">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1404">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1405">        <span class="tok-str">\\'\u{s}'</span></span>
+
+<span class="line" id="L1406">    , &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1407">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1408">        <span class="tok-str">\\'\u{2z}'</span></span>
+
+<span class="line" id="L1409">    , &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1410">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1411">        <span class="tok-str">\\'\u{4a'</span></span>
+
+<span class="line" id="L1412">    , &amp;.{.invalid});</span>
+<span class="line" id="L1413"></span>
+<span class="line" id="L1414">    <span class="tok-comment">// Test old-style unicode literals</span>
+</span>
+<span class="line" id="L1415">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1416">        <span class="tok-str">\\'\u0333'</span></span>
+
+<span class="line" id="L1417">    , &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1418">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1419">        <span class="tok-str">\\'\U0333'</span></span>
+
+<span class="line" id="L1420">    , &amp;.{ .invalid, .number_literal, .invalid });</span>
+<span class="line" id="L1421">}</span>
+<span class="line" id="L1422"></span>
+<span class="line" id="L1423"><span class="tok-kw">test</span> <span class="tok-str">&quot;code point literal with unicode code point&quot;</span> {</span>
+<span class="line" id="L1424">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1425">        <span class="tok-str">\\'💩'</span></span>
+
+<span class="line" id="L1426">    , &amp;.{.char_literal});</span>
+<span class="line" id="L1427">}</span>
+<span class="line" id="L1428"></span>
+<span class="line" id="L1429"><span class="tok-kw">test</span> <span class="tok-str">&quot;float literal e exponent&quot;</span> {</span>
+<span class="line" id="L1430">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;a = 4.94065645841246544177e-324;\n&quot;</span>, &amp;.{</span>
+<span class="line" id="L1431">        .identifier,</span>
+<span class="line" id="L1432">        .equal,</span>
+<span class="line" id="L1433">        .number_literal,</span>
+<span class="line" id="L1434">        .semicolon,</span>
+<span class="line" id="L1435">    });</span>
+<span class="line" id="L1436">}</span>
+<span class="line" id="L1437"></span>
+<span class="line" id="L1438"><span class="tok-kw">test</span> <span class="tok-str">&quot;float literal p exponent&quot;</span> {</span>
+<span class="line" id="L1439">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;a = 0x1.a827999fcef32p+1022;\n&quot;</span>, &amp;.{</span>
+<span class="line" id="L1440">        .identifier,</span>
+<span class="line" id="L1441">        .equal,</span>
+<span class="line" id="L1442">        .number_literal,</span>
+<span class="line" id="L1443">        .semicolon,</span>
+<span class="line" id="L1444">    });</span>
+<span class="line" id="L1445">}</span>
+<span class="line" id="L1446"></span>
+<span class="line" id="L1447"><span class="tok-kw">test</span> <span class="tok-str">&quot;chars&quot;</span> {</span>
+<span class="line" id="L1448">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;'c'&quot;</span>, &amp;.{.char_literal});</span>
+<span class="line" id="L1449">}</span>
+<span class="line" id="L1450"></span>
+<span class="line" id="L1451"><span class="tok-kw">test</span> <span class="tok-str">&quot;invalid token characters&quot;</span> {</span>
+<span class="line" id="L1452">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;#&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1453">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;`&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1454">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;'c&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1455">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;'&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1456">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;''&quot;</span>, &amp;.{ .invalid, .invalid });</span>
+<span class="line" id="L1457">}</span>
+<span class="line" id="L1458"></span>
+<span class="line" id="L1459"><span class="tok-kw">test</span> <span class="tok-str">&quot;invalid literal/comment characters&quot;</span> {</span>
+<span class="line" id="L1460">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;\&quot;\x00\&quot;&quot;</span>, &amp;.{</span>
+<span class="line" id="L1461">        .string_literal,</span>
+<span class="line" id="L1462">        .invalid,</span>
+<span class="line" id="L1463">    });</span>
+<span class="line" id="L1464">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\x00&quot;</span>, &amp;.{</span>
+<span class="line" id="L1465">        .invalid,</span>
+<span class="line" id="L1466">    });</span>
+<span class="line" id="L1467">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\x1f&quot;</span>, &amp;.{</span>
+<span class="line" id="L1468">        .invalid,</span>
+<span class="line" id="L1469">    });</span>
+<span class="line" id="L1470">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\x7f&quot;</span>, &amp;.{</span>
+<span class="line" id="L1471">        .invalid,</span>
+<span class="line" id="L1472">    });</span>
+<span class="line" id="L1473">}</span>
+<span class="line" id="L1474"></span>
+<span class="line" id="L1475"><span class="tok-kw">test</span> <span class="tok-str">&quot;utf8&quot;</span> {</span>
+<span class="line" id="L1476">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xc2\x80&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1477">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xf4\x8f\xbf\xbf&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1478">}</span>
+<span class="line" id="L1479"></span>
+<span class="line" id="L1480"><span class="tok-kw">test</span> <span class="tok-str">&quot;invalid utf8&quot;</span> {</span>
+<span class="line" id="L1481">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\x80&quot;</span>, &amp;.{</span>
+<span class="line" id="L1482">        .invalid,</span>
+<span class="line" id="L1483">    });</span>
+<span class="line" id="L1484">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xbf&quot;</span>, &amp;.{</span>
+<span class="line" id="L1485">        .invalid,</span>
+<span class="line" id="L1486">    });</span>
+<span class="line" id="L1487">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xf8&quot;</span>, &amp;.{</span>
+<span class="line" id="L1488">        .invalid,</span>
+<span class="line" id="L1489">    });</span>
+<span class="line" id="L1490">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xff&quot;</span>, &amp;.{</span>
+<span class="line" id="L1491">        .invalid,</span>
+<span class="line" id="L1492">    });</span>
+<span class="line" id="L1493">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xc2\xc0&quot;</span>, &amp;.{</span>
+<span class="line" id="L1494">        .invalid,</span>
+<span class="line" id="L1495">    });</span>
+<span class="line" id="L1496">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xe0&quot;</span>, &amp;.{</span>
+<span class="line" id="L1497">        .invalid,</span>
+<span class="line" id="L1498">    });</span>
+<span class="line" id="L1499">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xf0&quot;</span>, &amp;.{</span>
+<span class="line" id="L1500">        .invalid,</span>
+<span class="line" id="L1501">    });</span>
+<span class="line" id="L1502">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xf0\x90\x80\xc0&quot;</span>, &amp;.{</span>
+<span class="line" id="L1503">        .invalid,</span>
+<span class="line" id="L1504">    });</span>
+<span class="line" id="L1505">}</span>
+<span class="line" id="L1506"></span>
+<span class="line" id="L1507"><span class="tok-kw">test</span> <span class="tok-str">&quot;illegal unicode codepoints&quot;</span> {</span>
+<span class="line" id="L1508">    <span class="tok-comment">// unicode newline characters.U+0085, U+2028, U+2029</span>
+</span>
+<span class="line" id="L1509">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xc2\x84&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1510">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xc2\x85&quot;</span>, &amp;.{</span>
+<span class="line" id="L1511">        .invalid,</span>
+<span class="line" id="L1512">    });</span>
+<span class="line" id="L1513">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xc2\x86&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1514">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xe2\x80\xa7&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1515">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xe2\x80\xa8&quot;</span>, &amp;.{</span>
+<span class="line" id="L1516">        .invalid,</span>
+<span class="line" id="L1517">    });</span>
+<span class="line" id="L1518">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xe2\x80\xa9&quot;</span>, &amp;.{</span>
+<span class="line" id="L1519">        .invalid,</span>
+<span class="line" id="L1520">    });</span>
+<span class="line" id="L1521">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\xe2\x80\xaa&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1522">}</span>
+<span class="line" id="L1523"></span>
+<span class="line" id="L1524"><span class="tok-kw">test</span> <span class="tok-str">&quot;string identifier and builtin fns&quot;</span> {</span>
+<span class="line" id="L1525">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1526">        <span class="tok-str">\\const @&quot;if&quot; = @import(&quot;std&quot;);</span></span>
+
+<span class="line" id="L1527">    , &amp;.{</span>
+<span class="line" id="L1528">        .keyword_const,</span>
+<span class="line" id="L1529">        .identifier,</span>
+<span class="line" id="L1530">        .equal,</span>
+<span class="line" id="L1531">        .builtin,</span>
+<span class="line" id="L1532">        .l_paren,</span>
+<span class="line" id="L1533">        .string_literal,</span>
+<span class="line" id="L1534">        .r_paren,</span>
+<span class="line" id="L1535">        .semicolon,</span>
+<span class="line" id="L1536">    });</span>
+<span class="line" id="L1537">}</span>
+<span class="line" id="L1538"></span>
+<span class="line" id="L1539"><span class="tok-kw">test</span> <span class="tok-str">&quot;multiline string literal with literal tab&quot;</span> {</span>
+<span class="line" id="L1540">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1541">        <span class="tok-str">\\\\foo	bar</span></span>
+
+<span class="line" id="L1542">    , &amp;.{</span>
+<span class="line" id="L1543">        .multiline_string_literal_line,</span>
+<span class="line" id="L1544">    });</span>
+<span class="line" id="L1545">}</span>
+<span class="line" id="L1546"></span>
+<span class="line" id="L1547"><span class="tok-kw">test</span> <span class="tok-str">&quot;comments with literal tab&quot;</span> {</span>
+<span class="line" id="L1548">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1549">        <span class="tok-str">\\//foo	bar</span></span>
+
+<span class="line" id="L1550">        <span class="tok-str">\\//!foo	bar</span></span>
+
+<span class="line" id="L1551">        <span class="tok-str">\\///foo	bar</span></span>
+
+<span class="line" id="L1552">        <span class="tok-str">\\//	foo</span></span>
+
+<span class="line" id="L1553">        <span class="tok-str">\\///	foo</span></span>
+
+<span class="line" id="L1554">        <span class="tok-str">\\///	/foo</span></span>
+
+<span class="line" id="L1555">    , &amp;.{</span>
+<span class="line" id="L1556">        .container_doc_comment,</span>
+<span class="line" id="L1557">        .doc_comment,</span>
+<span class="line" id="L1558">        .doc_comment,</span>
+<span class="line" id="L1559">        .doc_comment,</span>
+<span class="line" id="L1560">    });</span>
+<span class="line" id="L1561">}</span>
+<span class="line" id="L1562"></span>
+<span class="line" id="L1563"><span class="tok-kw">test</span> <span class="tok-str">&quot;pipe and then invalid&quot;</span> {</span>
+<span class="line" id="L1564">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;||=&quot;</span>, &amp;.{</span>
+<span class="line" id="L1565">        .pipe_pipe,</span>
+<span class="line" id="L1566">        .equal,</span>
+<span class="line" id="L1567">    });</span>
+<span class="line" id="L1568">}</span>
+<span class="line" id="L1569"></span>
+<span class="line" id="L1570"><span class="tok-kw">test</span> <span class="tok-str">&quot;line comment and doc comment&quot;</span> {</span>
+<span class="line" id="L1571">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1572">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;// a / b&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1573">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;// /&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1574">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;/// a&quot;</span>, &amp;.{.doc_comment});</span>
+<span class="line" id="L1575">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;///&quot;</span>, &amp;.{.doc_comment});</span>
+<span class="line" id="L1576">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;////&quot;</span>, &amp;.{});</span>
+<span class="line" id="L1577">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//!&quot;</span>, &amp;.{.container_doc_comment});</span>
+<span class="line" id="L1578">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//!!&quot;</span>, &amp;.{.container_doc_comment});</span>
+<span class="line" id="L1579">}</span>
+<span class="line" id="L1580"></span>
+<span class="line" id="L1581"><span class="tok-kw">test</span> <span class="tok-str">&quot;line comment followed by identifier&quot;</span> {</span>
+<span class="line" id="L1582">    <span class="tok-kw">try</span> testTokenize(</span>
+<span class="line" id="L1583">        <span class="tok-str">\\    Unexpected,</span></span>
+
+<span class="line" id="L1584">        <span class="tok-str">\\    // another</span></span>
+
+<span class="line" id="L1585">        <span class="tok-str">\\    Another,</span></span>
+
+<span class="line" id="L1586">    , &amp;.{</span>
+<span class="line" id="L1587">        .identifier,</span>
+<span class="line" id="L1588">        .comma,</span>
+<span class="line" id="L1589">        .identifier,</span>
+<span class="line" id="L1590">        .comma,</span>
+<span class="line" id="L1591">    });</span>
+<span class="line" id="L1592">}</span>
+<span class="line" id="L1593"></span>
+<span class="line" id="L1594"><span class="tok-kw">test</span> <span class="tok-str">&quot;UTF-8 BOM is recognized and skipped&quot;</span> {</span>
+<span class="line" id="L1595">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;\xEF\xBB\xBFa;\n&quot;</span>, &amp;.{</span>
+<span class="line" id="L1596">        .identifier,</span>
+<span class="line" id="L1597">        .semicolon,</span>
+<span class="line" id="L1598">    });</span>
+<span class="line" id="L1599">}</span>
+<span class="line" id="L1600"></span>
+<span class="line" id="L1601"><span class="tok-kw">test</span> <span class="tok-str">&quot;correctly parse pointer assignment&quot;</span> {</span>
+<span class="line" id="L1602">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;b.*=3;\n&quot;</span>, &amp;.{</span>
+<span class="line" id="L1603">        .identifier,</span>
+<span class="line" id="L1604">        .period_asterisk,</span>
+<span class="line" id="L1605">        .equal,</span>
+<span class="line" id="L1606">        .number_literal,</span>
+<span class="line" id="L1607">        .semicolon,</span>
+<span class="line" id="L1608">    });</span>
+<span class="line" id="L1609">}</span>
+<span class="line" id="L1610"></span>
+<span class="line" id="L1611"><span class="tok-kw">test</span> <span class="tok-str">&quot;correctly parse pointer dereference followed by asterisk&quot;</span> {</span>
+<span class="line" id="L1612">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;\&quot;b\&quot;.* ** 10&quot;</span>, &amp;.{</span>
+<span class="line" id="L1613">        .string_literal,</span>
+<span class="line" id="L1614">        .period_asterisk,</span>
+<span class="line" id="L1615">        .asterisk_asterisk,</span>
+<span class="line" id="L1616">        .number_literal,</span>
+<span class="line" id="L1617">    });</span>
+<span class="line" id="L1618"></span>
+<span class="line" id="L1619">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;(\&quot;b\&quot;.*)** 10&quot;</span>, &amp;.{</span>
+<span class="line" id="L1620">        .l_paren,</span>
+<span class="line" id="L1621">        .string_literal,</span>
+<span class="line" id="L1622">        .period_asterisk,</span>
+<span class="line" id="L1623">        .r_paren,</span>
+<span class="line" id="L1624">        .asterisk_asterisk,</span>
+<span class="line" id="L1625">        .number_literal,</span>
+<span class="line" id="L1626">    });</span>
+<span class="line" id="L1627"></span>
+<span class="line" id="L1628">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;\&quot;b\&quot;.*** 10&quot;</span>, &amp;.{</span>
+<span class="line" id="L1629">        .string_literal,</span>
+<span class="line" id="L1630">        .invalid_periodasterisks,</span>
+<span class="line" id="L1631">        .asterisk_asterisk,</span>
+<span class="line" id="L1632">        .number_literal,</span>
+<span class="line" id="L1633">    });</span>
+<span class="line" id="L1634">}</span>
+<span class="line" id="L1635"></span>
+<span class="line" id="L1636"><span class="tok-kw">test</span> <span class="tok-str">&quot;range literals&quot;</span> {</span>
+<span class="line" id="L1637">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0...9&quot;</span>, &amp;.{ .number_literal, .ellipsis3, .number_literal });</span>
+<span class="line" id="L1638">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;'0'...'9'&quot;</span>, &amp;.{ .char_literal, .ellipsis3, .char_literal });</span>
+<span class="line" id="L1639">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x00...0x09&quot;</span>, &amp;.{ .number_literal, .ellipsis3, .number_literal });</span>
+<span class="line" id="L1640">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b00...0b11&quot;</span>, &amp;.{ .number_literal, .ellipsis3, .number_literal });</span>
+<span class="line" id="L1641">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o00...0o11&quot;</span>, &amp;.{ .number_literal, .ellipsis3, .number_literal });</span>
+<span class="line" id="L1642">}</span>
+<span class="line" id="L1643"></span>
+<span class="line" id="L1644"><span class="tok-kw">test</span> <span class="tok-str">&quot;number literals decimal&quot;</span> {</span>
+<span class="line" id="L1645">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1646">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1647">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;2&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1648">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;3&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1649">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;4&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1650">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;5&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1651">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;6&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1652">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;7&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1653">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;8&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1654">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;9&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1655">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1..&quot;</span>, &amp;.{ .number_literal, .ellipsis2 });</span>
+<span class="line" id="L1656">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0a&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1657">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;9b&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1658">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1z&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1659">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1z_1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1660">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;9z3&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1661"></span>
+<span class="line" id="L1662">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1663">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0001&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1664">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;01234567890&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1665">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;012_345_6789_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1666">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0_1_2_3_4_5_6_7_8_9_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1667"></span>
+<span class="line" id="L1668">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;00_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1669">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0_0_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1670">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0__0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1671">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0_0f&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1672">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0_0_f&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1673">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0_0_f_00&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1674">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1_,&quot;</span>, &amp;.{ .number_literal, .comma });</span>
+<span class="line" id="L1675"></span>
+<span class="line" id="L1676">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1677">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1678">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;10.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1679">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0e0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1680">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1e0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1681">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1e100&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1682">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e100&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1683">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e+100&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1684">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e-100&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1685">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1_0_0_0.0_0_0_0_0_1e1_0_0_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1686"></span>
+<span class="line" id="L1687">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.&quot;</span>, &amp;.{ .number_literal, .period });</span>
+<span class="line" id="L1688">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1e&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1689">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.e100&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1690">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e1f0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1691">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0p100&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1692">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0p-100&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1693">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0p1f0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1694">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0_,&quot;</span>, &amp;.{ .number_literal, .comma });</span>
+<span class="line" id="L1695">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1_.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1696">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1._&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1697">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.a&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1698">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.z&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1699">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1._0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1700">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.+&quot;</span>, &amp;.{ .number_literal, .period, .plus });</span>
+<span class="line" id="L1701">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1._+&quot;</span>, &amp;.{ .number_literal, .plus });</span>
+<span class="line" id="L1702">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1._e&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1703">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1704">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e,&quot;</span>, &amp;.{ .number_literal, .comma });</span>
+<span class="line" id="L1705">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1706">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e+_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1707">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e-_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1708">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;1.0e0_+&quot;</span>, &amp;.{ .number_literal, .plus });</span>
+<span class="line" id="L1709">}</span>
+<span class="line" id="L1710"></span>
+<span class="line" id="L1711"><span class="tok-kw">test</span> <span class="tok-str">&quot;number literals binary&quot;</span> {</span>
+<span class="line" id="L1712">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1713">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1714">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b2&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1715">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b3&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1716">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b4&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1717">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b5&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1718">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b6&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1719">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b7&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1720">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b8&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1721">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b9&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1722">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0ba&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1723">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0bb&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1724">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0bc&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1725">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0bd&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1726">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0be&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1727">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0bf&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1728">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0bz&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1729"></span>
+<span class="line" id="L1730">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b0000_0000&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1731">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1111_1111&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1732">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b10_10_10_10&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1733">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b0_1_0_1_0_1_0_1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1734">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1.&quot;</span>, &amp;.{ .number_literal, .period });</span>
+<span class="line" id="L1735">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1736"></span>
+<span class="line" id="L1737">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0B0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1738">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1739">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1740">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1741">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b0__1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1742">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b0_1_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1743">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1e&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1744">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1p&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1745">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1e0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1746">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1747">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0b1_,&quot;</span>, &amp;.{ .number_literal, .comma });</span>
+<span class="line" id="L1748">}</span>
+<span class="line" id="L1749"></span>
+<span class="line" id="L1750"><span class="tok-kw">test</span> <span class="tok-str">&quot;number literals octal&quot;</span> {</span>
+<span class="line" id="L1751">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1752">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1753">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o2&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1754">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o3&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1755">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o4&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1756">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o5&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1757">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o6&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1758">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o7&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1759">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o8&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1760">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o9&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1761">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0oa&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1762">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0ob&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1763">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0oc&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1764">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0od&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1765">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0oe&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1766">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0of&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1767">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0oz&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1768"></span>
+<span class="line" id="L1769">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o01234567&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1770">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o0123_4567&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1771">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o01_23_45_67&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1772">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o0_1_2_3_4_5_6_7&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1773">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o7.&quot;</span>, &amp;.{ .number_literal, .period });</span>
+<span class="line" id="L1774">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o7.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1775"></span>
+<span class="line" id="L1776">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0O0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1777">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1778">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1779">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o1_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1780">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o0__1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1781">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o0_1_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1782">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o1e&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1783">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o1p&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1784">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o1e0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1785">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o1p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1786">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0o_,&quot;</span>, &amp;.{ .number_literal, .comma });</span>
+<span class="line" id="L1787">}</span>
+<span class="line" id="L1788"></span>
+<span class="line" id="L1789"><span class="tok-kw">test</span> <span class="tok-str">&quot;number literals hexadecimal&quot;</span> {</span>
+<span class="line" id="L1790">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1791">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1792">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x2&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1793">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x3&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1794">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x4&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1795">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x5&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1796">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x6&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1797">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x7&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1798">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x8&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1799">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x9&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1800">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xa&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1801">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xb&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1802">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xc&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1803">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xd&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1804">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xe&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1805">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xf&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1806">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xA&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1807">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xB&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1808">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xC&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1809">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xD&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1810">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xE&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1811">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xF&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1812">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0z&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1813">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xz&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1814"></span>
+<span class="line" id="L1815">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0123456789ABCDEF&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1816">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0123_4567_89AB_CDEF&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1817">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x01_23_45_67_89AB_CDE_F&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1818">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_1_2_3_4_5_6_7_8_9_A_B_C_D_E_F&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1819"></span>
+<span class="line" id="L1820">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0X0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1821">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1822">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x_1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1823">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1824">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0__1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1825">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_1_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1826">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x_,&quot;</span>, &amp;.{ .number_literal, .comma });</span>
+<span class="line" id="L1827"></span>
+<span class="line" id="L1828">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1829">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xF.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1830">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xF.F&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1831">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xF.Fp0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1832">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xF.FP0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1833">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1834">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xfp0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1835">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1.0+0xF.0&quot;</span>, &amp;.{ .number_literal, .plus, .number_literal });</span>
+<span class="line" id="L1836"></span>
+<span class="line" id="L1837">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1.&quot;</span>, &amp;.{ .number_literal, .period });</span>
+<span class="line" id="L1838">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xF.&quot;</span>, &amp;.{ .number_literal, .period });</span>
+<span class="line" id="L1839">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1.+0xF.&quot;</span>, &amp;.{ .number_literal, .period, .plus, .number_literal, .period });</span>
+<span class="line" id="L1840">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xff.p10&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1841"></span>
+<span class="line" id="L1842">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0123456.789ABCDEF&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1843">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_123_456.789_ABC_DEF&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1844">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_1_2_3_4_5_6.7_8_9_A_B_C_D_E_F&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1845">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1846">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.0p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1847">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xff.ffp10&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1848">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xff.ffP10&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1849">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xffp10&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1850">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xff_ff.ff_ffp1_0_0_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1851">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xf_f_f_f.f_f_f_fp+1_000&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1852">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xf_f_f_f.f_f_f_fp-1_00_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1853"></span>
+<span class="line" id="L1854">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1e&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1855">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1e0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1856">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x1p&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1857">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xfp0z1&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1858">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0xff.ffpff&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1859">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.p&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1860">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.z&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1861">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0._&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1862">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_.0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1863">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_.0.0&quot;</span>, &amp;.{ .number_literal, .period, .number_literal });</span>
+<span class="line" id="L1864">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0._0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1865">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.0_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1866">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1867">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0_.p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1868">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0._p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1869">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.0_p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1870">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0._0p0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1871">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.0p_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1872">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.0p+_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1873">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.0p-_0&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1874">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;0x0.0p0_&quot;</span>, &amp;.{.number_literal});</span>
+<span class="line" id="L1875">}</span>
+<span class="line" id="L1876"></span>
+<span class="line" id="L1877"><span class="tok-kw">test</span> <span class="tok-str">&quot;multi line string literal with only 1 backslash&quot;</span> {</span>
+<span class="line" id="L1878">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;x \\\n;&quot;</span>, &amp;.{ .identifier, .invalid, .semicolon });</span>
+<span class="line" id="L1879">}</span>
+<span class="line" id="L1880"></span>
+<span class="line" id="L1881"><span class="tok-kw">test</span> <span class="tok-str">&quot;invalid builtin identifiers&quot;</span> {</span>
+<span class="line" id="L1882">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;@()&quot;</span>, &amp;.{ .invalid, .l_paren, .r_paren });</span>
+<span class="line" id="L1883">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;@0()&quot;</span>, &amp;.{ .invalid, .number_literal, .l_paren, .r_paren });</span>
+<span class="line" id="L1884">}</span>
+<span class="line" id="L1885"></span>
+<span class="line" id="L1886"><span class="tok-kw">test</span> <span class="tok-str">&quot;invalid token with unfinished escape right before eof&quot;</span> {</span>
+<span class="line" id="L1887">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;\&quot;\\&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1888">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;'\\&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1889">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;'\\u&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1890">}</span>
+<span class="line" id="L1891"></span>
+<span class="line" id="L1892"><span class="tok-kw">test</span> <span class="tok-str">&quot;saturating operators&quot;</span> {</span>
+<span class="line" id="L1893">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;&lt;&lt;&quot;</span>, &amp;.{.angle_bracket_angle_bracket_left});</span>
+<span class="line" id="L1894">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;&lt;&lt;|&quot;</span>, &amp;.{.angle_bracket_angle_bracket_left_pipe});</span>
+<span class="line" id="L1895">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;&lt;&lt;|=&quot;</span>, &amp;.{.angle_bracket_angle_bracket_left_pipe_equal});</span>
+<span class="line" id="L1896"></span>
+<span class="line" id="L1897">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;*&quot;</span>, &amp;.{.asterisk});</span>
+<span class="line" id="L1898">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;*|&quot;</span>, &amp;.{.asterisk_pipe});</span>
+<span class="line" id="L1899">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;*|=&quot;</span>, &amp;.{.asterisk_pipe_equal});</span>
+<span class="line" id="L1900"></span>
+<span class="line" id="L1901">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;+&quot;</span>, &amp;.{.plus});</span>
+<span class="line" id="L1902">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;+|&quot;</span>, &amp;.{.plus_pipe});</span>
+<span class="line" id="L1903">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;+|=&quot;</span>, &amp;.{.plus_pipe_equal});</span>
+<span class="line" id="L1904"></span>
+<span class="line" id="L1905">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;-&quot;</span>, &amp;.{.minus});</span>
+<span class="line" id="L1906">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;-|&quot;</span>, &amp;.{.minus_pipe});</span>
+<span class="line" id="L1907">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;-|=&quot;</span>, &amp;.{.minus_pipe_equal});</span>
+<span class="line" id="L1908">}</span>
+<span class="line" id="L1909"></span>
+<span class="line" id="L1910"><span class="tok-kw">test</span> <span class="tok-str">&quot;null byte before eof&quot;</span> {</span>
+<span class="line" id="L1911">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;123 \x00 456&quot;</span>, &amp;.{ .number_literal, .invalid, .number_literal });</span>
+<span class="line" id="L1912">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;//\x00&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1913">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;\\\\\x00&quot;</span>, &amp;.{ .multiline_string_literal_line, .invalid });</span>
+<span class="line" id="L1914">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;\x00&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1915">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;// NUL\x00\n&quot;</span>, &amp;.{.invalid});</span>
+<span class="line" id="L1916">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;///\x00\n&quot;</span>, &amp;.{ .doc_comment, .invalid });</span>
+<span class="line" id="L1917">    <span class="tok-kw">try</span> testTokenize(<span class="tok-str">&quot;/// NUL\x00\n&quot;</span>, &amp;.{ .doc_comment, .invalid });</span>
+<span class="line" id="L1918">}</span>
+<span class="line" id="L1919"></span>
+<span class="line" id="L1920"><span class="tok-kw">fn</span> <span class="tok-fn">testTokenize</span>(source: [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, expected_token_tags: []<span class="tok-kw">const</span> Token.Tag) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1921">    <span class="tok-kw">var</span> tokenizer = Tokenizer.init(source);</span>
+<span class="line" id="L1922">    <span class="tok-kw">for</span> (expected_token_tags) |expected_token_tag| {</span>
+<span class="line" id="L1923">        <span class="tok-kw">const</span> token = tokenizer.next();</span>
+<span class="line" id="L1924">        <span class="tok-kw">try</span> std.testing.expectEqual(expected_token_tag, token.tag);</span>
+<span class="line" id="L1925">    }</span>
+<span class="line" id="L1926">    <span class="tok-kw">const</span> last_token = tokenizer.next();</span>
+<span class="line" id="L1927">    <span class="tok-kw">try</span> std.testing.expectEqual(Token.Tag.eof, last_token.tag);</span>
+<span class="line" id="L1928">    <span class="tok-kw">try</span> std.testing.expectEqual(source.len, last_token.loc.start);</span>
+<span class="line" id="L1929">    <span class="tok-kw">try</span> std.testing.expectEqual(source.len, last_token.loc.end);</span>
+<span class="line" id="L1930">}</span>
+<span class="line" id="L1931"></span>
+</code></pre></body>
+</html>
