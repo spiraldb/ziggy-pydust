@@ -3,6 +3,15 @@ from __future__ import annotations
 class Animal:
     def species(self, /): ...
 
+class Callable:
+    def __init__():
+        pass
+    def __call__(self, /, *args, **kwargs):
+        """
+        Call self as a function.
+        """
+        ...
+
 class ConstructableClass:
     def __init__(count, /):
         pass

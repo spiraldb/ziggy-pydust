@@ -160,6 +160,19 @@ pub const Hash = py.class(struct {
     }
 });
 
+pub const Callable = py.class(struct {
+    const Self = @This();
+
+    pub fn __new__() Self {
+        return .{};
+    }
+
+    pub fn __call__(self: *const Self, args: struct { i: u32 }) u32 {
+        _ = self;
+        return args.i;
+    }
+});
+
 comptime {
     py.rootmodule(@This());
 }
