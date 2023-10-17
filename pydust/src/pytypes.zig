@@ -200,6 +200,13 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
                 }};
             }
 
+            if (@hasDecl(definition, "__call__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_call,
+                    .pfunc = @ptrCast(@constCast(&tp_call)),
+                }};
+            }
+
             if (richcmp.hasCompare) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_richcompare,
@@ -370,6 +377,20 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(definition.__hash__(&self.state)) catch return -1;
             return @as(isize, @bitCast(result));
+        }
+
+        fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const sig = funcs.parseSignature("__call__", @typeInfo(@TypeOf(definition.__call__)).Fn, &.{ *definition, *const definition, py.PyObject });
+
+            const args = if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null;
+            const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
+
+            const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return null;
+            const call_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;
+            defer funcs.deinitArgs(sig.argsParam.?, call_args);
+
+            const result = tramp.coerceError(definition.__call__(self, call_args)) catch return null;
+            return (py.createOwned(result) catch return null).py;
         }
     };
 }

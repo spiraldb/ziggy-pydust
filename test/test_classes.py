@@ -83,6 +83,11 @@ def test_hash():
     assert hash(h) == -7849439630130923510
 
 
+def test_callable():
+    c = classes.Callable()
+    assert c(30) == 30
+
+
 def test_refcnt():
     # Verify that initializing a class does not leak a reference to the module.
     rc = sys.getrefcount(classes)
