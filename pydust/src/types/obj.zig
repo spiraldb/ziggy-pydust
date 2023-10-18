@@ -113,11 +113,7 @@ pub const PyObject = extern struct {
     }
 
     pub fn equal(self: PyObject, other: PyObject) !bool {
-        const res = ffi.PyObject_RichCompareBool(self.py, other.py, @intFromEnum(py.CompareOp.EQ));
-        if (res == -1) {
-            return PyError.PyRaised;
-        }
-        return res == 1;
+        return self.compare(other, py.CompareOp.EQ);
     }
 };
 
