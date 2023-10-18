@@ -422,45 +422,94 @@
 <span class="line" id="L288">    ).? } };</span>
 <span class="line" id="L289">}</span>
 <span class="line" id="L290"></span>
-<span class="line" id="L291"><span class="tok-comment">/// Lifts a Pydust struct into its corresponding runtime Python object.</span></span>
-<span class="line" id="L292"><span class="tok-comment">/// Returns a new reference.</span></span>
-<span class="line" id="L293"><span class="tok-kw">fn</span> <span class="tok-fn">lift</span>(<span class="tok-kw">comptime</span> PydustStruct: <span class="tok-type">type</span>) !py.PyObject {</span>
-<span class="line" id="L294">    <span class="tok-comment">// Grab the qualified name, importing the root module first.</span>
-</span>
-<span class="line" id="L295">    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> qualName = State.getIdentifier(PydustStruct).qualifiedName;</span>
-<span class="line" id="L296"></span>
-<span class="line" id="L297">    <span class="tok-kw">var</span> mod = <span class="tok-kw">try</span> import(qualName[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L291"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eq</span>(a: <span class="tok-kw">anytype</span>, b: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L292">    <span class="tok-kw">return</span> compare(py.object(a), py.object(b), py.CompareOp.EQ);</span>
+<span class="line" id="L293">}</span>
+<span class="line" id="L294"></span>
+<span class="line" id="L295"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">ne</span>(a: <span class="tok-kw">anytype</span>, b: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L296">    <span class="tok-kw">return</span> compare(py.object(a), py.object(b), py.CompareOp.NE);</span>
+<span class="line" id="L297">}</span>
 <span class="line" id="L298"></span>
-<span class="line" id="L299">    <span class="tok-comment">// Recursively resolve submodules / nested classes</span>
-</span>
-<span class="line" id="L300">    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> qualName.len &gt; <span class="tok-number">1</span>) {</span>
-<span class="line" id="L301">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (qualName[<span class="tok-number">1</span> .. qualName.len - <span class="tok-number">1</span>]) |part| {</span>
-<span class="line" id="L302">            <span class="tok-kw">const</span> prev_mod = mod;</span>
-<span class="line" id="L303">            mod = <span class="tok-kw">try</span> mod.get(part);</span>
-<span class="line" id="L304">            prev_mod.decref();</span>
-<span class="line" id="L305">        }</span>
+<span class="line" id="L299"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">lt</span>(a: <span class="tok-kw">anytype</span>, b: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L300">    <span class="tok-kw">return</span> compare(py.object(a), py.object(b), py.CompareOp.LT);</span>
+<span class="line" id="L301">}</span>
+<span class="line" id="L302"></span>
+<span class="line" id="L303"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">le</span>(a: <span class="tok-kw">anytype</span>, b: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L304">    <span class="tok-kw">return</span> compare(py.object(a), py.object(b), py.CompareOp.LE);</span>
+<span class="line" id="L305">}</span>
 <span class="line" id="L306"></span>
-<span class="line" id="L307">        <span class="tok-kw">const</span> prev_mod = mod;</span>
-<span class="line" id="L308">        mod = <span class="tok-kw">try</span> mod.get(qualName[qualName.len - <span class="tok-number">1</span>]);</span>
-<span class="line" id="L309">        prev_mod.decref();</span>
-<span class="line" id="L310">    }</span>
-<span class="line" id="L311"></span>
-<span class="line" id="L312">    <span class="tok-comment">// Grab the attribute using the final part of the qualified name.</span>
+<span class="line" id="L307"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">gt</span>(a: <span class="tok-kw">anytype</span>, b: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L308">    <span class="tok-kw">return</span> compare(py.object(a), py.object(b), py.CompareOp.GT);</span>
+<span class="line" id="L309">}</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">ge</span>(a: <span class="tok-kw">anytype</span>, b: <span class="tok-kw">anytype</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L312">    <span class="tok-kw">return</span> compare(py.object(a), py.object(b), py.CompareOp.GE);</span>
+<span class="line" id="L313">}</span>
+<span class="line" id="L314"></span>
+<span class="line" id="L315"><span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">compare</span>(a: py.PyObject, b: py.PyObject, op: py.CompareOp) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L316">    <span class="tok-kw">const</span> res = ffi.PyObject_RichCompareBool(a.py, b.py, <span class="tok-builtin">@intFromEnum</span>(op));</span>
+<span class="line" id="L317">    <span class="tok-kw">if</span> (res == -<span class="tok-number">1</span>) {</span>
+<span class="line" id="L318">        <span class="tok-kw">return</span> PyError.PyRaised;</span>
+<span class="line" id="L319">    }</span>
+<span class="line" id="L320">    <span class="tok-kw">return</span> res == <span class="tok-number">1</span>;</span>
+<span class="line" id="L321">}</span>
+<span class="line" id="L322"></span>
+<span class="line" id="L323"><span class="tok-comment">/// Lifts a Pydust struct into its corresponding runtime Python object.</span></span>
+<span class="line" id="L324"><span class="tok-comment">/// Returns a new reference.</span></span>
+<span class="line" id="L325"><span class="tok-kw">fn</span> <span class="tok-fn">lift</span>(<span class="tok-kw">comptime</span> PydustStruct: <span class="tok-type">type</span>) !py.PyObject {</span>
+<span class="line" id="L326">    <span class="tok-comment">// Grab the qualified name, importing the root module first.</span>
 </span>
-<span class="line" id="L313">    <span class="tok-kw">return</span> mod;</span>
-<span class="line" id="L314">}</span>
-<span class="line" id="L315"></span>
-<span class="line" id="L316"><span class="tok-kw">const</span> testing = std.testing;</span>
-<span class="line" id="L317"></span>
-<span class="line" id="L318"><span class="tok-kw">test</span> <span class="tok-str">&quot;is_none&quot;</span> {</span>
-<span class="line" id="L319">    py.initialize();</span>
-<span class="line" id="L320">    <span class="tok-kw">defer</span> py.finalize();</span>
-<span class="line" id="L321"></span>
-<span class="line" id="L322">    <span class="tok-kw">const</span> none = None();</span>
-<span class="line" id="L323">    <span class="tok-kw">defer</span> none.decref();</span>
-<span class="line" id="L324"></span>
-<span class="line" id="L325">    <span class="tok-kw">try</span> testing.expect(is_none(none));</span>
-<span class="line" id="L326">}</span>
-<span class="line" id="L327"></span>
+<span class="line" id="L327">    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> qualName = State.getIdentifier(PydustStruct).qualifiedName;</span>
+<span class="line" id="L328"></span>
+<span class="line" id="L329">    <span class="tok-kw">var</span> mod = <span class="tok-kw">try</span> import(qualName[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L330"></span>
+<span class="line" id="L331">    <span class="tok-comment">// Recursively resolve submodules / nested classes</span>
+</span>
+<span class="line" id="L332">    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> qualName.len &gt; <span class="tok-number">1</span>) {</span>
+<span class="line" id="L333">        <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (qualName[<span class="tok-number">1</span> .. qualName.len - <span class="tok-number">1</span>]) |part| {</span>
+<span class="line" id="L334">            <span class="tok-kw">const</span> prev_mod = mod;</span>
+<span class="line" id="L335">            mod = <span class="tok-kw">try</span> mod.get(part);</span>
+<span class="line" id="L336">            prev_mod.decref();</span>
+<span class="line" id="L337">        }</span>
+<span class="line" id="L338"></span>
+<span class="line" id="L339">        <span class="tok-kw">const</span> prev_mod = mod;</span>
+<span class="line" id="L340">        mod = <span class="tok-kw">try</span> mod.get(qualName[qualName.len - <span class="tok-number">1</span>]);</span>
+<span class="line" id="L341">        prev_mod.decref();</span>
+<span class="line" id="L342">    }</span>
+<span class="line" id="L343"></span>
+<span class="line" id="L344">    <span class="tok-comment">// Grab the attribute using the final part of the qualified name.</span>
+</span>
+<span class="line" id="L345">    <span class="tok-kw">return</span> mod;</span>
+<span class="line" id="L346">}</span>
+<span class="line" id="L347"></span>
+<span class="line" id="L348"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L349"></span>
+<span class="line" id="L350"><span class="tok-kw">test</span> <span class="tok-str">&quot;is_none&quot;</span> {</span>
+<span class="line" id="L351">    py.initialize();</span>
+<span class="line" id="L352">    <span class="tok-kw">defer</span> py.finalize();</span>
+<span class="line" id="L353"></span>
+<span class="line" id="L354">    <span class="tok-kw">const</span> none = None();</span>
+<span class="line" id="L355">    <span class="tok-kw">defer</span> none.decref();</span>
+<span class="line" id="L356"></span>
+<span class="line" id="L357">    <span class="tok-kw">try</span> testing.expect(is_none(none));</span>
+<span class="line" id="L358">}</span>
+<span class="line" id="L359"></span>
+<span class="line" id="L360"><span class="tok-kw">test</span> <span class="tok-str">&quot;compare&quot;</span> {</span>
+<span class="line" id="L361">    py.initialize();</span>
+<span class="line" id="L362">    <span class="tok-kw">defer</span> py.finalize();</span>
+<span class="line" id="L363"></span>
+<span class="line" id="L364">    <span class="tok-kw">const</span> num = <span class="tok-kw">try</span> py.PyLong.create(<span class="tok-number">0</span>);</span>
+<span class="line" id="L365">    <span class="tok-kw">defer</span> num.decref();</span>
+<span class="line" id="L366">    <span class="tok-kw">const</span> num2 = <span class="tok-kw">try</span> py.PyLong.create(<span class="tok-number">1</span>);</span>
+<span class="line" id="L367">    <span class="tok-kw">defer</span> num2.decref();</span>
+<span class="line" id="L368"></span>
+<span class="line" id="L369">    <span class="tok-kw">try</span> testing.expect(<span class="tok-kw">try</span> le(num, num2));</span>
+<span class="line" id="L370">    <span class="tok-kw">try</span> testing.expect(<span class="tok-kw">try</span> lt(num, num2));</span>
+<span class="line" id="L371">    <span class="tok-kw">try</span> testing.expect(!(<span class="tok-kw">try</span> ge(num, num2)));</span>
+<span class="line" id="L372">    <span class="tok-kw">try</span> testing.expect(!(<span class="tok-kw">try</span> gt(num, num2)));</span>
+<span class="line" id="L373">    <span class="tok-kw">try</span> testing.expect(<span class="tok-kw">try</span> ne(num, num2));</span>
+<span class="line" id="L374">    <span class="tok-kw">try</span> testing.expect(!(<span class="tok-kw">try</span> eq(num, num2)));</span>
+<span class="line" id="L375">}</span>
+<span class="line" id="L376"></span>
 </code></pre></body>
 </html>
