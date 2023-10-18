@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 class Comparator:
-    def __init__(num, /):
+    def __init__(self, num, /):
         pass
     def __lt__(self, value, /):
         """
@@ -35,7 +35,7 @@ class Comparator:
         ...
 
 class Equals:
-    def __init__(num, /):
+    def __init__(self, num, /):
         pass
     def __lt__(self, value, /):
         """
@@ -69,7 +69,7 @@ class Equals:
         ...
 
 class LessThan:
-    def __init__(name, /):
+    def __init__(self, name, /):
         pass
     def __lt__(self, value, /):
         """
@@ -103,7 +103,7 @@ class LessThan:
         ...
 
 class Operator:
-    def __init__(num, /):
+    def __init__(self, num, /):
         pass
     def __truediv__(self, value, /):
         """
@@ -118,7 +118,7 @@ class Operator:
     def num(self, /): ...
 
 class Ops:
-    def __init__(num, /):
+    def __init__(self, num, /):
         pass
     def __add__(self, value, /):
         """

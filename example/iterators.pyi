@@ -5,7 +5,7 @@ class Range:
     An example of iterable class
     """
 
-    def __init__(lower, upper, step, /):
+    def __init__(self, lower, upper, step, /):
         pass
     def __iter__(self, /):
         """

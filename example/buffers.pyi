@@ -7,5 +7,5 @@ class ConstantBuffer:
     A class implementing a buffer protocol
     """
 
-    def __init__(elem, length, /):
+    def __init__(self, elem, length, /):
         pass
