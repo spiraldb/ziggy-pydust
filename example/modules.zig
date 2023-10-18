@@ -27,8 +27,8 @@ const Self = @This(); // (1)!
 count: u32 = 0, // (2)!
 name: py.PyString,
 
-pub fn __new__() !Self { // (3)!
-    return .{ .name = try py.PyString.create("Ziggy") };
+pub fn __init__(self: *Self) !void { // (3)!
+    self.* = .{ .name = try py.PyString.create("Ziggy") };
 }
 
 pub fn __del__(self: Self) void {

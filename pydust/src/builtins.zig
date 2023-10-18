@@ -172,8 +172,8 @@ pub fn import(module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule.import(module_name)).obj;
 }
 
-/// Instantiate a class defined in Pydust.
-pub inline fn init(comptime Cls: type, args: Cls) PyError!*Cls {
+/// Allocate a Pydust class, but does not initialize the memory.
+pub fn alloc(comptime Cls: type) PyError!*Cls {
     const pytype = try self(Cls);
     defer pytype.decref();
 
@@ -181,9 +181,14 @@ pub inline fn init(comptime Cls: type, args: Cls) PyError!*Cls {
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
     // using ffi.PyType_GetSlot(tp_alloc) since we know it will always return ffi.PyType_GenericAlloc
     const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.obj.py), 0) orelse return PyError.PyRaised));
-    pyobj.state = args;
-
     return &pyobj.state;
+}
+
+/// Allocate and instantiate a class defined in Pydust.
+pub inline fn init(comptime Cls: type, state: Cls) PyError!*Cls {
+    const cls: *Cls = try alloc(Cls);
+    cls.* = state;
+    return cls;
 }
 
 /// Check if object is an instance of cls.

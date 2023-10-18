@@ -25,8 +25,8 @@ pub const SomeClass = py.class(struct {
 pub const ConstructableClass = py.class(struct {
     count: u32 = 0,
 
-    pub fn __new__(args: struct { count: u32 }) @This() {
-        return .{ .count = args.count };
+    pub fn __init__(self: *@This(), args: struct { count: u32 }) void {
+        self.count = args.count;
     }
 });
 // --8<-- [end:constructor]
@@ -48,9 +48,9 @@ pub const Dog = py.class(struct {
     animal: Animal,
     breed: py.PyString,
 
-    pub fn __new__(args: struct { breed: py.PyString }) !Self {
+    pub fn __init__(self: *Self, args: struct { breed: py.PyString }) !void {
         args.breed.incref();
-        return .{
+        self.* = .{
             .animal = .{ .species = try py.PyString.create("dog") },
             .breed = args.breed,
         };
@@ -67,9 +67,9 @@ pub const Dog = py.class(struct {
 pub const User = py.class(struct {
     const Self = @This();
 
-    pub fn __new__(args: struct { name: py.PyString }) Self {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString }) void {
         args.name.incref();
-        return .{ .name = args.name, .email = .{} };
+        self.* = .{ .name = args.name, .email = .{} };
     }
 
     name: py.PyString,
@@ -105,9 +105,8 @@ pub const Counter = py.class(struct {
 
     count: py.attribute(usize) = .{ .value = 0 },
 
-    pub fn __new__(args: struct {}) Self {
-        _ = args;
-        return .{};
+    pub fn __init__(self: *Self) void {
+        _ = self;
     }
 
     pub fn increment(self: *Self) void {
@@ -129,8 +128,8 @@ pub const ZigOnlyMethod = py.class(struct {
     const Self = @This();
     number: i32,
 
-    pub fn __new__(args: struct { x: i32 }) Self {
-        return .{ .number = args.x };
+    pub fn __init__(self: *Self, args: struct { x: i32 }) void {
+        self.number = args.x;
     }
 
     pub usingnamespace py.zig(struct {
@@ -149,8 +148,8 @@ pub const Hash = py.class(struct {
     const Self = @This();
     number: u32,
 
-    pub fn __new__(args: struct { x: u32 }) Self {
-        return .{ .number = args.x };
+    pub fn __init__(self: *Self, args: struct { x: u32 }) void {
+        self.number = args.x;
     }
 
     pub fn __hash__(self: *const Self) usize {
@@ -163,8 +162,8 @@ pub const Hash = py.class(struct {
 pub const Callable = py.class(struct {
     const Self = @This();
 
-    pub fn __new__() Self {
-        return .{};
+    pub fn __init__(self: *Self) void {
+        _ = self;
     }
 
     pub fn __call__(self: *const Self, args: struct { i: u32 }) u32 {

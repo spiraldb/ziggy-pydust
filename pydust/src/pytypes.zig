@@ -118,22 +118,20 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             }
 
             if (@hasDecl(definition, "__new__")) {
-                slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_tp_new,
-                    .pfunc = @ptrCast(@constCast(&tp_new)),
-                }};
-            } else {
-                // Otherwise, we set tp_new to a default that throws a type error.
-                slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_tp_new,
-                    .pfunc = @ptrCast(@constCast(&tp_new_default)),
-                }};
+                @compileLog("The behaviour of __new__ is replaced by __init__(*Self). See ", State.getIdentifier(definition).qualifiedName);
             }
 
             if (@hasDecl(definition, "__init__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_init,
                     .pfunc = @ptrCast(@constCast(&tp_init)),
+                }};
+            } else {
+                // Otherwise, we set tp_init to a default that throws to ensure the class
+                // cannot be constructed from Python
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_init,
+                    .pfunc = @ptrCast(@constCast(&tp_init_default)),
                 }};
             }
 
@@ -244,67 +242,37 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             break :blk slots_;
         };
 
-        fn tp_new(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const pyself: *ffi.PyObject = ffi.PyType_GenericAlloc(subtype, 0) orelse return null;
-            // Cast it into a supertype instance. Note: we check at comptime that subclasses of this class
-            // include our own state object as the first field in their struct.
-            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-
-            // Allow the definition to initialize the state field.
-            self.state = tp_new_internal(
-                .{ .py = @alignCast(@ptrCast(subtype)) },
-                if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null,
-                if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null,
-            ) catch return null;
-
-            return pyself;
-        }
-
-        fn tp_new_internal(subtype: py.PyObject, pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!definition {
-            const sig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{ py.PyObject, py.PyType });
-
-            if (sig.selfParam) |Self| {
-                const pycls = try tramp.Trampoline(Self).unwrap(subtype);
-                if (sig.argsParam) |Args| {
-                    const args = try tramp.Trampoline(Args).unwrapCallArgs(pyargs, pykwargs);
-                    defer funcs.deinitArgs(Args, args);
-                    return try tramp.coerceError(definition.__new__(pycls, args));
-                } else {
-                    return try tramp.coerceError(definition.__new__(pycls));
-                }
-            } else if (sig.argsParam) |Args| {
-                const args = try tramp.Trampoline(Args).unwrapCallArgs(pyargs, pykwargs);
-                defer funcs.deinitArgs(Args, args);
-                return try tramp.coerceError(definition.__new__(args));
-            } else {
-                return try tramp.coerceError(definition.__new__());
-            }
-        }
-
-        fn tp_new_default(subtype: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            _ = pykwargs;
-            _ = pyargs;
-            _ = subtype;
-            py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
-            return null;
-        }
-
         fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
             const sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ *definition, *const definition, py.PyObject });
 
-            if (sig.selfParam == null or sig.argsParam == null) {
-                @compileError("__init__ must take both a self argument and an args struct");
+            if (sig.selfParam == null and @typeInfo(definition).fields.len > 0) {
+                @compileError("__init__ must take both a self argument");
+            }
+            const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
+
+            if (sig.argsParam) |Args| {
+                const args = if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null;
+                const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
+
+                const init_args = tramp.Trampoline(Args).unwrapCallArgs(args, kwargs) catch return -1;
+                defer funcs.deinitArgs(Args, init_args);
+
+                tramp.coerceError(definition.__init__(self, init_args)) catch return -1;
+            } else if (sig.selfParam) |_| {
+                tramp.coerceError(definition.__init__(self)) catch return -1;
+            } else {
+                // The function is just a marker to say that the type can be instantiated from Python
             }
 
-            const args = if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null;
-            const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
-
-            const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
-            const init_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return -1;
-            defer funcs.deinitArgs(sig.argsParam.?, init_args);
-
-            tramp.coerceError(definition.__init__(self, init_args)) catch return -1;
             return 0;
+        }
+
+        fn tp_init_default(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            _ = pyself;
+            _ = pykwargs;
+            _ = pyargs;
+            py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
+            return null;
         }
 
         /// Wrapper for the user's __del__ function.
@@ -400,10 +368,8 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
         const docLen = blk: {
             var size: usize = 0;
             var maybeSig: ?funcs.Signature = null;
-            if (@hasDecl(definition, "__new__")) {
-                maybeSig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
-            } else if (@hasDecl(definition, "__init__")) {
-                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition._init__)).Fn, &.{ py.PyObject, *definition, *const definition });
+            if (@hasDecl(definition, "__init__")) {
+                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject, *definition, *const definition });
             }
 
             if (maybeSig) |sig| {
@@ -428,10 +394,8 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
             var userDoc: [docLen:0]u8 = undefined;
             var docOffset = 0;
             var maybeSig: ?funcs.Signature = null;
-            if (@hasDecl(definition, "__new__")) {
-                maybeSig = funcs.parseSignature("__new__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{py.PyObject});
-            } else if (@hasDecl(definition, "__init__")) {
-                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__new__)).Fn, &.{ py.PyObject, *definition, *const definition });
+            if (@hasDecl(definition, "__init__")) {
+                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject, *definition, *const definition });
             }
 
             if (maybeSig) |sig| {

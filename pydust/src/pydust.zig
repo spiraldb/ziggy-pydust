@@ -108,6 +108,9 @@ pub const Args = []types.PyObject;
 /// Zig type representing variadic keyword arguments to a Python function.
 pub const Kwargs = std.StringHashMap(types.PyObject);
 
+/// Zig type representing `(*args, **kwargs)`
+pub const CallArgs = struct { args: Args, kwargs: Kwargs };
+
 /// Force the evaluation of Pydust registration methods.
 /// Using this enables us to breadth-first traverse the object graph, ensuring
 /// objects are registered before they're referenced elsewhere.

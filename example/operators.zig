@@ -19,8 +19,8 @@ pub const Ops = py.class(struct {
 
     num: u64,
 
-    pub fn __new__(args: struct { num: u64 }) Self {
-        return .{ .num = args.num };
+    pub fn __init__(self: *Self, args: struct { num: u64 }) !void {
+        self.num = args.num;
     }
 
     pub fn num(self: *const Self) u64 {
@@ -171,8 +171,8 @@ pub const Operator = py.class(struct {
 
     num: u64,
 
-    pub fn __new__(args: struct { num: u64 }) Self {
-        return .{ .num = args.num };
+    pub fn __init__(self: *Self, args: struct { num: u64 }) void {
+        self.num = args.num;
     }
 
     pub fn num(self: *const Self) u64 {
@@ -204,8 +204,8 @@ pub const Comparator = py.class(struct {
 
     num: u64,
 
-    pub fn __new__(args: struct { num: u64 }) Self {
-        return .{ .num = args.num };
+    pub fn __init__(self: *Self, args: struct { num: u64 }) void {
+        self.num = args.num;
     }
 
     pub fn __richcompare__(self: *const Self, other: *const Self, op: py.CompareOp) bool {
@@ -227,8 +227,8 @@ pub const Equals = py.class(struct {
 
     num: u64,
 
-    pub fn __new__(args: struct { num: u64 }) Self {
-        return .{ .num = args.num };
+    pub fn __init__(self: *Self, args: struct { num: u64 }) void {
+        self.num = args.num;
     }
 
     pub fn __eq__(self: *const Self, other: *const Self) bool {
@@ -243,9 +243,9 @@ pub const LessThan = py.class(struct {
 
     name: py.PyString,
 
-    pub fn __new__(args: struct { name: py.PyString }) Self {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString }) void {
         args.name.incref();
-        return .{ .name = args.name };
+        self.name = args.name;
     }
 
     pub fn __lt__(self: *const Self, other: *const Self) !bool {
