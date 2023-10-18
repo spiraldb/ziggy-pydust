@@ -119,12 +119,14 @@ fn Slots(comptime definition: type) type {
             // First, initialize the module state using an __init__ function
             if (@typeInfo(definition).Struct.fields.len > 0) {
                 if (!@hasDecl(definition, "__init__")) {
-                    @compileError(
-                        "Non-empty module '" ++ State.getIdentifier(definition).qualifiedName ++ "' must define `fn __init__(*Self) !void` method to initialize its state",
-                    );
+                    @compileError("Non-empty module must define `fn __init__(*Self) !void` method to initialize its state: " ++ @typeName(definition));
                 }
                 const state = try module.getState(definition);
-                try state.__init__();
+                if (@typeInfo(@typeInfo(@TypeOf(definition.__init__)).Fn.return_type.?) == .ErrorUnion) {
+                    try state.__init__();
+                } else {
+                    state.__init__();
+                }
             }
 
             // Add attributes (including class definitions) to the module
