@@ -312,7 +312,7 @@ pub fn ge(a: anytype, b: anytype) !bool {
     return compare(py.object(a), py.object(b), py.CompareOp.GE);
 }
 
-fn compare(a: py.PyObject, b: py.PyObject, op: py.CompareOp) !bool {
+inline fn compare(a: py.PyObject, b: py.PyObject, op: py.CompareOp) !bool {
     const res = ffi.PyObject_RichCompareBool(a.py, b.py, @intFromEnum(op));
     if (res == -1) {
         return PyError.PyRaised;
