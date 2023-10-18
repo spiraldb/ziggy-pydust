@@ -288,6 +288,38 @@ pub fn type_(object: anytype) py.PyType {
     ).? } };
 }
 
+pub fn eq(a: anytype, b: anytype) !bool {
+    return compare(py.object(a), py.object(b), py.CompareOp.EQ);
+}
+
+pub fn ne(a: anytype, b: anytype) !bool {
+    return compare(py.object(a), py.object(b), py.CompareOp.NE);
+}
+
+pub fn lt(a: anytype, b: anytype) !bool {
+    return compare(py.object(a), py.object(b), py.CompareOp.LT);
+}
+
+pub fn le(a: anytype, b: anytype) !bool {
+    return compare(py.object(a), py.object(b), py.CompareOp.LE);
+}
+
+pub fn gt(a: anytype, b: anytype) !bool {
+    return compare(py.object(a), py.object(b), py.CompareOp.GT);
+}
+
+pub fn ge(a: anytype, b: anytype) !bool {
+    return compare(py.object(a), py.object(b), py.CompareOp.GE);
+}
+
+inline fn compare(a: py.PyObject, b: py.PyObject, op: py.CompareOp) !bool {
+    const res = ffi.PyObject_RichCompareBool(a.py, b.py, @intFromEnum(op));
+    if (res == -1) {
+        return PyError.PyRaised;
+    }
+    return res == 1;
+}
+
 /// Lifts a Pydust struct into its corresponding runtime Python object.
 /// Returns a new reference.
 fn lift(comptime PydustStruct: type) !py.PyObject {
@@ -323,4 +355,21 @@ test "is_none" {
     defer none.decref();
 
     try testing.expect(is_none(none));
+}
+
+test "compare" {
+    py.initialize();
+    defer py.finalize();
+
+    const num = try py.PyLong.create(0);
+    defer num.decref();
+    const num2 = try py.PyLong.create(1);
+    defer num2.decref();
+
+    try testing.expect(try le(num, num2));
+    try testing.expect(try lt(num, num2));
+    try testing.expect(!(try ge(num, num2)));
+    try testing.expect(!(try gt(num, num2)));
+    try testing.expect(try ne(num, num2));
+    try testing.expect(!(try eq(num, num2)));
 }
