@@ -362,7 +362,9 @@ test "compare" {
     defer py.finalize();
 
     const num = try py.PyLong.create(0);
+    defer num.decref();
     const num2 = try py.PyLong.create(1);
+    defer num2.decref();
 
     try testing.expect(try le(num, num2));
     try testing.expect(try lt(num, num2));
