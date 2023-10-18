@@ -103,18 +103,6 @@ pub const PyObject = extern struct {
     pub fn repr(self: PyObject) !PyObject {
         return .{ .py = ffi.PyObject_Repr(@ptrCast(self)) orelse return PyError.PyRaised };
     }
-
-    pub fn compare(self: PyObject, other: PyObject, op: py.CompareOp) !bool {
-        const res = ffi.PyObject_RichCompareBool(self.py, other.py, @intFromEnum(op));
-        if (res == -1) {
-            return PyError.PyRaised;
-        }
-        return res == 1;
-    }
-
-    pub fn equal(self: PyObject, other: PyObject) !bool {
-        return self.compare(other, py.CompareOp.EQ);
-    }
 };
 
 pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, comptime Self: type) type {
@@ -180,15 +168,4 @@ test "has" {
     defer math.decref();
 
     try std.testing.expect(try math.has("pow"));
-}
-
-test "compare" {
-    py.initialize();
-    defer py.finalize();
-
-    const num = try py.PyLong.create(0);
-    const num2 = try py.PyLong.create(1);
-
-    try std.testing.expect(try num.obj.compare(num2.obj, py.CompareOp.LE));
-    try std.testing.expect(!(try num.obj.equal(num2.obj)));
 }
