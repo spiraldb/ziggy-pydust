@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>zig/system/linux.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> io = std.io;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> fs = std.fs;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> fmt = std.fmt;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-kw">const</span> Target = std.Target;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> CrossTarget = std.zig.CrossTarget;</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-kw">const</span> SparcCpuinfoImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L15">    model: ?*<span class="tok-kw">const</span> Target.Cpu.Model = <span class="tok-null">null</span>,</span>
+<span class="line" id="L16">    is_64bit: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18">    <span class="tok-kw">const</span> cpu_names = .{</span>
+<span class="line" id="L19">        .{ <span class="tok-str">&quot;SuperSparc&quot;</span>, &amp;Target.sparc.cpu.supersparc },</span>
+<span class="line" id="L20">        .{ <span class="tok-str">&quot;HyperSparc&quot;</span>, &amp;Target.sparc.cpu.hypersparc },</span>
+<span class="line" id="L21">        .{ <span class="tok-str">&quot;SpitFire&quot;</span>, &amp;Target.sparc.cpu.ultrasparc },</span>
+<span class="line" id="L22">        .{ <span class="tok-str">&quot;BlackBird&quot;</span>, &amp;Target.sparc.cpu.ultrasparc },</span>
+<span class="line" id="L23">        .{ <span class="tok-str">&quot;Sabre&quot;</span>, &amp;Target.sparc.cpu.ultrasparc },</span>
+<span class="line" id="L24">        .{ <span class="tok-str">&quot;Hummingbird&quot;</span>, &amp;Target.sparc.cpu.ultrasparc },</span>
+<span class="line" id="L25">        .{ <span class="tok-str">&quot;Cheetah&quot;</span>, &amp;Target.sparc.cpu.ultrasparc3 },</span>
+<span class="line" id="L26">        .{ <span class="tok-str">&quot;Jalapeno&quot;</span>, &amp;Target.sparc.cpu.ultrasparc3 },</span>
+<span class="line" id="L27">        .{ <span class="tok-str">&quot;Jaguar&quot;</span>, &amp;Target.sparc.cpu.ultrasparc3 },</span>
+<span class="line" id="L28">        .{ <span class="tok-str">&quot;Panther&quot;</span>, &amp;Target.sparc.cpu.ultrasparc3 },</span>
+<span class="line" id="L29">        .{ <span class="tok-str">&quot;Serrano&quot;</span>, &amp;Target.sparc.cpu.ultrasparc3 },</span>
+<span class="line" id="L30">        .{ <span class="tok-str">&quot;UltraSparc T1&quot;</span>, &amp;Target.sparc.cpu.niagara },</span>
+<span class="line" id="L31">        .{ <span class="tok-str">&quot;UltraSparc T2&quot;</span>, &amp;Target.sparc.cpu.niagara2 },</span>
+<span class="line" id="L32">        .{ <span class="tok-str">&quot;UltraSparc T3&quot;</span>, &amp;Target.sparc.cpu.niagara3 },</span>
+<span class="line" id="L33">        .{ <span class="tok-str">&quot;UltraSparc T4&quot;</span>, &amp;Target.sparc.cpu.niagara4 },</span>
+<span class="line" id="L34">        .{ <span class="tok-str">&quot;UltraSparc T5&quot;</span>, &amp;Target.sparc.cpu.niagara4 },</span>
+<span class="line" id="L35">        .{ <span class="tok-str">&quot;LEON&quot;</span>, &amp;Target.sparc.cpu.leon3 },</span>
+<span class="line" id="L36">    };</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38">    <span class="tok-kw">fn</span> <span class="tok-fn">line_hook</span>(self: *SparcCpuinfoImpl, key: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, value: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L39">        <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;cpu&quot;</span>)) {</span>
+<span class="line" id="L40">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (cpu_names) |pair| {</span>
+<span class="line" id="L41">                <span class="tok-kw">if</span> (mem.indexOfPos(<span class="tok-type">u8</span>, value, <span class="tok-number">0</span>, pair[<span class="tok-number">0</span>]) != <span class="tok-null">null</span>) {</span>
+<span class="line" id="L42">                    self.model = pair[<span class="tok-number">1</span>];</span>
+<span class="line" id="L43">                    <span class="tok-kw">break</span>;</span>
+<span class="line" id="L44">                }</span>
+<span class="line" id="L45">            }</span>
+<span class="line" id="L46">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;type&quot;</span>)) {</span>
+<span class="line" id="L47">            self.is_64bit = mem.eql(<span class="tok-type">u8</span>, value, <span class="tok-str">&quot;sun4u&quot;</span>) <span class="tok-kw">or</span> mem.eql(<span class="tok-type">u8</span>, value, <span class="tok-str">&quot;sun4v&quot;</span>);</span>
+<span class="line" id="L48">        }</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L51">    }</span>
+<span class="line" id="L52"></span>
+<span class="line" id="L53">    <span class="tok-kw">fn</span> <span class="tok-fn">finalize</span>(self: *<span class="tok-kw">const</span> SparcCpuinfoImpl, arch: Target.Cpu.Arch) ?Target.Cpu {</span>
+<span class="line" id="L54">        <span class="tok-comment">// At the moment we only support 64bit SPARC systems.</span>
+</span>
+<span class="line" id="L55">        assert(self.is_64bit);</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">        <span class="tok-kw">const</span> model = self.model <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L58">        <span class="tok-kw">return</span> Target.Cpu{</span>
+<span class="line" id="L59">            .arch = arch,</span>
+<span class="line" id="L60">            .model = model,</span>
+<span class="line" id="L61">            .features = model.features,</span>
+<span class="line" id="L62">        };</span>
+<span class="line" id="L63">    }</span>
+<span class="line" id="L64">};</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66"><span class="tok-kw">const</span> SparcCpuinfoParser = CpuinfoParser(SparcCpuinfoImpl);</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68"><span class="tok-kw">test</span> <span class="tok-str">&quot;cpuinfo: SPARC&quot;</span> {</span>
+<span class="line" id="L69">    <span class="tok-kw">try</span> testParser(SparcCpuinfoParser, .sparc64, &amp;Target.sparc.cpu.niagara2,</span>
+<span class="line" id="L70">        <span class="tok-str">\\cpu             : UltraSparc T2 (Niagara2)</span></span>
+
+<span class="line" id="L71">        <span class="tok-str">\\fpu             : UltraSparc T2 integrated FPU</span></span>
+
+<span class="line" id="L72">        <span class="tok-str">\\pmu             : niagara2</span></span>
+
+<span class="line" id="L73">        <span class="tok-str">\\type            : sun4v</span></span>
+
+<span class="line" id="L74">    );</span>
+<span class="line" id="L75">}</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77"><span class="tok-kw">const</span> PowerpcCpuinfoImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L78">    model: ?*<span class="tok-kw">const</span> Target.Cpu.Model = <span class="tok-null">null</span>,</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">    <span class="tok-kw">const</span> cpu_names = .{</span>
+<span class="line" id="L81">        .{ <span class="tok-str">&quot;604e&quot;</span>, &amp;Target.powerpc.cpu.@&quot;604e&quot; },</span>
+<span class="line" id="L82">        .{ <span class="tok-str">&quot;604&quot;</span>, &amp;Target.powerpc.cpu.@&quot;604&quot; },</span>
+<span class="line" id="L83">        .{ <span class="tok-str">&quot;7400&quot;</span>, &amp;Target.powerpc.cpu.@&quot;7400&quot; },</span>
+<span class="line" id="L84">        .{ <span class="tok-str">&quot;7410&quot;</span>, &amp;Target.powerpc.cpu.@&quot;7400&quot; },</span>
+<span class="line" id="L85">        .{ <span class="tok-str">&quot;7447&quot;</span>, &amp;Target.powerpc.cpu.@&quot;7400&quot; },</span>
+<span class="line" id="L86">        .{ <span class="tok-str">&quot;7455&quot;</span>, &amp;Target.powerpc.cpu.@&quot;7450&quot; },</span>
+<span class="line" id="L87">        .{ <span class="tok-str">&quot;G4&quot;</span>, &amp;Target.powerpc.cpu.g4 },</span>
+<span class="line" id="L88">        .{ <span class="tok-str">&quot;POWER4&quot;</span>, &amp;Target.powerpc.cpu.@&quot;970&quot; },</span>
+<span class="line" id="L89">        .{ <span class="tok-str">&quot;PPC970FX&quot;</span>, &amp;Target.powerpc.cpu.@&quot;970&quot; },</span>
+<span class="line" id="L90">        .{ <span class="tok-str">&quot;PPC970MP&quot;</span>, &amp;Target.powerpc.cpu.@&quot;970&quot; },</span>
+<span class="line" id="L91">        .{ <span class="tok-str">&quot;G5&quot;</span>, &amp;Target.powerpc.cpu.g5 },</span>
+<span class="line" id="L92">        .{ <span class="tok-str">&quot;POWER5&quot;</span>, &amp;Target.powerpc.cpu.g5 },</span>
+<span class="line" id="L93">        .{ <span class="tok-str">&quot;A2&quot;</span>, &amp;Target.powerpc.cpu.a2 },</span>
+<span class="line" id="L94">        .{ <span class="tok-str">&quot;POWER6&quot;</span>, &amp;Target.powerpc.cpu.pwr6 },</span>
+<span class="line" id="L95">        .{ <span class="tok-str">&quot;POWER7&quot;</span>, &amp;Target.powerpc.cpu.pwr7 },</span>
+<span class="line" id="L96">        .{ <span class="tok-str">&quot;POWER8&quot;</span>, &amp;Target.powerpc.cpu.pwr8 },</span>
+<span class="line" id="L97">        .{ <span class="tok-str">&quot;POWER8E&quot;</span>, &amp;Target.powerpc.cpu.pwr8 },</span>
+<span class="line" id="L98">        .{ <span class="tok-str">&quot;POWER8NVL&quot;</span>, &amp;Target.powerpc.cpu.pwr8 },</span>
+<span class="line" id="L99">        .{ <span class="tok-str">&quot;POWER9&quot;</span>, &amp;Target.powerpc.cpu.pwr9 },</span>
+<span class="line" id="L100">        .{ <span class="tok-str">&quot;POWER10&quot;</span>, &amp;Target.powerpc.cpu.pwr10 },</span>
+<span class="line" id="L101">    };</span>
+<span class="line" id="L102"></span>
+<span class="line" id="L103">    <span class="tok-kw">fn</span> <span class="tok-fn">line_hook</span>(self: *PowerpcCpuinfoImpl, key: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, value: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L104">        <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;cpu&quot;</span>)) {</span>
+<span class="line" id="L105">            <span class="tok-comment">// The model name is often followed by a comma or space and extra</span>
+</span>
+<span class="line" id="L106">            <span class="tok-comment">// info.</span>
+</span>
+<span class="line" id="L107">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (cpu_names) |pair| {</span>
+<span class="line" id="L108">                <span class="tok-kw">const</span> end_index = mem.indexOfAny(<span class="tok-type">u8</span>, value, <span class="tok-str">&quot;, &quot;</span>) <span class="tok-kw">orelse</span> value.len;</span>
+<span class="line" id="L109">                <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, value[<span class="tok-number">0</span>..end_index], pair[<span class="tok-number">0</span>])) {</span>
+<span class="line" id="L110">                    self.model = pair[<span class="tok-number">1</span>];</span>
+<span class="line" id="L111">                    <span class="tok-kw">break</span>;</span>
+<span class="line" id="L112">                }</span>
+<span class="line" id="L113">            }</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115">            <span class="tok-comment">// Stop the detection once we've seen the first core.</span>
+</span>
+<span class="line" id="L116">            <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L117">        }</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L120">    }</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">    <span class="tok-kw">fn</span> <span class="tok-fn">finalize</span>(self: *<span class="tok-kw">const</span> PowerpcCpuinfoImpl, arch: Target.Cpu.Arch) ?Target.Cpu {</span>
+<span class="line" id="L123">        <span class="tok-kw">const</span> model = self.model <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L124">        <span class="tok-kw">return</span> Target.Cpu{</span>
+<span class="line" id="L125">            .arch = arch,</span>
+<span class="line" id="L126">            .model = model,</span>
+<span class="line" id="L127">            .features = model.features,</span>
+<span class="line" id="L128">        };</span>
+<span class="line" id="L129">    }</span>
+<span class="line" id="L130">};</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132"><span class="tok-kw">const</span> PowerpcCpuinfoParser = CpuinfoParser(PowerpcCpuinfoImpl);</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134"><span class="tok-kw">test</span> <span class="tok-str">&quot;cpuinfo: PowerPC&quot;</span> {</span>
+<span class="line" id="L135">    <span class="tok-kw">try</span> testParser(PowerpcCpuinfoParser, .powerpc, &amp;Target.powerpc.cpu.@&quot;970&quot;,</span>
+<span class="line" id="L136">        <span class="tok-str">\\processor	: 0</span></span>
+
+<span class="line" id="L137">        <span class="tok-str">\\cpu		: PPC970MP, altivec supported</span></span>
+
+<span class="line" id="L138">        <span class="tok-str">\\clock		: 1250.000000MHz</span></span>
+
+<span class="line" id="L139">        <span class="tok-str">\\revision	: 1.1 (pvr 0044 0101)</span></span>
+
+<span class="line" id="L140">    );</span>
+<span class="line" id="L141">    <span class="tok-kw">try</span> testParser(PowerpcCpuinfoParser, .powerpc64le, &amp;Target.powerpc.cpu.pwr8,</span>
+<span class="line" id="L142">        <span class="tok-str">\\processor	: 0</span></span>
+
+<span class="line" id="L143">        <span class="tok-str">\\cpu		: POWER8 (raw), altivec supported</span></span>
+
+<span class="line" id="L144">        <span class="tok-str">\\clock		: 2926.000000MHz</span></span>
+
+<span class="line" id="L145">        <span class="tok-str">\\revision	: 2.0 (pvr 004d 0200)</span></span>
+
+<span class="line" id="L146">    );</span>
+<span class="line" id="L147">}</span>
+<span class="line" id="L148"></span>
+<span class="line" id="L149"><span class="tok-kw">const</span> ArmCpuinfoImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L150">    <span class="tok-kw">const</span> num_cores = <span class="tok-number">4</span>;</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">    cores: [num_cores]CoreInfo = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L153">    core_no: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L154">    have_fields: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L155"></span>
+<span class="line" id="L156">    <span class="tok-kw">const</span> CoreInfo = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L157">        architecture: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L158">        implementer: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L159">        variant: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L160">        part: <span class="tok-type">u16</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L161">        is_really_v6: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L162">    };</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164">    <span class="tok-kw">const</span> cpu_models = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;arm.zig&quot;</span>).cpu_models;</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">    <span class="tok-kw">fn</span> <span class="tok-fn">addOne</span>(self: *ArmCpuinfoImpl) <span class="tok-type">void</span> {</span>
+<span class="line" id="L167">        <span class="tok-kw">if</span> (self.have_fields == <span class="tok-number">4</span> <span class="tok-kw">and</span> self.core_no &lt; num_cores) {</span>
+<span class="line" id="L168">            <span class="tok-kw">if</span> (self.core_no &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L169">                <span class="tok-comment">// Deduplicate the core info.</span>
+</span>
+<span class="line" id="L170">                <span class="tok-kw">for</span> (self.cores[<span class="tok-number">0</span>..self.core_no]) |it| {</span>
+<span class="line" id="L171">                    <span class="tok-kw">if</span> (std.meta.eql(it, self.cores[self.core_no]))</span>
+<span class="line" id="L172">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L173">                }</span>
+<span class="line" id="L174">            }</span>
+<span class="line" id="L175">            self.core_no += <span class="tok-number">1</span>;</span>
+<span class="line" id="L176">        }</span>
+<span class="line" id="L177">    }</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179">    <span class="tok-kw">fn</span> <span class="tok-fn">line_hook</span>(self: *ArmCpuinfoImpl, key: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, value: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">bool</span> {</span>
+<span class="line" id="L180">        <span class="tok-kw">const</span> info = &amp;self.cores[self.core_no];</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182">        <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;processor&quot;</span>)) {</span>
+<span class="line" id="L183">            <span class="tok-comment">// Handle both old-style and new-style cpuinfo formats.</span>
+</span>
+<span class="line" id="L184">            <span class="tok-comment">// The former prints a sequence of &quot;processor: N&quot; lines for each</span>
+</span>
+<span class="line" id="L185">            <span class="tok-comment">// core and then the info for the core that's executing this code(!)</span>
+</span>
+<span class="line" id="L186">            <span class="tok-comment">// while the latter prints the infos for each core right after the</span>
+</span>
+<span class="line" id="L187">            <span class="tok-comment">// &quot;processor&quot; key.</span>
+</span>
+<span class="line" id="L188">            self.have_fields = <span class="tok-number">0</span>;</span>
+<span class="line" id="L189">            self.cores[self.core_no] = .{};</span>
+<span class="line" id="L190">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;CPU implementer&quot;</span>)) {</span>
+<span class="line" id="L191">            info.implementer = <span class="tok-kw">try</span> fmt.parseInt(<span class="tok-type">u8</span>, value, <span class="tok-number">0</span>);</span>
+<span class="line" id="L192">            self.have_fields += <span class="tok-number">1</span>;</span>
+<span class="line" id="L193">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;CPU architecture&quot;</span>)) {</span>
+<span class="line" id="L194">            <span class="tok-comment">// &quot;AArch64&quot; on older kernels.</span>
+</span>
+<span class="line" id="L195">            info.architecture = <span class="tok-kw">if</span> (mem.startsWith(<span class="tok-type">u8</span>, value, <span class="tok-str">&quot;AArch64&quot;</span>))</span>
+<span class="line" id="L196">                <span class="tok-number">8</span></span>
+<span class="line" id="L197">            <span class="tok-kw">else</span></span>
+<span class="line" id="L198">                <span class="tok-kw">try</span> fmt.parseInt(<span class="tok-type">u8</span>, value, <span class="tok-number">0</span>);</span>
+<span class="line" id="L199">            self.have_fields += <span class="tok-number">1</span>;</span>
+<span class="line" id="L200">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;CPU variant&quot;</span>)) {</span>
+<span class="line" id="L201">            info.variant = <span class="tok-kw">try</span> fmt.parseInt(<span class="tok-type">u8</span>, value, <span class="tok-number">0</span>);</span>
+<span class="line" id="L202">            self.have_fields += <span class="tok-number">1</span>;</span>
+<span class="line" id="L203">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;CPU part&quot;</span>)) {</span>
+<span class="line" id="L204">            info.part = <span class="tok-kw">try</span> fmt.parseInt(<span class="tok-type">u16</span>, value, <span class="tok-number">0</span>);</span>
+<span class="line" id="L205">            self.have_fields += <span class="tok-number">1</span>;</span>
+<span class="line" id="L206">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;model name&quot;</span>)) {</span>
+<span class="line" id="L207">            <span class="tok-comment">// ARMv6 cores report &quot;CPU architecture&quot; equal to 7.</span>
+</span>
+<span class="line" id="L208">            <span class="tok-kw">if</span> (mem.indexOf(<span class="tok-type">u8</span>, value, <span class="tok-str">&quot;(v6l)&quot;</span>)) |_| {</span>
+<span class="line" id="L209">                info.is_really_v6 = <span class="tok-null">true</span>;</span>
+<span class="line" id="L210">            }</span>
+<span class="line" id="L211">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (mem.eql(<span class="tok-type">u8</span>, key, <span class="tok-str">&quot;CPU revision&quot;</span>)) {</span>
+<span class="line" id="L212">            <span class="tok-comment">// This field is always the last one for each CPU section.</span>
+</span>
+<span class="line" id="L213">            _ = self.addOne();</span>
+<span class="line" id="L214">        }</span>
+<span class="line" id="L215"></span>
+<span class="line" id="L216">        <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L217">    }</span>
+<span class="line" id="L218"></span>
+<span class="line" id="L219">    <span class="tok-kw">fn</span> <span class="tok-fn">finalize</span>(self: *ArmCpuinfoImpl, arch: Target.Cpu.Arch) ?Target.Cpu {</span>
+<span class="line" id="L220">        <span class="tok-kw">if</span> (self.core_no == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L221"></span>
+<span class="line" id="L222">        <span class="tok-kw">const</span> is_64bit = <span class="tok-kw">switch</span> (arch) {</span>
+<span class="line" id="L223">            .aarch64, .aarch64_be, .aarch64_32 =&gt; <span class="tok-null">true</span>,</span>
+<span class="line" id="L224">            <span class="tok-kw">else</span> =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L225">        };</span>
+<span class="line" id="L226"></span>
+<span class="line" id="L227">        <span class="tok-kw">var</span> known_models: [num_cores]?*<span class="tok-kw">const</span> Target.Cpu.Model = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L228">        <span class="tok-kw">for</span> (self.cores[<span class="tok-number">0</span>..self.core_no], <span class="tok-number">0</span>..) |core, i| {</span>
+<span class="line" id="L229">            known_models[i] = cpu_models.isKnown(.{</span>
+<span class="line" id="L230">                .architecture = core.architecture,</span>
+<span class="line" id="L231">                .implementer = core.implementer,</span>
+<span class="line" id="L232">                .variant = core.variant,</span>
+<span class="line" id="L233">                .part = core.part,</span>
+<span class="line" id="L234">            }, is_64bit);</span>
+<span class="line" id="L235">        }</span>
+<span class="line" id="L236"></span>
+<span class="line" id="L237">        <span class="tok-comment">// XXX We pick the first core on big.LITTLE systems, hopefully the</span>
+</span>
+<span class="line" id="L238">        <span class="tok-comment">// LITTLE one.</span>
+</span>
+<span class="line" id="L239">        <span class="tok-kw">const</span> model = known_models[<span class="tok-number">0</span>] <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L240">        <span class="tok-kw">return</span> Target.Cpu{</span>
+<span class="line" id="L241">            .arch = arch,</span>
+<span class="line" id="L242">            .model = model,</span>
+<span class="line" id="L243">            .features = model.features,</span>
+<span class="line" id="L244">        };</span>
+<span class="line" id="L245">    }</span>
+<span class="line" id="L246">};</span>
+<span class="line" id="L247"></span>
+<span class="line" id="L248"><span class="tok-kw">const</span> ArmCpuinfoParser = CpuinfoParser(ArmCpuinfoImpl);</span>
+<span class="line" id="L249"></span>
+<span class="line" id="L250"><span class="tok-kw">test</span> <span class="tok-str">&quot;cpuinfo: ARM&quot;</span> {</span>
+<span class="line" id="L251">    <span class="tok-kw">try</span> testParser(ArmCpuinfoParser, .arm, &amp;Target.arm.cpu.arm1176jz_s,</span>
+<span class="line" id="L252">        <span class="tok-str">\\processor       : 0</span></span>
+
+<span class="line" id="L253">        <span class="tok-str">\\model name      : ARMv6-compatible processor rev 7 (v6l)</span></span>
+
+<span class="line" id="L254">        <span class="tok-str">\\BogoMIPS        : 997.08</span></span>
+
+<span class="line" id="L255">        <span class="tok-str">\\Features        : half thumb fastmult vfp edsp java tls</span></span>
+
+<span class="line" id="L256">        <span class="tok-str">\\CPU implementer : 0x41</span></span>
+
+<span class="line" id="L257">        <span class="tok-str">\\CPU architecture: 7</span></span>
+
+<span class="line" id="L258">        <span class="tok-str">\\CPU variant     : 0x0</span></span>
+
+<span class="line" id="L259">        <span class="tok-str">\\CPU part        : 0xb76</span></span>
+
+<span class="line" id="L260">        <span class="tok-str">\\CPU revision    : 7</span></span>
+
+<span class="line" id="L261">    );</span>
+<span class="line" id="L262">    <span class="tok-kw">try</span> testParser(ArmCpuinfoParser, .arm, &amp;Target.arm.cpu.cortex_a7,</span>
+<span class="line" id="L263">        <span class="tok-str">\\processor	: 0</span></span>
+
+<span class="line" id="L264">        <span class="tok-str">\\model name	: ARMv7 Processor rev 3 (v7l)</span></span>
+
+<span class="line" id="L265">        <span class="tok-str">\\BogoMIPS	: 18.00</span></span>
+
+<span class="line" id="L266">        <span class="tok-str">\\Features	: half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 lpae</span></span>
+
+<span class="line" id="L267">        <span class="tok-str">\\CPU implementer	: 0x41</span></span>
+
+<span class="line" id="L268">        <span class="tok-str">\\CPU architecture: 7</span></span>
+
+<span class="line" id="L269">        <span class="tok-str">\\CPU variant	: 0x0</span></span>
+
+<span class="line" id="L270">        <span class="tok-str">\\CPU part	: 0xc07</span></span>
+
+<span class="line" id="L271">        <span class="tok-str">\\CPU revision	: 3</span></span>
+
+<span class="line" id="L272">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L273">        <span class="tok-str">\\processor	: 4</span></span>
+
+<span class="line" id="L274">        <span class="tok-str">\\model name	: ARMv7 Processor rev 3 (v7l)</span></span>
+
+<span class="line" id="L275">        <span class="tok-str">\\BogoMIPS	: 90.00</span></span>
+
+<span class="line" id="L276">        <span class="tok-str">\\Features	: half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt vfpd32 lpae</span></span>
+
+<span class="line" id="L277">        <span class="tok-str">\\CPU implementer	: 0x41</span></span>
+
+<span class="line" id="L278">        <span class="tok-str">\\CPU architecture: 7</span></span>
+
+<span class="line" id="L279">        <span class="tok-str">\\CPU variant	: 0x2</span></span>
+
+<span class="line" id="L280">        <span class="tok-str">\\CPU part	: 0xc0f</span></span>
+
+<span class="line" id="L281">        <span class="tok-str">\\CPU revision	: 3</span></span>
+
+<span class="line" id="L282">    );</span>
+<span class="line" id="L283">    <span class="tok-kw">try</span> testParser(ArmCpuinfoParser, .aarch64, &amp;Target.aarch64.cpu.cortex_a72,</span>
+<span class="line" id="L284">        <span class="tok-str">\\processor       : 0</span></span>
+
+<span class="line" id="L285">        <span class="tok-str">\\BogoMIPS        : 108.00</span></span>
+
+<span class="line" id="L286">        <span class="tok-str">\\Features        : fp asimd evtstrm crc32 cpuid</span></span>
+
+<span class="line" id="L287">        <span class="tok-str">\\CPU implementer : 0x41</span></span>
+
+<span class="line" id="L288">        <span class="tok-str">\\CPU architecture: 8</span></span>
+
+<span class="line" id="L289">        <span class="tok-str">\\CPU variant     : 0x0</span></span>
+
+<span class="line" id="L290">        <span class="tok-str">\\CPU part        : 0xd08</span></span>
+
+<span class="line" id="L291">        <span class="tok-str">\\CPU revision    : 3</span></span>
+
+<span class="line" id="L292">    );</span>
+<span class="line" id="L293">}</span>
+<span class="line" id="L294"></span>
+<span class="line" id="L295"><span class="tok-kw">fn</span> <span class="tok-fn">testParser</span>(</span>
+<span class="line" id="L296">    parser: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L297">    arch: Target.Cpu.Arch,</span>
+<span class="line" id="L298">    expected_model: *<span class="tok-kw">const</span> Target.Cpu.Model,</span>
+<span class="line" id="L299">    input: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L300">) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L301">    <span class="tok-kw">var</span> fbs = io.fixedBufferStream(input);</span>
+<span class="line" id="L302">    <span class="tok-kw">const</span> result = <span class="tok-kw">try</span> parser.parse(arch, fbs.reader());</span>
+<span class="line" id="L303">    <span class="tok-kw">try</span> testing.expectEqual(expected_model, result.?.model);</span>
+<span class="line" id="L304">    <span class="tok-kw">try</span> testing.expect(expected_model.features.eql(result.?.features));</span>
+<span class="line" id="L305">}</span>
+<span class="line" id="L306"></span>
+<span class="line" id="L307"><span class="tok-comment">// The generic implementation of a /proc/cpuinfo parser.</span>
+</span>
+<span class="line" id="L308"><span class="tok-comment">// For every line it invokes the line_hook method with the key and value strings</span>
+</span>
+<span class="line" id="L309"><span class="tok-comment">// as first and second parameters. Returning false from the hook function stops</span>
+</span>
+<span class="line" id="L310"><span class="tok-comment">// the iteration without raising an error.</span>
+</span>
+<span class="line" id="L311"><span class="tok-comment">// When all the lines have been analyzed the finalize method is called.</span>
+</span>
+<span class="line" id="L312"><span class="tok-kw">fn</span> <span class="tok-fn">CpuinfoParser</span>(<span class="tok-kw">comptime</span> impl: <span class="tok-kw">anytype</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L313">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L314">        <span class="tok-kw">fn</span> <span class="tok-fn">parse</span>(arch: Target.Cpu.Arch, reader: <span class="tok-kw">anytype</span>) <span class="tok-type">anyerror</span>!?Target.Cpu {</span>
+<span class="line" id="L315">            <span class="tok-kw">var</span> line_buf: [<span class="tok-number">1024</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L316">            <span class="tok-kw">var</span> obj: impl = .{};</span>
+<span class="line" id="L317"></span>
+<span class="line" id="L318">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L319">                <span class="tok-kw">const</span> line = (<span class="tok-kw">try</span> reader.readUntilDelimiterOrEof(&amp;line_buf, <span class="tok-str">'\n'</span>)) <span class="tok-kw">orelse</span> <span class="tok-kw">break</span>;</span>
+<span class="line" id="L320">                <span class="tok-kw">const</span> colon_pos = mem.indexOfScalar(<span class="tok-type">u8</span>, line, <span class="tok-str">':'</span>) <span class="tok-kw">orelse</span> <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L321">                <span class="tok-kw">const</span> key = mem.trimRight(<span class="tok-type">u8</span>, line[<span class="tok-number">0</span>..colon_pos], <span class="tok-str">&quot; \t&quot;</span>);</span>
+<span class="line" id="L322">                <span class="tok-kw">const</span> value = mem.trimLeft(<span class="tok-type">u8</span>, line[colon_pos + <span class="tok-number">1</span> ..], <span class="tok-str">&quot; \t&quot;</span>);</span>
+<span class="line" id="L323"></span>
+<span class="line" id="L324">                <span class="tok-kw">if</span> (!<span class="tok-kw">try</span> obj.line_hook(key, value))</span>
+<span class="line" id="L325">                    <span class="tok-kw">break</span>;</span>
+<span class="line" id="L326">            }</span>
+<span class="line" id="L327"></span>
+<span class="line" id="L328">            <span class="tok-kw">return</span> obj.finalize(arch);</span>
+<span class="line" id="L329">        }</span>
+<span class="line" id="L330">    };</span>
+<span class="line" id="L331">}</span>
+<span class="line" id="L332"></span>
+<span class="line" id="L333"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">detectNativeCpuAndFeatures</span>() ?Target.Cpu {</span>
+<span class="line" id="L334">    <span class="tok-kw">var</span> f = fs.openFileAbsolute(<span class="tok-str">&quot;/proc/cpuinfo&quot;</span>, .{ .intended_io_mode = .blocking }) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L335">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L336">    };</span>
+<span class="line" id="L337">    <span class="tok-kw">defer</span> f.close();</span>
+<span class="line" id="L338"></span>
+<span class="line" id="L339">    <span class="tok-kw">const</span> current_arch = builtin.cpu.arch;</span>
+<span class="line" id="L340">    <span class="tok-kw">switch</span> (current_arch) {</span>
+<span class="line" id="L341">        .arm, .armeb, .thumb, .thumbeb, .aarch64, .aarch64_be, .aarch64_32 =&gt; {</span>
+<span class="line" id="L342">            <span class="tok-kw">return</span> ArmCpuinfoParser.parse(current_arch, f.reader()) <span class="tok-kw">catch</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L343">        },</span>
+<span class="line" id="L344">        .sparc64 =&gt; {</span>
+<span class="line" id="L345">            <span class="tok-kw">return</span> SparcCpuinfoParser.parse(current_arch, f.reader()) <span class="tok-kw">catch</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L346">        },</span>
+<span class="line" id="L347">        .powerpc, .powerpcle, .powerpc64, .powerpc64le =&gt; {</span>
+<span class="line" id="L348">            <span class="tok-kw">return</span> PowerpcCpuinfoParser.parse(current_arch, f.reader()) <span class="tok-kw">catch</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L349">        },</span>
+<span class="line" id="L350">        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L351">    }</span>
+<span class="line" id="L352"></span>
+<span class="line" id="L353">    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L354">}</span>
+<span class="line" id="L355"></span>
+</code></pre></body>
+</html>

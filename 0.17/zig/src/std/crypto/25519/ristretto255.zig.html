@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/25519/ristretto255.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> fmt = std.fmt;</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-kw">const</span> EncodingError = std.crypto.errors.EncodingError;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> IdentityElementError = std.crypto.errors.IdentityElementError;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> NonCanonicalError = std.crypto.errors.NonCanonicalError;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> WeakPublicKeyError = std.crypto.errors.WeakPublicKeyError;</span>
+<span class="line" id="L8"></span>
+<span class="line" id="L9"><span class="tok-comment">/// Group operations over Edwards25519.</span></span>
+<span class="line" id="L10"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Ristretto255 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L11">    <span class="tok-comment">/// The underlying elliptic curve.</span></span>
+<span class="line" id="L12">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Curve = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;edwards25519.zig&quot;</span>).Edwards25519;</span>
+<span class="line" id="L13">    <span class="tok-comment">/// The underlying prime field.</span></span>
+<span class="line" id="L14">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Fe = Curve.Fe;</span>
+<span class="line" id="L15">    <span class="tok-comment">/// Field arithmetic mod the order of the main subgroup.</span></span>
+<span class="line" id="L16">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> scalar = Curve.scalar;</span>
+<span class="line" id="L17">    <span class="tok-comment">/// Length in byte of an encoded element.</span></span>
+<span class="line" id="L18">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> encoded_length: <span class="tok-type">usize</span> = <span class="tok-number">32</span>;</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20">    p: Curve,</span>
+<span class="line" id="L21"></span>
+<span class="line" id="L22">    <span class="tok-kw">fn</span> <span class="tok-fn">sqrtRatioM1</span>(u: Fe, v: Fe) <span class="tok-kw">struct</span> { ratio_is_square: <span class="tok-type">u32</span>, root: Fe } {</span>
+<span class="line" id="L23">        <span class="tok-kw">const</span> v3 = v.sq().mul(v); <span class="tok-comment">// v^3</span>
+</span>
+<span class="line" id="L24">        <span class="tok-kw">var</span> x = v3.sq().mul(u).mul(v).pow2523().mul(v3).mul(u); <span class="tok-comment">// uv^3(uv^7)^((q-5)/8)</span>
+</span>
+<span class="line" id="L25">        <span class="tok-kw">const</span> vxx = x.sq().mul(v); <span class="tok-comment">// vx^2</span>
+</span>
+<span class="line" id="L26">        <span class="tok-kw">const</span> m_root_check = vxx.sub(u); <span class="tok-comment">// vx^2-u</span>
+</span>
+<span class="line" id="L27">        <span class="tok-kw">const</span> p_root_check = vxx.add(u); <span class="tok-comment">// vx^2+u</span>
+</span>
+<span class="line" id="L28">        <span class="tok-kw">const</span> f_root_check = u.mul(Fe.sqrtm1).add(vxx); <span class="tok-comment">// vx^2+u*sqrt(-1)</span>
+</span>
+<span class="line" id="L29">        <span class="tok-kw">const</span> has_m_root = m_root_check.isZero();</span>
+<span class="line" id="L30">        <span class="tok-kw">const</span> has_p_root = p_root_check.isZero();</span>
+<span class="line" id="L31">        <span class="tok-kw">const</span> has_f_root = f_root_check.isZero();</span>
+<span class="line" id="L32">        <span class="tok-kw">const</span> x_sqrtm1 = x.mul(Fe.sqrtm1); <span class="tok-comment">// x*sqrt(-1)</span>
+</span>
+<span class="line" id="L33">        x.cMov(x_sqrtm1, <span class="tok-builtin">@intFromBool</span>(has_p_root) | <span class="tok-builtin">@intFromBool</span>(has_f_root));</span>
+<span class="line" id="L34">        <span class="tok-kw">return</span> .{ .ratio_is_square = <span class="tok-builtin">@intFromBool</span>(has_m_root) | <span class="tok-builtin">@intFromBool</span>(has_p_root), .root = x.abs() };</span>
+<span class="line" id="L35">    }</span>
+<span class="line" id="L36"></span>
+<span class="line" id="L37">    <span class="tok-kw">fn</span> <span class="tok-fn">rejectNonCanonical</span>(s: [encoded_length]<span class="tok-type">u8</span>) NonCanonicalError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L38">        <span class="tok-kw">if</span> ((s[<span class="tok-number">0</span>] &amp; <span class="tok-number">1</span>) != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L39">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NonCanonical;</span>
+<span class="line" id="L40">        }</span>
+<span class="line" id="L41">        <span class="tok-kw">try</span> Fe.rejectNonCanonical(s, <span class="tok-null">false</span>);</span>
+<span class="line" id="L42">    }</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44">    <span class="tok-comment">/// Reject the neutral element.</span></span>
+<span class="line" id="L45">    <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">rejectIdentity</span>(p: Ristretto255) IdentityElementError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L46">        <span class="tok-kw">return</span> p.p.rejectIdentity();</span>
+<span class="line" id="L47">    }</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-comment">/// The base point (Ristretto is a curve in desguise).</span></span>
+<span class="line" id="L50">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> basePoint = Ristretto255{ .p = Curve.basePoint };</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52">    <span class="tok-comment">/// Decode a Ristretto255 representative.</span></span>
+<span class="line" id="L53">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(s: [encoded_length]<span class="tok-type">u8</span>) (NonCanonicalError || EncodingError)!Ristretto255 {</span>
+<span class="line" id="L54">        <span class="tok-kw">try</span> rejectNonCanonical(s);</span>
+<span class="line" id="L55">        <span class="tok-kw">const</span> s_ = Fe.fromBytes(s);</span>
+<span class="line" id="L56">        <span class="tok-kw">const</span> ss = s_.sq(); <span class="tok-comment">// s^2</span>
+</span>
+<span class="line" id="L57">        <span class="tok-kw">const</span> u1_ = Fe.one.sub(ss); <span class="tok-comment">// (1-s^2)</span>
+</span>
+<span class="line" id="L58">        <span class="tok-kw">const</span> u1u1 = u1_.sq(); <span class="tok-comment">// (1-s^2)^2</span>
+</span>
+<span class="line" id="L59">        <span class="tok-kw">const</span> u2_ = Fe.one.add(ss); <span class="tok-comment">// (1+s^2)</span>
+</span>
+<span class="line" id="L60">        <span class="tok-kw">const</span> u2u2 = u2_.sq(); <span class="tok-comment">// (1+s^2)^2</span>
+</span>
+<span class="line" id="L61">        <span class="tok-kw">const</span> v = Fe.edwards25519d.mul(u1u1).neg().sub(u2u2); <span class="tok-comment">// -(d*u1^2)-u2^2</span>
+</span>
+<span class="line" id="L62">        <span class="tok-kw">const</span> v_u2u2 = v.mul(u2u2); <span class="tok-comment">// v*u2^2</span>
+</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">        <span class="tok-kw">const</span> inv_sqrt = sqrtRatioM1(Fe.one, v_u2u2);</span>
+<span class="line" id="L65">        <span class="tok-kw">var</span> x = inv_sqrt.root.mul(u2_);</span>
+<span class="line" id="L66">        <span class="tok-kw">const</span> y = inv_sqrt.root.mul(x).mul(v).mul(u1_);</span>
+<span class="line" id="L67">        x = x.mul(s_);</span>
+<span class="line" id="L68">        x = x.add(x).abs();</span>
+<span class="line" id="L69">        <span class="tok-kw">const</span> t = x.mul(y);</span>
+<span class="line" id="L70">        <span class="tok-kw">if</span> ((<span class="tok-number">1</span> - inv_sqrt.ratio_is_square) | <span class="tok-builtin">@intFromBool</span>(t.isNegative()) | <span class="tok-builtin">@intFromBool</span>(y.isZero()) != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L71">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidEncoding;</span>
+<span class="line" id="L72">        }</span>
+<span class="line" id="L73">        <span class="tok-kw">const</span> p: Curve = .{</span>
+<span class="line" id="L74">            .x = x,</span>
+<span class="line" id="L75">            .y = y,</span>
+<span class="line" id="L76">            .z = Fe.one,</span>
+<span class="line" id="L77">            .t = t,</span>
+<span class="line" id="L78">        };</span>
+<span class="line" id="L79">        <span class="tok-kw">return</span> Ristretto255{ .p = p };</span>
+<span class="line" id="L80">    }</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">    <span class="tok-comment">/// Encode to a Ristretto255 representative.</span></span>
+<span class="line" id="L83">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toBytes</span>(e: Ristretto255) [encoded_length]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L84">        <span class="tok-kw">const</span> p = &amp;e.p;</span>
+<span class="line" id="L85">        <span class="tok-kw">var</span> u1_ = p.z.add(p.y); <span class="tok-comment">// Z+Y</span>
+</span>
+<span class="line" id="L86">        <span class="tok-kw">const</span> zmy = p.z.sub(p.y); <span class="tok-comment">// Z-Y</span>
+</span>
+<span class="line" id="L87">        u1_ = u1_.mul(zmy); <span class="tok-comment">// (Z+Y)*(Z-Y)</span>
+</span>
+<span class="line" id="L88">        <span class="tok-kw">const</span> u2_ = p.x.mul(p.y); <span class="tok-comment">// X*Y</span>
+</span>
+<span class="line" id="L89">        <span class="tok-kw">const</span> u1_u2u2 = u2_.sq().mul(u1_); <span class="tok-comment">// u1*u2^2</span>
+</span>
+<span class="line" id="L90">        <span class="tok-kw">const</span> inv_sqrt = sqrtRatioM1(Fe.one, u1_u2u2);</span>
+<span class="line" id="L91">        <span class="tok-kw">const</span> den1 = inv_sqrt.root.mul(u1_);</span>
+<span class="line" id="L92">        <span class="tok-kw">const</span> den2 = inv_sqrt.root.mul(u2_);</span>
+<span class="line" id="L93">        <span class="tok-kw">const</span> z_inv = den1.mul(den2).mul(p.t); <span class="tok-comment">// den1*den2*T</span>
+</span>
+<span class="line" id="L94">        <span class="tok-kw">const</span> ix = p.x.mul(Fe.sqrtm1); <span class="tok-comment">// X*sqrt(-1)</span>
+</span>
+<span class="line" id="L95">        <span class="tok-kw">const</span> iy = p.y.mul(Fe.sqrtm1); <span class="tok-comment">// Y*sqrt(-1)</span>
+</span>
+<span class="line" id="L96">        <span class="tok-kw">const</span> eden = den1.mul(Fe.edwards25519sqrtamd); <span class="tok-comment">// den1/sqrt(a-d)</span>
+</span>
+<span class="line" id="L97">        <span class="tok-kw">const</span> t_z_inv = p.t.mul(z_inv); <span class="tok-comment">// T*z_inv</span>
+</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">        <span class="tok-kw">const</span> rotate = <span class="tok-builtin">@intFromBool</span>(t_z_inv.isNegative());</span>
+<span class="line" id="L100">        <span class="tok-kw">var</span> x = p.x;</span>
+<span class="line" id="L101">        <span class="tok-kw">var</span> y = p.y;</span>
+<span class="line" id="L102">        <span class="tok-kw">var</span> den_inv = den2;</span>
+<span class="line" id="L103">        x.cMov(iy, rotate);</span>
+<span class="line" id="L104">        y.cMov(ix, rotate);</span>
+<span class="line" id="L105">        den_inv.cMov(eden, rotate);</span>
+<span class="line" id="L106"></span>
+<span class="line" id="L107">        <span class="tok-kw">const</span> x_z_inv = x.mul(z_inv);</span>
+<span class="line" id="L108">        <span class="tok-kw">const</span> yneg = y.neg();</span>
+<span class="line" id="L109">        y.cMov(yneg, <span class="tok-builtin">@intFromBool</span>(x_z_inv.isNegative()));</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111">        <span class="tok-kw">return</span> p.z.sub(y).mul(den_inv).abs().toBytes();</span>
+<span class="line" id="L112">    }</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">    <span class="tok-kw">fn</span> <span class="tok-fn">elligator</span>(t: Fe) Curve {</span>
+<span class="line" id="L115">        <span class="tok-kw">const</span> r = t.sq().mul(Fe.sqrtm1); <span class="tok-comment">// sqrt(-1)*t^2</span>
+</span>
+<span class="line" id="L116">        <span class="tok-kw">const</span> u = r.add(Fe.one).mul(Fe.edwards25519eonemsqd); <span class="tok-comment">// (r+1)*(1-d^2)</span>
+</span>
+<span class="line" id="L117">        <span class="tok-kw">var</span> c = <span class="tok-kw">comptime</span> Fe.one.neg(); <span class="tok-comment">// -1</span>
+</span>
+<span class="line" id="L118">        <span class="tok-kw">const</span> v = c.sub(r.mul(Fe.edwards25519d)).mul(r.add(Fe.edwards25519d)); <span class="tok-comment">// (c-r*d)*(r+d)</span>
+</span>
+<span class="line" id="L119">        <span class="tok-kw">const</span> ratio_sqrt = sqrtRatioM1(u, v);</span>
+<span class="line" id="L120">        <span class="tok-kw">const</span> wasnt_square = <span class="tok-number">1</span> - ratio_sqrt.ratio_is_square;</span>
+<span class="line" id="L121">        <span class="tok-kw">var</span> s = ratio_sqrt.root;</span>
+<span class="line" id="L122">        <span class="tok-kw">const</span> s_prime = s.mul(t).abs().neg(); <span class="tok-comment">// -|s*t|</span>
+</span>
+<span class="line" id="L123">        s.cMov(s_prime, wasnt_square);</span>
+<span class="line" id="L124">        c.cMov(r, wasnt_square);</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">        <span class="tok-kw">const</span> n = r.sub(Fe.one).mul(c).mul(Fe.edwards25519sqdmone).sub(v); <span class="tok-comment">// c*(r-1)*(d-1)^2-v</span>
+</span>
+<span class="line" id="L127">        <span class="tok-kw">const</span> w0 = s.add(s).mul(v); <span class="tok-comment">// 2s*v</span>
+</span>
+<span class="line" id="L128">        <span class="tok-kw">const</span> w1 = n.mul(Fe.edwards25519sqrtadm1); <span class="tok-comment">// n*sqrt(ad-1)</span>
+</span>
+<span class="line" id="L129">        <span class="tok-kw">const</span> ss = s.sq(); <span class="tok-comment">// s^2</span>
+</span>
+<span class="line" id="L130">        <span class="tok-kw">const</span> w2 = Fe.one.sub(ss); <span class="tok-comment">// 1-s^2</span>
+</span>
+<span class="line" id="L131">        <span class="tok-kw">const</span> w3 = Fe.one.add(ss); <span class="tok-comment">// 1+s^2</span>
+</span>
+<span class="line" id="L132"></span>
+<span class="line" id="L133">        <span class="tok-kw">return</span> .{ .x = w0.mul(w3), .y = w2.mul(w1), .z = w1.mul(w3), .t = w0.mul(w2) };</span>
+<span class="line" id="L134">    }</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">    <span class="tok-comment">/// Map a 64-bit string into a Ristretto255 group element</span></span>
+<span class="line" id="L137">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromUniform</span>(h: [<span class="tok-number">64</span>]<span class="tok-type">u8</span>) Ristretto255 {</span>
+<span class="line" id="L138">        <span class="tok-kw">const</span> p0 = elligator(Fe.fromBytes(h[<span class="tok-number">0</span>..<span class="tok-number">32</span>].*));</span>
+<span class="line" id="L139">        <span class="tok-kw">const</span> p1 = elligator(Fe.fromBytes(h[<span class="tok-number">32</span>..<span class="tok-number">64</span>].*));</span>
+<span class="line" id="L140">        <span class="tok-kw">return</span> Ristretto255{ .p = p0.add(p1) };</span>
+<span class="line" id="L141">    }</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-comment">/// Double a Ristretto255 element.</span></span>
+<span class="line" id="L144">    <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">dbl</span>(p: Ristretto255) Ristretto255 {</span>
+<span class="line" id="L145">        <span class="tok-kw">return</span> .{ .p = p.p.dbl() };</span>
+<span class="line" id="L146">    }</span>
+<span class="line" id="L147"></span>
+<span class="line" id="L148">    <span class="tok-comment">/// Add two Ristretto255 elements.</span></span>
+<span class="line" id="L149">    <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(p: Ristretto255, q: Ristretto255) Ristretto255 {</span>
+<span class="line" id="L150">        <span class="tok-kw">return</span> .{ .p = p.p.add(q.p) };</span>
+<span class="line" id="L151">    }</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153">    <span class="tok-comment">/// Multiply a Ristretto255 element with a scalar.</span></span>
+<span class="line" id="L154">    <span class="tok-comment">/// Return error.WeakPublicKey if the resulting element is</span></span>
+<span class="line" id="L155">    <span class="tok-comment">/// the identity element.</span></span>
+<span class="line" id="L156">    <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">mul</span>(p: Ristretto255, s: [encoded_length]<span class="tok-type">u8</span>) (IdentityElementError || WeakPublicKeyError)!Ristretto255 {</span>
+<span class="line" id="L157">        <span class="tok-kw">return</span> Ristretto255{ .p = <span class="tok-kw">try</span> p.p.mul(s) };</span>
+<span class="line" id="L158">    }</span>
+<span class="line" id="L159"></span>
+<span class="line" id="L160">    <span class="tok-comment">/// Return true if two Ristretto255 elements are equivalent</span></span>
+<span class="line" id="L161">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">equivalent</span>(p: Ristretto255, q: Ristretto255) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L162">        <span class="tok-kw">const</span> p_ = &amp;p.p;</span>
+<span class="line" id="L163">        <span class="tok-kw">const</span> q_ = &amp;q.p;</span>
+<span class="line" id="L164">        <span class="tok-kw">const</span> a = p_.x.mul(q_.y).equivalent(p_.y.mul(q_.x));</span>
+<span class="line" id="L165">        <span class="tok-kw">const</span> b = p_.y.mul(q_.y).equivalent(p_.x.mul(q_.x));</span>
+<span class="line" id="L166">        <span class="tok-kw">return</span> (<span class="tok-builtin">@intFromBool</span>(a) | <span class="tok-builtin">@intFromBool</span>(b)) != <span class="tok-number">0</span>;</span>
+<span class="line" id="L167">    }</span>
+<span class="line" id="L168">};</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170"><span class="tok-kw">test</span> <span class="tok-str">&quot;ristretto255&quot;</span> {</span>
+<span class="line" id="L171">    <span class="tok-kw">const</span> p = Ristretto255.basePoint;</span>
+<span class="line" id="L172">    <span class="tok-kw">var</span> buf: [<span class="tok-number">256</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L173">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-kw">try</span> std.fmt.bufPrint(&amp;buf, <span class="tok-str">&quot;{s}&quot;</span>, .{std.fmt.fmtSliceHexUpper(&amp;p.toBytes())}), <span class="tok-str">&quot;E2F2AE0A6ABC4E71A884A961C500515F58E30B6AA582DD8DB6A65945E08D2D76&quot;</span>);</span>
+<span class="line" id="L174"></span>
+<span class="line" id="L175">    <span class="tok-kw">var</span> r: [Ristretto255.encoded_length]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L176">    _ = <span class="tok-kw">try</span> fmt.hexToBytes(r[<span class="tok-number">0</span>..], <span class="tok-str">&quot;6a493210f7499cd17fecb510ae0cea23a110e8d5b901f8acadd3095c73a3b919&quot;</span>);</span>
+<span class="line" id="L177">    <span class="tok-kw">var</span> q = <span class="tok-kw">try</span> Ristretto255.fromBytes(r);</span>
+<span class="line" id="L178">    q = q.dbl().add(p);</span>
+<span class="line" id="L179">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-kw">try</span> std.fmt.bufPrint(&amp;buf, <span class="tok-str">&quot;{s}&quot;</span>, .{std.fmt.fmtSliceHexUpper(&amp;q.toBytes())}), <span class="tok-str">&quot;E882B131016B52C1D3337080187CF768423EFCCBB517BB495AB812C4160FF44E&quot;</span>);</span>
+<span class="line" id="L180"></span>
+<span class="line" id="L181">    <span class="tok-kw">const</span> s = [_]<span class="tok-type">u8</span>{<span class="tok-number">15</span>} ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-number">31</span>;</span>
+<span class="line" id="L182">    <span class="tok-kw">const</span> w = <span class="tok-kw">try</span> p.mul(s);</span>
+<span class="line" id="L183">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-kw">try</span> std.fmt.bufPrint(&amp;buf, <span class="tok-str">&quot;{s}&quot;</span>, .{std.fmt.fmtSliceHexUpper(&amp;w.toBytes())}), <span class="tok-str">&quot;E0C418F7C8D9C4CDD7395B93EA124F3AD99021BB681DFC3302A9D99A2E53E64E&quot;</span>);</span>
+<span class="line" id="L184"></span>
+<span class="line" id="L185">    <span class="tok-kw">try</span> std.testing.expect(p.dbl().dbl().dbl().dbl().equivalent(w.add(p)));</span>
+<span class="line" id="L186"></span>
+<span class="line" id="L187">    <span class="tok-kw">const</span> h = [_]<span class="tok-type">u8</span>{<span class="tok-number">69</span>} ** <span class="tok-number">32</span> ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">42</span>} ** <span class="tok-number">32</span>;</span>
+<span class="line" id="L188">    <span class="tok-kw">const</span> ph = Ristretto255.fromUniform(h);</span>
+<span class="line" id="L189">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-kw">try</span> std.fmt.bufPrint(&amp;buf, <span class="tok-str">&quot;{s}&quot;</span>, .{std.fmt.fmtSliceHexUpper(&amp;ph.toBytes())}), <span class="tok-str">&quot;DCCA54E037A4311EFBEEF413ACD21D35276518970B7A61DC88F8587B493D5E19&quot;</span>);</span>
+<span class="line" id="L190">}</span>
+<span class="line" id="L191"></span>
+</code></pre></body>
+</html>
