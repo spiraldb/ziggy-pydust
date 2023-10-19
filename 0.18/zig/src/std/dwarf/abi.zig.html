@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>dwarf/abi.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> os = std.os;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">supportsUnwinding</span>(target: std.Target) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L7">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (target.cpu.arch) {</span>
+<span class="line" id="L8">        .x86 =&gt; <span class="tok-kw">switch</span> (target.os.tag) {</span>
+<span class="line" id="L9">            .linux, .netbsd, .solaris =&gt; <span class="tok-null">true</span>,</span>
+<span class="line" id="L10">            <span class="tok-kw">else</span> =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L11">        },</span>
+<span class="line" id="L12">        .x86_64 =&gt; <span class="tok-kw">switch</span> (target.os.tag) {</span>
+<span class="line" id="L13">            .linux, .netbsd, .freebsd, .openbsd, .macos, .solaris =&gt; <span class="tok-null">true</span>,</span>
+<span class="line" id="L14">            <span class="tok-kw">else</span> =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L15">        },</span>
+<span class="line" id="L16">        .arm =&gt; <span class="tok-kw">switch</span> (target.os.tag) {</span>
+<span class="line" id="L17">            .linux =&gt; <span class="tok-null">true</span>,</span>
+<span class="line" id="L18">            <span class="tok-kw">else</span> =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L19">        },</span>
+<span class="line" id="L20">        .aarch64 =&gt; <span class="tok-kw">switch</span> (target.os.tag) {</span>
+<span class="line" id="L21">            .linux, .netbsd, .freebsd, .macos =&gt; <span class="tok-null">true</span>,</span>
+<span class="line" id="L22">            <span class="tok-kw">else</span> =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L23">        },</span>
+<span class="line" id="L24">        <span class="tok-kw">else</span> =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L25">    };</span>
+<span class="line" id="L26">}</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">ipRegNum</span>() <span class="tok-type">u8</span> {</span>
+<span class="line" id="L29">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L30">        .x86 =&gt; <span class="tok-number">8</span>,</span>
+<span class="line" id="L31">        .x86_64 =&gt; <span class="tok-number">16</span>,</span>
+<span class="line" id="L32">        .arm =&gt; <span class="tok-number">15</span>,</span>
+<span class="line" id="L33">        .aarch64 =&gt; <span class="tok-number">32</span>,</span>
+<span class="line" id="L34">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L35">    };</span>
+<span class="line" id="L36">}</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fpRegNum</span>(reg_context: RegisterContext) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L39">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L40">        <span class="tok-comment">// GCC on OS X historicaly did the opposite of ELF for these registers (only in .eh_frame), and that is now the convention for MachO</span>
+</span>
+<span class="line" id="L41">        .x86 =&gt; <span class="tok-kw">if</span> (reg_context.eh_frame <span class="tok-kw">and</span> reg_context.is_macho) <span class="tok-number">4</span> <span class="tok-kw">else</span> <span class="tok-number">5</span>,</span>
+<span class="line" id="L42">        .x86_64 =&gt; <span class="tok-number">6</span>,</span>
+<span class="line" id="L43">        .arm =&gt; <span class="tok-number">11</span>,</span>
+<span class="line" id="L44">        .aarch64 =&gt; <span class="tok-number">29</span>,</span>
+<span class="line" id="L45">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L46">    };</span>
+<span class="line" id="L47">}</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">spRegNum</span>(reg_context: RegisterContext) <span class="tok-type">u8</span> {</span>
+<span class="line" id="L50">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L51">        .x86 =&gt; <span class="tok-kw">if</span> (reg_context.eh_frame <span class="tok-kw">and</span> reg_context.is_macho) <span class="tok-number">5</span> <span class="tok-kw">else</span> <span class="tok-number">4</span>,</span>
+<span class="line" id="L52">        .x86_64 =&gt; <span class="tok-number">7</span>,</span>
+<span class="line" id="L53">        .arm =&gt; <span class="tok-number">13</span>,</span>
+<span class="line" id="L54">        .aarch64 =&gt; <span class="tok-number">31</span>,</span>
+<span class="line" id="L55">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L56">    };</span>
+<span class="line" id="L57">}</span>
+<span class="line" id="L58"></span>
+<span class="line" id="L59"><span class="tok-comment">/// Some platforms use pointer authentication - the upper bits of instruction pointers contain a signature.</span></span>
+<span class="line" id="L60"><span class="tok-comment">/// This function clears these signature bits to make the pointer usable.</span></span>
+<span class="line" id="L61"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">stripInstructionPtrAuthCode</span>(ptr: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L62">    <span class="tok-kw">if</span> (builtin.cpu.arch == .aarch64) {</span>
+<span class="line" id="L63">        <span class="tok-comment">// `hint 0x07` maps to `xpaclri` (or `nop` if the hardware doesn't support it)</span>
+</span>
+<span class="line" id="L64">        <span class="tok-comment">// The save / restore is because `xpaclri` operates on x30 (LR)</span>
+</span>
+<span class="line" id="L65">        <span class="tok-kw">return</span> <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L66">            <span class="tok-str">\\mov x16, x30</span></span>
+
+<span class="line" id="L67">            <span class="tok-str">\\mov x30, x15</span></span>
+
+<span class="line" id="L68">            <span class="tok-str">\\hint 0x07</span></span>
+
+<span class="line" id="L69">            <span class="tok-str">\\mov x15, x30</span></span>
+
+<span class="line" id="L70">            <span class="tok-str">\\mov x30, x16</span></span>
+
+<span class="line" id="L71">            : [ret] <span class="tok-str">&quot;={x15}&quot;</span> (-&gt; <span class="tok-type">usize</span>),</span>
+<span class="line" id="L72">            : [ptr] <span class="tok-str">&quot;{x15}&quot;</span> (ptr),</span>
+<span class="line" id="L73">            : <span class="tok-str">&quot;x16&quot;</span></span>
+<span class="line" id="L74">        );</span>
+<span class="line" id="L75">    }</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77">    <span class="tok-kw">return</span> ptr;</span>
+<span class="line" id="L78">}</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RegisterContext = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L81">    eh_frame: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L82">    is_macho: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L83">};</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> AbiError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L86">    InvalidRegister,</span>
+<span class="line" id="L87">    UnimplementedArch,</span>
+<span class="line" id="L88">    UnimplementedOs,</span>
+<span class="line" id="L89">    RegisterContextRequired,</span>
+<span class="line" id="L90">    ThreadContextNotSupported,</span>
+<span class="line" id="L91">};</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93"><span class="tok-kw">fn</span> <span class="tok-fn">RegValueReturnType</span>(<span class="tok-kw">comptime</span> ContextPtrType: <span class="tok-type">type</span>, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L94">    <span class="tok-kw">const</span> reg_bytes_type = <span class="tok-kw">comptime</span> RegBytesReturnType(ContextPtrType);</span>
+<span class="line" id="L95">    <span class="tok-kw">const</span> info = <span class="tok-builtin">@typeInfo</span>(reg_bytes_type).Pointer;</span>
+<span class="line" id="L96">    <span class="tok-kw">return</span> <span class="tok-builtin">@Type</span>(.{</span>
+<span class="line" id="L97">        .Pointer = .{</span>
+<span class="line" id="L98">            .size = .One,</span>
+<span class="line" id="L99">            .is_const = info.is_const,</span>
+<span class="line" id="L100">            .is_volatile = info.is_volatile,</span>
+<span class="line" id="L101">            .is_allowzero = info.is_allowzero,</span>
+<span class="line" id="L102">            .alignment = info.alignment,</span>
+<span class="line" id="L103">            .address_space = info.address_space,</span>
+<span class="line" id="L104">            .child = T,</span>
+<span class="line" id="L105">            .sentinel = <span class="tok-null">null</span>,</span>
+<span class="line" id="L106">        },</span>
+<span class="line" id="L107">    });</span>
+<span class="line" id="L108">}</span>
+<span class="line" id="L109"></span>
+<span class="line" id="L110"><span class="tok-comment">/// Returns a pointer to a register stored in a ThreadContext, preserving the pointer attributes of the context.</span></span>
+<span class="line" id="L111"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">regValueNative</span>(</span>
+<span class="line" id="L112">    <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>,</span>
+<span class="line" id="L113">    thread_context_ptr: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L114">    reg_number: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L115">    reg_context: ?RegisterContext,</span>
+<span class="line" id="L116">) !RegValueReturnType(<span class="tok-builtin">@TypeOf</span>(thread_context_ptr), T) {</span>
+<span class="line" id="L117">    <span class="tok-kw">const</span> reg_bytes = <span class="tok-kw">try</span> regBytes(thread_context_ptr, reg_number, reg_context);</span>
+<span class="line" id="L118">    <span class="tok-kw">if</span> (<span class="tok-builtin">@sizeOf</span>(T) != reg_bytes.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.IncompatibleRegisterSize;</span>
+<span class="line" id="L119">    <span class="tok-kw">return</span> mem.bytesAsValue(T, reg_bytes[<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(T)]);</span>
+<span class="line" id="L120">}</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122"><span class="tok-kw">fn</span> <span class="tok-fn">RegBytesReturnType</span>(<span class="tok-kw">comptime</span> ContextPtrType: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L123">    <span class="tok-kw">const</span> info = <span class="tok-builtin">@typeInfo</span>(ContextPtrType);</span>
+<span class="line" id="L124">    <span class="tok-kw">if</span> (info != .Pointer <span class="tok-kw">or</span> info.Pointer.child != std.debug.ThreadContext) {</span>
+<span class="line" id="L125">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Expected a pointer to std.debug.ThreadContext, got &quot;</span> ++ <span class="tok-builtin">@typeName</span>(<span class="tok-builtin">@TypeOf</span>(ContextPtrType)));</span>
+<span class="line" id="L126">    }</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128">    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (info.Pointer.is_const) <span class="tok-kw">return</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span> <span class="tok-kw">else</span> []<span class="tok-type">u8</span>;</span>
+<span class="line" id="L129">}</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131"><span class="tok-comment">/// Returns a slice containing the backing storage for `reg_number`.</span></span>
+<span class="line" id="L132"><span class="tok-comment">///</span></span>
+<span class="line" id="L133"><span class="tok-comment">/// `reg_context` describes in what context the register number is used, as it can have different</span></span>
+<span class="line" id="L134"><span class="tok-comment">/// meanings depending on the DWARF container. It is only required when getting the stack or</span></span>
+<span class="line" id="L135"><span class="tok-comment">/// frame pointer register on some architectures.</span></span>
+<span class="line" id="L136"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">regBytes</span>(</span>
+<span class="line" id="L137">    thread_context_ptr: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L138">    reg_number: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L139">    reg_context: ?RegisterContext,</span>
+<span class="line" id="L140">) AbiError!RegBytesReturnType(<span class="tok-builtin">@TypeOf</span>(thread_context_ptr)) {</span>
+<span class="line" id="L141">    <span class="tok-kw">if</span> (builtin.os.tag == .windows) {</span>
+<span class="line" id="L142">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L143">            .x86 =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L144">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Eax),</span>
+<span class="line" id="L145">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Ecx),</span>
+<span class="line" id="L146">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Edx),</span>
+<span class="line" id="L147">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Ebx),</span>
+<span class="line" id="L148">                <span class="tok-number">4</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Esp),</span>
+<span class="line" id="L149">                <span class="tok-number">5</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Ebp),</span>
+<span class="line" id="L150">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Esi),</span>
+<span class="line" id="L151">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Edi),</span>
+<span class="line" id="L152">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Eip),</span>
+<span class="line" id="L153">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;thread_context_ptr.EFlags),</span>
+<span class="line" id="L154">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;thread_context_ptr.SegCs),</span>
+<span class="line" id="L155">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;thread_context_ptr.SegSs),</span>
+<span class="line" id="L156">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;thread_context_ptr.SegDs),</span>
+<span class="line" id="L157">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;thread_context_ptr.SegEs),</span>
+<span class="line" id="L158">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;thread_context_ptr.SegFs),</span>
+<span class="line" id="L159">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;thread_context_ptr.SegGs),</span>
+<span class="line" id="L160">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L161">            },</span>
+<span class="line" id="L162">            .x86_64 =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L163">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rax),</span>
+<span class="line" id="L164">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rdx),</span>
+<span class="line" id="L165">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rcx),</span>
+<span class="line" id="L166">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rbx),</span>
+<span class="line" id="L167">                <span class="tok-number">4</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rsi),</span>
+<span class="line" id="L168">                <span class="tok-number">5</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rdi),</span>
+<span class="line" id="L169">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rbp),</span>
+<span class="line" id="L170">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rsp),</span>
+<span class="line" id="L171">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R8),</span>
+<span class="line" id="L172">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R9),</span>
+<span class="line" id="L173">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R10),</span>
+<span class="line" id="L174">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R11),</span>
+<span class="line" id="L175">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R12),</span>
+<span class="line" id="L176">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R13),</span>
+<span class="line" id="L177">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R14),</span>
+<span class="line" id="L178">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;thread_context_ptr.R15),</span>
+<span class="line" id="L179">                <span class="tok-number">16</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Rip),</span>
+<span class="line" id="L180">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L181">            },</span>
+<span class="line" id="L182">            .aarch64 =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L183">                <span class="tok-number">0</span>...<span class="tok-number">30</span> =&gt; mem.asBytes(&amp;thread_context_ptr.DUMMYUNIONNAME.X[reg_number]),</span>
+<span class="line" id="L184">                <span class="tok-number">31</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Sp),</span>
+<span class="line" id="L185">                <span class="tok-number">32</span> =&gt; mem.asBytes(&amp;thread_context_ptr.Pc),</span>
+<span class="line" id="L186">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L187">            },</span>
+<span class="line" id="L188">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.UnimplementedArch,</span>
+<span class="line" id="L189">        };</span>
+<span class="line" id="L190">    }</span>
+<span class="line" id="L191"></span>
+<span class="line" id="L192">    <span class="tok-kw">if</span> (!std.debug.have_ucontext) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ThreadContextNotSupported;</span>
+<span class="line" id="L193"></span>
+<span class="line" id="L194">    <span class="tok-kw">const</span> ucontext_ptr = thread_context_ptr;</span>
+<span class="line" id="L195">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L196">        .x86 =&gt; <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L197">            .linux, .netbsd, .solaris =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L198">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EAX]),</span>
+<span class="line" id="L199">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.ECX]),</span>
+<span class="line" id="L200">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EDX]),</span>
+<span class="line" id="L201">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EBX]),</span>
+<span class="line" id="L202">                <span class="tok-number">4</span>...<span class="tok-number">5</span> =&gt; <span class="tok-kw">if</span> (reg_context) |r| bytes: {</span>
+<span class="line" id="L203">                    <span class="tok-kw">if</span> (reg_number == <span class="tok-number">4</span>) {</span>
+<span class="line" id="L204">                        <span class="tok-kw">break</span> :bytes <span class="tok-kw">if</span> (r.eh_frame <span class="tok-kw">and</span> r.is_macho)</span>
+<span class="line" id="L205">                            mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EBP])</span>
+<span class="line" id="L206">                        <span class="tok-kw">else</span></span>
+<span class="line" id="L207">                            mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.ESP]);</span>
+<span class="line" id="L208">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L209">                        <span class="tok-kw">break</span> :bytes <span class="tok-kw">if</span> (r.eh_frame <span class="tok-kw">and</span> r.is_macho)</span>
+<span class="line" id="L210">                            mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.ESP])</span>
+<span class="line" id="L211">                        <span class="tok-kw">else</span></span>
+<span class="line" id="L212">                            mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EBP]);</span>
+<span class="line" id="L213">                    }</span>
+<span class="line" id="L214">                } <span class="tok-kw">else</span> <span class="tok-kw">error</span>.RegisterContextRequired,</span>
+<span class="line" id="L215">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.ESI]),</span>
+<span class="line" id="L216">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EDI]),</span>
+<span class="line" id="L217">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EIP]),</span>
+<span class="line" id="L218">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.EFL]),</span>
+<span class="line" id="L219">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.CS]),</span>
+<span class="line" id="L220">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.SS]),</span>
+<span class="line" id="L221">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.DS]),</span>
+<span class="line" id="L222">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.ES]),</span>
+<span class="line" id="L223">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.FS]),</span>
+<span class="line" id="L224">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.GS]),</span>
+<span class="line" id="L225">                <span class="tok-number">16</span>...<span class="tok-number">23</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister, <span class="tok-comment">// TODO: Support loading ST0-ST7 from mcontext.fpregs</span>
+</span>
+<span class="line" id="L226">                <span class="tok-number">32</span>...<span class="tok-number">39</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister, <span class="tok-comment">// TODO: Support loading XMM0-XMM7 from mcontext.fpregs</span>
+</span>
+<span class="line" id="L227">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L228">            },</span>
+<span class="line" id="L229">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.UnimplementedOs,</span>
+<span class="line" id="L230">        },</span>
+<span class="line" id="L231">        .x86_64 =&gt; <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L232">            .linux, .netbsd, .solaris =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L233">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RAX]),</span>
+<span class="line" id="L234">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RDX]),</span>
+<span class="line" id="L235">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RCX]),</span>
+<span class="line" id="L236">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RBX]),</span>
+<span class="line" id="L237">                <span class="tok-number">4</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RSI]),</span>
+<span class="line" id="L238">                <span class="tok-number">5</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RDI]),</span>
+<span class="line" id="L239">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RBP]),</span>
+<span class="line" id="L240">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RSP]),</span>
+<span class="line" id="L241">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R8]),</span>
+<span class="line" id="L242">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R9]),</span>
+<span class="line" id="L243">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R10]),</span>
+<span class="line" id="L244">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R11]),</span>
+<span class="line" id="L245">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R12]),</span>
+<span class="line" id="L246">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R13]),</span>
+<span class="line" id="L247">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R14]),</span>
+<span class="line" id="L248">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.R15]),</span>
+<span class="line" id="L249">                <span class="tok-number">16</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[os.REG.RIP]),</span>
+<span class="line" id="L250">                <span class="tok-number">17</span>...<span class="tok-number">32</span> =&gt; |i| mem.asBytes(&amp;ucontext_ptr.mcontext.fpregs.xmm[i - <span class="tok-number">17</span>]),</span>
+<span class="line" id="L251">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L252">            },</span>
+<span class="line" id="L253">            .freebsd =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L254">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rax),</span>
+<span class="line" id="L255">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rdx),</span>
+<span class="line" id="L256">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rcx),</span>
+<span class="line" id="L257">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rbx),</span>
+<span class="line" id="L258">                <span class="tok-number">4</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rsi),</span>
+<span class="line" id="L259">                <span class="tok-number">5</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rdi),</span>
+<span class="line" id="L260">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rbp),</span>
+<span class="line" id="L261">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rsp),</span>
+<span class="line" id="L262">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r8),</span>
+<span class="line" id="L263">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r9),</span>
+<span class="line" id="L264">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r10),</span>
+<span class="line" id="L265">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r11),</span>
+<span class="line" id="L266">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r12),</span>
+<span class="line" id="L267">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r13),</span>
+<span class="line" id="L268">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r14),</span>
+<span class="line" id="L269">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.r15),</span>
+<span class="line" id="L270">                <span class="tok-number">16</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.rip),</span>
+<span class="line" id="L271">                <span class="tok-comment">// TODO: Extract xmm state from mcontext.fpstate?</span>
+</span>
+<span class="line" id="L272">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L273">            },</span>
+<span class="line" id="L274">            .openbsd =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L275">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rax),</span>
+<span class="line" id="L276">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rdx),</span>
+<span class="line" id="L277">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rcx),</span>
+<span class="line" id="L278">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rbx),</span>
+<span class="line" id="L279">                <span class="tok-number">4</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rsi),</span>
+<span class="line" id="L280">                <span class="tok-number">5</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rdi),</span>
+<span class="line" id="L281">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rbp),</span>
+<span class="line" id="L282">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rsp),</span>
+<span class="line" id="L283">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r8),</span>
+<span class="line" id="L284">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r9),</span>
+<span class="line" id="L285">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r10),</span>
+<span class="line" id="L286">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r11),</span>
+<span class="line" id="L287">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r12),</span>
+<span class="line" id="L288">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r13),</span>
+<span class="line" id="L289">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r14),</span>
+<span class="line" id="L290">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_r15),</span>
+<span class="line" id="L291">                <span class="tok-number">16</span> =&gt; mem.asBytes(&amp;ucontext_ptr.sc_rip),</span>
+<span class="line" id="L292">                <span class="tok-comment">// TODO: Extract xmm state from sc_fpstate?</span>
+</span>
+<span class="line" id="L293">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L294">            },</span>
+<span class="line" id="L295">            .macos =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L296">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rax),</span>
+<span class="line" id="L297">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rdx),</span>
+<span class="line" id="L298">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rcx),</span>
+<span class="line" id="L299">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rbx),</span>
+<span class="line" id="L300">                <span class="tok-number">4</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rsi),</span>
+<span class="line" id="L301">                <span class="tok-number">5</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rdi),</span>
+<span class="line" id="L302">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rbp),</span>
+<span class="line" id="L303">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rsp),</span>
+<span class="line" id="L304">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r8),</span>
+<span class="line" id="L305">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r9),</span>
+<span class="line" id="L306">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r10),</span>
+<span class="line" id="L307">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r11),</span>
+<span class="line" id="L308">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r12),</span>
+<span class="line" id="L309">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r13),</span>
+<span class="line" id="L310">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r14),</span>
+<span class="line" id="L311">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.r15),</span>
+<span class="line" id="L312">                <span class="tok-number">16</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.rip),</span>
+<span class="line" id="L313">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L314">            },</span>
+<span class="line" id="L315">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.UnimplementedOs,</span>
+<span class="line" id="L316">        },</span>
+<span class="line" id="L317">        .arm =&gt; <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L318">            .linux =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L319">                <span class="tok-number">0</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r0),</span>
+<span class="line" id="L320">                <span class="tok-number">1</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r1),</span>
+<span class="line" id="L321">                <span class="tok-number">2</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r2),</span>
+<span class="line" id="L322">                <span class="tok-number">3</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r3),</span>
+<span class="line" id="L323">                <span class="tok-number">4</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r4),</span>
+<span class="line" id="L324">                <span class="tok-number">5</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r5),</span>
+<span class="line" id="L325">                <span class="tok-number">6</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r6),</span>
+<span class="line" id="L326">                <span class="tok-number">7</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r7),</span>
+<span class="line" id="L327">                <span class="tok-number">8</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r8),</span>
+<span class="line" id="L328">                <span class="tok-number">9</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r9),</span>
+<span class="line" id="L329">                <span class="tok-number">10</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_r10),</span>
+<span class="line" id="L330">                <span class="tok-number">11</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_fp),</span>
+<span class="line" id="L331">                <span class="tok-number">12</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_ip),</span>
+<span class="line" id="L332">                <span class="tok-number">13</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_sp),</span>
+<span class="line" id="L333">                <span class="tok-number">14</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_lr),</span>
+<span class="line" id="L334">                <span class="tok-number">15</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.arm_pc),</span>
+<span class="line" id="L335">                <span class="tok-comment">// CPSR is not allocated a register number (See: https://github.com/ARM-software/abi-aa/blob/main/aadwarf32/aadwarf32.rst, Section 4.1)</span>
+</span>
+<span class="line" id="L336">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L337">            },</span>
+<span class="line" id="L338">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.UnimplementedOs,</span>
+<span class="line" id="L339">        },</span>
+<span class="line" id="L340">        .aarch64 =&gt; <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L341">            .macos =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L342">                <span class="tok-number">0</span>...<span class="tok-number">28</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.regs[reg_number]),</span>
+<span class="line" id="L343">                <span class="tok-number">29</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.fp),</span>
+<span class="line" id="L344">                <span class="tok-number">30</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.lr),</span>
+<span class="line" id="L345">                <span class="tok-number">31</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.sp),</span>
+<span class="line" id="L346">                <span class="tok-number">32</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ss.pc),</span>
+<span class="line" id="L347"></span>
+<span class="line" id="L348">                <span class="tok-comment">// TODO: Find storage for this state</span>
+</span>
+<span class="line" id="L349">                <span class="tok-comment">//34 =&gt; mem.asBytes(&amp;ucontext_ptr.ra_sign_state),</span>
+</span>
+<span class="line" id="L350"></span>
+<span class="line" id="L351">                <span class="tok-comment">// V0-V31</span>
+</span>
+<span class="line" id="L352">                <span class="tok-number">64</span>...<span class="tok-number">95</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.ns.q[reg_number - <span class="tok-number">64</span>]),</span>
+<span class="line" id="L353">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L354">            },</span>
+<span class="line" id="L355">            .netbsd =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L356">                <span class="tok-number">0</span>...<span class="tok-number">34</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gregs[reg_number]),</span>
+<span class="line" id="L357">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L358">            },</span>
+<span class="line" id="L359">            .freebsd =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L360">                <span class="tok-number">0</span>...<span class="tok-number">29</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gpregs.x[reg_number]),</span>
+<span class="line" id="L361">                <span class="tok-number">30</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gpregs.lr),</span>
+<span class="line" id="L362">                <span class="tok-number">31</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gpregs.sp),</span>
+<span class="line" id="L363"></span>
+<span class="line" id="L364">                <span class="tok-comment">// TODO: This seems wrong, but it was in the previous debug.zig code for mapping PC, check this</span>
+</span>
+<span class="line" id="L365">                <span class="tok-number">32</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.gpregs.elr),</span>
+<span class="line" id="L366"></span>
+<span class="line" id="L367">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L368">            },</span>
+<span class="line" id="L369">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">switch</span> (reg_number) {</span>
+<span class="line" id="L370">                <span class="tok-number">0</span>...<span class="tok-number">30</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.regs[reg_number]),</span>
+<span class="line" id="L371">                <span class="tok-number">31</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.sp),</span>
+<span class="line" id="L372">                <span class="tok-number">32</span> =&gt; mem.asBytes(&amp;ucontext_ptr.mcontext.pc),</span>
+<span class="line" id="L373">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.InvalidRegister,</span>
+<span class="line" id="L374">            },</span>
+<span class="line" id="L375">        },</span>
+<span class="line" id="L376">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">error</span>.UnimplementedArch,</span>
+<span class="line" id="L377">    };</span>
+<span class="line" id="L378">}</span>
+<span class="line" id="L379"></span>
+<span class="line" id="L380"><span class="tok-comment">/// Returns the ABI-defined default value this register has in the unwinding table</span></span>
+<span class="line" id="L381"><span class="tok-comment">/// before running any of the CIE instructions. The DWARF spec defines these as having</span></span>
+<span class="line" id="L382"><span class="tok-comment">/// the .undefined rule by default, but allows ABI authors to override that.</span></span>
+<span class="line" id="L383"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getRegDefaultValue</span>(reg_number: <span class="tok-type">u8</span>, context: *std.dwarf.UnwindContext, out: []<span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L384">    <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L385">        .aarch64 =&gt; {</span>
+<span class="line" id="L386">            <span class="tok-comment">// Callee-saved registers are initialized as if they had the .same_value rule</span>
+</span>
+<span class="line" id="L387">            <span class="tok-kw">if</span> (reg_number &gt;= <span class="tok-number">19</span> <span class="tok-kw">and</span> reg_number &lt;= <span class="tok-number">28</span>) {</span>
+<span class="line" id="L388">                <span class="tok-kw">const</span> src = <span class="tok-kw">try</span> regBytes(context.thread_context, reg_number, context.reg_context);</span>
+<span class="line" id="L389">                <span class="tok-kw">if</span> (src.len != out.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.RegisterSizeMismatch;</span>
+<span class="line" id="L390">                <span class="tok-builtin">@memcpy</span>(out, src);</span>
+<span class="line" id="L391">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L392">            }</span>
+<span class="line" id="L393">        },</span>
+<span class="line" id="L394">        <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L395">    }</span>
+<span class="line" id="L396"></span>
+<span class="line" id="L397">    <span class="tok-builtin">@memset</span>(out, <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L398">}</span>
+<span class="line" id="L399"></span>
+</code></pre></body>
+</html>

@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/ghash_polyval.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> utils = std.crypto.utils;</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-kw">const</span> Precomp = <span class="tok-type">u128</span>;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-comment">/// GHASH is a universal hash function that uses multiplication by a fixed</span></span>
+<span class="line" id="L11"><span class="tok-comment">/// parameter within a Galois field.</span></span>
+<span class="line" id="L12"><span class="tok-comment">///</span></span>
+<span class="line" id="L13"><span class="tok-comment">/// It is not a general purpose hash function - The key must be secret, unpredictable and never reused.</span></span>
+<span class="line" id="L14"><span class="tok-comment">///</span></span>
+<span class="line" id="L15"><span class="tok-comment">/// GHASH is typically used to compute the authentication tag in the AES-GCM construction.</span></span>
+<span class="line" id="L16"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Ghash = Hash(.Big, <span class="tok-null">true</span>);</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-comment">/// POLYVAL is a universal hash function that uses multiplication by a fixed</span></span>
+<span class="line" id="L19"><span class="tok-comment">/// parameter within a Galois field.</span></span>
+<span class="line" id="L20"><span class="tok-comment">///</span></span>
+<span class="line" id="L21"><span class="tok-comment">/// It is not a general purpose hash function - The key must be secret, unpredictable and never reused.</span></span>
+<span class="line" id="L22"><span class="tok-comment">///</span></span>
+<span class="line" id="L23"><span class="tok-comment">/// POLYVAL is typically used to compute the authentication tag in the AES-GCM-SIV construction.</span></span>
+<span class="line" id="L24"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Polyval = Hash(.Little, <span class="tok-null">false</span>);</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26"><span class="tok-kw">fn</span> <span class="tok-fn">Hash</span>(<span class="tok-kw">comptime</span> endian: std.builtin.Endian, <span class="tok-kw">comptime</span> shift_key: <span class="tok-type">bool</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L27">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L28">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> block_length: <span class="tok-type">usize</span> = <span class="tok-number">16</span>;</span>
+<span class="line" id="L31">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> mac_length = <span class="tok-number">16</span>;</span>
+<span class="line" id="L32">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> key_length = <span class="tok-number">16</span>;</span>
+<span class="line" id="L33"></span>
+<span class="line" id="L34">        <span class="tok-kw">const</span> pc_count = <span class="tok-kw">if</span> (builtin.mode != .ReleaseSmall) <span class="tok-number">16</span> <span class="tok-kw">else</span> <span class="tok-number">2</span>;</span>
+<span class="line" id="L35">        <span class="tok-kw">const</span> agg_4_threshold = <span class="tok-number">22</span>;</span>
+<span class="line" id="L36">        <span class="tok-kw">const</span> agg_8_threshold = <span class="tok-number">84</span>;</span>
+<span class="line" id="L37">        <span class="tok-kw">const</span> agg_16_threshold = <span class="tok-number">328</span>;</span>
+<span class="line" id="L38"></span>
+<span class="line" id="L39">        <span class="tok-comment">// Before the Haswell architecture, the carryless multiplication instruction was</span>
+</span>
+<span class="line" id="L40">        <span class="tok-comment">// extremely slow. Even with 128-bit operands, using Karatsuba multiplication was</span>
+</span>
+<span class="line" id="L41">        <span class="tok-comment">// thus faster than a schoolbook multiplication.</span>
+</span>
+<span class="line" id="L42">        <span class="tok-comment">// This is no longer the case -- Modern CPUs, including ARM-based ones, have a fast</span>
+</span>
+<span class="line" id="L43">        <span class="tok-comment">// carryless multiplication instruction; using 4 multiplications is now faster than</span>
+</span>
+<span class="line" id="L44">        <span class="tok-comment">// 3 multiplications with extra shifts and additions.</span>
+</span>
+<span class="line" id="L45">        <span class="tok-kw">const</span> mul_algorithm = <span class="tok-kw">if</span> (builtin.cpu.arch == .x86) .karatsuba <span class="tok-kw">else</span> .schoolbook;</span>
+<span class="line" id="L46"></span>
+<span class="line" id="L47">        hx: [pc_count]Precomp,</span>
+<span class="line" id="L48">        acc: <span class="tok-type">u128</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50">        leftover: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L51">        buf: [block_length]<span class="tok-type">u8</span> <span class="tok-kw">align</span>(<span class="tok-number">16</span>) = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L52"></span>
+<span class="line" id="L53">        <span class="tok-comment">/// Initialize the GHASH state with a key, and a minimum number of block count.</span></span>
+<span class="line" id="L54">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initForBlockCount</span>(key: *<span class="tok-kw">const</span> [key_length]<span class="tok-type">u8</span>, block_count: <span class="tok-type">usize</span>) Self {</span>
+<span class="line" id="L55">            <span class="tok-kw">var</span> h = mem.readInt(<span class="tok-type">u128</span>, key[<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian);</span>
+<span class="line" id="L56">            <span class="tok-kw">if</span> (shift_key) {</span>
+<span class="line" id="L57">                <span class="tok-comment">// Shift the key by 1 bit to the left &amp; reduce for GCM.</span>
+</span>
+<span class="line" id="L58">                <span class="tok-kw">const</span> carry = ((<span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-number">0xc2</span>) &lt;&lt; <span class="tok-number">120</span>) | <span class="tok-number">1</span>) &amp; (<span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-number">0</span>) -% (h &gt;&gt; <span class="tok-number">127</span>));</span>
+<span class="line" id="L59">                h = (h &lt;&lt; <span class="tok-number">1</span>) ^ carry;</span>
+<span class="line" id="L60">            }</span>
+<span class="line" id="L61">            <span class="tok-kw">var</span> hx: [pc_count]Precomp = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L62">            hx[<span class="tok-number">0</span>] = h;</span>
+<span class="line" id="L63">            hx[<span class="tok-number">1</span>] = reduce(clsq128(hx[<span class="tok-number">0</span>])); <span class="tok-comment">// h^2</span>
+</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">            <span class="tok-kw">if</span> (builtin.mode != .ReleaseSmall) {</span>
+<span class="line" id="L66">                hx[<span class="tok-number">2</span>] = reduce(clmul128(hx[<span class="tok-number">1</span>], h)); <span class="tok-comment">// h^3</span>
+</span>
+<span class="line" id="L67">                hx[<span class="tok-number">3</span>] = reduce(clsq128(hx[<span class="tok-number">1</span>])); <span class="tok-comment">// h^4 = h^2^2</span>
+</span>
+<span class="line" id="L68">                <span class="tok-kw">if</span> (block_count &gt;= agg_8_threshold) {</span>
+<span class="line" id="L69">                    hx[<span class="tok-number">4</span>] = reduce(clmul128(hx[<span class="tok-number">3</span>], h)); <span class="tok-comment">// h^5</span>
+</span>
+<span class="line" id="L70">                    hx[<span class="tok-number">5</span>] = reduce(clsq128(hx[<span class="tok-number">2</span>])); <span class="tok-comment">// h^6 = h^3^2</span>
+</span>
+<span class="line" id="L71">                    hx[<span class="tok-number">6</span>] = reduce(clmul128(hx[<span class="tok-number">5</span>], h)); <span class="tok-comment">// h^7</span>
+</span>
+<span class="line" id="L72">                    hx[<span class="tok-number">7</span>] = reduce(clsq128(hx[<span class="tok-number">3</span>])); <span class="tok-comment">// h^8 = h^4^2</span>
+</span>
+<span class="line" id="L73">                }</span>
+<span class="line" id="L74">                <span class="tok-kw">if</span> (block_count &gt;= agg_16_threshold) {</span>
+<span class="line" id="L75">                    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">8</span>;</span>
+<span class="line" id="L76">                    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">16</span>) : (i += <span class="tok-number">2</span>) {</span>
+<span class="line" id="L77">                        hx[i] = reduce(clmul128(hx[i - <span class="tok-number">1</span>], h));</span>
+<span class="line" id="L78">                        hx[i + <span class="tok-number">1</span>] = reduce(clsq128(hx[i / <span class="tok-number">2</span>]));</span>
+<span class="line" id="L79">                    }</span>
+<span class="line" id="L80">                }</span>
+<span class="line" id="L81">            }</span>
+<span class="line" id="L82">            <span class="tok-kw">return</span> Self{ .hx = hx };</span>
+<span class="line" id="L83">        }</span>
+<span class="line" id="L84"></span>
+<span class="line" id="L85">        <span class="tok-comment">/// Initialize the GHASH state with a key.</span></span>
+<span class="line" id="L86">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(key: *<span class="tok-kw">const</span> [key_length]<span class="tok-type">u8</span>) Self {</span>
+<span class="line" id="L87">            <span class="tok-kw">return</span> Self.initForBlockCount(key, math.maxInt(<span class="tok-type">usize</span>));</span>
+<span class="line" id="L88">        }</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">        <span class="tok-kw">const</span> Selector = <span class="tok-kw">enum</span> { lo, hi, hi_lo };</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">        <span class="tok-comment">// Carryless multiplication of two 64-bit integers for x86_64.</span>
+</span>
+<span class="line" id="L93">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">clmulPclmul</span>(x: <span class="tok-type">u128</span>, y: <span class="tok-type">u128</span>, <span class="tok-kw">comptime</span> half: Selector) <span class="tok-type">u128</span> {</span>
+<span class="line" id="L94">            <span class="tok-kw">switch</span> (half) {</span>
+<span class="line" id="L95">                .hi =&gt; {</span>
+<span class="line" id="L96">                    <span class="tok-kw">const</span> product = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L97">                        <span class="tok-str">\\ vpclmulqdq $0x11, %[x], %[y], %[out]</span></span>
+
+<span class="line" id="L98">                        : [out] <span class="tok-str">&quot;=x&quot;</span> (-&gt; <span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>)),</span>
+<span class="line" id="L99">                        : [x] <span class="tok-str">&quot;x&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(x))),</span>
+<span class="line" id="L100">                          [y] <span class="tok-str">&quot;x&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(y))),</span>
+<span class="line" id="L101">                    );</span>
+<span class="line" id="L102">                    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-builtin">@bitCast</span>(product));</span>
+<span class="line" id="L103">                },</span>
+<span class="line" id="L104">                .lo =&gt; {</span>
+<span class="line" id="L105">                    <span class="tok-kw">const</span> product = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L106">                        <span class="tok-str">\\ vpclmulqdq $0x00, %[x], %[y], %[out]</span></span>
+
+<span class="line" id="L107">                        : [out] <span class="tok-str">&quot;=x&quot;</span> (-&gt; <span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>)),</span>
+<span class="line" id="L108">                        : [x] <span class="tok-str">&quot;x&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(x))),</span>
+<span class="line" id="L109">                          [y] <span class="tok-str">&quot;x&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(y))),</span>
+<span class="line" id="L110">                    );</span>
+<span class="line" id="L111">                    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-builtin">@bitCast</span>(product));</span>
+<span class="line" id="L112">                },</span>
+<span class="line" id="L113">                .hi_lo =&gt; {</span>
+<span class="line" id="L114">                    <span class="tok-kw">const</span> product = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L115">                        <span class="tok-str">\\ vpclmulqdq $0x10, %[x], %[y], %[out]</span></span>
+
+<span class="line" id="L116">                        : [out] <span class="tok-str">&quot;=x&quot;</span> (-&gt; <span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>)),</span>
+<span class="line" id="L117">                        : [x] <span class="tok-str">&quot;x&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(x))),</span>
+<span class="line" id="L118">                          [y] <span class="tok-str">&quot;x&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(y))),</span>
+<span class="line" id="L119">                    );</span>
+<span class="line" id="L120">                    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-builtin">@bitCast</span>(product));</span>
+<span class="line" id="L121">                },</span>
+<span class="line" id="L122">            }</span>
+<span class="line" id="L123">        }</span>
+<span class="line" id="L124"></span>
+<span class="line" id="L125">        <span class="tok-comment">// Carryless multiplication of two 64-bit integers for ARM crypto.</span>
+</span>
+<span class="line" id="L126">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">clmulPmull</span>(x: <span class="tok-type">u128</span>, y: <span class="tok-type">u128</span>, <span class="tok-kw">comptime</span> half: Selector) <span class="tok-type">u128</span> {</span>
+<span class="line" id="L127">            <span class="tok-kw">switch</span> (half) {</span>
+<span class="line" id="L128">                .hi =&gt; {</span>
+<span class="line" id="L129">                    <span class="tok-kw">const</span> product = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L130">                        <span class="tok-str">\\ pmull2 %[out].1q, %[x].2d, %[y].2d</span></span>
+
+<span class="line" id="L131">                        : [out] <span class="tok-str">&quot;=w&quot;</span> (-&gt; <span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>)),</span>
+<span class="line" id="L132">                        : [x] <span class="tok-str">&quot;w&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(x))),</span>
+<span class="line" id="L133">                          [y] <span class="tok-str">&quot;w&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(y))),</span>
+<span class="line" id="L134">                    );</span>
+<span class="line" id="L135">                    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-builtin">@bitCast</span>(product));</span>
+<span class="line" id="L136">                },</span>
+<span class="line" id="L137">                .lo =&gt; {</span>
+<span class="line" id="L138">                    <span class="tok-kw">const</span> product = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L139">                        <span class="tok-str">\\ pmull %[out].1q, %[x].1d, %[y].1d</span></span>
+
+<span class="line" id="L140">                        : [out] <span class="tok-str">&quot;=w&quot;</span> (-&gt; <span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>)),</span>
+<span class="line" id="L141">                        : [x] <span class="tok-str">&quot;w&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(x))),</span>
+<span class="line" id="L142">                          [y] <span class="tok-str">&quot;w&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(y))),</span>
+<span class="line" id="L143">                    );</span>
+<span class="line" id="L144">                    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-builtin">@bitCast</span>(product));</span>
+<span class="line" id="L145">                },</span>
+<span class="line" id="L146">                .hi_lo =&gt; {</span>
+<span class="line" id="L147">                    <span class="tok-kw">const</span> product = <span class="tok-kw">asm</span> (</span>
+<span class="line" id="L148">                        <span class="tok-str">\\ pmull %[out].1q, %[x].1d, %[y].1d</span></span>
+
+<span class="line" id="L149">                        : [out] <span class="tok-str">&quot;=w&quot;</span> (-&gt; <span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>)),</span>
+<span class="line" id="L150">                        : [x] <span class="tok-str">&quot;w&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(x &gt;&gt; <span class="tok-number">64</span>))),</span>
+<span class="line" id="L151">                          [y] <span class="tok-str">&quot;w&quot;</span> (<span class="tok-builtin">@as</span>(<span class="tok-builtin">@Vector</span>(<span class="tok-number">2</span>, <span class="tok-type">u64</span>), <span class="tok-builtin">@bitCast</span>(y))),</span>
+<span class="line" id="L152">                    );</span>
+<span class="line" id="L153">                    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, <span class="tok-builtin">@bitCast</span>(product));</span>
+<span class="line" id="L154">                },</span>
+<span class="line" id="L155">            }</span>
+<span class="line" id="L156">        }</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">        <span class="tok-comment">/// clmulSoft128_64 is faster on platforms with no native 128-bit registers.</span></span>
+<span class="line" id="L159">        <span class="tok-kw">const</span> clmulSoft = <span class="tok-kw">switch</span> (builtin.cpu.arch) {</span>
+<span class="line" id="L160">            .wasm32, .wasm64 =&gt; clmulSoft128_64,</span>
+<span class="line" id="L161">            <span class="tok-kw">else</span> =&gt; impl: {</span>
+<span class="line" id="L162">                <span class="tok-kw">const</span> vector_size = std.simd.suggestVectorSize(<span class="tok-type">u128</span>) <span class="tok-kw">orelse</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L163">                <span class="tok-kw">if</span> (vector_size &lt; <span class="tok-number">128</span>) <span class="tok-kw">break</span> :impl clmulSoft128_64;</span>
+<span class="line" id="L164">                <span class="tok-kw">break</span> :impl clmulSoft128;</span>
+<span class="line" id="L165">            },</span>
+<span class="line" id="L166">        };</span>
+<span class="line" id="L167"></span>
+<span class="line" id="L168">        <span class="tok-comment">// Software carryless multiplication of two 64-bit integers using native 128-bit registers.</span>
+</span>
+<span class="line" id="L169">        <span class="tok-kw">fn</span> <span class="tok-fn">clmulSoft128</span>(x_: <span class="tok-type">u128</span>, y_: <span class="tok-type">u128</span>, <span class="tok-kw">comptime</span> half: Selector) <span class="tok-type">u128</span> {</span>
+<span class="line" id="L170">            <span class="tok-kw">const</span> x = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(<span class="tok-kw">if</span> (half == .hi <span class="tok-kw">or</span> half == .hi_lo) x_ &gt;&gt; <span class="tok-number">64</span> <span class="tok-kw">else</span> x_));</span>
+<span class="line" id="L171">            <span class="tok-kw">const</span> y = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(<span class="tok-kw">if</span> (half == .hi) y_ &gt;&gt; <span class="tok-number">64</span> <span class="tok-kw">else</span> y_));</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173">            <span class="tok-kw">const</span> x0 = x &amp; <span class="tok-number">0x1111111111111110</span>;</span>
+<span class="line" id="L174">            <span class="tok-kw">const</span> x1 = x &amp; <span class="tok-number">0x2222222222222220</span>;</span>
+<span class="line" id="L175">            <span class="tok-kw">const</span> x2 = x &amp; <span class="tok-number">0x4444444444444440</span>;</span>
+<span class="line" id="L176">            <span class="tok-kw">const</span> x3 = x &amp; <span class="tok-number">0x8888888888888880</span>;</span>
+<span class="line" id="L177">            <span class="tok-kw">const</span> y0 = y &amp; <span class="tok-number">0x1111111111111111</span>;</span>
+<span class="line" id="L178">            <span class="tok-kw">const</span> y1 = y &amp; <span class="tok-number">0x2222222222222222</span>;</span>
+<span class="line" id="L179">            <span class="tok-kw">const</span> y2 = y &amp; <span class="tok-number">0x4444444444444444</span>;</span>
+<span class="line" id="L180">            <span class="tok-kw">const</span> y3 = y &amp; <span class="tok-number">0x8888888888888888</span>;</span>
+<span class="line" id="L181">            <span class="tok-kw">const</span> z0 = (x0 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y0)) ^ (x1 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y3)) ^ (x2 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y2)) ^ (x3 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y1));</span>
+<span class="line" id="L182">            <span class="tok-kw">const</span> z1 = (x0 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y1)) ^ (x1 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y0)) ^ (x2 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y3)) ^ (x3 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y2));</span>
+<span class="line" id="L183">            <span class="tok-kw">const</span> z2 = (x0 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y2)) ^ (x1 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y1)) ^ (x2 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y0)) ^ (x3 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y3));</span>
+<span class="line" id="L184">            <span class="tok-kw">const</span> z3 = (x0 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y3)) ^ (x1 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y2)) ^ (x2 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y1)) ^ (x3 * <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, y0));</span>
+<span class="line" id="L185"></span>
+<span class="line" id="L186">            <span class="tok-kw">const</span> x0_mask = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">0</span>) -% (x &amp; <span class="tok-number">1</span>);</span>
+<span class="line" id="L187">            <span class="tok-kw">const</span> x1_mask = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">0</span>) -% ((x &gt;&gt; <span class="tok-number">1</span>) &amp; <span class="tok-number">1</span>);</span>
+<span class="line" id="L188">            <span class="tok-kw">const</span> x2_mask = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">0</span>) -% ((x &gt;&gt; <span class="tok-number">2</span>) &amp; <span class="tok-number">1</span>);</span>
+<span class="line" id="L189">            <span class="tok-kw">const</span> x3_mask = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">0</span>) -% ((x &gt;&gt; <span class="tok-number">3</span>) &amp; <span class="tok-number">1</span>);</span>
+<span class="line" id="L190">            <span class="tok-kw">const</span> extra = (x0_mask &amp; y) ^ (<span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, x1_mask &amp; y) &lt;&lt; <span class="tok-number">1</span>) ^</span>
+<span class="line" id="L191">                (<span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, x2_mask &amp; y) &lt;&lt; <span class="tok-number">2</span>) ^ (<span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, x3_mask &amp; y) &lt;&lt; <span class="tok-number">3</span>);</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">            <span class="tok-kw">return</span> (z0 &amp; <span class="tok-number">0x11111111111111111111111111111111</span>) ^</span>
+<span class="line" id="L194">                (z1 &amp; <span class="tok-number">0x22222222222222222222222222222222</span>) ^</span>
+<span class="line" id="L195">                (z2 &amp; <span class="tok-number">0x44444444444444444444444444444444</span>) ^</span>
+<span class="line" id="L196">                (z3 &amp; <span class="tok-number">0x88888888888888888888888888888888</span>) ^ extra;</span>
+<span class="line" id="L197">        }</span>
+<span class="line" id="L198"></span>
+<span class="line" id="L199">        <span class="tok-comment">// Software carryless multiplication of two 32-bit integers.</span>
+</span>
+<span class="line" id="L200">        <span class="tok-kw">fn</span> <span class="tok-fn">clmulSoft32</span>(x: <span class="tok-type">u32</span>, y: <span class="tok-type">u32</span>) <span class="tok-type">u64</span> {</span>
+<span class="line" id="L201">            <span class="tok-kw">const</span> mulWide = math.mulWide;</span>
+<span class="line" id="L202">            <span class="tok-kw">const</span> a0 = x &amp; <span class="tok-number">0x11111111</span>;</span>
+<span class="line" id="L203">            <span class="tok-kw">const</span> a1 = x &amp; <span class="tok-number">0x22222222</span>;</span>
+<span class="line" id="L204">            <span class="tok-kw">const</span> a2 = x &amp; <span class="tok-number">0x44444444</span>;</span>
+<span class="line" id="L205">            <span class="tok-kw">const</span> a3 = x &amp; <span class="tok-number">0x88888888</span>;</span>
+<span class="line" id="L206">            <span class="tok-kw">const</span> b0 = y &amp; <span class="tok-number">0x11111111</span>;</span>
+<span class="line" id="L207">            <span class="tok-kw">const</span> b1 = y &amp; <span class="tok-number">0x22222222</span>;</span>
+<span class="line" id="L208">            <span class="tok-kw">const</span> b2 = y &amp; <span class="tok-number">0x44444444</span>;</span>
+<span class="line" id="L209">            <span class="tok-kw">const</span> b3 = y &amp; <span class="tok-number">0x88888888</span>;</span>
+<span class="line" id="L210">            <span class="tok-kw">const</span> c0 = mulWide(<span class="tok-type">u32</span>, a0, b0) ^ mulWide(<span class="tok-type">u32</span>, a1, b3) ^ mulWide(<span class="tok-type">u32</span>, a2, b2) ^ mulWide(<span class="tok-type">u32</span>, a3, b1);</span>
+<span class="line" id="L211">            <span class="tok-kw">const</span> c1 = mulWide(<span class="tok-type">u32</span>, a0, b1) ^ mulWide(<span class="tok-type">u32</span>, a1, b0) ^ mulWide(<span class="tok-type">u32</span>, a2, b3) ^ mulWide(<span class="tok-type">u32</span>, a3, b2);</span>
+<span class="line" id="L212">            <span class="tok-kw">const</span> c2 = mulWide(<span class="tok-type">u32</span>, a0, b2) ^ mulWide(<span class="tok-type">u32</span>, a1, b1) ^ mulWide(<span class="tok-type">u32</span>, a2, b0) ^ mulWide(<span class="tok-type">u32</span>, a3, b3);</span>
+<span class="line" id="L213">            <span class="tok-kw">const</span> c3 = mulWide(<span class="tok-type">u32</span>, a0, b3) ^ mulWide(<span class="tok-type">u32</span>, a1, b2) ^ mulWide(<span class="tok-type">u32</span>, a2, b1) ^ mulWide(<span class="tok-type">u32</span>, a3, b0);</span>
+<span class="line" id="L214">            <span class="tok-kw">return</span> (c0 &amp; <span class="tok-number">0x1111111111111111</span>) | (c1 &amp; <span class="tok-number">0x2222222222222222</span>) | (c2 &amp; <span class="tok-number">0x4444444444444444</span>) | (c3 &amp; <span class="tok-number">0x8888888888888888</span>);</span>
+<span class="line" id="L215">        }</span>
+<span class="line" id="L216"></span>
+<span class="line" id="L217">        <span class="tok-comment">// Software carryless multiplication of two 128-bit integers using 64-bit registers.</span>
+</span>
+<span class="line" id="L218">        <span class="tok-kw">fn</span> <span class="tok-fn">clmulSoft128_64</span>(x_: <span class="tok-type">u128</span>, y_: <span class="tok-type">u128</span>, <span class="tok-kw">comptime</span> half: Selector) <span class="tok-type">u128</span> {</span>
+<span class="line" id="L219">            <span class="tok-kw">const</span> a = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(<span class="tok-kw">if</span> (half == .hi <span class="tok-kw">or</span> half == .hi_lo) x_ &gt;&gt; <span class="tok-number">64</span> <span class="tok-kw">else</span> x_));</span>
+<span class="line" id="L220">            <span class="tok-kw">const</span> b = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(<span class="tok-kw">if</span> (half == .hi) y_ &gt;&gt; <span class="tok-number">64</span> <span class="tok-kw">else</span> y_));</span>
+<span class="line" id="L221">            <span class="tok-kw">const</span> a0 = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@truncate</span>(a));</span>
+<span class="line" id="L222">            <span class="tok-kw">const</span> a1 = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@truncate</span>(a &gt;&gt; <span class="tok-number">32</span>));</span>
+<span class="line" id="L223">            <span class="tok-kw">const</span> b0 = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@truncate</span>(b));</span>
+<span class="line" id="L224">            <span class="tok-kw">const</span> b1 = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@truncate</span>(b &gt;&gt; <span class="tok-number">32</span>));</span>
+<span class="line" id="L225">            <span class="tok-kw">const</span> lo = clmulSoft32(a0, b0);</span>
+<span class="line" id="L226">            <span class="tok-kw">const</span> hi = clmulSoft32(a1, b1);</span>
+<span class="line" id="L227">            <span class="tok-kw">const</span> mid = clmulSoft32(a0 ^ a1, b0 ^ b1) ^ lo ^ hi;</span>
+<span class="line" id="L228">            <span class="tok-kw">const</span> res_lo = lo ^ (mid &lt;&lt; <span class="tok-number">32</span>);</span>
+<span class="line" id="L229">            <span class="tok-kw">const</span> res_hi = hi ^ (mid &gt;&gt; <span class="tok-number">32</span>);</span>
+<span class="line" id="L230">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, res_lo) | (<span class="tok-builtin">@as</span>(<span class="tok-type">u128</span>, res_hi) &lt;&lt; <span class="tok-number">64</span>);</span>
+<span class="line" id="L231">        }</span>
+<span class="line" id="L232"></span>
+<span class="line" id="L233">        <span class="tok-kw">const</span> I256 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L234">            hi: <span class="tok-type">u128</span>,</span>
+<span class="line" id="L235">            lo: <span class="tok-type">u128</span>,</span>
+<span class="line" id="L236">            mid: <span class="tok-type">u128</span>,</span>
+<span class="line" id="L237">        };</span>
+<span class="line" id="L238"></span>
+<span class="line" id="L239">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">xor256</span>(x: *I256, y: I256) <span class="tok-type">void</span> {</span>
+<span class="line" id="L240">            x.* = I256{</span>
+<span class="line" id="L241">                .hi = x.hi ^ y.hi,</span>
+<span class="line" id="L242">                .lo = x.lo ^ y.lo,</span>
+<span class="line" id="L243">                .mid = x.mid ^ y.mid,</span>
+<span class="line" id="L244">            };</span>
+<span class="line" id="L245">        }</span>
+<span class="line" id="L246"></span>
+<span class="line" id="L247">        <span class="tok-comment">// Square a 128-bit integer in GF(2^128).</span>
+</span>
+<span class="line" id="L248">        <span class="tok-kw">fn</span> <span class="tok-fn">clsq128</span>(x: <span class="tok-type">u128</span>) I256 {</span>
+<span class="line" id="L249">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L250">                .hi = clmul(x, x, .hi),</span>
+<span class="line" id="L251">                .lo = clmul(x, x, .lo),</span>
+<span class="line" id="L252">                .mid = <span class="tok-number">0</span>,</span>
+<span class="line" id="L253">            };</span>
+<span class="line" id="L254">        }</span>
+<span class="line" id="L255"></span>
+<span class="line" id="L256">        <span class="tok-comment">// Multiply two 128-bit integers in GF(2^128).</span>
+</span>
+<span class="line" id="L257">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">clmul128</span>(x: <span class="tok-type">u128</span>, y: <span class="tok-type">u128</span>) I256 {</span>
+<span class="line" id="L258">            <span class="tok-kw">if</span> (mul_algorithm == .karatsuba) {</span>
+<span class="line" id="L259">                <span class="tok-kw">const</span> x_hi = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(x &gt;&gt; <span class="tok-number">64</span>));</span>
+<span class="line" id="L260">                <span class="tok-kw">const</span> y_hi = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-builtin">@truncate</span>(y &gt;&gt; <span class="tok-number">64</span>));</span>
+<span class="line" id="L261">                <span class="tok-kw">const</span> r_lo = clmul(x, y, .lo);</span>
+<span class="line" id="L262">                <span class="tok-kw">const</span> r_hi = clmul(x, y, .hi);</span>
+<span class="line" id="L263">                <span class="tok-kw">const</span> r_mid = clmul(x ^ x_hi, y ^ y_hi, .lo) ^ r_lo ^ r_hi;</span>
+<span class="line" id="L264">                <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L265">                    .hi = r_hi,</span>
+<span class="line" id="L266">                    .lo = r_lo,</span>
+<span class="line" id="L267">                    .mid = r_mid,</span>
+<span class="line" id="L268">                };</span>
+<span class="line" id="L269">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L270">                <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L271">                    .hi = clmul(x, y, .hi),</span>
+<span class="line" id="L272">                    .lo = clmul(x, y, .lo),</span>
+<span class="line" id="L273">                    .mid = clmul(x, y, .hi_lo) ^ clmul(y, x, .hi_lo),</span>
+<span class="line" id="L274">                };</span>
+<span class="line" id="L275">            }</span>
+<span class="line" id="L276">        }</span>
+<span class="line" id="L277"></span>
+<span class="line" id="L278">        <span class="tok-comment">// Reduce a 256-bit representative of a polynomial modulo the irreducible polynomial x^128 + x^127 + x^126 + x^121 + 1.</span>
+</span>
+<span class="line" id="L279">        <span class="tok-comment">// This is done using Shay Gueron's black magic demysticated here:</span>
+</span>
+<span class="line" id="L280">        <span class="tok-comment">// https://blog.quarkslab.com/reversing-a-finite-field-multiplication-optimization.html</span>
+</span>
+<span class="line" id="L281">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">reduce</span>(x: I256) <span class="tok-type">u128</span> {</span>
+<span class="line" id="L282">            <span class="tok-kw">const</span> hi = x.hi ^ (x.mid &gt;&gt; <span class="tok-number">64</span>);</span>
+<span class="line" id="L283">            <span class="tok-kw">const</span> lo = x.lo ^ (x.mid &lt;&lt; <span class="tok-number">64</span>);</span>
+<span class="line" id="L284">            <span class="tok-kw">const</span> p64 = (((<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">121</span>) | (<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">126</span>) | (<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">127</span>)) &gt;&gt; <span class="tok-number">64</span>);</span>
+<span class="line" id="L285">            <span class="tok-kw">const</span> a = clmul(lo, p64, .lo);</span>
+<span class="line" id="L286">            <span class="tok-kw">const</span> b = ((lo &lt;&lt; <span class="tok-number">64</span>) | (lo &gt;&gt; <span class="tok-number">64</span>)) ^ a;</span>
+<span class="line" id="L287">            <span class="tok-kw">const</span> c = clmul(b, p64, .lo);</span>
+<span class="line" id="L288">            <span class="tok-kw">const</span> d = ((b &lt;&lt; <span class="tok-number">64</span>) | (b &gt;&gt; <span class="tok-number">64</span>)) ^ c;</span>
+<span class="line" id="L289">            <span class="tok-kw">return</span> d ^ hi;</span>
+<span class="line" id="L290">        }</span>
+<span class="line" id="L291"></span>
+<span class="line" id="L292">        <span class="tok-kw">const</span> has_pclmul = std.Target.x86.featureSetHas(builtin.cpu.features, .pclmul);</span>
+<span class="line" id="L293">        <span class="tok-kw">const</span> has_avx = std.Target.x86.featureSetHas(builtin.cpu.features, .avx);</span>
+<span class="line" id="L294">        <span class="tok-kw">const</span> has_armaes = std.Target.aarch64.featureSetHas(builtin.cpu.features, .aes);</span>
+<span class="line" id="L295">        <span class="tok-comment">// C backend doesn't currently support passing vectors to inline asm.</span>
+</span>
+<span class="line" id="L296">        <span class="tok-kw">const</span> clmul = <span class="tok-kw">if</span> (builtin.cpu.arch == .x86_64 <span class="tok-kw">and</span> builtin.zig_backend != .stage2_c <span class="tok-kw">and</span> has_pclmul <span class="tok-kw">and</span> has_avx) impl: {</span>
+<span class="line" id="L297">            <span class="tok-kw">break</span> :impl clmulPclmul;</span>
+<span class="line" id="L298">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (builtin.cpu.arch == .aarch64 <span class="tok-kw">and</span> builtin.zig_backend != .stage2_c <span class="tok-kw">and</span> has_armaes) impl: {</span>
+<span class="line" id="L299">            <span class="tok-kw">break</span> :impl clmulPmull;</span>
+<span class="line" id="L300">        } <span class="tok-kw">else</span> impl: {</span>
+<span class="line" id="L301">            <span class="tok-kw">break</span> :impl clmulSoft;</span>
+<span class="line" id="L302">        };</span>
+<span class="line" id="L303"></span>
+<span class="line" id="L304">        <span class="tok-comment">// Process 16 byte blocks.</span>
+</span>
+<span class="line" id="L305">        <span class="tok-kw">fn</span> <span class="tok-fn">blocks</span>(st: *Self, msg: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L306">            assert(msg.len % <span class="tok-number">16</span> == <span class="tok-number">0</span>); <span class="tok-comment">// GHASH blocks() expects full blocks</span>
+</span>
+<span class="line" id="L307">            <span class="tok-kw">var</span> acc = st.acc;</span>
+<span class="line" id="L308"></span>
+<span class="line" id="L309">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311">            <span class="tok-kw">if</span> (builtin.mode != .ReleaseSmall <span class="tok-kw">and</span> msg.len &gt;= agg_16_threshold * block_length) {</span>
+<span class="line" id="L312">                <span class="tok-comment">// 16-blocks aggregated reduction</span>
+</span>
+<span class="line" id="L313">                <span class="tok-kw">while</span> (i + <span class="tok-number">256</span> &lt;= msg.len) : (i += <span class="tok-number">256</span>) {</span>
+<span class="line" id="L314">                    <span class="tok-kw">var</span> u = clmul128(acc ^ mem.readInt(<span class="tok-type">u128</span>, msg[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">15</span> - <span class="tok-number">0</span>]);</span>
+<span class="line" id="L315">                    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> j = <span class="tok-number">1</span>;</span>
+<span class="line" id="L316">                    <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (j &lt; <span class="tok-number">16</span>) : (j += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L317">                        xor256(&amp;u, clmul128(mem.readInt(<span class="tok-type">u128</span>, msg[i..][j * <span class="tok-number">16</span> ..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">15</span> - j]));</span>
+<span class="line" id="L318">                    }</span>
+<span class="line" id="L319">                    acc = reduce(u);</span>
+<span class="line" id="L320">                }</span>
+<span class="line" id="L321">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (builtin.mode != .ReleaseSmall <span class="tok-kw">and</span> msg.len &gt;= agg_8_threshold * block_length) {</span>
+<span class="line" id="L322">                <span class="tok-comment">// 8-blocks aggregated reduction</span>
+</span>
+<span class="line" id="L323">                <span class="tok-kw">while</span> (i + <span class="tok-number">128</span> &lt;= msg.len) : (i += <span class="tok-number">128</span>) {</span>
+<span class="line" id="L324">                    <span class="tok-kw">var</span> u = clmul128(acc ^ mem.readInt(<span class="tok-type">u128</span>, msg[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">7</span> - <span class="tok-number">0</span>]);</span>
+<span class="line" id="L325">                    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> j = <span class="tok-number">1</span>;</span>
+<span class="line" id="L326">                    <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (j &lt; <span class="tok-number">8</span>) : (j += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L327">                        xor256(&amp;u, clmul128(mem.readInt(<span class="tok-type">u128</span>, msg[i..][j * <span class="tok-number">16</span> ..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">7</span> - j]));</span>
+<span class="line" id="L328">                    }</span>
+<span class="line" id="L329">                    acc = reduce(u);</span>
+<span class="line" id="L330">                }</span>
+<span class="line" id="L331">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (builtin.mode != .ReleaseSmall <span class="tok-kw">and</span> msg.len &gt;= agg_4_threshold * block_length) {</span>
+<span class="line" id="L332">                <span class="tok-comment">// 4-blocks aggregated reduction</span>
+</span>
+<span class="line" id="L333">                <span class="tok-kw">while</span> (i + <span class="tok-number">64</span> &lt;= msg.len) : (i += <span class="tok-number">64</span>) {</span>
+<span class="line" id="L334">                    <span class="tok-kw">var</span> u = clmul128(acc ^ mem.readInt(<span class="tok-type">u128</span>, msg[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">3</span> - <span class="tok-number">0</span>]);</span>
+<span class="line" id="L335">                    <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> j = <span class="tok-number">1</span>;</span>
+<span class="line" id="L336">                    <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (j &lt; <span class="tok-number">4</span>) : (j += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L337">                        xor256(&amp;u, clmul128(mem.readInt(<span class="tok-type">u128</span>, msg[i..][j * <span class="tok-number">16</span> ..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">3</span> - j]));</span>
+<span class="line" id="L338">                    }</span>
+<span class="line" id="L339">                    acc = reduce(u);</span>
+<span class="line" id="L340">                }</span>
+<span class="line" id="L341">            }</span>
+<span class="line" id="L342">            <span class="tok-comment">// 2-blocks aggregated reduction</span>
+</span>
+<span class="line" id="L343">            <span class="tok-kw">while</span> (i + <span class="tok-number">32</span> &lt;= msg.len) : (i += <span class="tok-number">32</span>) {</span>
+<span class="line" id="L344">                <span class="tok-kw">var</span> u = clmul128(acc ^ mem.readInt(<span class="tok-type">u128</span>, msg[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">1</span> - <span class="tok-number">0</span>]);</span>
+<span class="line" id="L345">                <span class="tok-kw">comptime</span> <span class="tok-kw">var</span> j = <span class="tok-number">1</span>;</span>
+<span class="line" id="L346">                <span class="tok-kw">inline</span> <span class="tok-kw">while</span> (j &lt; <span class="tok-number">2</span>) : (j += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L347">                    xor256(&amp;u, clmul128(mem.readInt(<span class="tok-type">u128</span>, msg[i..][j * <span class="tok-number">16</span> ..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">1</span> - j]));</span>
+<span class="line" id="L348">                }</span>
+<span class="line" id="L349">                acc = reduce(u);</span>
+<span class="line" id="L350">            }</span>
+<span class="line" id="L351">            <span class="tok-comment">// remaining blocks</span>
+</span>
+<span class="line" id="L352">            <span class="tok-kw">if</span> (i &lt; msg.len) {</span>
+<span class="line" id="L353">                <span class="tok-kw">const</span> u = clmul128(acc ^ mem.readInt(<span class="tok-type">u128</span>, msg[i..][<span class="tok-number">0</span>..<span class="tok-number">16</span>], endian), st.hx[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L354">                acc = reduce(u);</span>
+<span class="line" id="L355">                i += <span class="tok-number">16</span>;</span>
+<span class="line" id="L356">            }</span>
+<span class="line" id="L357">            assert(i == msg.len);</span>
+<span class="line" id="L358">            st.acc = acc;</span>
+<span class="line" id="L359">        }</span>
+<span class="line" id="L360"></span>
+<span class="line" id="L361">        <span class="tok-comment">/// Absorb a message into the GHASH state.</span></span>
+<span class="line" id="L362">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">update</span>(st: *Self, m: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L363">            <span class="tok-kw">var</span> mb = m;</span>
+<span class="line" id="L364"></span>
+<span class="line" id="L365">            <span class="tok-kw">if</span> (st.leftover &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L366">                <span class="tok-kw">const</span> want = <span class="tok-builtin">@min</span>(block_length - st.leftover, mb.len);</span>
+<span class="line" id="L367">                <span class="tok-kw">const</span> mc = mb[<span class="tok-number">0</span>..want];</span>
+<span class="line" id="L368">                <span class="tok-kw">for</span> (mc, <span class="tok-number">0</span>..) |x, i| {</span>
+<span class="line" id="L369">                    st.buf[st.leftover + i] = x;</span>
+<span class="line" id="L370">                }</span>
+<span class="line" id="L371">                mb = mb[want..];</span>
+<span class="line" id="L372">                st.leftover += want;</span>
+<span class="line" id="L373">                <span class="tok-kw">if</span> (st.leftover &lt; block_length) {</span>
+<span class="line" id="L374">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L375">                }</span>
+<span class="line" id="L376">                st.blocks(&amp;st.buf);</span>
+<span class="line" id="L377">                st.leftover = <span class="tok-number">0</span>;</span>
+<span class="line" id="L378">            }</span>
+<span class="line" id="L379">            <span class="tok-kw">if</span> (mb.len &gt;= block_length) {</span>
+<span class="line" id="L380">                <span class="tok-kw">const</span> want = mb.len &amp; ~(block_length - <span class="tok-number">1</span>);</span>
+<span class="line" id="L381">                st.blocks(mb[<span class="tok-number">0</span>..want]);</span>
+<span class="line" id="L382">                mb = mb[want..];</span>
+<span class="line" id="L383">            }</span>
+<span class="line" id="L384">            <span class="tok-kw">if</span> (mb.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L385">                <span class="tok-kw">for</span> (mb, <span class="tok-number">0</span>..) |x, i| {</span>
+<span class="line" id="L386">                    st.buf[st.leftover + i] = x;</span>
+<span class="line" id="L387">                }</span>
+<span class="line" id="L388">                st.leftover += mb.len;</span>
+<span class="line" id="L389">            }</span>
+<span class="line" id="L390">        }</span>
+<span class="line" id="L391"></span>
+<span class="line" id="L392">        <span class="tok-comment">/// Zero-pad to align the next input to the first byte of a block</span></span>
+<span class="line" id="L393">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pad</span>(st: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L394">            <span class="tok-kw">if</span> (st.leftover == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L395">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L396">            }</span>
+<span class="line" id="L397">            <span class="tok-kw">var</span> i = st.leftover;</span>
+<span class="line" id="L398">            <span class="tok-kw">while</span> (i &lt; block_length) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L399">                st.buf[i] = <span class="tok-number">0</span>;</span>
+<span class="line" id="L400">            }</span>
+<span class="line" id="L401">            st.blocks(&amp;st.buf);</span>
+<span class="line" id="L402">            st.leftover = <span class="tok-number">0</span>;</span>
+<span class="line" id="L403">        }</span>
+<span class="line" id="L404"></span>
+<span class="line" id="L405">        <span class="tok-comment">/// Compute the GHASH of the entire input.</span></span>
+<span class="line" id="L406">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">final</span>(st: *Self, out: *[mac_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L407">            st.pad();</span>
+<span class="line" id="L408">            mem.writeInt(<span class="tok-type">u128</span>, out[<span class="tok-number">0</span>..<span class="tok-number">16</span>], st.acc, endian);</span>
+<span class="line" id="L409"></span>
+<span class="line" id="L410">            utils.secureZero(<span class="tok-type">u8</span>, <span class="tok-builtin">@as</span>([*]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(st))[<span class="tok-number">0</span>..<span class="tok-builtin">@sizeOf</span>(Self)]);</span>
+<span class="line" id="L411">        }</span>
+<span class="line" id="L412"></span>
+<span class="line" id="L413">        <span class="tok-comment">/// Compute the GHASH of a message.</span></span>
+<span class="line" id="L414">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(out: *[mac_length]<span class="tok-type">u8</span>, msg: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, key: *<span class="tok-kw">const</span> [key_length]<span class="tok-type">u8</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L415">            <span class="tok-kw">var</span> st = Self.init(key);</span>
+<span class="line" id="L416">            st.update(msg);</span>
+<span class="line" id="L417">            st.final(out);</span>
+<span class="line" id="L418">        }</span>
+<span class="line" id="L419">    };</span>
+<span class="line" id="L420">}</span>
+<span class="line" id="L421"></span>
+<span class="line" id="L422"><span class="tok-kw">const</span> htest = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;test.zig&quot;</span>);</span>
+<span class="line" id="L423"></span>
+<span class="line" id="L424"><span class="tok-kw">test</span> <span class="tok-str">&quot;ghash&quot;</span> {</span>
+<span class="line" id="L425">    <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x42</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L426">    <span class="tok-kw">const</span> m = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x69</span>} ** <span class="tok-number">256</span>;</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">    <span class="tok-kw">var</span> st = Ghash.init(&amp;key);</span>
+<span class="line" id="L429">    st.update(&amp;m);</span>
+<span class="line" id="L430">    <span class="tok-kw">var</span> out: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L431">    st.final(&amp;out);</span>
+<span class="line" id="L432">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;889295fa746e8b174bf4ec80a65dea41&quot;</span>, &amp;out);</span>
+<span class="line" id="L433"></span>
+<span class="line" id="L434">    st = Ghash.init(&amp;key);</span>
+<span class="line" id="L435">    st.update(m[<span class="tok-number">0</span>..<span class="tok-number">100</span>]);</span>
+<span class="line" id="L436">    st.update(m[<span class="tok-number">100</span>..]);</span>
+<span class="line" id="L437">    st.final(&amp;out);</span>
+<span class="line" id="L438">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;889295fa746e8b174bf4ec80a65dea41&quot;</span>, &amp;out);</span>
+<span class="line" id="L439">}</span>
+<span class="line" id="L440"></span>
+<span class="line" id="L441"><span class="tok-kw">test</span> <span class="tok-str">&quot;ghash2&quot;</span> {</span>
+<span class="line" id="L442">    <span class="tok-kw">var</span> key: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L443">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L444">    <span class="tok-kw">while</span> (i &lt; key.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L445">        key[i] = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(i * <span class="tok-number">15</span> + <span class="tok-number">1</span>));</span>
+<span class="line" id="L446">    }</span>
+<span class="line" id="L447">    <span class="tok-kw">const</span> tvs = [_]<span class="tok-kw">struct</span> { len: <span class="tok-type">usize</span>, hash: [:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span> }{</span>
+<span class="line" id="L448">        .{ .len = <span class="tok-number">5263</span>, .hash = <span class="tok-str">&quot;b9395f37c131cd403a327ccf82ec016a&quot;</span> },</span>
+<span class="line" id="L449">        .{ .len = <span class="tok-number">1361</span>, .hash = <span class="tok-str">&quot;8c24cb3664e9a36e32ddef0c8178ab33&quot;</span> },</span>
+<span class="line" id="L450">        .{ .len = <span class="tok-number">1344</span>, .hash = <span class="tok-str">&quot;015d7243b52d62eee8be33a66a9658cc&quot;</span> },</span>
+<span class="line" id="L451">        .{ .len = <span class="tok-number">1000</span>, .hash = <span class="tok-str">&quot;56e148799944193f351f2014ef9dec9d&quot;</span> },</span>
+<span class="line" id="L452">        .{ .len = <span class="tok-number">512</span>, .hash = <span class="tok-str">&quot;ca4882ce40d37546185c57709d17d1ca&quot;</span> },</span>
+<span class="line" id="L453">        .{ .len = <span class="tok-number">128</span>, .hash = <span class="tok-str">&quot;d36dc3aac16cfe21a75cd5562d598c1c&quot;</span> },</span>
+<span class="line" id="L454">        .{ .len = <span class="tok-number">111</span>, .hash = <span class="tok-str">&quot;6e2bea99700fd19cf1694e7b56543320&quot;</span> },</span>
+<span class="line" id="L455">        .{ .len = <span class="tok-number">80</span>, .hash = <span class="tok-str">&quot;aa28f4092a7cca155f3de279cf21aa17&quot;</span> },</span>
+<span class="line" id="L456">        .{ .len = <span class="tok-number">16</span>, .hash = <span class="tok-str">&quot;9d7eb5ed121a52a4b0996e4ec9b98911&quot;</span> },</span>
+<span class="line" id="L457">        .{ .len = <span class="tok-number">1</span>, .hash = <span class="tok-str">&quot;968a203e5c7a98b6d4f3112f4d6b89a7&quot;</span> },</span>
+<span class="line" id="L458">        .{ .len = <span class="tok-number">0</span>, .hash = <span class="tok-str">&quot;00000000000000000000000000000000&quot;</span> },</span>
+<span class="line" id="L459">    };</span>
+<span class="line" id="L460">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (tvs) |tv| {</span>
+<span class="line" id="L461">        <span class="tok-kw">var</span> m: [tv.len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L462">        i = <span class="tok-number">0</span>;</span>
+<span class="line" id="L463">        <span class="tok-kw">while</span> (i &lt; m.len) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L464">            m[i] = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(i % <span class="tok-number">254</span> + <span class="tok-number">1</span>));</span>
+<span class="line" id="L465">        }</span>
+<span class="line" id="L466">        <span class="tok-kw">var</span> st = Ghash.init(&amp;key);</span>
+<span class="line" id="L467">        st.update(&amp;m);</span>
+<span class="line" id="L468">        <span class="tok-kw">var</span> out: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L469">        st.final(&amp;out);</span>
+<span class="line" id="L470">        <span class="tok-kw">try</span> htest.assertEqual(tv.hash, &amp;out);</span>
+<span class="line" id="L471">    }</span>
+<span class="line" id="L472">}</span>
+<span class="line" id="L473"></span>
+<span class="line" id="L474"><span class="tok-kw">test</span> <span class="tok-str">&quot;polyval&quot;</span> {</span>
+<span class="line" id="L475">    <span class="tok-kw">const</span> key = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x42</span>} ** <span class="tok-number">16</span>;</span>
+<span class="line" id="L476">    <span class="tok-kw">const</span> m = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x69</span>} ** <span class="tok-number">256</span>;</span>
+<span class="line" id="L477"></span>
+<span class="line" id="L478">    <span class="tok-kw">var</span> st = Polyval.init(&amp;key);</span>
+<span class="line" id="L479">    st.update(&amp;m);</span>
+<span class="line" id="L480">    <span class="tok-kw">var</span> out: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L481">    st.final(&amp;out);</span>
+<span class="line" id="L482">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;0713c82b170eef25c8955ddf72c85ccb&quot;</span>, &amp;out);</span>
+<span class="line" id="L483"></span>
+<span class="line" id="L484">    st = Polyval.init(&amp;key);</span>
+<span class="line" id="L485">    st.update(m[<span class="tok-number">0</span>..<span class="tok-number">100</span>]);</span>
+<span class="line" id="L486">    st.update(m[<span class="tok-number">100</span>..]);</span>
+<span class="line" id="L487">    st.final(&amp;out);</span>
+<span class="line" id="L488">    <span class="tok-kw">try</span> htest.assertEqual(<span class="tok-str">&quot;0713c82b170eef25c8955ddf72c85ccb&quot;</span>, &amp;out);</span>
+<span class="line" id="L489">}</span>
+<span class="line" id="L490"></span>
+</code></pre></body>
+</html>

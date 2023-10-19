@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Thread/Condition.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! Condition variables are used with a Mutex to efficiently wait for an arbitrary condition to occur.</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! It does this by atomically unlocking the mutex, blocking the thread until notified, and finally re-locking the mutex.</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! Condition can be statically initialized and is at most `@sizeOf(u64)` large.</span></span>
+<span class="line" id="L4"><span class="tok-comment">//!</span></span>
+<span class="line" id="L5"><span class="tok-comment">//! Example:</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! ```</span></span>
+<span class="line" id="L7"><span class="tok-comment">//! var m = Mutex{};</span></span>
+<span class="line" id="L8"><span class="tok-comment">//! var c = Condition{};</span></span>
+<span class="line" id="L9"><span class="tok-comment">//! var predicate = false;</span></span>
+<span class="line" id="L10"><span class="tok-comment">//!</span></span>
+<span class="line" id="L11"><span class="tok-comment">//! fn consumer() void {</span></span>
+<span class="line" id="L12"><span class="tok-comment">//!     m.lock();</span></span>
+<span class="line" id="L13"><span class="tok-comment">//!     defer m.unlock();</span></span>
+<span class="line" id="L14"><span class="tok-comment">//!</span></span>
+<span class="line" id="L15"><span class="tok-comment">//!     while (!predicate) {</span></span>
+<span class="line" id="L16"><span class="tok-comment">//!         c.wait(&amp;m);</span></span>
+<span class="line" id="L17"><span class="tok-comment">//!     }</span></span>
+<span class="line" id="L18"><span class="tok-comment">//! }</span></span>
+<span class="line" id="L19"><span class="tok-comment">//!</span></span>
+<span class="line" id="L20"><span class="tok-comment">//! fn producer() void {</span></span>
+<span class="line" id="L21"><span class="tok-comment">//!     {</span></span>
+<span class="line" id="L22"><span class="tok-comment">//!         m.lock();</span></span>
+<span class="line" id="L23"><span class="tok-comment">//!         defer m.unlock();</span></span>
+<span class="line" id="L24"><span class="tok-comment">//!         predicate = true;</span></span>
+<span class="line" id="L25"><span class="tok-comment">//!     }</span></span>
+<span class="line" id="L26"><span class="tok-comment">//!     c.signal();</span></span>
+<span class="line" id="L27"><span class="tok-comment">//! }</span></span>
+<span class="line" id="L28"><span class="tok-comment">//!</span></span>
+<span class="line" id="L29"><span class="tok-comment">//! const thread = try std.Thread.spawn(.{}, producer, .{});</span></span>
+<span class="line" id="L30"><span class="tok-comment">//! consumer();</span></span>
+<span class="line" id="L31"><span class="tok-comment">//! thread.join();</span></span>
+<span class="line" id="L32"><span class="tok-comment">//! ```</span></span>
+<span class="line" id="L33"><span class="tok-comment">//!</span></span>
+<span class="line" id="L34"><span class="tok-comment">//! Note that condition variables can only reliably unblock threads that are sequenced before them using the same Mutex.</span></span>
+<span class="line" id="L35"><span class="tok-comment">//! This means that the following is allowed to deadlock:</span></span>
+<span class="line" id="L36"><span class="tok-comment">//! ```</span></span>
+<span class="line" id="L37"><span class="tok-comment">//! thread-1: mutex.lock()</span></span>
+<span class="line" id="L38"><span class="tok-comment">//! thread-1: condition.wait(&amp;mutex)</span></span>
+<span class="line" id="L39"><span class="tok-comment">//!</span></span>
+<span class="line" id="L40"><span class="tok-comment">//! thread-2: // mutex.lock() (without this, the following signal may not see the waiting thread-1)</span></span>
+<span class="line" id="L41"><span class="tok-comment">//! thread-2: // mutex.unlock() (this is optional for correctness once locked above, as signal can be called while holding the mutex)</span></span>
+<span class="line" id="L42"><span class="tok-comment">//! thread-2: condition.signal()</span></span>
+<span class="line" id="L43"><span class="tok-comment">//! ```</span></span>
+<span class="line" id="L44"></span>
+<span class="line" id="L45"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L46"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L47"><span class="tok-kw">const</span> Condition = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L48"><span class="tok-kw">const</span> Mutex = std.Thread.Mutex;</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50"><span class="tok-kw">const</span> os = std.os;</span>
+<span class="line" id="L51"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L52"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L53"><span class="tok-kw">const</span> Atomic = std.atomic.Atomic;</span>
+<span class="line" id="L54"><span class="tok-kw">const</span> Futex = std.Thread.Futex;</span>
+<span class="line" id="L55"></span>
+<span class="line" id="L56">impl: Impl = .{},</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58"><span class="tok-comment">/// Atomically releases the Mutex, blocks the caller thread, then re-acquires the Mutex on return.</span></span>
+<span class="line" id="L59"><span class="tok-comment">/// &quot;Atomically&quot; here refers to accesses done on the Condition after acquiring the Mutex.</span></span>
+<span class="line" id="L60"><span class="tok-comment">///</span></span>
+<span class="line" id="L61"><span class="tok-comment">/// The Mutex must be locked by the caller's thread when this function is called.</span></span>
+<span class="line" id="L62"><span class="tok-comment">/// A Mutex can have multiple Conditions waiting with it concurrently, but not the opposite.</span></span>
+<span class="line" id="L63"><span class="tok-comment">/// It is undefined behavior for multiple threads to wait ith different mutexes using the same Condition concurrently.</span></span>
+<span class="line" id="L64"><span class="tok-comment">/// Once threads have finished waiting with one Mutex, the Condition can be used to wait with another Mutex.</span></span>
+<span class="line" id="L65"><span class="tok-comment">///</span></span>
+<span class="line" id="L66"><span class="tok-comment">/// A blocking call to wait() is unblocked from one of the following conditions:</span></span>
+<span class="line" id="L67"><span class="tok-comment">/// - a spurious (&quot;at random&quot;) wake up occurs</span></span>
+<span class="line" id="L68"><span class="tok-comment">/// - a future call to `signal()` or `broadcast()` which has acquired the Mutex and is sequenced after this `wait()`.</span></span>
+<span class="line" id="L69"><span class="tok-comment">///</span></span>
+<span class="line" id="L70"><span class="tok-comment">/// Given wait() can be interrupted spuriously, the blocking condition should be checked continuously</span></span>
+<span class="line" id="L71"><span class="tok-comment">/// irrespective of any notifications from `signal()` or `broadcast()`.</span></span>
+<span class="line" id="L72"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *Condition, mutex: *Mutex) <span class="tok-type">void</span> {</span>
+<span class="line" id="L73">    self.impl.wait(mutex, <span class="tok-null">null</span>) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L74">        <span class="tok-kw">error</span>.Timeout =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// no timeout provided so we shouldn't have timed-out</span>
+</span>
+<span class="line" id="L75">    };</span>
+<span class="line" id="L76">}</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78"><span class="tok-comment">/// Atomically releases the Mutex, blocks the caller thread, then re-acquires the Mutex on return.</span></span>
+<span class="line" id="L79"><span class="tok-comment">/// &quot;Atomically&quot; here refers to accesses done on the Condition after acquiring the Mutex.</span></span>
+<span class="line" id="L80"><span class="tok-comment">///</span></span>
+<span class="line" id="L81"><span class="tok-comment">/// The Mutex must be locked by the caller's thread when this function is called.</span></span>
+<span class="line" id="L82"><span class="tok-comment">/// A Mutex can have multiple Conditions waiting with it concurrently, but not the opposite.</span></span>
+<span class="line" id="L83"><span class="tok-comment">/// It is undefined behavior for multiple threads to wait ith different mutexes using the same Condition concurrently.</span></span>
+<span class="line" id="L84"><span class="tok-comment">/// Once threads have finished waiting with one Mutex, the Condition can be used to wait with another Mutex.</span></span>
+<span class="line" id="L85"><span class="tok-comment">///</span></span>
+<span class="line" id="L86"><span class="tok-comment">/// A blocking call to `timedWait()` is unblocked from one of the following conditions:</span></span>
+<span class="line" id="L87"><span class="tok-comment">/// - a spurious (&quot;at random&quot;) wake occurs</span></span>
+<span class="line" id="L88"><span class="tok-comment">/// - the caller was blocked for around `timeout_ns` nanoseconds, in which `error.Timeout` is returned.</span></span>
+<span class="line" id="L89"><span class="tok-comment">/// - a future call to `signal()` or `broadcast()` which has acquired the Mutex and is sequenced after this `timedWait()`.</span></span>
+<span class="line" id="L90"><span class="tok-comment">///</span></span>
+<span class="line" id="L91"><span class="tok-comment">/// Given `timedWait()` can be interrupted spuriously, the blocking condition should be checked continuously</span></span>
+<span class="line" id="L92"><span class="tok-comment">/// irrespective of any notifications from `signal()` or `broadcast()`.</span></span>
+<span class="line" id="L93"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">timedWait</span>(self: *Condition, mutex: *Mutex, timeout_ns: <span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L94">    <span class="tok-kw">return</span> self.impl.wait(mutex, timeout_ns);</span>
+<span class="line" id="L95">}</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97"><span class="tok-comment">/// Unblocks at least one thread blocked in a call to `wait()` or `timedWait()` with a given Mutex.</span></span>
+<span class="line" id="L98"><span class="tok-comment">/// The blocked thread must be sequenced before this call with respect to acquiring the same Mutex in order to be observable for unblocking.</span></span>
+<span class="line" id="L99"><span class="tok-comment">/// `signal()` can be called with or without the relevant Mutex being acquired and have no &quot;effect&quot; if there's no observable blocked threads.</span></span>
+<span class="line" id="L100"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">signal</span>(self: *Condition) <span class="tok-type">void</span> {</span>
+<span class="line" id="L101">    self.impl.wake(.one);</span>
+<span class="line" id="L102">}</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104"><span class="tok-comment">/// Unblocks all threads currently blocked in a call to `wait()` or `timedWait()` with a given Mutex.</span></span>
+<span class="line" id="L105"><span class="tok-comment">/// The blocked threads must be sequenced before this call with respect to acquiring the same Mutex in order to be observable for unblocking.</span></span>
+<span class="line" id="L106"><span class="tok-comment">/// `broadcast()` can be called with or without the relevant Mutex being acquired and have no &quot;effect&quot; if there's no observable blocked threads.</span></span>
+<span class="line" id="L107"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">broadcast</span>(self: *Condition) <span class="tok-type">void</span> {</span>
+<span class="line" id="L108">    self.impl.wake(.all);</span>
+<span class="line" id="L109">}</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111"><span class="tok-kw">const</span> Impl = <span class="tok-kw">if</span> (builtin.single_threaded)</span>
+<span class="line" id="L112">    SingleThreadedImpl</span>
+<span class="line" id="L113"><span class="tok-kw">else</span> <span class="tok-kw">if</span> (builtin.os.tag == .windows)</span>
+<span class="line" id="L114">    WindowsImpl</span>
+<span class="line" id="L115"><span class="tok-kw">else</span></span>
+<span class="line" id="L116">    FutexImpl;</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118"><span class="tok-kw">const</span> Notify = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L119">    one, <span class="tok-comment">// wake up only one thread</span>
+</span>
+<span class="line" id="L120">    all, <span class="tok-comment">// wake up all threads</span>
+</span>
+<span class="line" id="L121">};</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123"><span class="tok-kw">const</span> SingleThreadedImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L124">    <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *Impl, mutex: *Mutex, timeout: ?<span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L125">        _ = self;</span>
+<span class="line" id="L126">        _ = mutex;</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128">        <span class="tok-comment">// There are no other threads to wake us up.</span>
+</span>
+<span class="line" id="L129">        <span class="tok-comment">// So if we wait without a timeout we would never wake up.</span>
+</span>
+<span class="line" id="L130">        <span class="tok-kw">const</span> timeout_ns = timeout <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L131">            <span class="tok-kw">unreachable</span>; <span class="tok-comment">// deadlock detected</span>
+</span>
+<span class="line" id="L132">        };</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134">        std.time.sleep(timeout_ns);</span>
+<span class="line" id="L135">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Timeout;</span>
+<span class="line" id="L136">    }</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138">    <span class="tok-kw">fn</span> <span class="tok-fn">wake</span>(self: *Impl, <span class="tok-kw">comptime</span> notify: Notify) <span class="tok-type">void</span> {</span>
+<span class="line" id="L139">        <span class="tok-comment">// There are no other threads to wake up.</span>
+</span>
+<span class="line" id="L140">        _ = self;</span>
+<span class="line" id="L141">        _ = notify;</span>
+<span class="line" id="L142">    }</span>
+<span class="line" id="L143">};</span>
+<span class="line" id="L144"></span>
+<span class="line" id="L145"><span class="tok-kw">const</span> WindowsImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L146">    condition: os.windows.CONDITION_VARIABLE = .{},</span>
+<span class="line" id="L147"></span>
+<span class="line" id="L148">    <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *Impl, mutex: *Mutex, timeout: ?<span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L149">        <span class="tok-kw">var</span> timeout_overflowed = <span class="tok-null">false</span>;</span>
+<span class="line" id="L150">        <span class="tok-kw">var</span> timeout_ms: os.windows.DWORD = os.windows.INFINITE;</span>
+<span class="line" id="L151"></span>
+<span class="line" id="L152">        <span class="tok-kw">if</span> (timeout) |timeout_ns| {</span>
+<span class="line" id="L153">            <span class="tok-comment">// Round the nanoseconds to the nearest millisecond,</span>
+</span>
+<span class="line" id="L154">            <span class="tok-comment">// then saturating cast it to windows DWORD for use in kernel32 call.</span>
+</span>
+<span class="line" id="L155">            <span class="tok-kw">const</span> ms = (timeout_ns +| (std.time.ns_per_ms / <span class="tok-number">2</span>)) / std.time.ns_per_ms;</span>
+<span class="line" id="L156">            timeout_ms = std.math.cast(os.windows.DWORD, ms) <span class="tok-kw">orelse</span> std.math.maxInt(os.windows.DWORD);</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158">            <span class="tok-comment">// Track if the timeout overflowed into INFINITE and make sure not to wait forever.</span>
+</span>
+<span class="line" id="L159">            <span class="tok-kw">if</span> (timeout_ms == os.windows.INFINITE) {</span>
+<span class="line" id="L160">                timeout_overflowed = <span class="tok-null">true</span>;</span>
+<span class="line" id="L161">                timeout_ms -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L162">            }</span>
+<span class="line" id="L163">        }</span>
+<span class="line" id="L164"></span>
+<span class="line" id="L165">        <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> builtin.mode == .Debug) {</span>
+<span class="line" id="L166">            <span class="tok-comment">// The internal state of the DebugMutex needs to be handled here as well.</span>
+</span>
+<span class="line" id="L167">            mutex.impl.locking_thread.store(<span class="tok-number">0</span>, .Unordered);</span>
+<span class="line" id="L168">        }</span>
+<span class="line" id="L169">        <span class="tok-kw">const</span> rc = os.windows.kernel32.SleepConditionVariableSRW(</span>
+<span class="line" id="L170">            &amp;self.condition,</span>
+<span class="line" id="L171">            <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> builtin.mode == .Debug) &amp;mutex.impl.impl.srwlock <span class="tok-kw">else</span> &amp;mutex.impl.srwlock,</span>
+<span class="line" id="L172">            timeout_ms,</span>
+<span class="line" id="L173">            <span class="tok-number">0</span>, <span class="tok-comment">// the srwlock was assumed to acquired in exclusive mode not shared</span>
+</span>
+<span class="line" id="L174">        );</span>
+<span class="line" id="L175">        <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> builtin.mode == .Debug) {</span>
+<span class="line" id="L176">            <span class="tok-comment">// The internal state of the DebugMutex needs to be handled here as well.</span>
+</span>
+<span class="line" id="L177">            mutex.impl.locking_thread.store(std.Thread.getCurrentId(), .Unordered);</span>
+<span class="line" id="L178">        }</span>
+<span class="line" id="L179"></span>
+<span class="line" id="L180">        <span class="tok-comment">// Return error.Timeout if we know the timeout elapsed correctly.</span>
+</span>
+<span class="line" id="L181">        <span class="tok-kw">if</span> (rc == os.windows.FALSE) {</span>
+<span class="line" id="L182">            assert(os.windows.kernel32.GetLastError() == .TIMEOUT);</span>
+<span class="line" id="L183">            <span class="tok-kw">if</span> (!timeout_overflowed) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Timeout;</span>
+<span class="line" id="L184">        }</span>
+<span class="line" id="L185">    }</span>
+<span class="line" id="L186"></span>
+<span class="line" id="L187">    <span class="tok-kw">fn</span> <span class="tok-fn">wake</span>(self: *Impl, <span class="tok-kw">comptime</span> notify: Notify) <span class="tok-type">void</span> {</span>
+<span class="line" id="L188">        <span class="tok-kw">switch</span> (notify) {</span>
+<span class="line" id="L189">            .one =&gt; os.windows.kernel32.WakeConditionVariable(&amp;self.condition),</span>
+<span class="line" id="L190">            .all =&gt; os.windows.kernel32.WakeAllConditionVariable(&amp;self.condition),</span>
+<span class="line" id="L191">        }</span>
+<span class="line" id="L192">    }</span>
+<span class="line" id="L193">};</span>
+<span class="line" id="L194"></span>
+<span class="line" id="L195"><span class="tok-kw">const</span> FutexImpl = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L196">    state: Atomic(<span class="tok-type">u32</span>) = Atomic(<span class="tok-type">u32</span>).init(<span class="tok-number">0</span>),</span>
+<span class="line" id="L197">    epoch: Atomic(<span class="tok-type">u32</span>) = Atomic(<span class="tok-type">u32</span>).init(<span class="tok-number">0</span>),</span>
+<span class="line" id="L198"></span>
+<span class="line" id="L199">    <span class="tok-kw">const</span> one_waiter = <span class="tok-number">1</span>;</span>
+<span class="line" id="L200">    <span class="tok-kw">const</span> waiter_mask = <span class="tok-number">0xffff</span>;</span>
+<span class="line" id="L201"></span>
+<span class="line" id="L202">    <span class="tok-kw">const</span> one_signal = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">16</span>;</span>
+<span class="line" id="L203">    <span class="tok-kw">const</span> signal_mask = <span class="tok-number">0xffff</span> &lt;&lt; <span class="tok-number">16</span>;</span>
+<span class="line" id="L204"></span>
+<span class="line" id="L205">    <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *Impl, mutex: *Mutex, timeout: ?<span class="tok-type">u64</span>) <span class="tok-kw">error</span>{Timeout}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L206">        <span class="tok-comment">// Observe the epoch, then check the state again to see if we should wake up.</span>
+</span>
+<span class="line" id="L207">        <span class="tok-comment">// The epoch must be observed before we check the state or we could potentially miss a wake() and deadlock:</span>
+</span>
+<span class="line" id="L208">        <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L209">        <span class="tok-comment">// - T1: s = LOAD(&amp;state)</span>
+</span>
+<span class="line" id="L210">        <span class="tok-comment">// - T2: UPDATE(&amp;s, signal)</span>
+</span>
+<span class="line" id="L211">        <span class="tok-comment">// - T2: UPDATE(&amp;epoch, 1) + FUTEX_WAKE(&amp;epoch)</span>
+</span>
+<span class="line" id="L212">        <span class="tok-comment">// - T1: e = LOAD(&amp;epoch) (was reordered after the state load)</span>
+</span>
+<span class="line" id="L213">        <span class="tok-comment">// - T1: s &amp; signals == 0 -&gt; FUTEX_WAIT(&amp;epoch, e) (missed the state update + the epoch change)</span>
+</span>
+<span class="line" id="L214">        <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L215">        <span class="tok-comment">// Acquire barrier to ensure the epoch load happens before the state load.</span>
+</span>
+<span class="line" id="L216">        <span class="tok-kw">var</span> epoch = self.epoch.load(.Acquire);</span>
+<span class="line" id="L217">        <span class="tok-kw">var</span> state = self.state.fetchAdd(one_waiter, .Monotonic);</span>
+<span class="line" id="L218">        assert(state &amp; waiter_mask != waiter_mask);</span>
+<span class="line" id="L219">        state += one_waiter;</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221">        mutex.unlock();</span>
+<span class="line" id="L222">        <span class="tok-kw">defer</span> mutex.lock();</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">        <span class="tok-kw">var</span> futex_deadline = Futex.Deadline.init(timeout);</span>
+<span class="line" id="L225"></span>
+<span class="line" id="L226">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L227">            futex_deadline.wait(&amp;self.epoch, epoch) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L228">                <span class="tok-comment">// On timeout, we must decrement the waiter we added above.</span>
+</span>
+<span class="line" id="L229">                <span class="tok-kw">error</span>.Timeout =&gt; {</span>
+<span class="line" id="L230">                    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L231">                        <span class="tok-comment">// If there's a signal when we're timing out, consume it and report being woken up instead.</span>
+</span>
+<span class="line" id="L232">                        <span class="tok-comment">// Acquire barrier ensures code before the wake() which added the signal happens before we decrement it and return.</span>
+</span>
+<span class="line" id="L233">                        <span class="tok-kw">while</span> (state &amp; signal_mask != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L234">                            <span class="tok-kw">const</span> new_state = state - one_waiter - one_signal;</span>
+<span class="line" id="L235">                            state = self.state.tryCompareAndSwap(state, new_state, .Acquire, .Monotonic) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>;</span>
+<span class="line" id="L236">                        }</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">                        <span class="tok-comment">// Remove the waiter we added and officially return timed out.</span>
+</span>
+<span class="line" id="L239">                        <span class="tok-kw">const</span> new_state = state - one_waiter;</span>
+<span class="line" id="L240">                        state = self.state.tryCompareAndSwap(state, new_state, .Monotonic, .Monotonic) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> err;</span>
+<span class="line" id="L241">                    }</span>
+<span class="line" id="L242">                },</span>
+<span class="line" id="L243">            };</span>
+<span class="line" id="L244"></span>
+<span class="line" id="L245">            epoch = self.epoch.load(.Acquire);</span>
+<span class="line" id="L246">            state = self.state.load(.Monotonic);</span>
+<span class="line" id="L247"></span>
+<span class="line" id="L248">            <span class="tok-comment">// Try to wake up by consuming a signal and decremented the waiter we added previously.</span>
+</span>
+<span class="line" id="L249">            <span class="tok-comment">// Acquire barrier ensures code before the wake() which added the signal happens before we decrement it and return.</span>
+</span>
+<span class="line" id="L250">            <span class="tok-kw">while</span> (state &amp; signal_mask != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L251">                <span class="tok-kw">const</span> new_state = state - one_waiter - one_signal;</span>
+<span class="line" id="L252">                state = self.state.tryCompareAndSwap(state, new_state, .Acquire, .Monotonic) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span>;</span>
+<span class="line" id="L253">            }</span>
+<span class="line" id="L254">        }</span>
+<span class="line" id="L255">    }</span>
+<span class="line" id="L256"></span>
+<span class="line" id="L257">    <span class="tok-kw">fn</span> <span class="tok-fn">wake</span>(self: *Impl, <span class="tok-kw">comptime</span> notify: Notify) <span class="tok-type">void</span> {</span>
+<span class="line" id="L258">        <span class="tok-kw">var</span> state = self.state.load(.Monotonic);</span>
+<span class="line" id="L259">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L260">            <span class="tok-kw">const</span> waiters = (state &amp; waiter_mask) / one_waiter;</span>
+<span class="line" id="L261">            <span class="tok-kw">const</span> signals = (state &amp; signal_mask) / one_signal;</span>
+<span class="line" id="L262"></span>
+<span class="line" id="L263">            <span class="tok-comment">// Reserves which waiters to wake up by incrementing the signals count.</span>
+</span>
+<span class="line" id="L264">            <span class="tok-comment">// Therefore, the signals count is always less than or equal to the waiters count.</span>
+</span>
+<span class="line" id="L265">            <span class="tok-comment">// We don't need to Futex.wake if there's nothing to wake up or if other wake() threads have reserved to wake up the current waiters.</span>
+</span>
+<span class="line" id="L266">            <span class="tok-kw">const</span> wakeable = waiters - signals;</span>
+<span class="line" id="L267">            <span class="tok-kw">if</span> (wakeable == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L268">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L269">            }</span>
+<span class="line" id="L270"></span>
+<span class="line" id="L271">            <span class="tok-kw">const</span> to_wake = <span class="tok-kw">switch</span> (notify) {</span>
+<span class="line" id="L272">                .one =&gt; <span class="tok-number">1</span>,</span>
+<span class="line" id="L273">                .all =&gt; wakeable,</span>
+<span class="line" id="L274">            };</span>
+<span class="line" id="L275"></span>
+<span class="line" id="L276">            <span class="tok-comment">// Reserve the amount of waiters to wake by incrementing the signals count.</span>
+</span>
+<span class="line" id="L277">            <span class="tok-comment">// Release barrier ensures code before the wake() happens before the signal it posted and consumed by the wait() threads.</span>
+</span>
+<span class="line" id="L278">            <span class="tok-kw">const</span> new_state = state + (one_signal * to_wake);</span>
+<span class="line" id="L279">            state = self.state.tryCompareAndSwap(state, new_state, .Release, .Monotonic) <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L280">                <span class="tok-comment">// Wake up the waiting threads we reserved above by changing the epoch value.</span>
+</span>
+<span class="line" id="L281">                <span class="tok-comment">// NOTE: a waiting thread could miss a wake up if *exactly* ((1&lt;&lt;32)-1) wake()s happen between it observing the epoch and sleeping on it.</span>
+</span>
+<span class="line" id="L282">                <span class="tok-comment">// This is very unlikely due to how many precise amount of Futex.wake() calls that would be between the waiting thread's potential preemption.</span>
+</span>
+<span class="line" id="L283">                <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L284">                <span class="tok-comment">// Release barrier ensures the signal being added to the state happens before the epoch is changed.</span>
+</span>
+<span class="line" id="L285">                <span class="tok-comment">// If not, the waiting thread could potentially deadlock from missing both the state and epoch change:</span>
+</span>
+<span class="line" id="L286">                <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L287">                <span class="tok-comment">// - T2: UPDATE(&amp;epoch, 1) (reordered before the state change)</span>
+</span>
+<span class="line" id="L288">                <span class="tok-comment">// - T1: e = LOAD(&amp;epoch)</span>
+</span>
+<span class="line" id="L289">                <span class="tok-comment">// - T1: s = LOAD(&amp;state)</span>
+</span>
+<span class="line" id="L290">                <span class="tok-comment">// - T2: UPDATE(&amp;state, signal) + FUTEX_WAKE(&amp;epoch)</span>
+</span>
+<span class="line" id="L291">                <span class="tok-comment">// - T1: s &amp; signals == 0 -&gt; FUTEX_WAIT(&amp;epoch, e) (missed both epoch change and state change)</span>
+</span>
+<span class="line" id="L292">                _ = self.epoch.fetchAdd(<span class="tok-number">1</span>, .Release);</span>
+<span class="line" id="L293">                Futex.wake(&amp;self.epoch, to_wake);</span>
+<span class="line" id="L294">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L295">            };</span>
+<span class="line" id="L296">        }</span>
+<span class="line" id="L297">    }</span>
+<span class="line" id="L298">};</span>
+<span class="line" id="L299"></span>
+<span class="line" id="L300"><span class="tok-kw">test</span> <span class="tok-str">&quot;Condition - smoke test&quot;</span> {</span>
+<span class="line" id="L301">    <span class="tok-kw">var</span> mutex = Mutex{};</span>
+<span class="line" id="L302">    <span class="tok-kw">var</span> cond = Condition{};</span>
+<span class="line" id="L303"></span>
+<span class="line" id="L304">    <span class="tok-comment">// Try to wake outside the mutex</span>
+</span>
+<span class="line" id="L305">    <span class="tok-kw">defer</span> cond.signal();</span>
+<span class="line" id="L306">    <span class="tok-kw">defer</span> cond.broadcast();</span>
+<span class="line" id="L307"></span>
+<span class="line" id="L308">    mutex.lock();</span>
+<span class="line" id="L309">    <span class="tok-kw">defer</span> mutex.unlock();</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311">    <span class="tok-comment">// Try to wait with a timeout (should not deadlock)</span>
+</span>
+<span class="line" id="L312">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Timeout, cond.timedWait(&amp;mutex, <span class="tok-number">0</span>));</span>
+<span class="line" id="L313">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Timeout, cond.timedWait(&amp;mutex, std.time.ns_per_ms));</span>
+<span class="line" id="L314"></span>
+<span class="line" id="L315">    <span class="tok-comment">// Try to wake inside the mutex.</span>
+</span>
+<span class="line" id="L316">    cond.signal();</span>
+<span class="line" id="L317">    cond.broadcast();</span>
+<span class="line" id="L318">}</span>
+<span class="line" id="L319"></span>
+<span class="line" id="L320"><span class="tok-comment">// Inspired from: https://github.com/Amanieu/parking_lot/pull/129</span>
+</span>
+<span class="line" id="L321"><span class="tok-kw">test</span> <span class="tok-str">&quot;Condition - wait and signal&quot;</span> {</span>
+<span class="line" id="L322">    <span class="tok-comment">// This test requires spawning threads</span>
+</span>
+<span class="line" id="L323">    <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L324">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L325">    }</span>
+<span class="line" id="L326"></span>
+<span class="line" id="L327">    <span class="tok-kw">const</span> num_threads = <span class="tok-number">4</span>;</span>
+<span class="line" id="L328"></span>
+<span class="line" id="L329">    <span class="tok-kw">const</span> MultiWait = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L330">        mutex: Mutex = .{},</span>
+<span class="line" id="L331">        cond: Condition = .{},</span>
+<span class="line" id="L332">        threads: [num_threads]std.Thread = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L333">        spawn_count: std.math.IntFittingRange(<span class="tok-number">0</span>, num_threads) = <span class="tok-number">0</span>,</span>
+<span class="line" id="L334"></span>
+<span class="line" id="L335">        <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *<span class="tok-builtin">@This</span>()) <span class="tok-type">void</span> {</span>
+<span class="line" id="L336">            self.mutex.lock();</span>
+<span class="line" id="L337">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L338">            self.spawn_count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L339"></span>
+<span class="line" id="L340">            self.cond.wait(&amp;self.mutex);</span>
+<span class="line" id="L341">            self.cond.timedWait(&amp;self.mutex, std.time.ns_per_ms) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L342">            self.cond.signal();</span>
+<span class="line" id="L343">        }</span>
+<span class="line" id="L344">    };</span>
+<span class="line" id="L345"></span>
+<span class="line" id="L346">    <span class="tok-kw">var</span> multi_wait = MultiWait{};</span>
+<span class="line" id="L347">    <span class="tok-kw">for</span> (&amp;multi_wait.threads) |*t| {</span>
+<span class="line" id="L348">        t.* = <span class="tok-kw">try</span> std.Thread.spawn(.{}, MultiWait.run, .{&amp;multi_wait});</span>
+<span class="line" id="L349">    }</span>
+<span class="line" id="L350"></span>
+<span class="line" id="L351">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L352">        std.time.sleep(<span class="tok-number">100</span> * std.time.ns_per_ms);</span>
+<span class="line" id="L353"></span>
+<span class="line" id="L354">        multi_wait.mutex.lock();</span>
+<span class="line" id="L355">        <span class="tok-kw">defer</span> multi_wait.mutex.unlock();</span>
+<span class="line" id="L356">        <span class="tok-comment">// Make sure all of the threads have finished spawning to avoid a deadlock.</span>
+</span>
+<span class="line" id="L357">        <span class="tok-kw">if</span> (multi_wait.spawn_count == num_threads) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L358">    }</span>
+<span class="line" id="L359"></span>
+<span class="line" id="L360">    multi_wait.cond.signal();</span>
+<span class="line" id="L361">    <span class="tok-kw">for</span> (multi_wait.threads) |t| {</span>
+<span class="line" id="L362">        t.join();</span>
+<span class="line" id="L363">    }</span>
+<span class="line" id="L364">}</span>
+<span class="line" id="L365"></span>
+<span class="line" id="L366"><span class="tok-kw">test</span> <span class="tok-str">&quot;Condition - signal&quot;</span> {</span>
+<span class="line" id="L367">    <span class="tok-comment">// This test requires spawning threads</span>
+</span>
+<span class="line" id="L368">    <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L369">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L370">    }</span>
+<span class="line" id="L371"></span>
+<span class="line" id="L372">    <span class="tok-kw">const</span> num_threads = <span class="tok-number">4</span>;</span>
+<span class="line" id="L373"></span>
+<span class="line" id="L374">    <span class="tok-kw">const</span> SignalTest = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L375">        mutex: Mutex = .{},</span>
+<span class="line" id="L376">        cond: Condition = .{},</span>
+<span class="line" id="L377">        notified: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L378">        threads: [num_threads]std.Thread = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L379">        spawn_count: std.math.IntFittingRange(<span class="tok-number">0</span>, num_threads) = <span class="tok-number">0</span>,</span>
+<span class="line" id="L380"></span>
+<span class="line" id="L381">        <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *<span class="tok-builtin">@This</span>()) <span class="tok-type">void</span> {</span>
+<span class="line" id="L382">            self.mutex.lock();</span>
+<span class="line" id="L383">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L384">            self.spawn_count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L385"></span>
+<span class="line" id="L386">            <span class="tok-comment">// Use timedWait() a few times before using wait()</span>
+</span>
+<span class="line" id="L387">            <span class="tok-comment">// to test multiple threads timing out frequently.</span>
+</span>
+<span class="line" id="L388">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L389">            <span class="tok-kw">while</span> (!self.notified) : (i +%= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L390">                <span class="tok-kw">if</span> (i &lt; <span class="tok-number">5</span>) {</span>
+<span class="line" id="L391">                    self.cond.timedWait(&amp;self.mutex, <span class="tok-number">1</span>) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L392">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L393">                    self.cond.wait(&amp;self.mutex);</span>
+<span class="line" id="L394">                }</span>
+<span class="line" id="L395">            }</span>
+<span class="line" id="L396"></span>
+<span class="line" id="L397">            <span class="tok-comment">// Once we received the signal, notify another thread (inside the lock).</span>
+</span>
+<span class="line" id="L398">            assert(self.notified);</span>
+<span class="line" id="L399">            self.cond.signal();</span>
+<span class="line" id="L400">        }</span>
+<span class="line" id="L401">    };</span>
+<span class="line" id="L402"></span>
+<span class="line" id="L403">    <span class="tok-kw">var</span> signal_test = SignalTest{};</span>
+<span class="line" id="L404">    <span class="tok-kw">for</span> (&amp;signal_test.threads) |*t| {</span>
+<span class="line" id="L405">        t.* = <span class="tok-kw">try</span> std.Thread.spawn(.{}, SignalTest.run, .{&amp;signal_test});</span>
+<span class="line" id="L406">    }</span>
+<span class="line" id="L407"></span>
+<span class="line" id="L408">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L409">        std.time.sleep(<span class="tok-number">10</span> * std.time.ns_per_ms);</span>
+<span class="line" id="L410"></span>
+<span class="line" id="L411">        signal_test.mutex.lock();</span>
+<span class="line" id="L412">        <span class="tok-kw">defer</span> signal_test.mutex.unlock();</span>
+<span class="line" id="L413">        <span class="tok-comment">// Make sure at least one thread has finished spawning to avoid testing nothing.</span>
+</span>
+<span class="line" id="L414">        <span class="tok-kw">if</span> (signal_test.spawn_count &gt; <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L415">    }</span>
+<span class="line" id="L416"></span>
+<span class="line" id="L417">    {</span>
+<span class="line" id="L418">        <span class="tok-comment">// Wake up one of them (outside the lock) after setting notified=true.</span>
+</span>
+<span class="line" id="L419">        <span class="tok-kw">defer</span> signal_test.cond.signal();</span>
+<span class="line" id="L420"></span>
+<span class="line" id="L421">        signal_test.mutex.lock();</span>
+<span class="line" id="L422">        <span class="tok-kw">defer</span> signal_test.mutex.unlock();</span>
+<span class="line" id="L423"></span>
+<span class="line" id="L424">        <span class="tok-kw">try</span> testing.expect(!signal_test.notified);</span>
+<span class="line" id="L425">        signal_test.notified = <span class="tok-null">true</span>;</span>
+<span class="line" id="L426">    }</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">    <span class="tok-kw">for</span> (signal_test.threads) |t| {</span>
+<span class="line" id="L429">        t.join();</span>
+<span class="line" id="L430">    }</span>
+<span class="line" id="L431">}</span>
+<span class="line" id="L432"></span>
+<span class="line" id="L433"><span class="tok-kw">test</span> <span class="tok-str">&quot;Condition - multi signal&quot;</span> {</span>
+<span class="line" id="L434">    <span class="tok-comment">// This test requires spawning threads</span>
+</span>
+<span class="line" id="L435">    <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L436">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L437">    }</span>
+<span class="line" id="L438"></span>
+<span class="line" id="L439">    <span class="tok-kw">const</span> num_threads = <span class="tok-number">4</span>;</span>
+<span class="line" id="L440">    <span class="tok-kw">const</span> num_iterations = <span class="tok-number">4</span>;</span>
+<span class="line" id="L441"></span>
+<span class="line" id="L442">    <span class="tok-kw">const</span> Paddle = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L443">        mutex: Mutex = .{},</span>
+<span class="line" id="L444">        cond: Condition = .{},</span>
+<span class="line" id="L445">        value: <span class="tok-type">u32</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L446"></span>
+<span class="line" id="L447">        <span class="tok-kw">fn</span> <span class="tok-fn">hit</span>(self: *<span class="tok-builtin">@This</span>()) <span class="tok-type">void</span> {</span>
+<span class="line" id="L448">            <span class="tok-kw">defer</span> self.cond.signal();</span>
+<span class="line" id="L449"></span>
+<span class="line" id="L450">            self.mutex.lock();</span>
+<span class="line" id="L451">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L452"></span>
+<span class="line" id="L453">            self.value += <span class="tok-number">1</span>;</span>
+<span class="line" id="L454">        }</span>
+<span class="line" id="L455"></span>
+<span class="line" id="L456">        <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *<span class="tok-builtin">@This</span>(), hit_to: *<span class="tok-builtin">@This</span>()) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L457">            self.mutex.lock();</span>
+<span class="line" id="L458">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L459"></span>
+<span class="line" id="L460">            <span class="tok-kw">var</span> current: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L461">            <span class="tok-kw">while</span> (current &lt; num_iterations) : (current += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L462">                <span class="tok-comment">// Wait for the value to change from hit()</span>
+</span>
+<span class="line" id="L463">                <span class="tok-kw">while</span> (self.value == current) {</span>
+<span class="line" id="L464">                    self.cond.wait(&amp;self.mutex);</span>
+<span class="line" id="L465">                }</span>
+<span class="line" id="L466"></span>
+<span class="line" id="L467">                <span class="tok-comment">// hit the next paddle</span>
+</span>
+<span class="line" id="L468">                <span class="tok-kw">try</span> testing.expectEqual(self.value, current + <span class="tok-number">1</span>);</span>
+<span class="line" id="L469">                hit_to.hit();</span>
+<span class="line" id="L470">            }</span>
+<span class="line" id="L471">        }</span>
+<span class="line" id="L472">    };</span>
+<span class="line" id="L473"></span>
+<span class="line" id="L474">    <span class="tok-kw">var</span> paddles = [_]Paddle{.{}} ** num_threads;</span>
+<span class="line" id="L475">    <span class="tok-kw">var</span> threads = [_]std.Thread{<span class="tok-null">undefined</span>} ** num_threads;</span>
+<span class="line" id="L476"></span>
+<span class="line" id="L477">    <span class="tok-comment">// Create a circle of paddles which hit each other</span>
+</span>
+<span class="line" id="L478">    <span class="tok-kw">for</span> (&amp;threads, <span class="tok-number">0</span>..) |*t, i| {</span>
+<span class="line" id="L479">        <span class="tok-kw">const</span> paddle = &amp;paddles[i];</span>
+<span class="line" id="L480">        <span class="tok-kw">const</span> hit_to = &amp;paddles[(i + <span class="tok-number">1</span>) % paddles.len];</span>
+<span class="line" id="L481">        t.* = <span class="tok-kw">try</span> std.Thread.spawn(.{}, Paddle.run, .{ paddle, hit_to });</span>
+<span class="line" id="L482">    }</span>
+<span class="line" id="L483"></span>
+<span class="line" id="L484">    <span class="tok-comment">// Hit the first paddle and wait for them all to complete by hitting each other for num_iterations.</span>
+</span>
+<span class="line" id="L485">    paddles[<span class="tok-number">0</span>].hit();</span>
+<span class="line" id="L486">    <span class="tok-kw">for</span> (threads) |t| t.join();</span>
+<span class="line" id="L487"></span>
+<span class="line" id="L488">    <span class="tok-comment">// The first paddle will be hit one last time by the last paddle.</span>
+</span>
+<span class="line" id="L489">    <span class="tok-kw">for</span> (paddles, <span class="tok-number">0</span>..) |p, i| {</span>
+<span class="line" id="L490">        <span class="tok-kw">const</span> expected = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, num_iterations) + <span class="tok-builtin">@intFromBool</span>(i == <span class="tok-number">0</span>);</span>
+<span class="line" id="L491">        <span class="tok-kw">try</span> testing.expectEqual(p.value, expected);</span>
+<span class="line" id="L492">    }</span>
+<span class="line" id="L493">}</span>
+<span class="line" id="L494"></span>
+<span class="line" id="L495"><span class="tok-kw">test</span> <span class="tok-str">&quot;Condition - broadcasting&quot;</span> {</span>
+<span class="line" id="L496">    <span class="tok-comment">// This test requires spawning threads</span>
+</span>
+<span class="line" id="L497">    <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L498">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L499">    }</span>
+<span class="line" id="L500"></span>
+<span class="line" id="L501">    <span class="tok-kw">const</span> num_threads = <span class="tok-number">10</span>;</span>
+<span class="line" id="L502"></span>
+<span class="line" id="L503">    <span class="tok-kw">const</span> BroadcastTest = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L504">        mutex: Mutex = .{},</span>
+<span class="line" id="L505">        cond: Condition = .{},</span>
+<span class="line" id="L506">        completed: Condition = .{},</span>
+<span class="line" id="L507">        count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L508">        threads: [num_threads]std.Thread = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L509"></span>
+<span class="line" id="L510">        <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *<span class="tok-builtin">@This</span>()) <span class="tok-type">void</span> {</span>
+<span class="line" id="L511">            self.mutex.lock();</span>
+<span class="line" id="L512">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L513"></span>
+<span class="line" id="L514">            <span class="tok-comment">// The last broadcast thread to start tells the main test thread it's completed.</span>
+</span>
+<span class="line" id="L515">            self.count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L516">            <span class="tok-kw">if</span> (self.count == num_threads) {</span>
+<span class="line" id="L517">                self.completed.signal();</span>
+<span class="line" id="L518">            }</span>
+<span class="line" id="L519"></span>
+<span class="line" id="L520">            <span class="tok-comment">// Waits for the count to reach zero after the main test thread observes it at num_threads.</span>
+</span>
+<span class="line" id="L521">            <span class="tok-comment">// Tries to use timedWait() a bit before falling back to wait() to test multiple threads timing out.</span>
+</span>
+<span class="line" id="L522">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L523">            <span class="tok-kw">while</span> (self.count != <span class="tok-number">0</span>) : (i +%= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L524">                <span class="tok-kw">if</span> (i &lt; <span class="tok-number">10</span>) {</span>
+<span class="line" id="L525">                    self.cond.timedWait(&amp;self.mutex, <span class="tok-number">1</span>) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L526">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L527">                    self.cond.wait(&amp;self.mutex);</span>
+<span class="line" id="L528">                }</span>
+<span class="line" id="L529">            }</span>
+<span class="line" id="L530">        }</span>
+<span class="line" id="L531">    };</span>
+<span class="line" id="L532"></span>
+<span class="line" id="L533">    <span class="tok-kw">var</span> broadcast_test = BroadcastTest{};</span>
+<span class="line" id="L534">    <span class="tok-kw">for</span> (&amp;broadcast_test.threads) |*t| {</span>
+<span class="line" id="L535">        t.* = <span class="tok-kw">try</span> std.Thread.spawn(.{}, BroadcastTest.run, .{&amp;broadcast_test});</span>
+<span class="line" id="L536">    }</span>
+<span class="line" id="L537"></span>
+<span class="line" id="L538">    {</span>
+<span class="line" id="L539">        broadcast_test.mutex.lock();</span>
+<span class="line" id="L540">        <span class="tok-kw">defer</span> broadcast_test.mutex.unlock();</span>
+<span class="line" id="L541"></span>
+<span class="line" id="L542">        <span class="tok-comment">// Wait for all the broadcast threads to spawn.</span>
+</span>
+<span class="line" id="L543">        <span class="tok-comment">// timedWait() to detect any potential deadlocks.</span>
+</span>
+<span class="line" id="L544">        <span class="tok-kw">while</span> (broadcast_test.count != num_threads) {</span>
+<span class="line" id="L545">            broadcast_test.completed.timedWait(</span>
+<span class="line" id="L546">                &amp;broadcast_test.mutex,</span>
+<span class="line" id="L547">                <span class="tok-number">1</span> * std.time.ns_per_s,</span>
+<span class="line" id="L548">            ) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L549">        }</span>
+<span class="line" id="L550"></span>
+<span class="line" id="L551">        <span class="tok-comment">// Reset the counter and wake all the threads to exit.</span>
+</span>
+<span class="line" id="L552">        broadcast_test.count = <span class="tok-number">0</span>;</span>
+<span class="line" id="L553">        broadcast_test.cond.broadcast();</span>
+<span class="line" id="L554">    }</span>
+<span class="line" id="L555"></span>
+<span class="line" id="L556">    <span class="tok-kw">for</span> (broadcast_test.threads) |t| {</span>
+<span class="line" id="L557">        t.join();</span>
+<span class="line" id="L558">    }</span>
+<span class="line" id="L559">}</span>
+<span class="line" id="L560"></span>
+<span class="line" id="L561"><span class="tok-kw">test</span> <span class="tok-str">&quot;Condition - broadcasting - wake all threads&quot;</span> {</span>
+<span class="line" id="L562">    <span class="tok-comment">// Tests issue #12877</span>
+</span>
+<span class="line" id="L563">    <span class="tok-comment">// This test requires spawning threads</span>
+</span>
+<span class="line" id="L564">    <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L565">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L566">    }</span>
+<span class="line" id="L567"></span>
+<span class="line" id="L568">    <span class="tok-kw">var</span> num_runs: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L569">    <span class="tok-kw">const</span> num_threads = <span class="tok-number">10</span>;</span>
+<span class="line" id="L570"></span>
+<span class="line" id="L571">    <span class="tok-kw">while</span> (num_runs &gt; <span class="tok-number">0</span>) : (num_runs -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L572">        <span class="tok-kw">const</span> BroadcastTest = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L573">            mutex: Mutex = .{},</span>
+<span class="line" id="L574">            cond: Condition = .{},</span>
+<span class="line" id="L575">            completed: Condition = .{},</span>
+<span class="line" id="L576">            count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L577">            thread_id_to_wake: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L578">            threads: [num_threads]std.Thread = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L579">            wakeups: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L580"></span>
+<span class="line" id="L581">            <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *<span class="tok-builtin">@This</span>(), thread_id: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L582">                self.mutex.lock();</span>
+<span class="line" id="L583">                <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L584"></span>
+<span class="line" id="L585">                <span class="tok-comment">// The last broadcast thread to start tells the main test thread it's completed.</span>
+</span>
+<span class="line" id="L586">                self.count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L587">                <span class="tok-kw">if</span> (self.count == num_threads) {</span>
+<span class="line" id="L588">                    self.completed.signal();</span>
+<span class="line" id="L589">                }</span>
+<span class="line" id="L590"></span>
+<span class="line" id="L591">                <span class="tok-kw">while</span> (self.thread_id_to_wake != thread_id) {</span>
+<span class="line" id="L592">                    self.cond.timedWait(&amp;self.mutex, <span class="tok-number">1</span> * std.time.ns_per_s) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L593">                    self.wakeups += <span class="tok-number">1</span>;</span>
+<span class="line" id="L594">                }</span>
+<span class="line" id="L595">                <span class="tok-kw">if</span> (self.thread_id_to_wake &lt;= num_threads) {</span>
+<span class="line" id="L596">                    <span class="tok-comment">// Signal next thread to wake up.</span>
+</span>
+<span class="line" id="L597">                    self.thread_id_to_wake += <span class="tok-number">1</span>;</span>
+<span class="line" id="L598">                    self.cond.broadcast();</span>
+<span class="line" id="L599">                }</span>
+<span class="line" id="L600">            }</span>
+<span class="line" id="L601">        };</span>
+<span class="line" id="L602"></span>
+<span class="line" id="L603">        <span class="tok-kw">var</span> broadcast_test = BroadcastTest{};</span>
+<span class="line" id="L604">        <span class="tok-kw">var</span> thread_id: <span class="tok-type">usize</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L605">        <span class="tok-kw">for</span> (&amp;broadcast_test.threads) |*t| {</span>
+<span class="line" id="L606">            t.* = <span class="tok-kw">try</span> std.Thread.spawn(.{}, BroadcastTest.run, .{ &amp;broadcast_test, thread_id });</span>
+<span class="line" id="L607">            thread_id += <span class="tok-number">1</span>;</span>
+<span class="line" id="L608">        }</span>
+<span class="line" id="L609"></span>
+<span class="line" id="L610">        {</span>
+<span class="line" id="L611">            broadcast_test.mutex.lock();</span>
+<span class="line" id="L612">            <span class="tok-kw">defer</span> broadcast_test.mutex.unlock();</span>
+<span class="line" id="L613"></span>
+<span class="line" id="L614">            <span class="tok-comment">// Wait for all the broadcast threads to spawn.</span>
+</span>
+<span class="line" id="L615">            <span class="tok-comment">// timedWait() to detect any potential deadlocks.</span>
+</span>
+<span class="line" id="L616">            <span class="tok-kw">while</span> (broadcast_test.count != num_threads) {</span>
+<span class="line" id="L617">                broadcast_test.completed.timedWait(</span>
+<span class="line" id="L618">                    &amp;broadcast_test.mutex,</span>
+<span class="line" id="L619">                    <span class="tok-number">1</span> * std.time.ns_per_s,</span>
+<span class="line" id="L620">                ) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L621">            }</span>
+<span class="line" id="L622"></span>
+<span class="line" id="L623">            <span class="tok-comment">// Signal thread 1 to wake up</span>
+</span>
+<span class="line" id="L624">            broadcast_test.thread_id_to_wake = <span class="tok-number">1</span>;</span>
+<span class="line" id="L625">            broadcast_test.cond.broadcast();</span>
+<span class="line" id="L626">        }</span>
+<span class="line" id="L627"></span>
+<span class="line" id="L628">        <span class="tok-kw">for</span> (broadcast_test.threads) |t| {</span>
+<span class="line" id="L629">            t.join();</span>
+<span class="line" id="L630">        }</span>
+<span class="line" id="L631">    }</span>
+<span class="line" id="L632">}</span>
+<span class="line" id="L633"></span>
+</code></pre></body>
+</html>
