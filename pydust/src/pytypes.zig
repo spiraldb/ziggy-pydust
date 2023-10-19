@@ -126,12 +126,22 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
                     .slot = ffi.Py_tp_init,
                     .pfunc = @ptrCast(@constCast(&tp_init)),
                 }};
-            } else {
-                // Otherwise, we set tp_init to a default that throws to ensure the class
-                // cannot be constructed from Python
+
+                // Add a default tp_new implementation so that we override any tp_new_not_instatiatable
+                // calls that supertypes may have configured.
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_tp_init,
-                    .pfunc = @ptrCast(@constCast(&tp_init_default)),
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = @constCast(&ffi.PyType_GenericNew),
+                }};
+            } else {
+                // Otherwise, we set tp_new to a default that throws to ensure the class
+                // cannot be constructed from Python.
+                // NOTE(ngates): we use tp_new because it allows us to fail as early as possible.
+                // This means that Python will not attempt to call the finalizer (__del__) on an
+                // uninitialized class.
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = @ptrCast(@constCast(&tp_new_not_instantiable)),
                 }};
             }
 
@@ -242,6 +252,13 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             break :blk slots_;
         };
 
+        fn tp_new_not_instantiable(pycls: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            _ = pycls;
+            _ = pykwargs;
+            _ = pyargs;
+            py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
+        }
+
         fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
             const sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ *definition, *const definition, py.PyObject });
 
@@ -265,13 +282,6 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             }
 
             return 0;
-        }
-
-        fn tp_init_default(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
-            _ = pyself;
-            _ = pykwargs;
-            _ = pyargs;
-            py.TypeError.raise("Native type cannot be instantiated from Python") catch return -1;
         }
 
         /// Wrapper for the user's __del__ function.
