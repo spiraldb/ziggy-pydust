@@ -131,7 +131,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
                 // calls that supertypes may have configured.
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_new,
-                    .pfunc = &ffi.PyType_GenericNew,
+                    .pfunc = @constCast(&ffi.PyType_GenericNew),
                 }};
             } else {
                 // Otherwise, we set tp_new to a default that throws to ensure the class
