@@ -48,6 +48,9 @@ class ToolPydust(BaseModel):
     zig_exe: Path | None = None
     build_zig: Path = Path("build.zig")
 
+    # Whether to include Zig tests as part of the pytest collection.
+    zig_tests: bool = True
+
     # When true, python module definitions are configured by the user in their own build.zig file.
     # When false, ext_modules is used to auto-generated a build.zig file.
     self_managed: bool = False

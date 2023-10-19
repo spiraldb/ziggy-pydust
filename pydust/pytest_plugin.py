@@ -46,11 +46,15 @@ def pytest_collection(session):
     """
     optimize = session.config.getoption("zig_optimize")
     buildzig.zig_build(["install", f"-Doptimize={optimize}", f"-Dpython-exe={sys.executable}"])
-    buildzig.zig_build(["pydust-test-build", f"-Doptimize={optimize}", f"-Dpython-exe={sys.executable}"])
+    if config.load().zig_tests:
+        buildzig.zig_build(["pydust-test-build", f"-Doptimize={optimize}", f"-Dpython-exe={sys.executable}"])
 
 
 def pytest_collect_file(file_path, path, parent):
     """Grab any Zig roots for PyTest collection."""
+    if not config.load().zig_tests:
+        return None
+
     if file_path.suffix == ".zig":
         for ext_module in pydust_conf.ext_modules:
             if ext_module.root.absolute() == file_path.absolute():
