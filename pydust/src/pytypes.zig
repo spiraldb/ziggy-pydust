@@ -123,12 +123,15 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
 
             if (@hasDecl(definition, "__init__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
-                    .slot = ffi.Py_tp_new,
-                    .pfunc = @ptrCast(@constCast(&tp_new)),
-                }};
-                slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_init,
                     .pfunc = @ptrCast(@constCast(&tp_init)),
+                }};
+
+                // Add a default tp_new implementation so that we override any tp_new_not_instatiatable
+                // calls that supertypes may have configured.
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = &ffi.PyType_GenericNew,
                 }};
             } else {
                 // Otherwise, we set tp_new to a default that throws to ensure the class
@@ -248,12 +251,6 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
 
             break :blk slots_;
         };
-
-        fn tp_new(pycls: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            _ = pykwargs;
-            _ = pyargs;
-            return ffi.PyType_GenericAlloc(pycls, 0);
-        }
 
         fn tp_new_not_instantiable(pycls: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             _ = pycls;
