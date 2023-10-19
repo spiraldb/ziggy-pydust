@@ -123,6 +123,10 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
 
             if (@hasDecl(definition, "__init__")) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_new,
+                    .pfunc = @ptrCast(@constCast(&tp_new)),
+                }};
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_init,
                     .pfunc = @ptrCast(@constCast(&tp_init)),
                 }};
@@ -245,7 +249,13 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             break :blk slots_;
         };
 
-        fn tp_new_not_instantiable(pycls: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_new(pycls: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            _ = pykwargs;
+            _ = pyargs;
+            return ffi.PyType_GenericAlloc(pycls, 0);
+        }
+
+        fn tp_new_not_instantiable(pycls: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             _ = pycls;
             _ = pykwargs;
             _ = pyargs;
