@@ -4,7 +4,7 @@ class Animal:
     def species(self, /): ...
 
 class Callable:
-    def __init__():
+    def __init__(self, /):
         pass
     def __call__(self, /, *args, **kwargs):
         """
@@ -13,18 +13,18 @@ class Callable:
         ...
 
 class ConstructableClass:
-    def __init__(count, /):
+    def __init__(self, count, /):
         pass
 
 class Counter:
-    def __init__():
+    def __init__(self, /):
         pass
     def increment(self, /): ...
 
     count: ...
 
 class Hash:
-    def __init__(x, /):
+    def __init__(self, x, /):
         pass
     def __hash__(self, /):
         """
@@ -41,7 +41,7 @@ class SomeClass:
     """
 
 class User:
-    def __init__(name, /):
+    def __init__(self, name, /):
         pass
     @property
     def email(self): ...
@@ -49,11 +49,11 @@ class User:
     def greeting(self): ...
 
 class ZigOnlyMethod:
-    def __init__(x, /):
+    def __init__(self, x, /):
         pass
     def reexposed(self, /): ...
 
 class Dog(Animal):
-    def __init__(breed, /):
+    def __init__(self, breed, /):
         pass
     def breed(self, /): ...

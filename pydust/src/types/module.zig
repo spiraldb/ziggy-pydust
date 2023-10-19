@@ -55,8 +55,8 @@ pub const PyModule = extern struct {
             @compileError("Can only init class objects");
         }
 
-        if (@hasDecl(Cls, "__new__")) {
-            @compileError("PyTypes with a __new__ method should be instantiated with ptype.call(...)");
+        if (@hasDecl(Cls, "__init__")) {
+            @compileError("PyTypes with a __init__ method should be instantiated via Python with ptype.call(...)");
         }
 
         // Alloc the class

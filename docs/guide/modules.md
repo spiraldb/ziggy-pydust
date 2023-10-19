@@ -31,7 +31,7 @@ Please refer to the annotations in this example module for an explanation of the
 2. Unlike regular Python modules, native Python modules are able to carry private internal state.
 
 3. Any fields that cannot be defaulted at comptime (i.e. if they require calling into Python)
-   must be initialized in the module's `__new__` function.
+   must be initialized in the module's `__init__` function.
 
 4. Module functions taking a `*Self` or `*const Self` argument are passed a pointer
    to their internal state.

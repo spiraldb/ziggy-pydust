@@ -20,13 +20,24 @@ corresponding Python object around it.
 For example, the class above can be correctly constructed using the `py.init` function:
 
 ```zig
-const some_class = try py.init(SomeClass, .{ .count = 1 });
+const some_instance = try py.init(SomeClass, .{ .count = 1 });
+```
+
+Alternatively, a class can be allocated without instantiation. This can be useful when some
+fields of the class refer by pointer to other fields.
+
+```zig
+var some_instance = try py.alloc(SomeClass);
+some_instance.* = .{
+    .foo = 124,
+    .bar = &some_instance.foo,
+};
 ```
 
 ### From Python
 
-To enable instantiation from Python, you must define a `__new__` function
-that takes a CallArgs struct and returns a new instance of `Self`.
+Declaring a `__init__` function signifies to Pydust to make your class instantiable
+from Python. This function may take zero arguments as a pure marker to allow instantiation.
 
 === "Zig"
 
@@ -50,7 +61,7 @@ Inheritance allows you to define a subclass of another Zig Pydust class.
 
 Subclasses are defined by including the parent class struct as a field of the subclass struct.
 They can then be instantiated from Zig using `py.init`, or from Python
-if a `__new__` function is defined.
+if a `__init__` function is defined.
 
 === "Zig"
 
@@ -162,7 +173,8 @@ const binaryfunc = fn(*Self, object) !object;
 
 | Method     | Signature                                |
 | :--------- | :--------------------------------------- |
-| `__new__`  | `#!zig fn(CallArgs) !Self`               |
+| `__init__` | `#!zig fn() void`                        |
+| `__init__` | `#!zig fn(*Self) !void`                  |
 | `__init__` | `#!zig fn(*Self, CallArgs) !void`        |
 | `__del__`  | `#!zig fn(*Self) void`                   |
 | `__repr__` | `#!zig fn(*Self) !py.PyString`           |

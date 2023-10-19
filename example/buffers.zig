@@ -22,17 +22,14 @@ pub const ConstantBuffer = py.class(struct {
     shape: []const isize, // isize to be compatible with Python API
     format: [:0]const u8 = "l", // i64
 
-    pub fn __new__(args: struct { elem: i64, length: u32 }) !Self {
+    pub fn __init__(self: *Self, args: struct { elem: i64, length: u32 }) !void {
         const values = try py.allocator.alloc(i64, args.length);
         @memset(values, args.elem);
 
         const shape = try py.allocator.alloc(isize, 1);
         shape[0] = @intCast(args.length);
 
-        return Self{
-            .values = values,
-            .shape = shape,
-        };
+        self.* = .{ .values = values, .shape = shape };
     }
 
     pub fn __del__(self: *Self) void {

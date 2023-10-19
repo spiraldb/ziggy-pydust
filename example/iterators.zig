@@ -22,8 +22,8 @@ pub const Range = py.class(struct {
     upper: i64,
     step: i64,
 
-    pub fn __new__(args: struct { lower: i64, upper: i64, step: i64 }) Self {
-        return .{ .lower = args.lower, .upper = args.upper, .step = args.step };
+    pub fn __init__(self: *Self, args: struct { lower: i64, upper: i64, step: i64 }) void {
+        self.* = .{ .lower = args.lower, .upper = args.upper, .step = args.step };
     }
 
     pub fn __iter__(self: *const Self) !*RangeIterator {
