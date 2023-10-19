@@ -29,6 +29,11 @@ def test_constructor():
 # --8<-- [end:constructor]
 
 
+def test_non_constructable():
+    with pytest.raises(TypeError):
+        classes.SomeClass()
+
+
 # --8<-- [start:subclass]
 def test_subclasses():
     d = classes.Dog("labrador")

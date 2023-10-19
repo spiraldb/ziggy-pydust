@@ -267,12 +267,11 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             return 0;
         }
 
-        fn tp_init_default(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_init_default(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
             _ = pyself;
             _ = pykwargs;
             _ = pyargs;
-            py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
-            return null;
+            py.TypeError.raise("Native type cannot be instantiated from Python") catch return -1;
         }
 
         /// Wrapper for the user's __del__ function.
