@@ -21,15 +21,17 @@ const ffi = py.ffi;
 pub const PyCode = extern struct {
     obj: py.PyObject,
 
-    pub fn firstLineNumber(self: *const PyCode) !u64 {
-        return self.obj.getAs(u64, "co_firstlineno");
+    pub inline fn firstLineNumber(self: *const PyCode) !u32 {
+        const lineNo = try self.obj.getAs(py.PyLong, "co_firstlineno");
+        defer lineNo.decref();
+        return lineNo.as(u32);
     }
 
-    pub fn fileName(self: *const PyCode) !py.PyString {
+    pub inline fn fileName(self: *const PyCode) !py.PyString {
         return self.obj.getAs(py.PyString, "co_filename");
     }
 
-    pub fn name(self: *const PyCode) !py.PyString {
+    pub inline fn name(self: *const PyCode) !py.PyString {
         return self.obj.getAs(py.PyString, "co_name");
     }
 };

@@ -31,7 +31,7 @@ pub const PyFrame = extern struct {
         return .{ .obj = .{ .py = @alignCast(@ptrCast(codeObj)) } };
     }
 
-    pub fn lineNumber(self: PyFrame) u32 {
+    pub inline fn lineNumber(self: PyFrame) u32 {
         return @intCast(ffi.PyFrame_GetLineNumber(framePtr(self.obj.py)));
     }
 
