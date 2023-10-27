@@ -13,7 +13,7 @@
 const std = @import("std");
 const py = @import("pydust");
 
-pub fn line_number() u64 {
+pub fn line_number() u32 {
     return py.PyFrame.get().?.lineNumber();
 }
 
@@ -25,7 +25,7 @@ pub fn file_name() !py.PyString {
     return py.PyFrame.get().?.code().fileName();
 }
 
-pub fn first_line_number() !u64 {
+pub fn first_line_number() !u32 {
     return py.PyFrame.get().?.code().firstLineNumber();
 }
 
