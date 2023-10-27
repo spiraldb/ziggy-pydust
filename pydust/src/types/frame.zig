@@ -35,11 +35,11 @@ pub const PyFrame = extern struct {
         return @intCast(ffi.PyFrame_GetLineNumber(framePtr(self.obj.py)));
     }
 
-    fn framePtr(obj: *ffi.PyObject) *ffi.PyFrameObject {
+    inline fn framePtr(obj: *ffi.PyObject) *ffi.PyFrameObject {
         return @alignCast(@ptrCast(obj));
     }
 
-    fn objPtr(obj: *ffi.PyFrameObject) *ffi.PyObject {
+    inline fn objPtr(obj: *ffi.PyFrameObject) *ffi.PyObject {
         return @alignCast(@ptrCast(obj));
     }
 };
