@@ -33,6 +33,13 @@ pub const Signature = struct {
     pub fn supportsKwargs(comptime self: @This()) bool {
         return self.nkwargs > 0 or self.varkwargsIdx != null;
     }
+
+    pub fn isModuleMethod(comptime self: @This()) bool {
+        if (self.selfParam) |Self| {
+            return State.getDefinition(@typeInfo(Self).Pointer.child).type == .module;
+        }
+        return false;
+    }
 };
 
 pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
@@ -257,7 +264,8 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
         }
 
         inline fn internal(pyself: py.PyObject, pyargs: []py.PyObject) PyError!py.PyObject {
-            const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
+            const self = if (sig.selfParam) |Self| try castSelf(Self, pyself) else null;
+
             if (sig.argsParam) |Args| {
                 const args = try unwrapArgs(Args, pyargs, py.Kwargs.init(py.allocator));
                 const result = if (sig.selfParam) |_| func(self, args) else func(args);
@@ -302,9 +310,17 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
             pykwargs: py.Kwargs,
         ) PyError!py.PyObject {
             const args = try unwrapArgs(sig.argsParam.?, pyargs, pykwargs);
-            const self = if (sig.selfParam) |Self| try py.as(Self, pyself) else null;
+            const self = if (sig.selfParam) |Self| try castSelf(Self, pyself) else null;
             const result = if (sig.selfParam) |_| func(self, args) else func(args);
             return py.createOwned(tramp.coerceError(result));
+        }
+
+        inline fn castSelf(comptime Self: type, pyself: py.PyObject) !Self {
+            if (comptime sig.isModuleMethod()) {
+                return try py.as(Self, pyself);
+            } else {
+                return py.unchecked(Self, pyself);
+            }
         }
     };
 }
