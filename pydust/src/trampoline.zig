@@ -275,27 +275,53 @@ pub fn Trampoline(comptime T: type) type {
 
         // Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects
         // but instantiating the args slice and kwargs map containers.
-        // The caller is responsible for invoking funcs.deinitArgs on the returned struct.
-        pub inline fn unwrapCallArgs(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!T {
-            var kwargs = py.Kwargs.init(py.allocator);
-            if (pykwargs) |kw| {
-                var iter = kw.itemsIterator();
-                while (iter.next()) |item| {
-                    const key: []const u8 = try (try py.PyString.checked(item.k)).asSlice();
-                    try kwargs.put(key, item.v);
-                }
-            }
-
-            const args = try py.allocator.alloc(py.PyObject, if (pyargs) |a| a.length() else 0);
-            defer py.allocator.free(args);
-            if (pyargs) |a| {
-                for (0..a.length()) |i| {
-                    args[i] = try a.getItem(py.PyObject, i);
-                }
-            }
-
-            return funcs.unwrapArgs(T, args, kwargs);
+        // The caller is responsible for invoking deinit on the returned struct.
+        pub inline fn unwrapCallArgs(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!ZigCallArgs {
+            return ZigCallArgs.unwrap(pyargs, pykwargs);
         }
+
+        const ZigCallArgs = struct {
+            argsStruct: T,
+            allPosArgs: []py.PyObject,
+
+            pub fn unwrap(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!@This() {
+                var kwargs = py.Kwargs.init(py.allocator);
+                if (pykwargs) |kw| {
+                    var iter = kw.itemsIterator();
+                    while (iter.next()) |item| {
+                        const key: []const u8 = try (try py.PyString.checked(item.k)).asSlice();
+                        try kwargs.put(key, item.v);
+                    }
+                }
+
+                const args = try py.allocator.alloc(py.PyObject, if (pyargs) |a| a.length() else 0);
+                if (pyargs) |a| {
+                    for (0..a.length()) |i| {
+                        args[i] = try a.getItem(py.PyObject, i);
+                    }
+                }
+
+                return .{ .argsStruct = try funcs.unwrapArgs(T, args, kwargs), .allPosArgs = args };
+            }
+
+            pub fn deinit(self: @This()) void {
+                if (comptime funcs.varArgsIdx(T)) |idx| {
+                    py.allocator.free(self.allPosArgs[0..idx]);
+                } else {
+                    py.allocator.free(self.allPosArgs);
+                }
+
+                inline for (@typeInfo(T).Struct.fields) |field| {
+                    if (field.type == py.Args) {
+                        py.allocator.free(@field(self.argsStruct, field.name));
+                    }
+                    if (field.type == py.Kwargs) {
+                        var kwargs: py.Kwargs = @field(self.argsStruct, field.name);
+                        kwargs.deinit();
+                    }
+                }
+            }
+        };
     };
 }
 
