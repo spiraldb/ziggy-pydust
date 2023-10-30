@@ -13,9 +13,11 @@
 pub usingnamespace @import("types/bool.zig");
 pub usingnamespace @import("types/buffer.zig");
 pub usingnamespace @import("types/bytes.zig");
+pub usingnamespace @import("types/code.zig");
 pub usingnamespace @import("types/dict.zig");
 pub usingnamespace @import("types/error.zig");
 pub usingnamespace @import("types/float.zig");
+pub usingnamespace @import("types/frame.zig");
 pub usingnamespace @import("types/gil.zig");
 pub usingnamespace @import("types/iter.zig");
 pub usingnamespace @import("types/list.zig");
