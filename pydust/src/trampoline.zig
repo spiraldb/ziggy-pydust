@@ -305,7 +305,21 @@ pub fn Trampoline(comptime T: type) type {
             }
 
             pub fn deinit(self: @This()) void {
-                funcs.deinitArgs(T, self.argsStruct, self.allPosArgs);
+                if (comptime funcs.varArgsIdx(T)) |idx| {
+                    py.allocator.free(self.allPosArgs[0..idx]);
+                } else {
+                    py.allocator.free(self.allPosArgs);
+                }
+
+                inline for (@typeInfo(T).Struct.fields) |field| {
+                    if (field.type == py.Args) {
+                        py.allocator.free(@field(self.argsStruct, field.name));
+                    }
+                    if (field.type == py.Kwargs) {
+                        var kwargs: py.Kwargs = @field(self.argsStruct, field.name);
+                        kwargs.deinit();
+                    }
+                }
             }
         };
     };

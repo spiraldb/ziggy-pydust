@@ -358,25 +358,6 @@ pub fn unwrapArgs(comptime Args: type, pyargs: py.Args, pykwargs: py.Kwargs) !Ar
     return args;
 }
 
-pub fn deinitArgs(comptime Args: type, args: Args, allPosArgs: []py.PyObject) void {
-    const s = @typeInfo(Args).Struct;
-    if (comptime varArgsIdx(Args)) |idx| {
-        py.allocator.free(allPosArgs[0..idx]);
-    } else {
-        py.allocator.free(allPosArgs);
-    }
-
-    inline for (s.fields) |field| {
-        if (field.type == py.Args) {
-            py.allocator.free(@field(args, field.name));
-        }
-        if (field.type == py.Kwargs) {
-            var kwargs: py.Kwargs = @field(args, field.name);
-            kwargs.deinit();
-        }
-    }
-}
-
 pub fn Methods(comptime definition: type) type {
     const empty = ffi.PyMethodDef{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
 
