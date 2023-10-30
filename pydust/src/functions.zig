@@ -317,7 +317,8 @@ pub fn wrap(comptime definition: type, comptime func: anytype, comptime sig: Sig
 
         inline fn castSelf(comptime Self: type, pyself: py.PyObject) !Self {
             if (comptime sig.isModuleMethod()) {
-                return try py.as(Self, pyself);
+                const mod = py.PyModule{ .obj = pyself };
+                return try mod.getState(@typeInfo(Self).Pointer.child);
             } else {
                 return py.unchecked(Self, pyself);
             }
