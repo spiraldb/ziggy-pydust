@@ -1,0 +1,1956 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>event/loop.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> os = std.os;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> windows = os.windows;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> maxInt = std.math.maxInt;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> Thread = std.Thread;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> Atomic = std.atomic.Atomic;</span>
+<span class="line" id="L11"></span>
+<span class="line" id="L12"><span class="tok-kw">const</span> is_windows = builtin.os.tag == .windows;</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Loop = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L15">    next_tick_queue: std.atomic.Queue(<span class="tok-kw">anyframe</span>),</span>
+<span class="line" id="L16">    os_data: OsData,</span>
+<span class="line" id="L17">    final_resume_node: ResumeNode,</span>
+<span class="line" id="L18">    pending_event_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L19">    extra_threads: []Thread,</span>
+<span class="line" id="L20">    <span class="tok-comment">/// TODO change this to a pool of configurable number of threads</span></span>
+<span class="line" id="L21">    <span class="tok-comment">/// and rename it to be not file-system-specific. it will become</span></span>
+<span class="line" id="L22">    <span class="tok-comment">/// a thread pool for turning non-CPU-bound blocking things into</span></span>
+<span class="line" id="L23">    <span class="tok-comment">/// async things. A fallback for any missing OS-specific API.</span></span>
+<span class="line" id="L24">    fs_thread: Thread,</span>
+<span class="line" id="L25">    fs_queue: std.atomic.Queue(Request),</span>
+<span class="line" id="L26">    fs_end_request: Request.Node,</span>
+<span class="line" id="L27">    fs_thread_wakeup: std.Thread.ResetEvent,</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">    <span class="tok-comment">/// For resources that have the same lifetime as the `Loop`.</span></span>
+<span class="line" id="L30">    <span class="tok-comment">/// This is only used by `Loop` for the thread pool and associated resources.</span></span>
+<span class="line" id="L31">    arena: std.heap.ArenaAllocator,</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33">    <span class="tok-comment">/// State which manages frames that are sleeping on timers</span></span>
+<span class="line" id="L34">    delay_queue: DelayQueue,</span>
+<span class="line" id="L35"></span>
+<span class="line" id="L36">    <span class="tok-comment">/// Pre-allocated eventfds. All permanently active.</span></span>
+<span class="line" id="L37">    <span class="tok-comment">/// This is how `Loop` sends promises to be resumed on other threads.</span></span>
+<span class="line" id="L38">    available_eventfd_resume_nodes: std.atomic.Stack(ResumeNode.EventFd),</span>
+<span class="line" id="L39">    eventfd_resume_nodes: []std.atomic.Stack(ResumeNode.EventFd).Node,</span>
+<span class="line" id="L40"></span>
+<span class="line" id="L41">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> NextTickNode = std.atomic.Queue(<span class="tok-kw">anyframe</span>).Node;</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ResumeNode = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L44">        id: Id,</span>
+<span class="line" id="L45">        handle: <span class="tok-kw">anyframe</span>,</span>
+<span class="line" id="L46">        overlapped: Overlapped,</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> overlapped_init = <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L49">            .windows =&gt; windows.OVERLAPPED{</span>
+<span class="line" id="L50">                .Internal = <span class="tok-number">0</span>,</span>
+<span class="line" id="L51">                .InternalHigh = <span class="tok-number">0</span>,</span>
+<span class="line" id="L52">                .DUMMYUNIONNAME = .{</span>
+<span class="line" id="L53">                    .DUMMYSTRUCTNAME = .{</span>
+<span class="line" id="L54">                        .Offset = <span class="tok-number">0</span>,</span>
+<span class="line" id="L55">                        .OffsetHigh = <span class="tok-number">0</span>,</span>
+<span class="line" id="L56">                    },</span>
+<span class="line" id="L57">                },</span>
+<span class="line" id="L58">                .hEvent = <span class="tok-null">null</span>,</span>
+<span class="line" id="L59">            },</span>
+<span class="line" id="L60">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L61">        };</span>
+<span class="line" id="L62">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Overlapped = <span class="tok-builtin">@TypeOf</span>(overlapped_init);</span>
+<span class="line" id="L63"></span>
+<span class="line" id="L64">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Id = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L65">            basic,</span>
+<span class="line" id="L66">            stop,</span>
+<span class="line" id="L67">            event_fd,</span>
+<span class="line" id="L68">        };</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> EventFd = <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L71">            .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; KEventFd,</span>
+<span class="line" id="L72">            .linux =&gt; <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L73">                base: ResumeNode,</span>
+<span class="line" id="L74">                epoll_op: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L75">                eventfd: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L76">            },</span>
+<span class="line" id="L77">            .windows =&gt; <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L78">                base: ResumeNode,</span>
+<span class="line" id="L79">                completion_key: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L80">            },</span>
+<span class="line" id="L81">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">struct</span> {},</span>
+<span class="line" id="L82">        };</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84">        <span class="tok-kw">const</span> KEventFd = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L85">            base: ResumeNode,</span>
+<span class="line" id="L86">            kevent: os.Kevent,</span>
+<span class="line" id="L87">        };</span>
+<span class="line" id="L88"></span>
+<span class="line" id="L89">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Basic = <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L90">            .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; KEventBasic,</span>
+<span class="line" id="L91">            .linux =&gt; <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L92">                base: ResumeNode,</span>
+<span class="line" id="L93">            },</span>
+<span class="line" id="L94">            .windows =&gt; <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L95">                base: ResumeNode,</span>
+<span class="line" id="L96">            },</span>
+<span class="line" id="L97">            <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;unsupported OS&quot;</span>),</span>
+<span class="line" id="L98">        };</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100">        <span class="tok-kw">const</span> KEventBasic = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L101">            base: ResumeNode,</span>
+<span class="line" id="L102">            kev: os.Kevent,</span>
+<span class="line" id="L103">        };</span>
+<span class="line" id="L104">    };</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Instance = <span class="tok-kw">switch</span> (std.options.io_mode) {</span>
+<span class="line" id="L107">        .blocking =&gt; <span class="tok-builtin">@TypeOf</span>(<span class="tok-null">null</span>),</span>
+<span class="line" id="L108">        .evented =&gt; ?*Loop,</span>
+<span class="line" id="L109">    };</span>
+<span class="line" id="L110">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> instance = std.options.event_loop;</span>
+<span class="line" id="L111"></span>
+<span class="line" id="L112">    <span class="tok-kw">var</span> global_instance_state: Loop = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L113">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> default_instance = <span class="tok-kw">switch</span> (std.options.io_mode) {</span>
+<span class="line" id="L114">        .blocking =&gt; <span class="tok-null">null</span>,</span>
+<span class="line" id="L115">        .evented =&gt; &amp;global_instance_state,</span>
+<span class="line" id="L116">    };</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Mode = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L119">        single_threaded,</span>
+<span class="line" id="L120">        multi_threaded,</span>
+<span class="line" id="L121">    };</span>
+<span class="line" id="L122">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> default_mode = .multi_threaded;</span>
+<span class="line" id="L123"></span>
+<span class="line" id="L124">    <span class="tok-comment">/// TODO copy elision / named return values so that the threads referencing *Loop</span></span>
+<span class="line" id="L125">    <span class="tok-comment">/// have the correct pointer value.</span></span>
+<span class="line" id="L126">    <span class="tok-comment">/// https://github.com/ziglang/zig/issues/2761 and https://github.com/ziglang/zig/issues/2765</span></span>
+<span class="line" id="L127">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(self: *Loop) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L128">        <span class="tok-kw">if</span> (builtin.single_threaded <span class="tok-kw">or</span> std.options.event_loop_mode == .single_threaded) {</span>
+<span class="line" id="L129">            <span class="tok-kw">return</span> self.initSingleThreaded();</span>
+<span class="line" id="L130">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L131">            <span class="tok-kw">return</span> self.initMultiThreaded();</span>
+<span class="line" id="L132">        }</span>
+<span class="line" id="L133">    }</span>
+<span class="line" id="L134"></span>
+<span class="line" id="L135">    <span class="tok-comment">/// After initialization, call run().</span></span>
+<span class="line" id="L136">    <span class="tok-comment">/// TODO copy elision / named return values so that the threads referencing *Loop</span></span>
+<span class="line" id="L137">    <span class="tok-comment">/// have the correct pointer value.</span></span>
+<span class="line" id="L138">    <span class="tok-comment">/// https://github.com/ziglang/zig/issues/2761 and https://github.com/ziglang/zig/issues/2765</span></span>
+<span class="line" id="L139">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initSingleThreaded</span>(self: *Loop) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L140">        <span class="tok-kw">return</span> self.initThreadPool(<span class="tok-number">1</span>);</span>
+<span class="line" id="L141">    }</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-comment">/// After initialization, call run().</span></span>
+<span class="line" id="L144">    <span class="tok-comment">/// This is the same as `initThreadPool` using `Thread.getCpuCount` to determine the thread</span></span>
+<span class="line" id="L145">    <span class="tok-comment">/// pool size.</span></span>
+<span class="line" id="L146">    <span class="tok-comment">/// TODO copy elision / named return values so that the threads referencing *Loop</span></span>
+<span class="line" id="L147">    <span class="tok-comment">/// have the correct pointer value.</span></span>
+<span class="line" id="L148">    <span class="tok-comment">/// https://github.com/ziglang/zig/issues/2761 and https://github.com/ziglang/zig/issues/2765</span></span>
+<span class="line" id="L149">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initMultiThreaded</span>(self: *Loop) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L150">        <span class="tok-kw">if</span> (builtin.single_threaded)</span>
+<span class="line" id="L151">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;initMultiThreaded unavailable when building in single-threaded mode&quot;</span>);</span>
+<span class="line" id="L152">        <span class="tok-kw">const</span> core_count = <span class="tok-kw">try</span> Thread.getCpuCount();</span>
+<span class="line" id="L153">        <span class="tok-kw">return</span> self.initThreadPool(core_count);</span>
+<span class="line" id="L154">    }</span>
+<span class="line" id="L155"></span>
+<span class="line" id="L156">    <span class="tok-comment">/// Thread count is the total thread count. The thread pool size will be</span></span>
+<span class="line" id="L157">    <span class="tok-comment">/// max(thread_count - 1, 0)</span></span>
+<span class="line" id="L158">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initThreadPool</span>(self: *Loop, thread_count: <span class="tok-type">usize</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L159">        self.* = Loop{</span>
+<span class="line" id="L160">            .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),</span>
+<span class="line" id="L161">            .pending_event_count = <span class="tok-number">1</span>,</span>
+<span class="line" id="L162">            .os_data = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L163">            .next_tick_queue = std.atomic.Queue(<span class="tok-kw">anyframe</span>).init(),</span>
+<span class="line" id="L164">            .extra_threads = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L165">            .available_eventfd_resume_nodes = std.atomic.Stack(ResumeNode.EventFd).init(),</span>
+<span class="line" id="L166">            .eventfd_resume_nodes = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L167">            .final_resume_node = ResumeNode{</span>
+<span class="line" id="L168">                .id = .stop,</span>
+<span class="line" id="L169">                .handle = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L170">                .overlapped = ResumeNode.overlapped_init,</span>
+<span class="line" id="L171">            },</span>
+<span class="line" id="L172">            .fs_end_request = .{ .data = .{ .msg = .end, .finish = .no_action } },</span>
+<span class="line" id="L173">            .fs_queue = std.atomic.Queue(Request).init(),</span>
+<span class="line" id="L174">            .fs_thread = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L175">            .fs_thread_wakeup = .{},</span>
+<span class="line" id="L176">            .delay_queue = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L177">        };</span>
+<span class="line" id="L178">        <span class="tok-kw">errdefer</span> self.arena.deinit();</span>
+<span class="line" id="L179"></span>
+<span class="line" id="L180">        <span class="tok-comment">// We need at least one of these in case the fs thread wants to use onNextTick</span>
+</span>
+<span class="line" id="L181">        <span class="tok-kw">const</span> extra_thread_count = thread_count - <span class="tok-number">1</span>;</span>
+<span class="line" id="L182">        <span class="tok-kw">const</span> resume_node_count = <span class="tok-builtin">@max</span>(extra_thread_count, <span class="tok-number">1</span>);</span>
+<span class="line" id="L183">        self.eventfd_resume_nodes = <span class="tok-kw">try</span> self.arena.allocator().alloc(</span>
+<span class="line" id="L184">            std.atomic.Stack(ResumeNode.EventFd).Node,</span>
+<span class="line" id="L185">            resume_node_count,</span>
+<span class="line" id="L186">        );</span>
+<span class="line" id="L187"></span>
+<span class="line" id="L188">        self.extra_threads = <span class="tok-kw">try</span> self.arena.allocator().alloc(Thread, extra_thread_count);</span>
+<span class="line" id="L189"></span>
+<span class="line" id="L190">        <span class="tok-kw">try</span> self.initOsData(extra_thread_count);</span>
+<span class="line" id="L191">        <span class="tok-kw">errdefer</span> self.deinitOsData();</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">        <span class="tok-kw">if</span> (!builtin.single_threaded) {</span>
+<span class="line" id="L194">            self.fs_thread = <span class="tok-kw">try</span> Thread.spawn(.{}, posixFsRun, .{self});</span>
+<span class="line" id="L195">        }</span>
+<span class="line" id="L196">        <span class="tok-kw">errdefer</span> <span class="tok-kw">if</span> (!builtin.single_threaded) {</span>
+<span class="line" id="L197">            self.posixFsRequest(&amp;self.fs_end_request);</span>
+<span class="line" id="L198">            self.fs_thread.join();</span>
+<span class="line" id="L199">        };</span>
+<span class="line" id="L200"></span>
+<span class="line" id="L201">        <span class="tok-kw">if</span> (!builtin.single_threaded)</span>
+<span class="line" id="L202">            <span class="tok-kw">try</span> self.delay_queue.init();</span>
+<span class="line" id="L203">    }</span>
+<span class="line" id="L204"></span>
+<span class="line" id="L205">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L206">        self.deinitOsData();</span>
+<span class="line" id="L207">        self.arena.deinit();</span>
+<span class="line" id="L208">        self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L209">    }</span>
+<span class="line" id="L210"></span>
+<span class="line" id="L211">    <span class="tok-kw">const</span> InitOsDataError = os.EpollCreateError || mem.Allocator.Error || os.EventFdError ||</span>
+<span class="line" id="L212">        Thread.SpawnError || os.EpollCtlError || os.KEventError ||</span>
+<span class="line" id="L213">        windows.CreateIoCompletionPortError;</span>
+<span class="line" id="L214"></span>
+<span class="line" id="L215">    <span class="tok-kw">const</span> wakeup_bytes = [_]<span class="tok-type">u8</span>{<span class="tok-number">0x1</span>} ** <span class="tok-number">8</span>;</span>
+<span class="line" id="L216"></span>
+<span class="line" id="L217">    <span class="tok-kw">fn</span> <span class="tok-fn">initOsData</span>(self: *Loop, extra_thread_count: <span class="tok-type">usize</span>) InitOsDataError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L218">        <span class="tok-kw">nosuspend</span> <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L219">            .linux =&gt; {</span>
+<span class="line" id="L220">                <span class="tok-kw">errdefer</span> {</span>
+<span class="line" id="L221">                    <span class="tok-kw">while</span> (self.available_eventfd_resume_nodes.pop()) |node| os.close(node.data.eventfd);</span>
+<span class="line" id="L222">                }</span>
+<span class="line" id="L223">                <span class="tok-kw">for</span> (self.eventfd_resume_nodes) |*eventfd_node| {</span>
+<span class="line" id="L224">                    eventfd_node.* = std.atomic.Stack(ResumeNode.EventFd).Node{</span>
+<span class="line" id="L225">                        .data = ResumeNode.EventFd{</span>
+<span class="line" id="L226">                            .base = ResumeNode{</span>
+<span class="line" id="L227">                                .id = .event_fd,</span>
+<span class="line" id="L228">                                .handle = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L229">                                .overlapped = ResumeNode.overlapped_init,</span>
+<span class="line" id="L230">                            },</span>
+<span class="line" id="L231">                            .eventfd = <span class="tok-kw">try</span> os.eventfd(<span class="tok-number">1</span>, os.linux.EFD.CLOEXEC | os.linux.EFD.NONBLOCK),</span>
+<span class="line" id="L232">                            .epoll_op = os.linux.EPOLL.CTL_ADD,</span>
+<span class="line" id="L233">                        },</span>
+<span class="line" id="L234">                        .next = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L235">                    };</span>
+<span class="line" id="L236">                    self.available_eventfd_resume_nodes.push(eventfd_node);</span>
+<span class="line" id="L237">                }</span>
+<span class="line" id="L238"></span>
+<span class="line" id="L239">                self.os_data.epollfd = <span class="tok-kw">try</span> os.epoll_create1(os.linux.EPOLL.CLOEXEC);</span>
+<span class="line" id="L240">                <span class="tok-kw">errdefer</span> os.close(self.os_data.epollfd);</span>
+<span class="line" id="L241"></span>
+<span class="line" id="L242">                self.os_data.final_eventfd = <span class="tok-kw">try</span> os.eventfd(<span class="tok-number">0</span>, os.linux.EFD.CLOEXEC | os.linux.EFD.NONBLOCK);</span>
+<span class="line" id="L243">                <span class="tok-kw">errdefer</span> os.close(self.os_data.final_eventfd);</span>
+<span class="line" id="L244"></span>
+<span class="line" id="L245">                self.os_data.final_eventfd_event = os.linux.epoll_event{</span>
+<span class="line" id="L246">                    .events = os.linux.EPOLL.IN,</span>
+<span class="line" id="L247">                    .data = os.linux.epoll_data{ .ptr = <span class="tok-builtin">@intFromPtr</span>(&amp;self.final_resume_node) },</span>
+<span class="line" id="L248">                };</span>
+<span class="line" id="L249">                <span class="tok-kw">try</span> os.epoll_ctl(</span>
+<span class="line" id="L250">                    self.os_data.epollfd,</span>
+<span class="line" id="L251">                    os.linux.EPOLL.CTL_ADD,</span>
+<span class="line" id="L252">                    self.os_data.final_eventfd,</span>
+<span class="line" id="L253">                    &amp;self.os_data.final_eventfd_event,</span>
+<span class="line" id="L254">                );</span>
+<span class="line" id="L255"></span>
+<span class="line" id="L256">                <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L257">                    assert(extra_thread_count == <span class="tok-number">0</span>);</span>
+<span class="line" id="L258">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L259">                }</span>
+<span class="line" id="L260"></span>
+<span class="line" id="L261">                <span class="tok-kw">var</span> extra_thread_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L262">                <span class="tok-kw">errdefer</span> {</span>
+<span class="line" id="L263">                    <span class="tok-comment">// writing 8 bytes to an eventfd cannot fail</span>
+</span>
+<span class="line" id="L264">                    <span class="tok-kw">const</span> amt = os.write(self.os_data.final_eventfd, &amp;wakeup_bytes) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L265">                    assert(amt == wakeup_bytes.len);</span>
+<span class="line" id="L266">                    <span class="tok-kw">while</span> (extra_thread_index != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L267">                        extra_thread_index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L268">                        self.extra_threads[extra_thread_index].join();</span>
+<span class="line" id="L269">                    }</span>
+<span class="line" id="L270">                }</span>
+<span class="line" id="L271">                <span class="tok-kw">while</span> (extra_thread_index &lt; extra_thread_count) : (extra_thread_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L272">                    self.extra_threads[extra_thread_index] = <span class="tok-kw">try</span> Thread.spawn(.{}, workerRun, .{self});</span>
+<span class="line" id="L273">                }</span>
+<span class="line" id="L274">            },</span>
+<span class="line" id="L275">            .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly =&gt; {</span>
+<span class="line" id="L276">                self.os_data.kqfd = <span class="tok-kw">try</span> os.kqueue();</span>
+<span class="line" id="L277">                <span class="tok-kw">errdefer</span> os.close(self.os_data.kqfd);</span>
+<span class="line" id="L278"></span>
+<span class="line" id="L279">                <span class="tok-kw">const</span> empty_kevs = &amp;[<span class="tok-number">0</span>]os.Kevent{};</span>
+<span class="line" id="L280"></span>
+<span class="line" id="L281">                <span class="tok-kw">for</span> (self.eventfd_resume_nodes, <span class="tok-number">0</span>..) |*eventfd_node, i| {</span>
+<span class="line" id="L282">                    eventfd_node.* = std.atomic.Stack(ResumeNode.EventFd).Node{</span>
+<span class="line" id="L283">                        .data = ResumeNode.EventFd{</span>
+<span class="line" id="L284">                            .base = ResumeNode{</span>
+<span class="line" id="L285">                                .id = .event_fd,</span>
+<span class="line" id="L286">                                .handle = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L287">                                .overlapped = ResumeNode.overlapped_init,</span>
+<span class="line" id="L288">                            },</span>
+<span class="line" id="L289">                            <span class="tok-comment">// this one is for sending events</span>
+</span>
+<span class="line" id="L290">                            .kevent = os.Kevent{</span>
+<span class="line" id="L291">                                .ident = i,</span>
+<span class="line" id="L292">                                .filter = os.system.EVFILT_USER,</span>
+<span class="line" id="L293">                                .flags = os.system.EV_CLEAR | os.system.EV_ADD | os.system.EV_DISABLE,</span>
+<span class="line" id="L294">                                .fflags = <span class="tok-number">0</span>,</span>
+<span class="line" id="L295">                                .data = <span class="tok-number">0</span>,</span>
+<span class="line" id="L296">                                .udata = <span class="tok-builtin">@intFromPtr</span>(&amp;eventfd_node.data.base),</span>
+<span class="line" id="L297">                            },</span>
+<span class="line" id="L298">                        },</span>
+<span class="line" id="L299">                        .next = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L300">                    };</span>
+<span class="line" id="L301">                    self.available_eventfd_resume_nodes.push(eventfd_node);</span>
+<span class="line" id="L302">                    <span class="tok-kw">const</span> kevent_array = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> [<span class="tok-number">1</span>]os.Kevent, &amp;eventfd_node.data.kevent);</span>
+<span class="line" id="L303">                    _ = <span class="tok-kw">try</span> os.kevent(self.os_data.kqfd, kevent_array, empty_kevs, <span class="tok-null">null</span>);</span>
+<span class="line" id="L304">                    eventfd_node.data.kevent.flags = os.system.EV_CLEAR | os.system.EV_ENABLE;</span>
+<span class="line" id="L305">                    eventfd_node.data.kevent.fflags = os.system.NOTE_TRIGGER;</span>
+<span class="line" id="L306">                }</span>
+<span class="line" id="L307"></span>
+<span class="line" id="L308">                <span class="tok-comment">// Pre-add so that we cannot get error.SystemResources</span>
+</span>
+<span class="line" id="L309">                <span class="tok-comment">// later when we try to activate it.</span>
+</span>
+<span class="line" id="L310">                self.os_data.final_kevent = os.Kevent{</span>
+<span class="line" id="L311">                    .ident = extra_thread_count,</span>
+<span class="line" id="L312">                    .filter = os.system.EVFILT_USER,</span>
+<span class="line" id="L313">                    .flags = os.system.EV_ADD | os.system.EV_DISABLE,</span>
+<span class="line" id="L314">                    .fflags = <span class="tok-number">0</span>,</span>
+<span class="line" id="L315">                    .data = <span class="tok-number">0</span>,</span>
+<span class="line" id="L316">                    .udata = <span class="tok-builtin">@intFromPtr</span>(&amp;self.final_resume_node),</span>
+<span class="line" id="L317">                };</span>
+<span class="line" id="L318">                <span class="tok-kw">const</span> final_kev_arr = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> [<span class="tok-number">1</span>]os.Kevent, &amp;self.os_data.final_kevent);</span>
+<span class="line" id="L319">                _ = <span class="tok-kw">try</span> os.kevent(self.os_data.kqfd, final_kev_arr, empty_kevs, <span class="tok-null">null</span>);</span>
+<span class="line" id="L320">                self.os_data.final_kevent.flags = os.system.EV_ENABLE;</span>
+<span class="line" id="L321">                self.os_data.final_kevent.fflags = os.system.NOTE_TRIGGER;</span>
+<span class="line" id="L322"></span>
+<span class="line" id="L323">                <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L324">                    assert(extra_thread_count == <span class="tok-number">0</span>);</span>
+<span class="line" id="L325">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L326">                }</span>
+<span class="line" id="L327"></span>
+<span class="line" id="L328">                <span class="tok-kw">var</span> extra_thread_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L329">                <span class="tok-kw">errdefer</span> {</span>
+<span class="line" id="L330">                    _ = os.kevent(self.os_data.kqfd, final_kev_arr, empty_kevs, <span class="tok-null">null</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L331">                    <span class="tok-kw">while</span> (extra_thread_index != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L332">                        extra_thread_index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L333">                        self.extra_threads[extra_thread_index].join();</span>
+<span class="line" id="L334">                    }</span>
+<span class="line" id="L335">                }</span>
+<span class="line" id="L336">                <span class="tok-kw">while</span> (extra_thread_index &lt; extra_thread_count) : (extra_thread_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L337">                    self.extra_threads[extra_thread_index] = <span class="tok-kw">try</span> Thread.spawn(.{}, workerRun, .{self});</span>
+<span class="line" id="L338">                }</span>
+<span class="line" id="L339">            },</span>
+<span class="line" id="L340">            .openbsd =&gt; {</span>
+<span class="line" id="L341">                self.os_data.kqfd = <span class="tok-kw">try</span> os.kqueue();</span>
+<span class="line" id="L342">                <span class="tok-kw">errdefer</span> os.close(self.os_data.kqfd);</span>
+<span class="line" id="L343"></span>
+<span class="line" id="L344">                <span class="tok-kw">const</span> empty_kevs = &amp;[<span class="tok-number">0</span>]os.Kevent{};</span>
+<span class="line" id="L345"></span>
+<span class="line" id="L346">                <span class="tok-kw">for</span> (self.eventfd_resume_nodes, <span class="tok-number">0</span>..) |*eventfd_node, i| {</span>
+<span class="line" id="L347">                    eventfd_node.* = std.atomic.Stack(ResumeNode.EventFd).Node{</span>
+<span class="line" id="L348">                        .data = ResumeNode.EventFd{</span>
+<span class="line" id="L349">                            .base = ResumeNode{</span>
+<span class="line" id="L350">                                .id = .event_fd,</span>
+<span class="line" id="L351">                                .handle = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L352">                                .overlapped = ResumeNode.overlapped_init,</span>
+<span class="line" id="L353">                            },</span>
+<span class="line" id="L354">                            <span class="tok-comment">// this one is for sending events</span>
+</span>
+<span class="line" id="L355">                            .kevent = os.Kevent{</span>
+<span class="line" id="L356">                                .ident = i,</span>
+<span class="line" id="L357">                                .filter = os.system.EVFILT_TIMER,</span>
+<span class="line" id="L358">                                .flags = os.system.EV_CLEAR | os.system.EV_ADD | os.system.EV_DISABLE | os.system.EV_ONESHOT,</span>
+<span class="line" id="L359">                                .fflags = <span class="tok-number">0</span>,</span>
+<span class="line" id="L360">                                .data = <span class="tok-number">0</span>,</span>
+<span class="line" id="L361">                                .udata = <span class="tok-builtin">@intFromPtr</span>(&amp;eventfd_node.data.base),</span>
+<span class="line" id="L362">                            },</span>
+<span class="line" id="L363">                        },</span>
+<span class="line" id="L364">                        .next = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L365">                    };</span>
+<span class="line" id="L366">                    self.available_eventfd_resume_nodes.push(eventfd_node);</span>
+<span class="line" id="L367">                    <span class="tok-kw">const</span> kevent_array = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> [<span class="tok-number">1</span>]os.Kevent, &amp;eventfd_node.data.kevent);</span>
+<span class="line" id="L368">                    _ = <span class="tok-kw">try</span> os.kevent(self.os_data.kqfd, kevent_array, empty_kevs, <span class="tok-null">null</span>);</span>
+<span class="line" id="L369">                    eventfd_node.data.kevent.flags = os.system.EV_CLEAR | os.system.EV_ENABLE;</span>
+<span class="line" id="L370">                }</span>
+<span class="line" id="L371"></span>
+<span class="line" id="L372">                <span class="tok-comment">// Pre-add so that we cannot get error.SystemResources</span>
+</span>
+<span class="line" id="L373">                <span class="tok-comment">// later when we try to activate it.</span>
+</span>
+<span class="line" id="L374">                self.os_data.final_kevent = os.Kevent{</span>
+<span class="line" id="L375">                    .ident = extra_thread_count,</span>
+<span class="line" id="L376">                    .filter = os.system.EVFILT_TIMER,</span>
+<span class="line" id="L377">                    .flags = os.system.EV_ADD | os.system.EV_ONESHOT | os.system.EV_DISABLE,</span>
+<span class="line" id="L378">                    .fflags = <span class="tok-number">0</span>,</span>
+<span class="line" id="L379">                    .data = <span class="tok-number">0</span>,</span>
+<span class="line" id="L380">                    .udata = <span class="tok-builtin">@intFromPtr</span>(&amp;self.final_resume_node),</span>
+<span class="line" id="L381">                };</span>
+<span class="line" id="L382">                <span class="tok-kw">const</span> final_kev_arr = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> [<span class="tok-number">1</span>]os.Kevent, &amp;self.os_data.final_kevent);</span>
+<span class="line" id="L383">                _ = <span class="tok-kw">try</span> os.kevent(self.os_data.kqfd, final_kev_arr, empty_kevs, <span class="tok-null">null</span>);</span>
+<span class="line" id="L384">                self.os_data.final_kevent.flags = os.system.EV_ENABLE;</span>
+<span class="line" id="L385"></span>
+<span class="line" id="L386">                <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L387">                    assert(extra_thread_count == <span class="tok-number">0</span>);</span>
+<span class="line" id="L388">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L389">                }</span>
+<span class="line" id="L390"></span>
+<span class="line" id="L391">                <span class="tok-kw">var</span> extra_thread_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L392">                <span class="tok-kw">errdefer</span> {</span>
+<span class="line" id="L393">                    _ = os.kevent(self.os_data.kqfd, final_kev_arr, empty_kevs, <span class="tok-null">null</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L394">                    <span class="tok-kw">while</span> (extra_thread_index != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L395">                        extra_thread_index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L396">                        self.extra_threads[extra_thread_index].join();</span>
+<span class="line" id="L397">                    }</span>
+<span class="line" id="L398">                }</span>
+<span class="line" id="L399">                <span class="tok-kw">while</span> (extra_thread_index &lt; extra_thread_count) : (extra_thread_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L400">                    self.extra_threads[extra_thread_index] = <span class="tok-kw">try</span> Thread.spawn(.{}, workerRun, .{self});</span>
+<span class="line" id="L401">                }</span>
+<span class="line" id="L402">            },</span>
+<span class="line" id="L403">            .windows =&gt; {</span>
+<span class="line" id="L404">                self.os_data.io_port = <span class="tok-kw">try</span> windows.CreateIoCompletionPort(</span>
+<span class="line" id="L405">                    windows.INVALID_HANDLE_VALUE,</span>
+<span class="line" id="L406">                    <span class="tok-null">null</span>,</span>
+<span class="line" id="L407">                    <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L408">                    maxInt(windows.DWORD),</span>
+<span class="line" id="L409">                );</span>
+<span class="line" id="L410">                <span class="tok-kw">errdefer</span> windows.CloseHandle(self.os_data.io_port);</span>
+<span class="line" id="L411"></span>
+<span class="line" id="L412">                <span class="tok-kw">for</span> (self.eventfd_resume_nodes) |*eventfd_node| {</span>
+<span class="line" id="L413">                    eventfd_node.* = std.atomic.Stack(ResumeNode.EventFd).Node{</span>
+<span class="line" id="L414">                        .data = ResumeNode.EventFd{</span>
+<span class="line" id="L415">                            .base = ResumeNode{</span>
+<span class="line" id="L416">                                .id = .event_fd,</span>
+<span class="line" id="L417">                                .handle = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L418">                                .overlapped = ResumeNode.overlapped_init,</span>
+<span class="line" id="L419">                            },</span>
+<span class="line" id="L420">                            <span class="tok-comment">// this one is for sending events</span>
+</span>
+<span class="line" id="L421">                            .completion_key = <span class="tok-builtin">@intFromPtr</span>(&amp;eventfd_node.data.base),</span>
+<span class="line" id="L422">                        },</span>
+<span class="line" id="L423">                        .next = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L424">                    };</span>
+<span class="line" id="L425">                    self.available_eventfd_resume_nodes.push(eventfd_node);</span>
+<span class="line" id="L426">                }</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">                <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L429">                    assert(extra_thread_count == <span class="tok-number">0</span>);</span>
+<span class="line" id="L430">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L431">                }</span>
+<span class="line" id="L432"></span>
+<span class="line" id="L433">                <span class="tok-kw">var</span> extra_thread_index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L434">                <span class="tok-kw">errdefer</span> {</span>
+<span class="line" id="L435">                    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L436">                    <span class="tok-kw">while</span> (i &lt; extra_thread_index) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L437">                        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L438">                            <span class="tok-kw">const</span> overlapped = &amp;self.final_resume_node.overlapped;</span>
+<span class="line" id="L439">                            windows.PostQueuedCompletionStatus(self.os_data.io_port, <span class="tok-null">undefined</span>, <span class="tok-null">undefined</span>, overlapped) <span class="tok-kw">catch</span> <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L440">                            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L441">                        }</span>
+<span class="line" id="L442">                    }</span>
+<span class="line" id="L443">                    <span class="tok-kw">while</span> (extra_thread_index != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L444">                        extra_thread_index -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L445">                        self.extra_threads[extra_thread_index].join();</span>
+<span class="line" id="L446">                    }</span>
+<span class="line" id="L447">                }</span>
+<span class="line" id="L448">                <span class="tok-kw">while</span> (extra_thread_index &lt; extra_thread_count) : (extra_thread_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L449">                    self.extra_threads[extra_thread_index] = <span class="tok-kw">try</span> Thread.spawn(.{}, workerRun, .{self});</span>
+<span class="line" id="L450">                }</span>
+<span class="line" id="L451">            },</span>
+<span class="line" id="L452">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L453">        };</span>
+<span class="line" id="L454">    }</span>
+<span class="line" id="L455"></span>
+<span class="line" id="L456">    <span class="tok-kw">fn</span> <span class="tok-fn">deinitOsData</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L457">        <span class="tok-kw">nosuspend</span> <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L458">            .linux =&gt; {</span>
+<span class="line" id="L459">                os.close(self.os_data.final_eventfd);</span>
+<span class="line" id="L460">                <span class="tok-kw">while</span> (self.available_eventfd_resume_nodes.pop()) |node| os.close(node.data.eventfd);</span>
+<span class="line" id="L461">                os.close(self.os_data.epollfd);</span>
+<span class="line" id="L462">            },</span>
+<span class="line" id="L463">            .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; {</span>
+<span class="line" id="L464">                os.close(self.os_data.kqfd);</span>
+<span class="line" id="L465">            },</span>
+<span class="line" id="L466">            .windows =&gt; {</span>
+<span class="line" id="L467">                windows.CloseHandle(self.os_data.io_port);</span>
+<span class="line" id="L468">            },</span>
+<span class="line" id="L469">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L470">        };</span>
+<span class="line" id="L471">    }</span>
+<span class="line" id="L472"></span>
+<span class="line" id="L473">    <span class="tok-comment">/// resume_node must live longer than the anyframe that it holds a reference to.</span></span>
+<span class="line" id="L474">    <span class="tok-comment">/// flags must contain EPOLLET</span></span>
+<span class="line" id="L475">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">linuxAddFd</span>(self: *Loop, fd: <span class="tok-type">i32</span>, resume_node: *ResumeNode, flags: <span class="tok-type">u32</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L476">        assert(flags &amp; os.linux.EPOLL.ET == os.linux.EPOLL.ET);</span>
+<span class="line" id="L477">        self.beginOneEvent();</span>
+<span class="line" id="L478">        <span class="tok-kw">errdefer</span> self.finishOneEvent();</span>
+<span class="line" id="L479">        <span class="tok-kw">try</span> self.linuxModFd(</span>
+<span class="line" id="L480">            fd,</span>
+<span class="line" id="L481">            os.linux.EPOLL.CTL_ADD,</span>
+<span class="line" id="L482">            flags,</span>
+<span class="line" id="L483">            resume_node,</span>
+<span class="line" id="L484">        );</span>
+<span class="line" id="L485">    }</span>
+<span class="line" id="L486"></span>
+<span class="line" id="L487">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">linuxModFd</span>(self: *Loop, fd: <span class="tok-type">i32</span>, op: <span class="tok-type">u32</span>, flags: <span class="tok-type">u32</span>, resume_node: *ResumeNode) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L488">        assert(flags &amp; os.linux.EPOLL.ET == os.linux.EPOLL.ET);</span>
+<span class="line" id="L489">        <span class="tok-kw">var</span> ev = os.linux.epoll_event{</span>
+<span class="line" id="L490">            .events = flags,</span>
+<span class="line" id="L491">            .data = os.linux.epoll_data{ .ptr = <span class="tok-builtin">@intFromPtr</span>(resume_node) },</span>
+<span class="line" id="L492">        };</span>
+<span class="line" id="L493">        <span class="tok-kw">try</span> os.epoll_ctl(self.os_data.epollfd, op, fd, &amp;ev);</span>
+<span class="line" id="L494">    }</span>
+<span class="line" id="L495"></span>
+<span class="line" id="L496">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">linuxRemoveFd</span>(self: *Loop, fd: <span class="tok-type">i32</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L497">        os.epoll_ctl(self.os_data.epollfd, os.linux.EPOLL.CTL_DEL, fd, <span class="tok-null">null</span>) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L498">        self.finishOneEvent();</span>
+<span class="line" id="L499">    }</span>
+<span class="line" id="L500"></span>
+<span class="line" id="L501">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">linuxWaitFd</span>(self: *Loop, fd: <span class="tok-type">i32</span>, flags: <span class="tok-type">u32</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L502">        assert(flags &amp; os.linux.EPOLL.ET == os.linux.EPOLL.ET);</span>
+<span class="line" id="L503">        assert(flags &amp; os.linux.EPOLL.ONESHOT == os.linux.EPOLL.ONESHOT);</span>
+<span class="line" id="L504">        <span class="tok-kw">var</span> resume_node = ResumeNode.Basic{</span>
+<span class="line" id="L505">            .base = ResumeNode{</span>
+<span class="line" id="L506">                .id = .basic,</span>
+<span class="line" id="L507">                .handle = <span class="tok-builtin">@frame</span>(),</span>
+<span class="line" id="L508">                .overlapped = ResumeNode.overlapped_init,</span>
+<span class="line" id="L509">            },</span>
+<span class="line" id="L510">        };</span>
+<span class="line" id="L511">        <span class="tok-kw">var</span> need_to_delete = <span class="tok-null">true</span>;</span>
+<span class="line" id="L512">        <span class="tok-kw">defer</span> <span class="tok-kw">if</span> (need_to_delete) self.linuxRemoveFd(fd);</span>
+<span class="line" id="L513"></span>
+<span class="line" id="L514">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L515">            self.linuxAddFd(fd, &amp;resume_node.base, flags) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L516">                <span class="tok-kw">error</span>.FileDescriptorNotRegistered =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L517">                <span class="tok-kw">error</span>.OperationCausesCircularLoop =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L518">                <span class="tok-kw">error</span>.FileDescriptorIncompatibleWithEpoll =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L519">                <span class="tok-kw">error</span>.FileDescriptorAlreadyPresentInSet =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// evented writes to the same fd is not thread-safe</span>
+</span>
+<span class="line" id="L520"></span>
+<span class="line" id="L521">                <span class="tok-kw">error</span>.SystemResources,</span>
+<span class="line" id="L522">                <span class="tok-kw">error</span>.UserResourceLimitReached,</span>
+<span class="line" id="L523">                <span class="tok-kw">error</span>.Unexpected,</span>
+<span class="line" id="L524">                =&gt; {</span>
+<span class="line" id="L525">                    need_to_delete = <span class="tok-null">false</span>;</span>
+<span class="line" id="L526">                    <span class="tok-comment">// Fall back to a blocking poll(). Ideally this codepath is never hit, since</span>
+</span>
+<span class="line" id="L527">                    <span class="tok-comment">// epoll should be just fine. But this is better than incorrect behavior.</span>
+</span>
+<span class="line" id="L528">                    <span class="tok-kw">var</span> poll_flags: <span class="tok-type">i16</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L529">                    <span class="tok-kw">if</span> ((flags &amp; os.linux.EPOLL.IN) != <span class="tok-number">0</span>) poll_flags |= os.POLL.IN;</span>
+<span class="line" id="L530">                    <span class="tok-kw">if</span> ((flags &amp; os.linux.EPOLL.OUT) != <span class="tok-number">0</span>) poll_flags |= os.POLL.OUT;</span>
+<span class="line" id="L531">                    <span class="tok-kw">var</span> pfd = [<span class="tok-number">1</span>]os.pollfd{os.pollfd{</span>
+<span class="line" id="L532">                        .fd = fd,</span>
+<span class="line" id="L533">                        .events = poll_flags,</span>
+<span class="line" id="L534">                        .revents = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L535">                    }};</span>
+<span class="line" id="L536">                    _ = os.poll(&amp;pfd, -<span class="tok-number">1</span>) <span class="tok-kw">catch</span> |poll_err| <span class="tok-kw">switch</span> (poll_err) {</span>
+<span class="line" id="L537">                        <span class="tok-kw">error</span>.NetworkSubsystemFailed =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// only possible on windows</span>
+</span>
+<span class="line" id="L538"></span>
+<span class="line" id="L539">                        <span class="tok-kw">error</span>.SystemResources,</span>
+<span class="line" id="L540">                        <span class="tok-kw">error</span>.Unexpected,</span>
+<span class="line" id="L541">                        =&gt; {</span>
+<span class="line" id="L542">                            <span class="tok-comment">// Even poll() didn't work. The best we can do now is sleep for a</span>
+</span>
+<span class="line" id="L543">                            <span class="tok-comment">// small duration and then hope that something changed.</span>
+</span>
+<span class="line" id="L544">                            std.time.sleep(<span class="tok-number">1</span> * std.time.ns_per_ms);</span>
+<span class="line" id="L545">                        },</span>
+<span class="line" id="L546">                    };</span>
+<span class="line" id="L547">                    <span class="tok-kw">resume</span> <span class="tok-builtin">@frame</span>();</span>
+<span class="line" id="L548">                },</span>
+<span class="line" id="L549">            };</span>
+<span class="line" id="L550">        }</span>
+<span class="line" id="L551">    }</span>
+<span class="line" id="L552"></span>
+<span class="line" id="L553">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">waitUntilFdReadable</span>(self: *Loop, fd: os.fd_t) <span class="tok-type">void</span> {</span>
+<span class="line" id="L554">        <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L555">            .linux =&gt; {</span>
+<span class="line" id="L556">                self.linuxWaitFd(fd, os.linux.EPOLL.ET | os.linux.EPOLL.ONESHOT | os.linux.EPOLL.IN);</span>
+<span class="line" id="L557">            },</span>
+<span class="line" id="L558">            .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; {</span>
+<span class="line" id="L559">                self.bsdWaitKev(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(fd)), os.system.EVFILT_READ, os.system.EV_ONESHOT);</span>
+<span class="line" id="L560">            },</span>
+<span class="line" id="L561">            <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported OS&quot;</span>),</span>
+<span class="line" id="L562">        }</span>
+<span class="line" id="L563">    }</span>
+<span class="line" id="L564"></span>
+<span class="line" id="L565">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">waitUntilFdWritable</span>(self: *Loop, fd: os.fd_t) <span class="tok-type">void</span> {</span>
+<span class="line" id="L566">        <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L567">            .linux =&gt; {</span>
+<span class="line" id="L568">                self.linuxWaitFd(fd, os.linux.EPOLL.ET | os.linux.EPOLL.ONESHOT | os.linux.EPOLL.OUT);</span>
+<span class="line" id="L569">            },</span>
+<span class="line" id="L570">            .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; {</span>
+<span class="line" id="L571">                self.bsdWaitKev(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(fd)), os.system.EVFILT_WRITE, os.system.EV_ONESHOT);</span>
+<span class="line" id="L572">            },</span>
+<span class="line" id="L573">            <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported OS&quot;</span>),</span>
+<span class="line" id="L574">        }</span>
+<span class="line" id="L575">    }</span>
+<span class="line" id="L576"></span>
+<span class="line" id="L577">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">waitUntilFdWritableOrReadable</span>(self: *Loop, fd: os.fd_t) <span class="tok-type">void</span> {</span>
+<span class="line" id="L578">        <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L579">            .linux =&gt; {</span>
+<span class="line" id="L580">                self.linuxWaitFd(fd, os.linux.EPOLL.ET | os.linux.EPOLL.ONESHOT | os.linux.EPOLL.OUT | os.linux.EPOLL.IN);</span>
+<span class="line" id="L581">            },</span>
+<span class="line" id="L582">            .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; {</span>
+<span class="line" id="L583">                self.bsdWaitKev(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(fd)), os.system.EVFILT_READ, os.system.EV_ONESHOT);</span>
+<span class="line" id="L584">                self.bsdWaitKev(<span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(fd)), os.system.EVFILT_WRITE, os.system.EV_ONESHOT);</span>
+<span class="line" id="L585">            },</span>
+<span class="line" id="L586">            <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Unsupported OS&quot;</span>),</span>
+<span class="line" id="L587">        }</span>
+<span class="line" id="L588">    }</span>
+<span class="line" id="L589"></span>
+<span class="line" id="L590">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">bsdWaitKev</span>(self: *Loop, ident: <span class="tok-type">usize</span>, filter: <span class="tok-type">i16</span>, flags: <span class="tok-type">u16</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L591">        <span class="tok-kw">var</span> resume_node = ResumeNode.Basic{</span>
+<span class="line" id="L592">            .base = ResumeNode{</span>
+<span class="line" id="L593">                .id = .basic,</span>
+<span class="line" id="L594">                .handle = <span class="tok-builtin">@frame</span>(),</span>
+<span class="line" id="L595">                .overlapped = ResumeNode.overlapped_init,</span>
+<span class="line" id="L596">            },</span>
+<span class="line" id="L597">            .kev = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L598">        };</span>
+<span class="line" id="L599"></span>
+<span class="line" id="L600">        <span class="tok-kw">defer</span> {</span>
+<span class="line" id="L601">            <span class="tok-comment">// If the kevent was set to be ONESHOT, it doesn't need to be deleted manually.</span>
+</span>
+<span class="line" id="L602">            <span class="tok-kw">if</span> (flags &amp; os.system.EV_ONESHOT != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L603">                self.bsdRemoveKev(ident, filter);</span>
+<span class="line" id="L604">            }</span>
+<span class="line" id="L605">        }</span>
+<span class="line" id="L606"></span>
+<span class="line" id="L607">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L608">            self.bsdAddKev(&amp;resume_node, ident, filter, flags) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L609">        }</span>
+<span class="line" id="L610">    }</span>
+<span class="line" id="L611"></span>
+<span class="line" id="L612">    <span class="tok-comment">/// resume_node must live longer than the anyframe that it holds a reference to.</span></span>
+<span class="line" id="L613">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">bsdAddKev</span>(self: *Loop, resume_node: *ResumeNode.Basic, ident: <span class="tok-type">usize</span>, filter: <span class="tok-type">i16</span>, flags: <span class="tok-type">u16</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L614">        self.beginOneEvent();</span>
+<span class="line" id="L615">        <span class="tok-kw">errdefer</span> self.finishOneEvent();</span>
+<span class="line" id="L616">        <span class="tok-kw">var</span> kev = [<span class="tok-number">1</span>]os.Kevent{os.Kevent{</span>
+<span class="line" id="L617">            .ident = ident,</span>
+<span class="line" id="L618">            .filter = filter,</span>
+<span class="line" id="L619">            .flags = os.system.EV_ADD | os.system.EV_ENABLE | os.system.EV_CLEAR | flags,</span>
+<span class="line" id="L620">            .fflags = <span class="tok-number">0</span>,</span>
+<span class="line" id="L621">            .data = <span class="tok-number">0</span>,</span>
+<span class="line" id="L622">            .udata = <span class="tok-builtin">@intFromPtr</span>(&amp;resume_node.base),</span>
+<span class="line" id="L623">        }};</span>
+<span class="line" id="L624">        <span class="tok-kw">const</span> empty_kevs = &amp;[<span class="tok-number">0</span>]os.Kevent{};</span>
+<span class="line" id="L625">        _ = <span class="tok-kw">try</span> os.kevent(self.os_data.kqfd, &amp;kev, empty_kevs, <span class="tok-null">null</span>);</span>
+<span class="line" id="L626">    }</span>
+<span class="line" id="L627"></span>
+<span class="line" id="L628">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">bsdRemoveKev</span>(self: *Loop, ident: <span class="tok-type">usize</span>, filter: <span class="tok-type">i16</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L629">        <span class="tok-kw">var</span> kev = [<span class="tok-number">1</span>]os.Kevent{os.Kevent{</span>
+<span class="line" id="L630">            .ident = ident,</span>
+<span class="line" id="L631">            .filter = filter,</span>
+<span class="line" id="L632">            .flags = os.system.EV_DELETE,</span>
+<span class="line" id="L633">            .fflags = <span class="tok-number">0</span>,</span>
+<span class="line" id="L634">            .data = <span class="tok-number">0</span>,</span>
+<span class="line" id="L635">            .udata = <span class="tok-number">0</span>,</span>
+<span class="line" id="L636">        }};</span>
+<span class="line" id="L637">        <span class="tok-kw">const</span> empty_kevs = &amp;[<span class="tok-number">0</span>]os.Kevent{};</span>
+<span class="line" id="L638">        _ = os.kevent(self.os_data.kqfd, &amp;kev, empty_kevs, <span class="tok-null">null</span>) <span class="tok-kw">catch</span> <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L639">        self.finishOneEvent();</span>
+<span class="line" id="L640">    }</span>
+<span class="line" id="L641"></span>
+<span class="line" id="L642">    <span class="tok-kw">fn</span> <span class="tok-fn">dispatch</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L643">        <span class="tok-kw">while</span> (self.available_eventfd_resume_nodes.pop()) |resume_stack_node| {</span>
+<span class="line" id="L644">            <span class="tok-kw">const</span> next_tick_node = self.next_tick_queue.get() <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L645">                self.available_eventfd_resume_nodes.push(resume_stack_node);</span>
+<span class="line" id="L646">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L647">            };</span>
+<span class="line" id="L648">            <span class="tok-kw">const</span> eventfd_node = &amp;resume_stack_node.data;</span>
+<span class="line" id="L649">            eventfd_node.base.handle = next_tick_node.data;</span>
+<span class="line" id="L650">            <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L651">                .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; {</span>
+<span class="line" id="L652">                    <span class="tok-kw">const</span> kevent_array = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> [<span class="tok-number">1</span>]os.Kevent, &amp;eventfd_node.kevent);</span>
+<span class="line" id="L653">                    <span class="tok-kw">const</span> empty_kevs = &amp;[<span class="tok-number">0</span>]os.Kevent{};</span>
+<span class="line" id="L654">                    _ = os.kevent(self.os_data.kqfd, kevent_array, empty_kevs, <span class="tok-null">null</span>) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L655">                        self.next_tick_queue.unget(next_tick_node);</span>
+<span class="line" id="L656">                        self.available_eventfd_resume_nodes.push(resume_stack_node);</span>
+<span class="line" id="L657">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L658">                    };</span>
+<span class="line" id="L659">                },</span>
+<span class="line" id="L660">                .linux =&gt; {</span>
+<span class="line" id="L661">                    <span class="tok-comment">// the pending count is already accounted for</span>
+</span>
+<span class="line" id="L662">                    <span class="tok-kw">const</span> epoll_events = os.linux.EPOLL.ONESHOT | os.linux.EPOLL.IN | os.linux.EPOLL.OUT |</span>
+<span class="line" id="L663">                        os.linux.EPOLL.ET;</span>
+<span class="line" id="L664">                    self.linuxModFd(</span>
+<span class="line" id="L665">                        eventfd_node.eventfd,</span>
+<span class="line" id="L666">                        eventfd_node.epoll_op,</span>
+<span class="line" id="L667">                        epoll_events,</span>
+<span class="line" id="L668">                        &amp;eventfd_node.base,</span>
+<span class="line" id="L669">                    ) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L670">                        self.next_tick_queue.unget(next_tick_node);</span>
+<span class="line" id="L671">                        self.available_eventfd_resume_nodes.push(resume_stack_node);</span>
+<span class="line" id="L672">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L673">                    };</span>
+<span class="line" id="L674">                },</span>
+<span class="line" id="L675">                .windows =&gt; {</span>
+<span class="line" id="L676">                    windows.PostQueuedCompletionStatus(</span>
+<span class="line" id="L677">                        self.os_data.io_port,</span>
+<span class="line" id="L678">                        <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L679">                        <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L680">                        &amp;eventfd_node.base.overlapped,</span>
+<span class="line" id="L681">                    ) <span class="tok-kw">catch</span> {</span>
+<span class="line" id="L682">                        self.next_tick_queue.unget(next_tick_node);</span>
+<span class="line" id="L683">                        self.available_eventfd_resume_nodes.push(resume_stack_node);</span>
+<span class="line" id="L684">                        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L685">                    };</span>
+<span class="line" id="L686">                },</span>
+<span class="line" id="L687">                <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;unsupported OS&quot;</span>),</span>
+<span class="line" id="L688">            }</span>
+<span class="line" id="L689">        }</span>
+<span class="line" id="L690">    }</span>
+<span class="line" id="L691"></span>
+<span class="line" id="L692">    <span class="tok-comment">/// Bring your own linked list node. This means it can't fail.</span></span>
+<span class="line" id="L693">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">onNextTick</span>(self: *Loop, node: *NextTickNode) <span class="tok-type">void</span> {</span>
+<span class="line" id="L694">        self.beginOneEvent(); <span class="tok-comment">// finished in dispatch()</span>
+</span>
+<span class="line" id="L695">        self.next_tick_queue.put(node);</span>
+<span class="line" id="L696">        self.dispatch();</span>
+<span class="line" id="L697">    }</span>
+<span class="line" id="L698"></span>
+<span class="line" id="L699">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">cancelOnNextTick</span>(self: *Loop, node: *NextTickNode) <span class="tok-type">void</span> {</span>
+<span class="line" id="L700">        <span class="tok-kw">if</span> (self.next_tick_queue.remove(node)) {</span>
+<span class="line" id="L701">            self.finishOneEvent();</span>
+<span class="line" id="L702">        }</span>
+<span class="line" id="L703">    }</span>
+<span class="line" id="L704"></span>
+<span class="line" id="L705">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L706">        self.finishOneEvent(); <span class="tok-comment">// the reference we start with</span>
+</span>
+<span class="line" id="L707"></span>
+<span class="line" id="L708">        self.workerRun();</span>
+<span class="line" id="L709"></span>
+<span class="line" id="L710">        <span class="tok-kw">if</span> (!builtin.single_threaded) {</span>
+<span class="line" id="L711">            <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L712">                .linux,</span>
+<span class="line" id="L713">                .macos,</span>
+<span class="line" id="L714">                .ios,</span>
+<span class="line" id="L715">                .tvos,</span>
+<span class="line" id="L716">                .watchos,</span>
+<span class="line" id="L717">                .freebsd,</span>
+<span class="line" id="L718">                .netbsd,</span>
+<span class="line" id="L719">                .dragonfly,</span>
+<span class="line" id="L720">                .openbsd,</span>
+<span class="line" id="L721">                =&gt; self.fs_thread.join(),</span>
+<span class="line" id="L722">                <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L723">            }</span>
+<span class="line" id="L724">        }</span>
+<span class="line" id="L725"></span>
+<span class="line" id="L726">        <span class="tok-kw">for</span> (self.extra_threads) |extra_thread| {</span>
+<span class="line" id="L727">            extra_thread.join();</span>
+<span class="line" id="L728">        }</span>
+<span class="line" id="L729"></span>
+<span class="line" id="L730">        self.delay_queue.deinit();</span>
+<span class="line" id="L731">    }</span>
+<span class="line" id="L732"></span>
+<span class="line" id="L733">    <span class="tok-comment">/// Runs the provided function asynchronously. The function's frame is allocated</span></span>
+<span class="line" id="L734">    <span class="tok-comment">/// with `allocator` and freed when the function returns.</span></span>
+<span class="line" id="L735">    <span class="tok-comment">/// `func` must return void and it can be an async function.</span></span>
+<span class="line" id="L736">    <span class="tok-comment">/// Yields to the event loop, running the function on the next tick.</span></span>
+<span class="line" id="L737">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">runDetached</span>(self: *Loop, alloc: mem.Allocator, <span class="tok-kw">comptime</span> func: <span class="tok-kw">anytype</span>, args: <span class="tok-kw">anytype</span>) <span class="tok-kw">error</span>{OutOfMemory}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L738">        <span class="tok-kw">if</span> (!std.io.is_async) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Can't use runDetached in non-async mode!&quot;</span>);</span>
+<span class="line" id="L739">        <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(<span class="tok-builtin">@call</span>(.{}, func, args)) != <span class="tok-type">void</span>) {</span>
+<span class="line" id="L740">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;`func` must not have a return value&quot;</span>);</span>
+<span class="line" id="L741">        }</span>
+<span class="line" id="L742"></span>
+<span class="line" id="L743">        <span class="tok-kw">const</span> Wrapper = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L744">            <span class="tok-kw">const</span> Args = <span class="tok-builtin">@TypeOf</span>(args);</span>
+<span class="line" id="L745">            <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(func_args: Args, loop: *Loop, allocator: mem.Allocator) <span class="tok-type">void</span> {</span>
+<span class="line" id="L746">                loop.beginOneEvent();</span>
+<span class="line" id="L747">                loop.yield();</span>
+<span class="line" id="L748">                <span class="tok-builtin">@call</span>(.{}, func, func_args); <span class="tok-comment">// compile error when called with non-void ret type</span>
+</span>
+<span class="line" id="L749">                <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L750">                    loop.finishOneEvent();</span>
+<span class="line" id="L751">                    allocator.destroy(<span class="tok-builtin">@frame</span>());</span>
+<span class="line" id="L752">                }</span>
+<span class="line" id="L753">            }</span>
+<span class="line" id="L754">        };</span>
+<span class="line" id="L755"></span>
+<span class="line" id="L756">        <span class="tok-kw">var</span> run_frame = <span class="tok-kw">try</span> alloc.create(<span class="tok-builtin">@Frame</span>(Wrapper.run));</span>
+<span class="line" id="L757">        run_frame.* = <span class="tok-kw">async</span> Wrapper.run(args, self, alloc);</span>
+<span class="line" id="L758">    }</span>
+<span class="line" id="L759"></span>
+<span class="line" id="L760">    <span class="tok-comment">/// Yielding lets the event loop run, starting any unstarted async operations.</span></span>
+<span class="line" id="L761">    <span class="tok-comment">/// Note that async operations automatically start when a function yields for any other reason,</span></span>
+<span class="line" id="L762">    <span class="tok-comment">/// for example, when async I/O is performed. This function is intended to be used only when</span></span>
+<span class="line" id="L763">    <span class="tok-comment">/// CPU bound tasks would be waiting in the event loop but never get started because no async I/O</span></span>
+<span class="line" id="L764">    <span class="tok-comment">/// is performed.</span></span>
+<span class="line" id="L765">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">yield</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L766">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L767">            <span class="tok-kw">var</span> my_tick_node = NextTickNode{</span>
+<span class="line" id="L768">                .prev = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L769">                .next = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L770">                .data = <span class="tok-builtin">@frame</span>(),</span>
+<span class="line" id="L771">            };</span>
+<span class="line" id="L772">            self.onNextTick(&amp;my_tick_node);</span>
+<span class="line" id="L773">        }</span>
+<span class="line" id="L774">    }</span>
+<span class="line" id="L775"></span>
+<span class="line" id="L776">    <span class="tok-comment">/// If the build is multi-threaded and there is an event loop, then it calls `yield`. Otherwise,</span></span>
+<span class="line" id="L777">    <span class="tok-comment">/// does nothing.</span></span>
+<span class="line" id="L778">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">startCpuBoundOperation</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L779">        <span class="tok-kw">if</span> (builtin.single_threaded) {</span>
+<span class="line" id="L780">            <span class="tok-kw">return</span>;</span>
+<span class="line" id="L781">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (instance) |event_loop| {</span>
+<span class="line" id="L782">            event_loop.yield();</span>
+<span class="line" id="L783">        }</span>
+<span class="line" id="L784">    }</span>
+<span class="line" id="L785"></span>
+<span class="line" id="L786">    <span class="tok-comment">/// call finishOneEvent when done</span></span>
+<span class="line" id="L787">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">beginOneEvent</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L788">        _ = <span class="tok-builtin">@atomicRmw</span>(<span class="tok-type">usize</span>, &amp;self.pending_event_count, .Add, <span class="tok-number">1</span>, .SeqCst);</span>
+<span class="line" id="L789">    }</span>
+<span class="line" id="L790"></span>
+<span class="line" id="L791">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">finishOneEvent</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L792">        <span class="tok-kw">nosuspend</span> {</span>
+<span class="line" id="L793">            <span class="tok-kw">const</span> prev = <span class="tok-builtin">@atomicRmw</span>(<span class="tok-type">usize</span>, &amp;self.pending_event_count, .Sub, <span class="tok-number">1</span>, .SeqCst);</span>
+<span class="line" id="L794">            <span class="tok-kw">if</span> (prev != <span class="tok-number">1</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L795"></span>
+<span class="line" id="L796">            <span class="tok-comment">// cause all the threads to stop</span>
+</span>
+<span class="line" id="L797">            self.posixFsRequest(&amp;self.fs_end_request);</span>
+<span class="line" id="L798"></span>
+<span class="line" id="L799">            <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L800">                .linux =&gt; {</span>
+<span class="line" id="L801">                    <span class="tok-comment">// writing to the eventfd will only wake up one thread, thus multiple writes</span>
+</span>
+<span class="line" id="L802">                    <span class="tok-comment">// are needed to wakeup all the threads</span>
+</span>
+<span class="line" id="L803">                    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L804">                    <span class="tok-kw">while</span> (i &lt; self.extra_threads.len + <span class="tok-number">1</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L805">                        <span class="tok-comment">// writing 8 bytes to an eventfd cannot fail</span>
+</span>
+<span class="line" id="L806">                        <span class="tok-kw">const</span> amt = os.write(self.os_data.final_eventfd, &amp;wakeup_bytes) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L807">                        assert(amt == wakeup_bytes.len);</span>
+<span class="line" id="L808">                    }</span>
+<span class="line" id="L809">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L810">                },</span>
+<span class="line" id="L811">                .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; {</span>
+<span class="line" id="L812">                    <span class="tok-kw">const</span> final_kevent = <span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> [<span class="tok-number">1</span>]os.Kevent, &amp;self.os_data.final_kevent);</span>
+<span class="line" id="L813">                    <span class="tok-kw">const</span> empty_kevs = &amp;[<span class="tok-number">0</span>]os.Kevent{};</span>
+<span class="line" id="L814">                    <span class="tok-comment">// cannot fail because we already added it and this just enables it</span>
+</span>
+<span class="line" id="L815">                    _ = os.kevent(self.os_data.kqfd, final_kevent, empty_kevs, <span class="tok-null">null</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L816">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L817">                },</span>
+<span class="line" id="L818">                .windows =&gt; {</span>
+<span class="line" id="L819">                    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L820">                    <span class="tok-kw">while</span> (i &lt; self.extra_threads.len + <span class="tok-number">1</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L821">                        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L822">                            <span class="tok-kw">const</span> overlapped = &amp;self.final_resume_node.overlapped;</span>
+<span class="line" id="L823">                            windows.PostQueuedCompletionStatus(self.os_data.io_port, <span class="tok-null">undefined</span>, <span class="tok-null">undefined</span>, overlapped) <span class="tok-kw">catch</span> <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L824">                            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L825">                        }</span>
+<span class="line" id="L826">                    }</span>
+<span class="line" id="L827">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L828">                },</span>
+<span class="line" id="L829">                <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;unsupported OS&quot;</span>),</span>
+<span class="line" id="L830">            }</span>
+<span class="line" id="L831">        }</span>
+<span class="line" id="L832">    }</span>
+<span class="line" id="L833"></span>
+<span class="line" id="L834">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sleep</span>(self: *Loop, nanoseconds: <span class="tok-type">u64</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L835">        <span class="tok-kw">if</span> (builtin.single_threaded)</span>
+<span class="line" id="L836">            <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;TODO: integrate timers with epoll/kevent/iocp for single-threaded&quot;</span>);</span>
+<span class="line" id="L837"></span>
+<span class="line" id="L838">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L839">            <span class="tok-kw">const</span> now = self.delay_queue.timer.read();</span>
+<span class="line" id="L840"></span>
+<span class="line" id="L841">            <span class="tok-kw">var</span> entry: DelayQueue.Waiters.Entry = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L842">            entry.init(<span class="tok-builtin">@frame</span>(), now + nanoseconds);</span>
+<span class="line" id="L843">            self.delay_queue.waiters.insert(&amp;entry);</span>
+<span class="line" id="L844"></span>
+<span class="line" id="L845">            <span class="tok-comment">// Speculatively wake up the timer thread when we add a new entry.</span>
+</span>
+<span class="line" id="L846">            <span class="tok-comment">// If the timer thread is sleeping on a longer entry, we need to</span>
+</span>
+<span class="line" id="L847">            <span class="tok-comment">// interrupt it so that our entry can be expired in time.</span>
+</span>
+<span class="line" id="L848">            self.delay_queue.event.set();</span>
+<span class="line" id="L849">        }</span>
+<span class="line" id="L850">    }</span>
+<span class="line" id="L851"></span>
+<span class="line" id="L852">    <span class="tok-kw">const</span> DelayQueue = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L853">        timer: std.time.Timer,</span>
+<span class="line" id="L854">        waiters: Waiters,</span>
+<span class="line" id="L855">        thread: std.Thread,</span>
+<span class="line" id="L856">        event: std.Thread.ResetEvent,</span>
+<span class="line" id="L857">        is_running: Atomic(<span class="tok-type">bool</span>),</span>
+<span class="line" id="L858"></span>
+<span class="line" id="L859">        <span class="tok-comment">/// Initialize the delay queue by spawning the timer thread</span></span>
+<span class="line" id="L860">        <span class="tok-comment">/// and starting any timer resources.</span></span>
+<span class="line" id="L861">        <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(self: *DelayQueue) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L862">            self.* = DelayQueue{</span>
+<span class="line" id="L863">                .timer = <span class="tok-kw">try</span> std.time.Timer.start(),</span>
+<span class="line" id="L864">                .waiters = DelayQueue.Waiters{</span>
+<span class="line" id="L865">                    .entries = std.atomic.Queue(<span class="tok-kw">anyframe</span>).init(),</span>
+<span class="line" id="L866">                },</span>
+<span class="line" id="L867">                .thread = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L868">                .event = .{},</span>
+<span class="line" id="L869">                .is_running = Atomic(<span class="tok-type">bool</span>).init(<span class="tok-null">true</span>),</span>
+<span class="line" id="L870">            };</span>
+<span class="line" id="L871"></span>
+<span class="line" id="L872">            <span class="tok-comment">// Must be after init so that it can read the other state, such as `is_running`.</span>
+</span>
+<span class="line" id="L873">            self.thread = <span class="tok-kw">try</span> std.Thread.spawn(.{}, DelayQueue.run, .{self});</span>
+<span class="line" id="L874">        }</span>
+<span class="line" id="L875"></span>
+<span class="line" id="L876">        <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *DelayQueue) <span class="tok-type">void</span> {</span>
+<span class="line" id="L877">            self.is_running.store(<span class="tok-null">false</span>, .SeqCst);</span>
+<span class="line" id="L878">            self.event.set();</span>
+<span class="line" id="L879">            self.thread.join();</span>
+<span class="line" id="L880">        }</span>
+<span class="line" id="L881"></span>
+<span class="line" id="L882">        <span class="tok-comment">/// Entry point for the timer thread</span></span>
+<span class="line" id="L883">        <span class="tok-comment">/// which waits for timer entries to expire and reschedules them.</span></span>
+<span class="line" id="L884">        <span class="tok-kw">fn</span> <span class="tok-fn">run</span>(self: *DelayQueue) <span class="tok-type">void</span> {</span>
+<span class="line" id="L885">            <span class="tok-kw">const</span> loop = <span class="tok-builtin">@fieldParentPtr</span>(Loop, <span class="tok-str">&quot;delay_queue&quot;</span>, self);</span>
+<span class="line" id="L886"></span>
+<span class="line" id="L887">            <span class="tok-kw">while</span> (self.is_running.load(.SeqCst)) {</span>
+<span class="line" id="L888">                self.event.reset();</span>
+<span class="line" id="L889">                <span class="tok-kw">const</span> now = self.timer.read();</span>
+<span class="line" id="L890"></span>
+<span class="line" id="L891">                <span class="tok-kw">if</span> (self.waiters.popExpired(now)) |entry| {</span>
+<span class="line" id="L892">                    loop.onNextTick(&amp;entry.node);</span>
+<span class="line" id="L893">                    <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L894">                }</span>
+<span class="line" id="L895"></span>
+<span class="line" id="L896">                <span class="tok-kw">if</span> (self.waiters.nextExpire()) |expires| {</span>
+<span class="line" id="L897">                    <span class="tok-kw">if</span> (now &gt;= expires)</span>
+<span class="line" id="L898">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L899">                    self.event.timedWait(expires - now) <span class="tok-kw">catch</span> {};</span>
+<span class="line" id="L900">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L901">                    self.event.wait();</span>
+<span class="line" id="L902">                }</span>
+<span class="line" id="L903">            }</span>
+<span class="line" id="L904">        }</span>
+<span class="line" id="L905"></span>
+<span class="line" id="L906">        <span class="tok-comment">// TODO: use a tickless hierarchical timer wheel:</span>
+</span>
+<span class="line" id="L907">        <span class="tok-comment">// https://github.com/wahern/timeout/</span>
+</span>
+<span class="line" id="L908">        <span class="tok-kw">const</span> Waiters = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L909">            entries: std.atomic.Queue(<span class="tok-kw">anyframe</span>),</span>
+<span class="line" id="L910"></span>
+<span class="line" id="L911">            <span class="tok-kw">const</span> Entry = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L912">                node: NextTickNode,</span>
+<span class="line" id="L913">                expires: <span class="tok-type">u64</span>,</span>
+<span class="line" id="L914"></span>
+<span class="line" id="L915">                <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(self: *Entry, frame: <span class="tok-kw">anyframe</span>, expires: <span class="tok-type">u64</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L916">                    self.node.data = frame;</span>
+<span class="line" id="L917">                    self.expires = expires;</span>
+<span class="line" id="L918">                }</span>
+<span class="line" id="L919">            };</span>
+<span class="line" id="L920"></span>
+<span class="line" id="L921">            <span class="tok-comment">/// Registers the entry into the queue of waiting frames</span></span>
+<span class="line" id="L922">            <span class="tok-kw">fn</span> <span class="tok-fn">insert</span>(self: *Waiters, entry: *Entry) <span class="tok-type">void</span> {</span>
+<span class="line" id="L923">                self.entries.put(&amp;entry.node);</span>
+<span class="line" id="L924">            }</span>
+<span class="line" id="L925"></span>
+<span class="line" id="L926">            <span class="tok-comment">/// Dequeues one expired event relative to `now`</span></span>
+<span class="line" id="L927">            <span class="tok-kw">fn</span> <span class="tok-fn">popExpired</span>(self: *Waiters, now: <span class="tok-type">u64</span>) ?*Entry {</span>
+<span class="line" id="L928">                <span class="tok-kw">const</span> entry = self.peekExpiringEntry() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L929">                <span class="tok-kw">if</span> (entry.expires &gt; now)</span>
+<span class="line" id="L930">                    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L931"></span>
+<span class="line" id="L932">                assert(self.entries.remove(&amp;entry.node));</span>
+<span class="line" id="L933">                <span class="tok-kw">return</span> entry;</span>
+<span class="line" id="L934">            }</span>
+<span class="line" id="L935"></span>
+<span class="line" id="L936">            <span class="tok-comment">/// Returns an estimate for the amount of time</span></span>
+<span class="line" id="L937">            <span class="tok-comment">/// to wait until the next waiting entry expires.</span></span>
+<span class="line" id="L938">            <span class="tok-kw">fn</span> <span class="tok-fn">nextExpire</span>(self: *Waiters) ?<span class="tok-type">u64</span> {</span>
+<span class="line" id="L939">                <span class="tok-kw">const</span> entry = self.peekExpiringEntry() <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L940">                <span class="tok-kw">return</span> entry.expires;</span>
+<span class="line" id="L941">            }</span>
+<span class="line" id="L942"></span>
+<span class="line" id="L943">            <span class="tok-kw">fn</span> <span class="tok-fn">peekExpiringEntry</span>(self: *Waiters) ?*Entry {</span>
+<span class="line" id="L944">                self.entries.mutex.lock();</span>
+<span class="line" id="L945">                <span class="tok-kw">defer</span> self.entries.mutex.unlock();</span>
+<span class="line" id="L946"></span>
+<span class="line" id="L947">                <span class="tok-comment">// starting from the head</span>
+</span>
+<span class="line" id="L948">                <span class="tok-kw">var</span> head = self.entries.head <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L949"></span>
+<span class="line" id="L950">                <span class="tok-comment">// traverse the list of waiting entries to</span>
+</span>
+<span class="line" id="L951">                <span class="tok-comment">// find the Node with the smallest `expires` field</span>
+</span>
+<span class="line" id="L952">                <span class="tok-kw">var</span> min = head;</span>
+<span class="line" id="L953">                <span class="tok-kw">while</span> (head.next) |node| {</span>
+<span class="line" id="L954">                    <span class="tok-kw">const</span> minEntry = <span class="tok-builtin">@fieldParentPtr</span>(Entry, <span class="tok-str">&quot;node&quot;</span>, min);</span>
+<span class="line" id="L955">                    <span class="tok-kw">const</span> nodeEntry = <span class="tok-builtin">@fieldParentPtr</span>(Entry, <span class="tok-str">&quot;node&quot;</span>, node);</span>
+<span class="line" id="L956">                    <span class="tok-kw">if</span> (nodeEntry.expires &lt; minEntry.expires)</span>
+<span class="line" id="L957">                        min = node;</span>
+<span class="line" id="L958">                    head = node;</span>
+<span class="line" id="L959">                }</span>
+<span class="line" id="L960"></span>
+<span class="line" id="L961">                <span class="tok-kw">return</span> <span class="tok-builtin">@fieldParentPtr</span>(Entry, <span class="tok-str">&quot;node&quot;</span>, min);</span>
+<span class="line" id="L962">            }</span>
+<span class="line" id="L963">        };</span>
+<span class="line" id="L964">    };</span>
+<span class="line" id="L965"></span>
+<span class="line" id="L966">    <span class="tok-comment">/// ------- I/0 APIs -------</span></span>
+<span class="line" id="L967">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">accept</span>(</span>
+<span class="line" id="L968">        self: *Loop,</span>
+<span class="line" id="L969">        <span class="tok-comment">/// This argument is a socket that has been created with `socket`, bound to a local address</span></span>
+<span class="line" id="L970">        <span class="tok-comment">/// with `bind`, and is listening for connections after a `listen`.</span></span>
+<span class="line" id="L971">        sockfd: os.socket_t,</span>
+<span class="line" id="L972">        <span class="tok-comment">/// This argument is a pointer to a sockaddr structure.  This structure is filled in with  the</span></span>
+<span class="line" id="L973">        <span class="tok-comment">/// address  of  the  peer  socket, as known to the communications layer.  The exact format of the</span></span>
+<span class="line" id="L974">        <span class="tok-comment">/// address returned addr is determined by the socket's address  family  (see  `socket`  and  the</span></span>
+<span class="line" id="L975">        <span class="tok-comment">/// respective  protocol  man  pages).</span></span>
+<span class="line" id="L976">        addr: *os.sockaddr,</span>
+<span class="line" id="L977">        <span class="tok-comment">/// This argument is a value-result argument: the caller must initialize it to contain  the</span></span>
+<span class="line" id="L978">        <span class="tok-comment">/// size (in bytes) of the structure pointed to by addr; on return it will contain the actual size</span></span>
+<span class="line" id="L979">        <span class="tok-comment">/// of the peer address.</span></span>
+<span class="line" id="L980">        <span class="tok-comment">///</span></span>
+<span class="line" id="L981">        <span class="tok-comment">/// The returned address is truncated if the buffer provided is too small; in this  case,  `addr_size`</span></span>
+<span class="line" id="L982">        <span class="tok-comment">/// will return a value greater than was supplied to the call.</span></span>
+<span class="line" id="L983">        addr_size: *os.socklen_t,</span>
+<span class="line" id="L984">        <span class="tok-comment">/// The following values can be bitwise ORed in flags to obtain different behavior:</span></span>
+<span class="line" id="L985">        <span class="tok-comment">/// * `SOCK.CLOEXEC`  - Set the close-on-exec (`FD_CLOEXEC`) flag on the new file descriptor.   See  the</span></span>
+<span class="line" id="L986">        <span class="tok-comment">///   description  of the `O.CLOEXEC` flag in `open` for reasons why this may be useful.</span></span>
+<span class="line" id="L987">        flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L988">    ) os.AcceptError!os.socket_t {</span>
+<span class="line" id="L989">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L990">            <span class="tok-kw">return</span> os.accept(sockfd, addr, addr_size, flags | os.SOCK.NONBLOCK) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L991">                <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L992">                    self.waitUntilFdReadable(sockfd);</span>
+<span class="line" id="L993">                    <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L994">                },</span>
+<span class="line" id="L995">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L996">            };</span>
+<span class="line" id="L997">        }</span>
+<span class="line" id="L998">    }</span>
+<span class="line" id="L999"></span>
+<span class="line" id="L1000">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">connect</span>(self: *Loop, sockfd: os.socket_t, sock_addr: *<span class="tok-kw">const</span> os.sockaddr, len: os.socklen_t) os.ConnectError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L1001">        os.connect(sockfd, sock_addr, len) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1002">            <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1003">                self.waitUntilFdWritable(sockfd);</span>
+<span class="line" id="L1004">                <span class="tok-kw">return</span> os.getsockoptError(sockfd);</span>
+<span class="line" id="L1005">            },</span>
+<span class="line" id="L1006">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1007">        };</span>
+<span class="line" id="L1008">    }</span>
+<span class="line" id="L1009"></span>
+<span class="line" id="L1010">    <span class="tok-comment">/// Performs an async `os.open` using a separate thread.</span></span>
+<span class="line" id="L1011">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">openZ</span>(self: *Loop, file_path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, flags: <span class="tok-type">u32</span>, mode: os.mode_t) os.OpenError!os.fd_t {</span>
+<span class="line" id="L1012">        <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1013">            .data = .{</span>
+<span class="line" id="L1014">                .msg = .{</span>
+<span class="line" id="L1015">                    .open = .{</span>
+<span class="line" id="L1016">                        .path = file_path,</span>
+<span class="line" id="L1017">                        .flags = flags,</span>
+<span class="line" id="L1018">                        .mode = mode,</span>
+<span class="line" id="L1019">                        .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1020">                    },</span>
+<span class="line" id="L1021">                },</span>
+<span class="line" id="L1022">                .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1023">            },</span>
+<span class="line" id="L1024">        };</span>
+<span class="line" id="L1025">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1026">            self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1027">        }</span>
+<span class="line" id="L1028">        <span class="tok-kw">return</span> req_node.data.msg.open.result;</span>
+<span class="line" id="L1029">    }</span>
+<span class="line" id="L1030"></span>
+<span class="line" id="L1031">    <span class="tok-comment">/// Performs an async `os.opent` using a separate thread.</span></span>
+<span class="line" id="L1032">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">openatZ</span>(self: *Loop, fd: os.fd_t, file_path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, flags: <span class="tok-type">u32</span>, mode: os.mode_t) os.OpenError!os.fd_t {</span>
+<span class="line" id="L1033">        <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1034">            .data = .{</span>
+<span class="line" id="L1035">                .msg = .{</span>
+<span class="line" id="L1036">                    .openat = .{</span>
+<span class="line" id="L1037">                        .fd = fd,</span>
+<span class="line" id="L1038">                        .path = file_path,</span>
+<span class="line" id="L1039">                        .flags = flags,</span>
+<span class="line" id="L1040">                        .mode = mode,</span>
+<span class="line" id="L1041">                        .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1042">                    },</span>
+<span class="line" id="L1043">                },</span>
+<span class="line" id="L1044">                .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1045">            },</span>
+<span class="line" id="L1046">        };</span>
+<span class="line" id="L1047">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1048">            self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1049">        }</span>
+<span class="line" id="L1050">        <span class="tok-kw">return</span> req_node.data.msg.openat.result;</span>
+<span class="line" id="L1051">    }</span>
+<span class="line" id="L1052"></span>
+<span class="line" id="L1053">    <span class="tok-comment">/// Performs an async `os.close` using a separate thread.</span></span>
+<span class="line" id="L1054">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">close</span>(self: *Loop, fd: os.fd_t) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1055">        <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1056">            .data = .{</span>
+<span class="line" id="L1057">                .msg = .{ .close = .{ .fd = fd } },</span>
+<span class="line" id="L1058">                .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1059">            },</span>
+<span class="line" id="L1060">        };</span>
+<span class="line" id="L1061">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1062">            self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1063">        }</span>
+<span class="line" id="L1064">    }</span>
+<span class="line" id="L1065"></span>
+<span class="line" id="L1066">    <span class="tok-comment">/// Performs an async `os.read` using a separate thread.</span></span>
+<span class="line" id="L1067">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1068">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(self: *Loop, fd: os.fd_t, buf: []<span class="tok-type">u8</span>, simulate_evented: <span class="tok-type">bool</span>) os.ReadError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1069">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1070">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1071">                .data = .{</span>
+<span class="line" id="L1072">                    .msg = .{</span>
+<span class="line" id="L1073">                        .read = .{</span>
+<span class="line" id="L1074">                            .fd = fd,</span>
+<span class="line" id="L1075">                            .buf = buf,</span>
+<span class="line" id="L1076">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1077">                        },</span>
+<span class="line" id="L1078">                    },</span>
+<span class="line" id="L1079">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1080">                },</span>
+<span class="line" id="L1081">            };</span>
+<span class="line" id="L1082">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1083">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1084">            }</span>
+<span class="line" id="L1085">            <span class="tok-kw">return</span> req_node.data.msg.read.result;</span>
+<span class="line" id="L1086">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1087">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1088">                <span class="tok-kw">return</span> os.read(fd, buf) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1089">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1090">                        self.waitUntilFdReadable(fd);</span>
+<span class="line" id="L1091">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1092">                    },</span>
+<span class="line" id="L1093">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1094">                };</span>
+<span class="line" id="L1095">            }</span>
+<span class="line" id="L1096">        }</span>
+<span class="line" id="L1097">    }</span>
+<span class="line" id="L1098"></span>
+<span class="line" id="L1099">    <span class="tok-comment">/// Performs an async `os.readv` using a separate thread.</span></span>
+<span class="line" id="L1100">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1101">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readv</span>(self: *Loop, fd: os.fd_t, iov: []<span class="tok-kw">const</span> os.iovec, simulate_evented: <span class="tok-type">bool</span>) os.ReadError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1102">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1103">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1104">                .data = .{</span>
+<span class="line" id="L1105">                    .msg = .{</span>
+<span class="line" id="L1106">                        .readv = .{</span>
+<span class="line" id="L1107">                            .fd = fd,</span>
+<span class="line" id="L1108">                            .iov = iov,</span>
+<span class="line" id="L1109">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1110">                        },</span>
+<span class="line" id="L1111">                    },</span>
+<span class="line" id="L1112">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1113">                },</span>
+<span class="line" id="L1114">            };</span>
+<span class="line" id="L1115">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1116">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1117">            }</span>
+<span class="line" id="L1118">            <span class="tok-kw">return</span> req_node.data.msg.readv.result;</span>
+<span class="line" id="L1119">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1120">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1121">                <span class="tok-kw">return</span> os.readv(fd, iov) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1122">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1123">                        self.waitUntilFdReadable(fd);</span>
+<span class="line" id="L1124">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1125">                    },</span>
+<span class="line" id="L1126">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1127">                };</span>
+<span class="line" id="L1128">            }</span>
+<span class="line" id="L1129">        }</span>
+<span class="line" id="L1130">    }</span>
+<span class="line" id="L1131"></span>
+<span class="line" id="L1132">    <span class="tok-comment">/// Performs an async `os.pread` using a separate thread.</span></span>
+<span class="line" id="L1133">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1134">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pread</span>(self: *Loop, fd: os.fd_t, buf: []<span class="tok-type">u8</span>, offset: <span class="tok-type">u64</span>, simulate_evented: <span class="tok-type">bool</span>) os.PReadError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1135">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1136">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1137">                .data = .{</span>
+<span class="line" id="L1138">                    .msg = .{</span>
+<span class="line" id="L1139">                        .pread = .{</span>
+<span class="line" id="L1140">                            .fd = fd,</span>
+<span class="line" id="L1141">                            .buf = buf,</span>
+<span class="line" id="L1142">                            .offset = offset,</span>
+<span class="line" id="L1143">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1144">                        },</span>
+<span class="line" id="L1145">                    },</span>
+<span class="line" id="L1146">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1147">                },</span>
+<span class="line" id="L1148">            };</span>
+<span class="line" id="L1149">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1150">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1151">            }</span>
+<span class="line" id="L1152">            <span class="tok-kw">return</span> req_node.data.msg.pread.result;</span>
+<span class="line" id="L1153">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1154">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1155">                <span class="tok-kw">return</span> os.pread(fd, buf, offset) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1156">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1157">                        self.waitUntilFdReadable(fd);</span>
+<span class="line" id="L1158">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1159">                    },</span>
+<span class="line" id="L1160">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1161">                };</span>
+<span class="line" id="L1162">            }</span>
+<span class="line" id="L1163">        }</span>
+<span class="line" id="L1164">    }</span>
+<span class="line" id="L1165"></span>
+<span class="line" id="L1166">    <span class="tok-comment">/// Performs an async `os.preadv` using a separate thread.</span></span>
+<span class="line" id="L1167">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1168">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">preadv</span>(self: *Loop, fd: os.fd_t, iov: []<span class="tok-kw">const</span> os.iovec, offset: <span class="tok-type">u64</span>, simulate_evented: <span class="tok-type">bool</span>) os.ReadError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1169">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1170">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1171">                .data = .{</span>
+<span class="line" id="L1172">                    .msg = .{</span>
+<span class="line" id="L1173">                        .preadv = .{</span>
+<span class="line" id="L1174">                            .fd = fd,</span>
+<span class="line" id="L1175">                            .iov = iov,</span>
+<span class="line" id="L1176">                            .offset = offset,</span>
+<span class="line" id="L1177">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1178">                        },</span>
+<span class="line" id="L1179">                    },</span>
+<span class="line" id="L1180">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1181">                },</span>
+<span class="line" id="L1182">            };</span>
+<span class="line" id="L1183">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1184">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1185">            }</span>
+<span class="line" id="L1186">            <span class="tok-kw">return</span> req_node.data.msg.preadv.result;</span>
+<span class="line" id="L1187">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1188">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1189">                <span class="tok-kw">return</span> os.preadv(fd, iov, offset) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1190">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1191">                        self.waitUntilFdReadable(fd);</span>
+<span class="line" id="L1192">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1193">                    },</span>
+<span class="line" id="L1194">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1195">                };</span>
+<span class="line" id="L1196">            }</span>
+<span class="line" id="L1197">        }</span>
+<span class="line" id="L1198">    }</span>
+<span class="line" id="L1199"></span>
+<span class="line" id="L1200">    <span class="tok-comment">/// Performs an async `os.write` using a separate thread.</span></span>
+<span class="line" id="L1201">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1202">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(self: *Loop, fd: os.fd_t, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, simulate_evented: <span class="tok-type">bool</span>) os.WriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1203">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1204">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1205">                .data = .{</span>
+<span class="line" id="L1206">                    .msg = .{</span>
+<span class="line" id="L1207">                        .write = .{</span>
+<span class="line" id="L1208">                            .fd = fd,</span>
+<span class="line" id="L1209">                            .bytes = bytes,</span>
+<span class="line" id="L1210">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1211">                        },</span>
+<span class="line" id="L1212">                    },</span>
+<span class="line" id="L1213">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1214">                },</span>
+<span class="line" id="L1215">            };</span>
+<span class="line" id="L1216">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1217">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1218">            }</span>
+<span class="line" id="L1219">            <span class="tok-kw">return</span> req_node.data.msg.write.result;</span>
+<span class="line" id="L1220">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1221">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1222">                <span class="tok-kw">return</span> os.write(fd, bytes) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1223">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1224">                        self.waitUntilFdWritable(fd);</span>
+<span class="line" id="L1225">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1226">                    },</span>
+<span class="line" id="L1227">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1228">                };</span>
+<span class="line" id="L1229">            }</span>
+<span class="line" id="L1230">        }</span>
+<span class="line" id="L1231">    }</span>
+<span class="line" id="L1232"></span>
+<span class="line" id="L1233">    <span class="tok-comment">/// Performs an async `os.writev` using a separate thread.</span></span>
+<span class="line" id="L1234">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1235">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writev</span>(self: *Loop, fd: os.fd_t, iov: []<span class="tok-kw">const</span> os.iovec_const, simulate_evented: <span class="tok-type">bool</span>) os.WriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1236">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1237">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1238">                .data = .{</span>
+<span class="line" id="L1239">                    .msg = .{</span>
+<span class="line" id="L1240">                        .writev = .{</span>
+<span class="line" id="L1241">                            .fd = fd,</span>
+<span class="line" id="L1242">                            .iov = iov,</span>
+<span class="line" id="L1243">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1244">                        },</span>
+<span class="line" id="L1245">                    },</span>
+<span class="line" id="L1246">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1247">                },</span>
+<span class="line" id="L1248">            };</span>
+<span class="line" id="L1249">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1250">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1251">            }</span>
+<span class="line" id="L1252">            <span class="tok-kw">return</span> req_node.data.msg.writev.result;</span>
+<span class="line" id="L1253">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1254">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1255">                <span class="tok-kw">return</span> os.writev(fd, iov) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1256">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1257">                        self.waitUntilFdWritable(fd);</span>
+<span class="line" id="L1258">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1259">                    },</span>
+<span class="line" id="L1260">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1261">                };</span>
+<span class="line" id="L1262">            }</span>
+<span class="line" id="L1263">        }</span>
+<span class="line" id="L1264">    }</span>
+<span class="line" id="L1265"></span>
+<span class="line" id="L1266">    <span class="tok-comment">/// Performs an async `os.pwrite` using a separate thread.</span></span>
+<span class="line" id="L1267">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1268">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pwrite</span>(self: *Loop, fd: os.fd_t, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, offset: <span class="tok-type">u64</span>, simulate_evented: <span class="tok-type">bool</span>) os.PerformsWriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1269">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1270">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1271">                .data = .{</span>
+<span class="line" id="L1272">                    .msg = .{</span>
+<span class="line" id="L1273">                        .pwrite = .{</span>
+<span class="line" id="L1274">                            .fd = fd,</span>
+<span class="line" id="L1275">                            .bytes = bytes,</span>
+<span class="line" id="L1276">                            .offset = offset,</span>
+<span class="line" id="L1277">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1278">                        },</span>
+<span class="line" id="L1279">                    },</span>
+<span class="line" id="L1280">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1281">                },</span>
+<span class="line" id="L1282">            };</span>
+<span class="line" id="L1283">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1284">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1285">            }</span>
+<span class="line" id="L1286">            <span class="tok-kw">return</span> req_node.data.msg.pwrite.result;</span>
+<span class="line" id="L1287">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1288">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1289">                <span class="tok-kw">return</span> os.pwrite(fd, bytes, offset) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1290">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1291">                        self.waitUntilFdWritable(fd);</span>
+<span class="line" id="L1292">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1293">                    },</span>
+<span class="line" id="L1294">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1295">                };</span>
+<span class="line" id="L1296">            }</span>
+<span class="line" id="L1297">        }</span>
+<span class="line" id="L1298">    }</span>
+<span class="line" id="L1299"></span>
+<span class="line" id="L1300">    <span class="tok-comment">/// Performs an async `os.pwritev` using a separate thread.</span></span>
+<span class="line" id="L1301">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1302">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pwritev</span>(self: *Loop, fd: os.fd_t, iov: []<span class="tok-kw">const</span> os.iovec_const, offset: <span class="tok-type">u64</span>, simulate_evented: <span class="tok-type">bool</span>) os.PWriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1303">        <span class="tok-kw">if</span> (simulate_evented) {</span>
+<span class="line" id="L1304">            <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1305">                .data = .{</span>
+<span class="line" id="L1306">                    .msg = .{</span>
+<span class="line" id="L1307">                        .pwritev = .{</span>
+<span class="line" id="L1308">                            .fd = fd,</span>
+<span class="line" id="L1309">                            .iov = iov,</span>
+<span class="line" id="L1310">                            .offset = offset,</span>
+<span class="line" id="L1311">                            .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1312">                        },</span>
+<span class="line" id="L1313">                    },</span>
+<span class="line" id="L1314">                    .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1315">                },</span>
+<span class="line" id="L1316">            };</span>
+<span class="line" id="L1317">            <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1318">                self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1319">            }</span>
+<span class="line" id="L1320">            <span class="tok-kw">return</span> req_node.data.msg.pwritev.result;</span>
+<span class="line" id="L1321">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1322">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1323">                <span class="tok-kw">return</span> os.pwritev(fd, iov, offset) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1324">                    <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1325">                        self.waitUntilFdWritable(fd);</span>
+<span class="line" id="L1326">                        <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1327">                    },</span>
+<span class="line" id="L1328">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1329">                };</span>
+<span class="line" id="L1330">            }</span>
+<span class="line" id="L1331">        }</span>
+<span class="line" id="L1332">    }</span>
+<span class="line" id="L1333"></span>
+<span class="line" id="L1334">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sendto</span>(</span>
+<span class="line" id="L1335">        self: *Loop,</span>
+<span class="line" id="L1336">        <span class="tok-comment">/// The file descriptor of the sending socket.</span></span>
+<span class="line" id="L1337">        sockfd: os.fd_t,</span>
+<span class="line" id="L1338">        <span class="tok-comment">/// Message to send.</span></span>
+<span class="line" id="L1339">        buf: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1340">        flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1341">        dest_addr: ?*<span class="tok-kw">const</span> os.sockaddr,</span>
+<span class="line" id="L1342">        addrlen: os.socklen_t,</span>
+<span class="line" id="L1343">    ) os.SendToError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1344">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1345">            <span class="tok-kw">return</span> os.sendto(sockfd, buf, flags, dest_addr, addrlen) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1346">                <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1347">                    self.waitUntilFdWritable(sockfd);</span>
+<span class="line" id="L1348">                    <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1349">                },</span>
+<span class="line" id="L1350">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1351">            };</span>
+<span class="line" id="L1352">        }</span>
+<span class="line" id="L1353">    }</span>
+<span class="line" id="L1354"></span>
+<span class="line" id="L1355">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">recvfrom</span>(</span>
+<span class="line" id="L1356">        self: *Loop,</span>
+<span class="line" id="L1357">        sockfd: os.fd_t,</span>
+<span class="line" id="L1358">        buf: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L1359">        flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1360">        src_addr: ?*os.sockaddr,</span>
+<span class="line" id="L1361">        addrlen: ?*os.socklen_t,</span>
+<span class="line" id="L1362">    ) os.RecvFromError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L1363">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1364">            <span class="tok-kw">return</span> os.recvfrom(sockfd, buf, flags, src_addr, addrlen) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L1365">                <span class="tok-kw">error</span>.WouldBlock =&gt; {</span>
+<span class="line" id="L1366">                    self.waitUntilFdReadable(sockfd);</span>
+<span class="line" id="L1367">                    <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L1368">                },</span>
+<span class="line" id="L1369">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L1370">            };</span>
+<span class="line" id="L1371">        }</span>
+<span class="line" id="L1372">    }</span>
+<span class="line" id="L1373"></span>
+<span class="line" id="L1374">    <span class="tok-comment">/// Performs an async `os.faccessatZ` using a separate thread.</span></span>
+<span class="line" id="L1375">    <span class="tok-comment">/// `fd` must block and not return EAGAIN.</span></span>
+<span class="line" id="L1376">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">faccessatZ</span>(</span>
+<span class="line" id="L1377">        self: *Loop,</span>
+<span class="line" id="L1378">        dirfd: os.fd_t,</span>
+<span class="line" id="L1379">        path_z: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1380">        mode: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1381">        flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1382">    ) os.AccessError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L1383">        <span class="tok-kw">var</span> req_node = Request.Node{</span>
+<span class="line" id="L1384">            .data = .{</span>
+<span class="line" id="L1385">                .msg = .{</span>
+<span class="line" id="L1386">                    .faccessat = .{</span>
+<span class="line" id="L1387">                        .dirfd = dirfd,</span>
+<span class="line" id="L1388">                        .path = path_z,</span>
+<span class="line" id="L1389">                        .mode = mode,</span>
+<span class="line" id="L1390">                        .flags = flags,</span>
+<span class="line" id="L1391">                        .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L1392">                    },</span>
+<span class="line" id="L1393">                },</span>
+<span class="line" id="L1394">                .finish = .{ .tick_node = .{ .data = <span class="tok-builtin">@frame</span>() } },</span>
+<span class="line" id="L1395">            },</span>
+<span class="line" id="L1396">        };</span>
+<span class="line" id="L1397">        <span class="tok-kw">suspend</span> {</span>
+<span class="line" id="L1398">            self.posixFsRequest(&amp;req_node);</span>
+<span class="line" id="L1399">        }</span>
+<span class="line" id="L1400">        <span class="tok-kw">return</span> req_node.data.msg.faccessat.result;</span>
+<span class="line" id="L1401">    }</span>
+<span class="line" id="L1402"></span>
+<span class="line" id="L1403">    <span class="tok-kw">fn</span> <span class="tok-fn">workerRun</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1404">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1405">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1406">                <span class="tok-kw">const</span> next_tick_node = self.next_tick_queue.get() <span class="tok-kw">orelse</span> <span class="tok-kw">break</span>;</span>
+<span class="line" id="L1407">                self.dispatch();</span>
+<span class="line" id="L1408">                <span class="tok-kw">resume</span> next_tick_node.data;</span>
+<span class="line" id="L1409">                self.finishOneEvent();</span>
+<span class="line" id="L1410">            }</span>
+<span class="line" id="L1411"></span>
+<span class="line" id="L1412">            <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L1413">                .linux =&gt; {</span>
+<span class="line" id="L1414">                    <span class="tok-comment">// only process 1 event so we don't steal from other threads</span>
+</span>
+<span class="line" id="L1415">                    <span class="tok-kw">var</span> events: [<span class="tok-number">1</span>]os.linux.epoll_event = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1416">                    <span class="tok-kw">const</span> count = os.epoll_wait(self.os_data.epollfd, events[<span class="tok-number">0</span>..], -<span class="tok-number">1</span>);</span>
+<span class="line" id="L1417">                    <span class="tok-kw">for</span> (events[<span class="tok-number">0</span>..count]) |ev| {</span>
+<span class="line" id="L1418">                        <span class="tok-kw">const</span> resume_node = <span class="tok-builtin">@as</span>(*ResumeNode, <span class="tok-builtin">@ptrFromInt</span>(ev.data.ptr));</span>
+<span class="line" id="L1419">                        <span class="tok-kw">const</span> handle = resume_node.handle;</span>
+<span class="line" id="L1420">                        <span class="tok-kw">const</span> resume_node_id = resume_node.id;</span>
+<span class="line" id="L1421">                        <span class="tok-kw">switch</span> (resume_node_id) {</span>
+<span class="line" id="L1422">                            .basic =&gt; {},</span>
+<span class="line" id="L1423">                            .stop =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L1424">                            .event_fd =&gt; {</span>
+<span class="line" id="L1425">                                <span class="tok-kw">const</span> event_fd_node = <span class="tok-builtin">@fieldParentPtr</span>(ResumeNode.EventFd, <span class="tok-str">&quot;base&quot;</span>, resume_node);</span>
+<span class="line" id="L1426">                                event_fd_node.epoll_op = os.linux.EPOLL.CTL_MOD;</span>
+<span class="line" id="L1427">                                <span class="tok-kw">const</span> stack_node = <span class="tok-builtin">@fieldParentPtr</span>(std.atomic.Stack(ResumeNode.EventFd).Node, <span class="tok-str">&quot;data&quot;</span>, event_fd_node);</span>
+<span class="line" id="L1428">                                self.available_eventfd_resume_nodes.push(stack_node);</span>
+<span class="line" id="L1429">                            },</span>
+<span class="line" id="L1430">                        }</span>
+<span class="line" id="L1431">                        <span class="tok-kw">resume</span> handle;</span>
+<span class="line" id="L1432">                        <span class="tok-kw">if</span> (resume_node_id == .event_fd) {</span>
+<span class="line" id="L1433">                            self.finishOneEvent();</span>
+<span class="line" id="L1434">                        }</span>
+<span class="line" id="L1435">                    }</span>
+<span class="line" id="L1436">                },</span>
+<span class="line" id="L1437">                .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; {</span>
+<span class="line" id="L1438">                    <span class="tok-kw">var</span> eventlist: [<span class="tok-number">1</span>]os.Kevent = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1439">                    <span class="tok-kw">const</span> empty_kevs = &amp;[<span class="tok-number">0</span>]os.Kevent{};</span>
+<span class="line" id="L1440">                    <span class="tok-kw">const</span> count = os.kevent(self.os_data.kqfd, empty_kevs, eventlist[<span class="tok-number">0</span>..], <span class="tok-null">null</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L1441">                    <span class="tok-kw">for</span> (eventlist[<span class="tok-number">0</span>..count]) |ev| {</span>
+<span class="line" id="L1442">                        <span class="tok-kw">const</span> resume_node = <span class="tok-builtin">@as</span>(*ResumeNode, <span class="tok-builtin">@ptrFromInt</span>(ev.udata));</span>
+<span class="line" id="L1443">                        <span class="tok-kw">const</span> handle = resume_node.handle;</span>
+<span class="line" id="L1444">                        <span class="tok-kw">const</span> resume_node_id = resume_node.id;</span>
+<span class="line" id="L1445">                        <span class="tok-kw">switch</span> (resume_node_id) {</span>
+<span class="line" id="L1446">                            .basic =&gt; {</span>
+<span class="line" id="L1447">                                <span class="tok-kw">const</span> basic_node = <span class="tok-builtin">@fieldParentPtr</span>(ResumeNode.Basic, <span class="tok-str">&quot;base&quot;</span>, resume_node);</span>
+<span class="line" id="L1448">                                basic_node.kev = ev;</span>
+<span class="line" id="L1449">                            },</span>
+<span class="line" id="L1450">                            .stop =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L1451">                            .event_fd =&gt; {</span>
+<span class="line" id="L1452">                                <span class="tok-kw">const</span> event_fd_node = <span class="tok-builtin">@fieldParentPtr</span>(ResumeNode.EventFd, <span class="tok-str">&quot;base&quot;</span>, resume_node);</span>
+<span class="line" id="L1453">                                <span class="tok-kw">const</span> stack_node = <span class="tok-builtin">@fieldParentPtr</span>(std.atomic.Stack(ResumeNode.EventFd).Node, <span class="tok-str">&quot;data&quot;</span>, event_fd_node);</span>
+<span class="line" id="L1454">                                self.available_eventfd_resume_nodes.push(stack_node);</span>
+<span class="line" id="L1455">                            },</span>
+<span class="line" id="L1456">                        }</span>
+<span class="line" id="L1457">                        <span class="tok-kw">resume</span> handle;</span>
+<span class="line" id="L1458">                        <span class="tok-kw">if</span> (resume_node_id == .event_fd) {</span>
+<span class="line" id="L1459">                            self.finishOneEvent();</span>
+<span class="line" id="L1460">                        }</span>
+<span class="line" id="L1461">                    }</span>
+<span class="line" id="L1462">                },</span>
+<span class="line" id="L1463">                .windows =&gt; {</span>
+<span class="line" id="L1464">                    <span class="tok-kw">var</span> completion_key: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1465">                    <span class="tok-kw">const</span> overlapped = <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1466">                        <span class="tok-kw">var</span> nbytes: windows.DWORD = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1467">                        <span class="tok-kw">var</span> overlapped: ?*windows.OVERLAPPED = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1468">                        <span class="tok-kw">switch</span> (windows.GetQueuedCompletionStatus(self.os_data.io_port, &amp;nbytes, &amp;completion_key, &amp;overlapped, windows.INFINITE)) {</span>
+<span class="line" id="L1469">                            .Aborted =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L1470">                            .Normal =&gt; {},</span>
+<span class="line" id="L1471">                            .EOF =&gt; {},</span>
+<span class="line" id="L1472">                            .Cancelled =&gt; <span class="tok-kw">continue</span>,</span>
+<span class="line" id="L1473">                        }</span>
+<span class="line" id="L1474">                        <span class="tok-kw">if</span> (overlapped) |o| <span class="tok-kw">break</span> o;</span>
+<span class="line" id="L1475">                    };</span>
+<span class="line" id="L1476">                    <span class="tok-kw">const</span> resume_node = <span class="tok-builtin">@fieldParentPtr</span>(ResumeNode, <span class="tok-str">&quot;overlapped&quot;</span>, overlapped);</span>
+<span class="line" id="L1477">                    <span class="tok-kw">const</span> handle = resume_node.handle;</span>
+<span class="line" id="L1478">                    <span class="tok-kw">const</span> resume_node_id = resume_node.id;</span>
+<span class="line" id="L1479">                    <span class="tok-kw">switch</span> (resume_node_id) {</span>
+<span class="line" id="L1480">                        .basic =&gt; {},</span>
+<span class="line" id="L1481">                        .stop =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L1482">                        .event_fd =&gt; {</span>
+<span class="line" id="L1483">                            <span class="tok-kw">const</span> event_fd_node = <span class="tok-builtin">@fieldParentPtr</span>(ResumeNode.EventFd, <span class="tok-str">&quot;base&quot;</span>, resume_node);</span>
+<span class="line" id="L1484">                            <span class="tok-kw">const</span> stack_node = <span class="tok-builtin">@fieldParentPtr</span>(std.atomic.Stack(ResumeNode.EventFd).Node, <span class="tok-str">&quot;data&quot;</span>, event_fd_node);</span>
+<span class="line" id="L1485">                            self.available_eventfd_resume_nodes.push(stack_node);</span>
+<span class="line" id="L1486">                        },</span>
+<span class="line" id="L1487">                    }</span>
+<span class="line" id="L1488">                    <span class="tok-kw">resume</span> handle;</span>
+<span class="line" id="L1489">                    self.finishOneEvent();</span>
+<span class="line" id="L1490">                },</span>
+<span class="line" id="L1491">                <span class="tok-kw">else</span> =&gt; <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;unsupported OS&quot;</span>),</span>
+<span class="line" id="L1492">            }</span>
+<span class="line" id="L1493">        }</span>
+<span class="line" id="L1494">    }</span>
+<span class="line" id="L1495"></span>
+<span class="line" id="L1496">    <span class="tok-kw">fn</span> <span class="tok-fn">posixFsRequest</span>(self: *Loop, request_node: *Request.Node) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1497">        self.beginOneEvent(); <span class="tok-comment">// finished in posixFsRun after processing the msg</span>
+</span>
+<span class="line" id="L1498">        self.fs_queue.put(request_node);</span>
+<span class="line" id="L1499">        self.fs_thread_wakeup.set();</span>
+<span class="line" id="L1500">    }</span>
+<span class="line" id="L1501"></span>
+<span class="line" id="L1502">    <span class="tok-kw">fn</span> <span class="tok-fn">posixFsCancel</span>(self: *Loop, request_node: *Request.Node) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1503">        <span class="tok-kw">if</span> (self.fs_queue.remove(request_node)) {</span>
+<span class="line" id="L1504">            self.finishOneEvent();</span>
+<span class="line" id="L1505">        }</span>
+<span class="line" id="L1506">    }</span>
+<span class="line" id="L1507"></span>
+<span class="line" id="L1508">    <span class="tok-kw">fn</span> <span class="tok-fn">posixFsRun</span>(self: *Loop) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1509">        <span class="tok-kw">nosuspend</span> <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1510">            self.fs_thread_wakeup.reset();</span>
+<span class="line" id="L1511">            <span class="tok-kw">while</span> (self.fs_queue.get()) |node| {</span>
+<span class="line" id="L1512">                <span class="tok-kw">switch</span> (node.data.msg) {</span>
+<span class="line" id="L1513">                    .end =&gt; <span class="tok-kw">return</span>,</span>
+<span class="line" id="L1514">                    .read =&gt; |*msg| {</span>
+<span class="line" id="L1515">                        msg.result = os.read(msg.fd, msg.buf);</span>
+<span class="line" id="L1516">                    },</span>
+<span class="line" id="L1517">                    .readv =&gt; |*msg| {</span>
+<span class="line" id="L1518">                        msg.result = os.readv(msg.fd, msg.iov);</span>
+<span class="line" id="L1519">                    },</span>
+<span class="line" id="L1520">                    .write =&gt; |*msg| {</span>
+<span class="line" id="L1521">                        msg.result = os.write(msg.fd, msg.bytes);</span>
+<span class="line" id="L1522">                    },</span>
+<span class="line" id="L1523">                    .writev =&gt; |*msg| {</span>
+<span class="line" id="L1524">                        msg.result = os.writev(msg.fd, msg.iov);</span>
+<span class="line" id="L1525">                    },</span>
+<span class="line" id="L1526">                    .pwrite =&gt; |*msg| {</span>
+<span class="line" id="L1527">                        msg.result = os.pwrite(msg.fd, msg.bytes, msg.offset);</span>
+<span class="line" id="L1528">                    },</span>
+<span class="line" id="L1529">                    .pwritev =&gt; |*msg| {</span>
+<span class="line" id="L1530">                        msg.result = os.pwritev(msg.fd, msg.iov, msg.offset);</span>
+<span class="line" id="L1531">                    },</span>
+<span class="line" id="L1532">                    .pread =&gt; |*msg| {</span>
+<span class="line" id="L1533">                        msg.result = os.pread(msg.fd, msg.buf, msg.offset);</span>
+<span class="line" id="L1534">                    },</span>
+<span class="line" id="L1535">                    .preadv =&gt; |*msg| {</span>
+<span class="line" id="L1536">                        msg.result = os.preadv(msg.fd, msg.iov, msg.offset);</span>
+<span class="line" id="L1537">                    },</span>
+<span class="line" id="L1538">                    .open =&gt; |*msg| {</span>
+<span class="line" id="L1539">                        <span class="tok-kw">if</span> (is_windows) <span class="tok-kw">unreachable</span>; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L1540">                        msg.result = os.openZ(msg.path, msg.flags, msg.mode);</span>
+<span class="line" id="L1541">                    },</span>
+<span class="line" id="L1542">                    .openat =&gt; |*msg| {</span>
+<span class="line" id="L1543">                        <span class="tok-kw">if</span> (is_windows) <span class="tok-kw">unreachable</span>; <span class="tok-comment">// TODO</span>
+</span>
+<span class="line" id="L1544">                        msg.result = os.openatZ(msg.fd, msg.path, msg.flags, msg.mode);</span>
+<span class="line" id="L1545">                    },</span>
+<span class="line" id="L1546">                    .faccessat =&gt; |*msg| {</span>
+<span class="line" id="L1547">                        msg.result = os.faccessatZ(msg.dirfd, msg.path, msg.mode, msg.flags);</span>
+<span class="line" id="L1548">                    },</span>
+<span class="line" id="L1549">                    .close =&gt; |*msg| os.close(msg.fd),</span>
+<span class="line" id="L1550">                }</span>
+<span class="line" id="L1551">                <span class="tok-kw">switch</span> (node.data.finish) {</span>
+<span class="line" id="L1552">                    .tick_node =&gt; |*tick_node| self.onNextTick(tick_node),</span>
+<span class="line" id="L1553">                    .no_action =&gt; {},</span>
+<span class="line" id="L1554">                }</span>
+<span class="line" id="L1555">                self.finishOneEvent();</span>
+<span class="line" id="L1556">            }</span>
+<span class="line" id="L1557">            self.fs_thread_wakeup.wait();</span>
+<span class="line" id="L1558">        };</span>
+<span class="line" id="L1559">    }</span>
+<span class="line" id="L1560"></span>
+<span class="line" id="L1561">    <span class="tok-kw">const</span> OsData = <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L1562">        .linux =&gt; LinuxOsData,</span>
+<span class="line" id="L1563">        .macos, .ios, .tvos, .watchos, .freebsd, .netbsd, .dragonfly, .openbsd =&gt; KEventData,</span>
+<span class="line" id="L1564">        .windows =&gt; <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1565">            io_port: windows.HANDLE,</span>
+<span class="line" id="L1566">            extra_thread_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L1567">        },</span>
+<span class="line" id="L1568">        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">struct</span> {},</span>
+<span class="line" id="L1569">    };</span>
+<span class="line" id="L1570"></span>
+<span class="line" id="L1571">    <span class="tok-kw">const</span> KEventData = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1572">        kqfd: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L1573">        final_kevent: os.Kevent,</span>
+<span class="line" id="L1574">    };</span>
+<span class="line" id="L1575"></span>
+<span class="line" id="L1576">    <span class="tok-kw">const</span> LinuxOsData = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1577">        epollfd: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L1578">        final_eventfd: <span class="tok-type">i32</span>,</span>
+<span class="line" id="L1579">        final_eventfd_event: os.linux.epoll_event,</span>
+<span class="line" id="L1580">    };</span>
+<span class="line" id="L1581"></span>
+<span class="line" id="L1582">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Request = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1583">        msg: Msg,</span>
+<span class="line" id="L1584">        finish: Finish,</span>
+<span class="line" id="L1585"></span>
+<span class="line" id="L1586">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Node = std.atomic.Queue(Request).Node;</span>
+<span class="line" id="L1587"></span>
+<span class="line" id="L1588">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Finish = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L1589">            tick_node: Loop.NextTickNode,</span>
+<span class="line" id="L1590">            no_action,</span>
+<span class="line" id="L1591">        };</span>
+<span class="line" id="L1592"></span>
+<span class="line" id="L1593">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Msg = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L1594">            read: Read,</span>
+<span class="line" id="L1595">            readv: ReadV,</span>
+<span class="line" id="L1596">            write: Write,</span>
+<span class="line" id="L1597">            writev: WriteV,</span>
+<span class="line" id="L1598">            pwrite: PWrite,</span>
+<span class="line" id="L1599">            pwritev: PWriteV,</span>
+<span class="line" id="L1600">            pread: PRead,</span>
+<span class="line" id="L1601">            preadv: PReadV,</span>
+<span class="line" id="L1602">            open: Open,</span>
+<span class="line" id="L1603">            openat: OpenAt,</span>
+<span class="line" id="L1604">            close: Close,</span>
+<span class="line" id="L1605">            faccessat: FAccessAt,</span>
+<span class="line" id="L1606"></span>
+<span class="line" id="L1607">            <span class="tok-comment">/// special - means the fs thread should exit</span></span>
+<span class="line" id="L1608">            end,</span>
+<span class="line" id="L1609"></span>
+<span class="line" id="L1610">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Read = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1611">                fd: os.fd_t,</span>
+<span class="line" id="L1612">                buf: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L1613">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1614"></span>
+<span class="line" id="L1615">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.ReadError;</span>
+<span class="line" id="L1616">            };</span>
+<span class="line" id="L1617"></span>
+<span class="line" id="L1618">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ReadV = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1619">                fd: os.fd_t,</span>
+<span class="line" id="L1620">                iov: []<span class="tok-kw">const</span> os.iovec,</span>
+<span class="line" id="L1621">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1622"></span>
+<span class="line" id="L1623">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.ReadError;</span>
+<span class="line" id="L1624">            };</span>
+<span class="line" id="L1625"></span>
+<span class="line" id="L1626">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Write = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1627">                fd: os.fd_t,</span>
+<span class="line" id="L1628">                bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1629">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1630"></span>
+<span class="line" id="L1631">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.WriteError;</span>
+<span class="line" id="L1632">            };</span>
+<span class="line" id="L1633"></span>
+<span class="line" id="L1634">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> WriteV = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1635">                fd: os.fd_t,</span>
+<span class="line" id="L1636">                iov: []<span class="tok-kw">const</span> os.iovec_const,</span>
+<span class="line" id="L1637">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1638"></span>
+<span class="line" id="L1639">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.WriteError;</span>
+<span class="line" id="L1640">            };</span>
+<span class="line" id="L1641"></span>
+<span class="line" id="L1642">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> PWrite = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1643">                fd: os.fd_t,</span>
+<span class="line" id="L1644">                bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1645">                offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L1646">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1647"></span>
+<span class="line" id="L1648">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.PWriteError;</span>
+<span class="line" id="L1649">            };</span>
+<span class="line" id="L1650"></span>
+<span class="line" id="L1651">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> PWriteV = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1652">                fd: os.fd_t,</span>
+<span class="line" id="L1653">                iov: []<span class="tok-kw">const</span> os.iovec_const,</span>
+<span class="line" id="L1654">                offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L1655">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1656"></span>
+<span class="line" id="L1657">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.PWriteError;</span>
+<span class="line" id="L1658">            };</span>
+<span class="line" id="L1659"></span>
+<span class="line" id="L1660">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> PRead = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1661">                fd: os.fd_t,</span>
+<span class="line" id="L1662">                buf: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L1663">                offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L1664">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1665"></span>
+<span class="line" id="L1666">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.PReadError;</span>
+<span class="line" id="L1667">            };</span>
+<span class="line" id="L1668"></span>
+<span class="line" id="L1669">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> PReadV = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1670">                fd: os.fd_t,</span>
+<span class="line" id="L1671">                iov: []<span class="tok-kw">const</span> os.iovec,</span>
+<span class="line" id="L1672">                offset: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L1673">                result: Error!<span class="tok-type">usize</span>,</span>
+<span class="line" id="L1674"></span>
+<span class="line" id="L1675">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.PReadError;</span>
+<span class="line" id="L1676">            };</span>
+<span class="line" id="L1677"></span>
+<span class="line" id="L1678">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Open = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1679">                path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1680">                flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1681">                mode: os.mode_t,</span>
+<span class="line" id="L1682">                result: Error!os.fd_t,</span>
+<span class="line" id="L1683"></span>
+<span class="line" id="L1684">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.OpenError;</span>
+<span class="line" id="L1685">            };</span>
+<span class="line" id="L1686"></span>
+<span class="line" id="L1687">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> OpenAt = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1688">                fd: os.fd_t,</span>
+<span class="line" id="L1689">                path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1690">                flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1691">                mode: os.mode_t,</span>
+<span class="line" id="L1692">                result: Error!os.fd_t,</span>
+<span class="line" id="L1693"></span>
+<span class="line" id="L1694">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.OpenError;</span>
+<span class="line" id="L1695">            };</span>
+<span class="line" id="L1696"></span>
+<span class="line" id="L1697">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Close = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1698">                fd: os.fd_t,</span>
+<span class="line" id="L1699">            };</span>
+<span class="line" id="L1700"></span>
+<span class="line" id="L1701">            <span class="tok-kw">pub</span> <span class="tok-kw">const</span> FAccessAt = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L1702">                dirfd: os.fd_t,</span>
+<span class="line" id="L1703">                path: [*:<span class="tok-number">0</span>]<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L1704">                mode: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1705">                flags: <span class="tok-type">u32</span>,</span>
+<span class="line" id="L1706">                result: Error!<span class="tok-type">void</span>,</span>
+<span class="line" id="L1707"></span>
+<span class="line" id="L1708">                <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = os.AccessError;</span>
+<span class="line" id="L1709">            };</span>
+<span class="line" id="L1710">        };</span>
+<span class="line" id="L1711">    };</span>
+<span class="line" id="L1712">};</span>
+<span class="line" id="L1713"></span>
+<span class="line" id="L1714"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.event.Loop - basic&quot;</span> {</span>
+<span class="line" id="L1715">    <span class="tok-comment">// https://github.com/ziglang/zig/issues/1908</span>
+</span>
+<span class="line" id="L1716">    <span class="tok-kw">if</span> (builtin.single_threaded) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1717"></span>
+<span class="line" id="L1718">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1719">        <span class="tok-comment">// https://github.com/ziglang/zig/issues/4922</span>
+</span>
+<span class="line" id="L1720">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1721">    }</span>
+<span class="line" id="L1722"></span>
+<span class="line" id="L1723">    <span class="tok-kw">var</span> loop: Loop = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1724">    <span class="tok-kw">try</span> loop.initMultiThreaded();</span>
+<span class="line" id="L1725">    <span class="tok-kw">defer</span> loop.deinit();</span>
+<span class="line" id="L1726"></span>
+<span class="line" id="L1727">    loop.run();</span>
+<span class="line" id="L1728">}</span>
+<span class="line" id="L1729"></span>
+<span class="line" id="L1730"><span class="tok-kw">fn</span> <span class="tok-fn">testEventLoop</span>() <span class="tok-type">i32</span> {</span>
+<span class="line" id="L1731">    <span class="tok-kw">return</span> <span class="tok-number">1234</span>;</span>
+<span class="line" id="L1732">}</span>
+<span class="line" id="L1733"></span>
+<span class="line" id="L1734"><span class="tok-kw">fn</span> <span class="tok-fn">testEventLoop2</span>(h: <span class="tok-kw">anyframe</span>-&gt;<span class="tok-type">i32</span>, did_it: *<span class="tok-type">bool</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1735">    <span class="tok-kw">const</span> value = <span class="tok-kw">await</span> h;</span>
+<span class="line" id="L1736">    <span class="tok-kw">try</span> testing.expect(value == <span class="tok-number">1234</span>);</span>
+<span class="line" id="L1737">    did_it.* = <span class="tok-null">true</span>;</span>
+<span class="line" id="L1738">}</span>
+<span class="line" id="L1739"></span>
+<span class="line" id="L1740"><span class="tok-kw">var</span> testRunDetachedData: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1741"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.event.Loop - runDetached&quot;</span> {</span>
+<span class="line" id="L1742">    <span class="tok-comment">// https://github.com/ziglang/zig/issues/1908</span>
+</span>
+<span class="line" id="L1743">    <span class="tok-kw">if</span> (builtin.single_threaded) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1744">    <span class="tok-kw">if</span> (!std.io.is_async) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1745">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L1746">        <span class="tok-comment">// https://github.com/ziglang/zig/issues/4922</span>
+</span>
+<span class="line" id="L1747">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1748">    }</span>
+<span class="line" id="L1749"></span>
+<span class="line" id="L1750">    <span class="tok-kw">var</span> loop: Loop = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1751">    <span class="tok-kw">try</span> loop.initMultiThreaded();</span>
+<span class="line" id="L1752">    <span class="tok-kw">defer</span> loop.deinit();</span>
+<span class="line" id="L1753"></span>
+<span class="line" id="L1754">    <span class="tok-comment">// Schedule the execution, won't actually start until we start the</span>
+</span>
+<span class="line" id="L1755">    <span class="tok-comment">// event loop.</span>
+</span>
+<span class="line" id="L1756">    <span class="tok-kw">try</span> loop.runDetached(std.testing.allocator, testRunDetached, .{});</span>
+<span class="line" id="L1757"></span>
+<span class="line" id="L1758">    <span class="tok-comment">// Now we can start the event loop. The function will return only</span>
+</span>
+<span class="line" id="L1759">    <span class="tok-comment">// after all tasks have been completed, allowing us to synchronize</span>
+</span>
+<span class="line" id="L1760">    <span class="tok-comment">// with the previous runDetached.</span>
+</span>
+<span class="line" id="L1761">    loop.run();</span>
+<span class="line" id="L1762"></span>
+<span class="line" id="L1763">    <span class="tok-kw">try</span> testing.expect(testRunDetachedData == <span class="tok-number">1</span>);</span>
+<span class="line" id="L1764">}</span>
+<span class="line" id="L1765"></span>
+<span class="line" id="L1766"><span class="tok-kw">fn</span> <span class="tok-fn">testRunDetached</span>() <span class="tok-type">void</span> {</span>
+<span class="line" id="L1767">    testRunDetachedData += <span class="tok-number">1</span>;</span>
+<span class="line" id="L1768">}</span>
+<span class="line" id="L1769"></span>
+<span class="line" id="L1770"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.event.Loop - sleep&quot;</span> {</span>
+<span class="line" id="L1771">    <span class="tok-comment">// https://github.com/ziglang/zig/issues/1908</span>
+</span>
+<span class="line" id="L1772">    <span class="tok-kw">if</span> (builtin.single_threaded) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1773">    <span class="tok-kw">if</span> (!std.io.is_async) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L1774"></span>
+<span class="line" id="L1775">    <span class="tok-kw">const</span> frames = <span class="tok-kw">try</span> testing.allocator.alloc(<span class="tok-builtin">@Frame</span>(testSleep), <span class="tok-number">10</span>);</span>
+<span class="line" id="L1776">    <span class="tok-kw">defer</span> testing.allocator.free(frames);</span>
+<span class="line" id="L1777"></span>
+<span class="line" id="L1778">    <span class="tok-kw">const</span> wait_time = <span class="tok-number">100</span> * std.time.ns_per_ms;</span>
+<span class="line" id="L1779">    <span class="tok-kw">var</span> sleep_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1780"></span>
+<span class="line" id="L1781">    <span class="tok-kw">for</span> (frames) |*frame|</span>
+<span class="line" id="L1782">        frame.* = <span class="tok-kw">async</span> testSleep(wait_time, &amp;sleep_count);</span>
+<span class="line" id="L1783">    <span class="tok-kw">for</span> (frames) |*frame|</span>
+<span class="line" id="L1784">        <span class="tok-kw">await</span> frame;</span>
+<span class="line" id="L1785"></span>
+<span class="line" id="L1786">    <span class="tok-kw">try</span> testing.expect(sleep_count == frames.len);</span>
+<span class="line" id="L1787">}</span>
+<span class="line" id="L1788"></span>
+<span class="line" id="L1789"><span class="tok-kw">fn</span> <span class="tok-fn">testSleep</span>(wait_ns: <span class="tok-type">u64</span>, sleep_count: *<span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L1790">    Loop.instance.?.sleep(wait_ns);</span>
+<span class="line" id="L1791">    _ = <span class="tok-builtin">@atomicRmw</span>(<span class="tok-type">usize</span>, sleep_count, .Add, <span class="tok-number">1</span>, .SeqCst);</span>
+<span class="line" id="L1792">}</span>
+<span class="line" id="L1793"></span>
+</code></pre></body>
+</html>

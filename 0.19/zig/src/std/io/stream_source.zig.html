@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>io/stream_source.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> io = std.io;</span>
+<span class="line" id="L4"></span>
+<span class="line" id="L5"><span class="tok-comment">/// Provides `io.Reader`, `io.Writer`, and `io.SeekableStream` for in-memory buffers as</span></span>
+<span class="line" id="L6"><span class="tok-comment">/// well as files.</span></span>
+<span class="line" id="L7"><span class="tok-comment">/// For memory sources, if the supplied byte buffer is const, then `io.Writer` is not available.</span></span>
+<span class="line" id="L8"><span class="tok-comment">/// The error set of the stream functions is the error set of the corresponding file functions.</span></span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> StreamSource = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L10">    <span class="tok-comment">// TODO: expose UEFI files to std.os in a way that allows this to be true</span>
+</span>
+<span class="line" id="L11">    <span class="tok-kw">const</span> has_file = (builtin.os.tag != .freestanding <span class="tok-kw">and</span> builtin.os.tag != .uefi);</span>
+<span class="line" id="L12"></span>
+<span class="line" id="L13">    <span class="tok-comment">/// The stream access is redirected to this buffer.</span></span>
+<span class="line" id="L14">    buffer: io.FixedBufferStream([]<span class="tok-type">u8</span>),</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16">    <span class="tok-comment">/// The stream access is redirected to this buffer.</span></span>
+<span class="line" id="L17">    <span class="tok-comment">/// Writing to the source will always yield `error.AccessDenied`.</span></span>
+<span class="line" id="L18">    const_buffer: io.FixedBufferStream([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>),</span>
+<span class="line" id="L19"></span>
+<span class="line" id="L20">    <span class="tok-comment">/// The stream access is redirected to this file.</span></span>
+<span class="line" id="L21">    <span class="tok-comment">/// On freestanding, this must never be initialized!</span></span>
+<span class="line" id="L22">    file: <span class="tok-kw">if</span> (has_file) std.fs.File <span class="tok-kw">else</span> <span class="tok-type">void</span>,</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> ReadError = io.FixedBufferStream([]<span class="tok-type">u8</span>).ReadError || (<span class="tok-kw">if</span> (has_file) std.fs.File.ReadError <span class="tok-kw">else</span> <span class="tok-kw">error</span>{});</span>
+<span class="line" id="L25">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> WriteError = <span class="tok-kw">error</span>{AccessDenied} || io.FixedBufferStream([]<span class="tok-type">u8</span>).WriteError || (<span class="tok-kw">if</span> (has_file) std.fs.File.WriteError <span class="tok-kw">else</span> <span class="tok-kw">error</span>{});</span>
+<span class="line" id="L26">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SeekError = io.FixedBufferStream([]<span class="tok-type">u8</span>).SeekError || (<span class="tok-kw">if</span> (has_file) std.fs.File.SeekError <span class="tok-kw">else</span> <span class="tok-kw">error</span>{});</span>
+<span class="line" id="L27">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> GetSeekPosError = io.FixedBufferStream([]<span class="tok-type">u8</span>).GetSeekPosError || (<span class="tok-kw">if</span> (has_file) std.fs.File.GetSeekPosError <span class="tok-kw">else</span> <span class="tok-kw">error</span>{});</span>
+<span class="line" id="L28"></span>
+<span class="line" id="L29">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Reader = io.Reader(*StreamSource, ReadError, read);</span>
+<span class="line" id="L30">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Writer = io.Writer(*StreamSource, WriteError, write);</span>
+<span class="line" id="L31">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> SeekableStream = io.SeekableStream(</span>
+<span class="line" id="L32">        *StreamSource,</span>
+<span class="line" id="L33">        SeekError,</span>
+<span class="line" id="L34">        GetSeekPosError,</span>
+<span class="line" id="L35">        seekTo,</span>
+<span class="line" id="L36">        seekBy,</span>
+<span class="line" id="L37">        getPos,</span>
+<span class="line" id="L38">        getEndPos,</span>
+<span class="line" id="L39">    );</span>
+<span class="line" id="L40"></span>
+<span class="line" id="L41">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">read</span>(self: *StreamSource, dest: []<span class="tok-type">u8</span>) ReadError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L42">        <span class="tok-kw">switch</span> (self.*) {</span>
+<span class="line" id="L43">            .buffer =&gt; |*x| <span class="tok-kw">return</span> x.read(dest),</span>
+<span class="line" id="L44">            .const_buffer =&gt; |*x| <span class="tok-kw">return</span> x.read(dest),</span>
+<span class="line" id="L45">            .file =&gt; |x| <span class="tok-kw">if</span> (!has_file) <span class="tok-kw">unreachable</span> <span class="tok-kw">else</span> <span class="tok-kw">return</span> x.read(dest),</span>
+<span class="line" id="L46">        }</span>
+<span class="line" id="L47">    }</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">write</span>(self: *StreamSource, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) WriteError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L50">        <span class="tok-kw">switch</span> (self.*) {</span>
+<span class="line" id="L51">            .buffer =&gt; |*x| <span class="tok-kw">return</span> x.write(bytes),</span>
+<span class="line" id="L52">            .const_buffer =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.AccessDenied,</span>
+<span class="line" id="L53">            .file =&gt; |x| <span class="tok-kw">if</span> (!has_file) <span class="tok-kw">unreachable</span> <span class="tok-kw">else</span> <span class="tok-kw">return</span> x.write(bytes),</span>
+<span class="line" id="L54">        }</span>
+<span class="line" id="L55">    }</span>
+<span class="line" id="L56"></span>
+<span class="line" id="L57">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">seekTo</span>(self: *StreamSource, pos: <span class="tok-type">u64</span>) SeekError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L58">        <span class="tok-kw">switch</span> (self.*) {</span>
+<span class="line" id="L59">            .buffer =&gt; |*x| <span class="tok-kw">return</span> x.seekTo(pos),</span>
+<span class="line" id="L60">            .const_buffer =&gt; |*x| <span class="tok-kw">return</span> x.seekTo(pos),</span>
+<span class="line" id="L61">            .file =&gt; |x| <span class="tok-kw">if</span> (!has_file) <span class="tok-kw">unreachable</span> <span class="tok-kw">else</span> <span class="tok-kw">return</span> x.seekTo(pos),</span>
+<span class="line" id="L62">        }</span>
+<span class="line" id="L63">    }</span>
+<span class="line" id="L64"></span>
+<span class="line" id="L65">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">seekBy</span>(self: *StreamSource, amt: <span class="tok-type">i64</span>) SeekError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L66">        <span class="tok-kw">switch</span> (self.*) {</span>
+<span class="line" id="L67">            .buffer =&gt; |*x| <span class="tok-kw">return</span> x.seekBy(amt),</span>
+<span class="line" id="L68">            .const_buffer =&gt; |*x| <span class="tok-kw">return</span> x.seekBy(amt),</span>
+<span class="line" id="L69">            .file =&gt; |x| <span class="tok-kw">if</span> (!has_file) <span class="tok-kw">unreachable</span> <span class="tok-kw">else</span> <span class="tok-kw">return</span> x.seekBy(amt),</span>
+<span class="line" id="L70">        }</span>
+<span class="line" id="L71">    }</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getEndPos</span>(self: *StreamSource) GetSeekPosError!<span class="tok-type">u64</span> {</span>
+<span class="line" id="L74">        <span class="tok-kw">switch</span> (self.*) {</span>
+<span class="line" id="L75">            .buffer =&gt; |*x| <span class="tok-kw">return</span> x.getEndPos(),</span>
+<span class="line" id="L76">            .const_buffer =&gt; |*x| <span class="tok-kw">return</span> x.getEndPos(),</span>
+<span class="line" id="L77">            .file =&gt; |x| <span class="tok-kw">if</span> (!has_file) <span class="tok-kw">unreachable</span> <span class="tok-kw">else</span> <span class="tok-kw">return</span> x.getEndPos(),</span>
+<span class="line" id="L78">        }</span>
+<span class="line" id="L79">    }</span>
+<span class="line" id="L80"></span>
+<span class="line" id="L81">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">getPos</span>(self: *StreamSource) GetSeekPosError!<span class="tok-type">u64</span> {</span>
+<span class="line" id="L82">        <span class="tok-kw">switch</span> (self.*) {</span>
+<span class="line" id="L83">            .buffer =&gt; |*x| <span class="tok-kw">return</span> x.getPos(),</span>
+<span class="line" id="L84">            .const_buffer =&gt; |*x| <span class="tok-kw">return</span> x.getPos(),</span>
+<span class="line" id="L85">            .file =&gt; |x| <span class="tok-kw">if</span> (!has_file) <span class="tok-kw">unreachable</span> <span class="tok-kw">else</span> <span class="tok-kw">return</span> x.getPos(),</span>
+<span class="line" id="L86">        }</span>
+<span class="line" id="L87">    }</span>
+<span class="line" id="L88"></span>
+<span class="line" id="L89">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reader</span>(self: *StreamSource) Reader {</span>
+<span class="line" id="L90">        <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L91">    }</span>
+<span class="line" id="L92"></span>
+<span class="line" id="L93">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">writer</span>(self: *StreamSource) Writer {</span>
+<span class="line" id="L94">        <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L95">    }</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">seekableStream</span>(self: *StreamSource) SeekableStream {</span>
+<span class="line" id="L98">        <span class="tok-kw">return</span> .{ .context = self };</span>
+<span class="line" id="L99">    }</span>
+<span class="line" id="L100">};</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102"><span class="tok-kw">test</span> <span class="tok-str">&quot;StreamSource (refs)&quot;</span> {</span>
+<span class="line" id="L103">    std.testing.refAllDecls(StreamSource);</span>
+<span class="line" id="L104">}</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106"><span class="tok-kw">test</span> <span class="tok-str">&quot;StreamSource (mutable buffer)&quot;</span> {</span>
+<span class="line" id="L107">    <span class="tok-kw">var</span> buffer: [<span class="tok-number">64</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L108">    <span class="tok-kw">var</span> source = StreamSource{ .buffer = std.io.fixedBufferStream(&amp;buffer) };</span>
+<span class="line" id="L109"></span>
+<span class="line" id="L110">    <span class="tok-kw">var</span> writer = source.writer();</span>
+<span class="line" id="L111"></span>
+<span class="line" id="L112">    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;Hello, World!&quot;</span>);</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-str">&quot;Hello, World!&quot;</span>, source.buffer.getWritten());</span>
+<span class="line" id="L115">}</span>
+<span class="line" id="L116"></span>
+<span class="line" id="L117"><span class="tok-kw">test</span> <span class="tok-str">&quot;StreamSource (const buffer)&quot;</span> {</span>
+<span class="line" id="L118">    <span class="tok-kw">const</span> buffer: [<span class="tok-number">64</span>]<span class="tok-type">u8</span> = <span class="tok-str">&quot;Hello, World!&quot;</span>.* ++ ([<span class="tok-number">1</span>]<span class="tok-type">u8</span>{<span class="tok-number">0xAA</span>} ** <span class="tok-number">51</span>);</span>
+<span class="line" id="L119">    <span class="tok-kw">var</span> source = StreamSource{ .const_buffer = std.io.fixedBufferStream(&amp;buffer) };</span>
+<span class="line" id="L120"></span>
+<span class="line" id="L121">    <span class="tok-kw">var</span> reader = source.reader();</span>
+<span class="line" id="L122"></span>
+<span class="line" id="L123">    <span class="tok-kw">var</span> dst_buffer: [<span class="tok-number">13</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L124">    <span class="tok-kw">try</span> reader.readNoEof(&amp;dst_buffer);</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-str">&quot;Hello, World!&quot;</span>, &amp;dst_buffer);</span>
+<span class="line" id="L127">}</span>
+<span class="line" id="L128"></span>
+</code></pre></body>
+</html>

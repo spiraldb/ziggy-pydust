@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>event/batch.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;../std.zig&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-comment">/// Performs multiple async functions in parallel, without heap allocation.</span></span>
+<span class="line" id="L5"><span class="tok-comment">/// Async function frames are managed externally to this abstraction, and</span></span>
+<span class="line" id="L6"><span class="tok-comment">/// passed in via the `add` function. Once all the jobs are added, call `wait`.</span></span>
+<span class="line" id="L7"><span class="tok-comment">/// This API is *not* thread-safe. The object must be accessed from one thread at</span></span>
+<span class="line" id="L8"><span class="tok-comment">/// a time, however, it need not be the same thread.</span></span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Batch</span>(</span>
+<span class="line" id="L10">    <span class="tok-comment">/// The return value for each job.</span></span>
+<span class="line" id="L11">    <span class="tok-comment">/// If a job slot was re-used due to maxed out concurrency, then its result</span></span>
+<span class="line" id="L12">    <span class="tok-comment">/// value will be overwritten. The values can be accessed with the `results` field.</span></span>
+<span class="line" id="L13">    <span class="tok-kw">comptime</span> Result: <span class="tok-type">type</span>,</span>
+<span class="line" id="L14">    <span class="tok-comment">/// How many jobs to run in parallel.</span></span>
+<span class="line" id="L15">    <span class="tok-kw">comptime</span> max_jobs: <span class="tok-type">comptime_int</span>,</span>
+<span class="line" id="L16">    <span class="tok-comment">/// Controls whether the `add` and `wait` functions will be async functions.</span></span>
+<span class="line" id="L17">    <span class="tok-kw">comptime</span> async_behavior: <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L18">        <span class="tok-comment">/// Observe the value of `std.io.is_async` to decide whether `add`</span></span>
+<span class="line" id="L19">        <span class="tok-comment">/// and `wait` will be async functions. Asserts that the jobs do not suspend when</span></span>
+<span class="line" id="L20">        <span class="tok-comment">/// `std.options.io_mode == .blocking`. This is a generally safe assumption, and the</span></span>
+<span class="line" id="L21">        <span class="tok-comment">/// usual recommended option for this parameter.</span></span>
+<span class="line" id="L22">        auto_async,</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24">        <span class="tok-comment">/// Always uses the `nosuspend` keyword when using `await` on the jobs,</span></span>
+<span class="line" id="L25">        <span class="tok-comment">/// making `add` and `wait` non-async functions. Asserts that the jobs do not suspend.</span></span>
+<span class="line" id="L26">        never_async,</span>
+<span class="line" id="L27"></span>
+<span class="line" id="L28">        <span class="tok-comment">/// `add` and `wait` use regular `await` keyword, making them async functions.</span></span>
+<span class="line" id="L29">        always_async,</span>
+<span class="line" id="L30">    },</span>
+<span class="line" id="L31">) <span class="tok-type">type</span> {</span>
+<span class="line" id="L32">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L33">        jobs: [max_jobs]Job,</span>
+<span class="line" id="L34">        next_job_index: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L35">        collected_result: CollectedResult,</span>
+<span class="line" id="L36"></span>
+<span class="line" id="L37">        <span class="tok-kw">const</span> Job = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L38">            frame: ?<span class="tok-kw">anyframe</span>-&gt;Result,</span>
+<span class="line" id="L39">            result: Result,</span>
+<span class="line" id="L40">        };</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44">        <span class="tok-kw">const</span> CollectedResult = <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(Result)) {</span>
+<span class="line" id="L45">            .ErrorUnion =&gt; Result,</span>
+<span class="line" id="L46">            <span class="tok-kw">else</span> =&gt; <span class="tok-type">void</span>,</span>
+<span class="line" id="L47">        };</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49">        <span class="tok-kw">const</span> async_ok = <span class="tok-kw">switch</span> (async_behavior) {</span>
+<span class="line" id="L50">            .auto_async =&gt; std.io.is_async,</span>
+<span class="line" id="L51">            .never_async =&gt; <span class="tok-null">false</span>,</span>
+<span class="line" id="L52">            .always_async =&gt; <span class="tok-null">true</span>,</span>
+<span class="line" id="L53">        };</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>() Self {</span>
+<span class="line" id="L56">            <span class="tok-kw">return</span> Self{</span>
+<span class="line" id="L57">                .jobs = [<span class="tok-number">1</span>]Job{</span>
+<span class="line" id="L58">                    .{</span>
+<span class="line" id="L59">                        .frame = <span class="tok-null">null</span>,</span>
+<span class="line" id="L60">                        .result = <span class="tok-null">undefined</span>,</span>
+<span class="line" id="L61">                    },</span>
+<span class="line" id="L62">                } ** max_jobs,</span>
+<span class="line" id="L63">                .next_job_index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L64">                .collected_result = {},</span>
+<span class="line" id="L65">            };</span>
+<span class="line" id="L66">        }</span>
+<span class="line" id="L67"></span>
+<span class="line" id="L68">        <span class="tok-comment">/// Add a frame to the Batch. If all jobs are in-flight, then this function</span></span>
+<span class="line" id="L69">        <span class="tok-comment">/// waits until one completes.</span></span>
+<span class="line" id="L70">        <span class="tok-comment">/// This function is *not* thread-safe. It must be called from one thread at</span></span>
+<span class="line" id="L71">        <span class="tok-comment">/// a time, however, it need not be the same thread.</span></span>
+<span class="line" id="L72">        <span class="tok-comment">/// TODO: &quot;select&quot; language feature to use the next available slot, rather than</span></span>
+<span class="line" id="L73">        <span class="tok-comment">/// awaiting the next index.</span></span>
+<span class="line" id="L74">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(self: *Self, frame: <span class="tok-kw">anyframe</span>-&gt;Result) <span class="tok-type">void</span> {</span>
+<span class="line" id="L75">            <span class="tok-kw">const</span> job = &amp;self.jobs[self.next_job_index];</span>
+<span class="line" id="L76">            self.next_job_index = (self.next_job_index + <span class="tok-number">1</span>) % max_jobs;</span>
+<span class="line" id="L77">            <span class="tok-kw">if</span> (job.frame) |existing| {</span>
+<span class="line" id="L78">                job.result = <span class="tok-kw">if</span> (async_ok) <span class="tok-kw">await</span> existing <span class="tok-kw">else</span> <span class="tok-kw">nosuspend</span> <span class="tok-kw">await</span> existing;</span>
+<span class="line" id="L79">                <span class="tok-kw">if</span> (CollectedResult != <span class="tok-type">void</span>) {</span>
+<span class="line" id="L80">                    job.result <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L81">                        self.collected_result = err;</span>
+<span class="line" id="L82">                    };</span>
+<span class="line" id="L83">                }</span>
+<span class="line" id="L84">            }</span>
+<span class="line" id="L85">            job.frame = frame;</span>
+<span class="line" id="L86">        }</span>
+<span class="line" id="L87"></span>
+<span class="line" id="L88">        <span class="tok-comment">/// Wait for all the jobs to complete.</span></span>
+<span class="line" id="L89">        <span class="tok-comment">/// Safe to call any number of times.</span></span>
+<span class="line" id="L90">        <span class="tok-comment">/// If `Result` is an error union, this function returns the last error that occurred, if any.</span></span>
+<span class="line" id="L91">        <span class="tok-comment">/// Unlike the `results` field, the return value of `wait` will report any error that occurred;</span></span>
+<span class="line" id="L92">        <span class="tok-comment">/// hitting max parallelism will not compromise the result.</span></span>
+<span class="line" id="L93">        <span class="tok-comment">/// This function is *not* thread-safe. It must be called from one thread at</span></span>
+<span class="line" id="L94">        <span class="tok-comment">/// a time, however, it need not be the same thread.</span></span>
+<span class="line" id="L95">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">wait</span>(self: *Self) CollectedResult {</span>
+<span class="line" id="L96">            <span class="tok-kw">for</span> (self.jobs) |*job|</span>
+<span class="line" id="L97">                <span class="tok-kw">if</span> (job.frame) |f| {</span>
+<span class="line" id="L98">                    job.result = <span class="tok-kw">if</span> (async_ok) <span class="tok-kw">await</span> f <span class="tok-kw">else</span> <span class="tok-kw">nosuspend</span> <span class="tok-kw">await</span> f;</span>
+<span class="line" id="L99">                    <span class="tok-kw">if</span> (CollectedResult != <span class="tok-type">void</span>) {</span>
+<span class="line" id="L100">                        job.result <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L101">                            self.collected_result = err;</span>
+<span class="line" id="L102">                        };</span>
+<span class="line" id="L103">                    }</span>
+<span class="line" id="L104">                    job.frame = <span class="tok-null">null</span>;</span>
+<span class="line" id="L105">                };</span>
+<span class="line" id="L106">            <span class="tok-kw">return</span> self.collected_result;</span>
+<span class="line" id="L107">        }</span>
+<span class="line" id="L108">    };</span>
+<span class="line" id="L109">}</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111"><span class="tok-kw">test</span> <span class="tok-str">&quot;std.event.Batch&quot;</span> {</span>
+<span class="line" id="L112">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L113">    <span class="tok-kw">var</span> count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L114">    <span class="tok-kw">var</span> batch = Batch(<span class="tok-type">void</span>, <span class="tok-number">2</span>, .auto_async).init();</span>
+<span class="line" id="L115">    batch.add(&amp;<span class="tok-kw">async</span> sleepALittle(&amp;count));</span>
+<span class="line" id="L116">    batch.add(&amp;<span class="tok-kw">async</span> increaseByTen(&amp;count));</span>
+<span class="line" id="L117">    batch.wait();</span>
+<span class="line" id="L118">    <span class="tok-kw">try</span> testing.expect(count == <span class="tok-number">11</span>);</span>
+<span class="line" id="L119"></span>
+<span class="line" id="L120">    <span class="tok-kw">var</span> another = Batch(<span class="tok-type">anyerror</span>!<span class="tok-type">void</span>, <span class="tok-number">2</span>, .auto_async).init();</span>
+<span class="line" id="L121">    another.add(&amp;<span class="tok-kw">async</span> somethingElse());</span>
+<span class="line" id="L122">    another.add(&amp;<span class="tok-kw">async</span> doSomethingThatFails());</span>
+<span class="line" id="L123">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.ItBroke, another.wait());</span>
+<span class="line" id="L124">}</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126"><span class="tok-kw">fn</span> <span class="tok-fn">sleepALittle</span>(count: *<span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L127">    std.time.sleep(<span class="tok-number">1</span> * std.time.ns_per_ms);</span>
+<span class="line" id="L128">    _ = <span class="tok-builtin">@atomicRmw</span>(<span class="tok-type">usize</span>, count, .Add, <span class="tok-number">1</span>, .SeqCst);</span>
+<span class="line" id="L129">}</span>
+<span class="line" id="L130"></span>
+<span class="line" id="L131"><span class="tok-kw">fn</span> <span class="tok-fn">increaseByTen</span>(count: *<span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L132">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L133">    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">10</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L134">        _ = <span class="tok-builtin">@atomicRmw</span>(<span class="tok-type">usize</span>, count, .Add, <span class="tok-number">1</span>, .SeqCst);</span>
+<span class="line" id="L135">    }</span>
+<span class="line" id="L136">}</span>
+<span class="line" id="L137"></span>
+<span class="line" id="L138"><span class="tok-kw">fn</span> <span class="tok-fn">doSomethingThatFails</span>() <span class="tok-type">anyerror</span>!<span class="tok-type">void</span> {}</span>
+<span class="line" id="L139"><span class="tok-kw">fn</span> <span class="tok-fn">somethingElse</span>() <span class="tok-type">anyerror</span>!<span class="tok-type">void</span> {</span>
+<span class="line" id="L140">    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ItBroke;</span>
+<span class="line" id="L141">}</span>
+<span class="line" id="L142"></span>
+</code></pre></body>
+</html>

@@ -1,0 +1,1585 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>heap/general_purpose_allocator.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! # General Purpose Allocator</span></span>
+<span class="line" id="L2"><span class="tok-comment">//!</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! ## Design Priorities</span></span>
+<span class="line" id="L4"><span class="tok-comment">//!</span></span>
+<span class="line" id="L5"><span class="tok-comment">//! ### `OptimizationMode.debug` and `OptimizationMode.release_safe`:</span></span>
+<span class="line" id="L6"><span class="tok-comment">//!</span></span>
+<span class="line" id="L7"><span class="tok-comment">//!  * Detect double free, and emit stack trace of:</span></span>
+<span class="line" id="L8"><span class="tok-comment">//!    - Where it was first allocated</span></span>
+<span class="line" id="L9"><span class="tok-comment">//!    - Where it was freed the first time</span></span>
+<span class="line" id="L10"><span class="tok-comment">//!    - Where it was freed the second time</span></span>
+<span class="line" id="L11"><span class="tok-comment">//!</span></span>
+<span class="line" id="L12"><span class="tok-comment">//!  * Detect leaks and emit stack trace of:</span></span>
+<span class="line" id="L13"><span class="tok-comment">//!    - Where it was allocated</span></span>
+<span class="line" id="L14"><span class="tok-comment">//!</span></span>
+<span class="line" id="L15"><span class="tok-comment">//!  * When a page of memory is no longer needed, give it back to resident memory</span></span>
+<span class="line" id="L16"><span class="tok-comment">//!    as soon as possible, so that it causes page faults when used.</span></span>
+<span class="line" id="L17"><span class="tok-comment">//!</span></span>
+<span class="line" id="L18"><span class="tok-comment">//!  * Do not re-use memory slots, so that memory safety is upheld. For small</span></span>
+<span class="line" id="L19"><span class="tok-comment">//!    allocations, this is handled here; for larger ones it is handled in the</span></span>
+<span class="line" id="L20"><span class="tok-comment">//!    backing allocator (by default `std.heap.page_allocator`).</span></span>
+<span class="line" id="L21"><span class="tok-comment">//!</span></span>
+<span class="line" id="L22"><span class="tok-comment">//!  * Make pointer math errors unlikely to harm memory from</span></span>
+<span class="line" id="L23"><span class="tok-comment">//!    unrelated allocations.</span></span>
+<span class="line" id="L24"><span class="tok-comment">//!</span></span>
+<span class="line" id="L25"><span class="tok-comment">//!  * It's OK for these mechanisms to cost some extra overhead bytes.</span></span>
+<span class="line" id="L26"><span class="tok-comment">//!</span></span>
+<span class="line" id="L27"><span class="tok-comment">//!  * It's OK for performance cost for these mechanisms.</span></span>
+<span class="line" id="L28"><span class="tok-comment">//!</span></span>
+<span class="line" id="L29"><span class="tok-comment">//!  * Rogue memory writes should not harm the allocator's state.</span></span>
+<span class="line" id="L30"><span class="tok-comment">//!</span></span>
+<span class="line" id="L31"><span class="tok-comment">//!  * Cross platform. Operates based on a backing allocator which makes it work</span></span>
+<span class="line" id="L32"><span class="tok-comment">//!    everywhere, even freestanding.</span></span>
+<span class="line" id="L33"><span class="tok-comment">//!</span></span>
+<span class="line" id="L34"><span class="tok-comment">//!  * Compile-time configuration.</span></span>
+<span class="line" id="L35"><span class="tok-comment">//!</span></span>
+<span class="line" id="L36"><span class="tok-comment">//! ### `OptimizationMode.release_fast` (note: not much work has gone into this use case yet):</span></span>
+<span class="line" id="L37"><span class="tok-comment">//!</span></span>
+<span class="line" id="L38"><span class="tok-comment">//!  * Low fragmentation is primary concern</span></span>
+<span class="line" id="L39"><span class="tok-comment">//!  * Performance of worst-case latency is secondary concern</span></span>
+<span class="line" id="L40"><span class="tok-comment">//!  * Performance of average-case latency is next</span></span>
+<span class="line" id="L41"><span class="tok-comment">//!  * Finally, having freed memory unmapped, and pointer math errors unlikely to</span></span>
+<span class="line" id="L42"><span class="tok-comment">//!    harm memory from unrelated allocations are nice-to-haves.</span></span>
+<span class="line" id="L43"><span class="tok-comment">//!</span></span>
+<span class="line" id="L44"><span class="tok-comment">//! ### `OptimizationMode.release_small` (note: not much work has gone into this use case yet):</span></span>
+<span class="line" id="L45"><span class="tok-comment">//!</span></span>
+<span class="line" id="L46"><span class="tok-comment">//!  * Small binary code size of the executable is the primary concern.</span></span>
+<span class="line" id="L47"><span class="tok-comment">//!  * Next, defer to the `.release_fast` priority list.</span></span>
+<span class="line" id="L48"><span class="tok-comment">//!</span></span>
+<span class="line" id="L49"><span class="tok-comment">//! ## Basic Design:</span></span>
+<span class="line" id="L50"><span class="tok-comment">//!</span></span>
+<span class="line" id="L51"><span class="tok-comment">//! Small allocations are divided into buckets:</span></span>
+<span class="line" id="L52"><span class="tok-comment">//!</span></span>
+<span class="line" id="L53"><span class="tok-comment">//! ```</span></span>
+<span class="line" id="L54"><span class="tok-comment">//! index obj_size</span></span>
+<span class="line" id="L55"><span class="tok-comment">//! 0     1</span></span>
+<span class="line" id="L56"><span class="tok-comment">//! 1     2</span></span>
+<span class="line" id="L57"><span class="tok-comment">//! 2     4</span></span>
+<span class="line" id="L58"><span class="tok-comment">//! 3     8</span></span>
+<span class="line" id="L59"><span class="tok-comment">//! 4     16</span></span>
+<span class="line" id="L60"><span class="tok-comment">//! 5     32</span></span>
+<span class="line" id="L61"><span class="tok-comment">//! 6     64</span></span>
+<span class="line" id="L62"><span class="tok-comment">//! 7     128</span></span>
+<span class="line" id="L63"><span class="tok-comment">//! 8     256</span></span>
+<span class="line" id="L64"><span class="tok-comment">//! 9     512</span></span>
+<span class="line" id="L65"><span class="tok-comment">//! 10    1024</span></span>
+<span class="line" id="L66"><span class="tok-comment">//! 11    2048</span></span>
+<span class="line" id="L67"><span class="tok-comment">//! ```</span></span>
+<span class="line" id="L68"><span class="tok-comment">//!</span></span>
+<span class="line" id="L69"><span class="tok-comment">//! The main allocator state has an array of all the &quot;current&quot; buckets for each</span></span>
+<span class="line" id="L70"><span class="tok-comment">//! size class. Each slot in the array can be null, meaning the bucket for that</span></span>
+<span class="line" id="L71"><span class="tok-comment">//! size class is not allocated. When the first object is allocated for a given</span></span>
+<span class="line" id="L72"><span class="tok-comment">//! size class, it allocates 1 page of memory from the OS. This page is</span></span>
+<span class="line" id="L73"><span class="tok-comment">//! divided into &quot;slots&quot; - one per allocated object. Along with the page of memory</span></span>
+<span class="line" id="L74"><span class="tok-comment">//! for object slots, as many pages as necessary are allocated to store the</span></span>
+<span class="line" id="L75"><span class="tok-comment">//! BucketHeader, followed by &quot;used bits&quot;, and two stack traces for each slot</span></span>
+<span class="line" id="L76"><span class="tok-comment">//! (allocation trace and free trace).</span></span>
+<span class="line" id="L77"><span class="tok-comment">//!</span></span>
+<span class="line" id="L78"><span class="tok-comment">//! The &quot;used bits&quot; are 1 bit per slot representing whether the slot is used.</span></span>
+<span class="line" id="L79"><span class="tok-comment">//! Allocations use the data to iterate to find a free slot. Frees assert that the</span></span>
+<span class="line" id="L80"><span class="tok-comment">//! corresponding bit is 1 and set it to 0.</span></span>
+<span class="line" id="L81"><span class="tok-comment">//!</span></span>
+<span class="line" id="L82"><span class="tok-comment">//! Buckets have prev and next pointers. When there is only one bucket for a given</span></span>
+<span class="line" id="L83"><span class="tok-comment">//! size class, both prev and next point to itself. When all slots of a bucket are</span></span>
+<span class="line" id="L84"><span class="tok-comment">//! used, a new bucket is allocated, and enters the doubly linked list. The main</span></span>
+<span class="line" id="L85"><span class="tok-comment">//! allocator state tracks the &quot;current&quot; bucket for each size class. Leak detection</span></span>
+<span class="line" id="L86"><span class="tok-comment">//! currently only checks the current bucket.</span></span>
+<span class="line" id="L87"><span class="tok-comment">//!</span></span>
+<span class="line" id="L88"><span class="tok-comment">//! Resizing detects if the size class is unchanged or smaller, in which case the same</span></span>
+<span class="line" id="L89"><span class="tok-comment">//! pointer is returned unmodified. If a larger size class is required,</span></span>
+<span class="line" id="L90"><span class="tok-comment">//! `error.OutOfMemory` is returned.</span></span>
+<span class="line" id="L91"><span class="tok-comment">//!</span></span>
+<span class="line" id="L92"><span class="tok-comment">//! Large objects are allocated directly using the backing allocator and their metadata is stored</span></span>
+<span class="line" id="L93"><span class="tok-comment">//! in a `std.HashMap` using the backing allocator.</span></span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L96"><span class="tok-kw">const</span> builtin = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>);</span>
+<span class="line" id="L97"><span class="tok-kw">const</span> log = std.log.scoped(.gpa);</span>
+<span class="line" id="L98"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L99"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L100"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L101"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L102"><span class="tok-kw">const</span> page_size = std.mem.page_size;</span>
+<span class="line" id="L103"><span class="tok-kw">const</span> StackTrace = std.builtin.StackTrace;</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105"><span class="tok-comment">/// Integer type for pointing to slots in a small allocation</span></span>
+<span class="line" id="L106"><span class="tok-kw">const</span> SlotIndex = std.meta.Int(.unsigned, math.log2(page_size) + <span class="tok-number">1</span>);</span>
+<span class="line" id="L107"></span>
+<span class="line" id="L108"><span class="tok-kw">const</span> default_test_stack_trace_frames: <span class="tok-type">usize</span> = <span class="tok-kw">if</span> (builtin.is_test) <span class="tok-number">8</span> <span class="tok-kw">else</span> <span class="tok-number">4</span>;</span>
+<span class="line" id="L109"><span class="tok-kw">const</span> default_sys_stack_trace_frames: <span class="tok-type">usize</span> = <span class="tok-kw">if</span> (std.debug.sys_can_stack_trace) default_test_stack_trace_frames <span class="tok-kw">else</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L110"><span class="tok-kw">const</span> default_stack_trace_frames: <span class="tok-type">usize</span> = <span class="tok-kw">switch</span> (builtin.mode) {</span>
+<span class="line" id="L111">    .Debug =&gt; default_sys_stack_trace_frames,</span>
+<span class="line" id="L112">    <span class="tok-kw">else</span> =&gt; <span class="tok-number">0</span>,</span>
+<span class="line" id="L113">};</span>
+<span class="line" id="L114"></span>
+<span class="line" id="L115"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Config = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L116">    <span class="tok-comment">/// Number of stack frames to capture.</span></span>
+<span class="line" id="L117">    stack_trace_frames: <span class="tok-type">usize</span> = default_stack_trace_frames,</span>
+<span class="line" id="L118"></span>
+<span class="line" id="L119">    <span class="tok-comment">/// If true, the allocator will have two fields:</span></span>
+<span class="line" id="L120">    <span class="tok-comment">///  * `total_requested_bytes` which tracks the total allocated bytes of memory requested.</span></span>
+<span class="line" id="L121">    <span class="tok-comment">///  * `requested_memory_limit` which causes allocations to return `error.OutOfMemory`</span></span>
+<span class="line" id="L122">    <span class="tok-comment">///    when the `total_requested_bytes` exceeds this limit.</span></span>
+<span class="line" id="L123">    <span class="tok-comment">/// If false, these fields will be `void`.</span></span>
+<span class="line" id="L124">    enable_memory_limit: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">    <span class="tok-comment">/// Whether to enable safety checks.</span></span>
+<span class="line" id="L127">    safety: <span class="tok-type">bool</span> = std.debug.runtime_safety,</span>
+<span class="line" id="L128"></span>
+<span class="line" id="L129">    <span class="tok-comment">/// Whether the allocator may be used simultaneously from multiple threads.</span></span>
+<span class="line" id="L130">    thread_safe: <span class="tok-type">bool</span> = !builtin.single_threaded,</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">    <span class="tok-comment">/// What type of mutex you'd like to use, for thread safety.</span></span>
+<span class="line" id="L133">    <span class="tok-comment">/// when specified, the mutex type must have the same shape as `std.Thread.Mutex` and</span></span>
+<span class="line" id="L134">    <span class="tok-comment">/// `DummyMutex`, and have no required fields. Specifying this field causes</span></span>
+<span class="line" id="L135">    <span class="tok-comment">/// the `thread_safe` field to be ignored.</span></span>
+<span class="line" id="L136">    <span class="tok-comment">///</span></span>
+<span class="line" id="L137">    <span class="tok-comment">/// when null (default):</span></span>
+<span class="line" id="L138">    <span class="tok-comment">/// * the mutex type defaults to `std.Thread.Mutex` when thread_safe is enabled.</span></span>
+<span class="line" id="L139">    <span class="tok-comment">/// * the mutex type defaults to `DummyMutex` otherwise.</span></span>
+<span class="line" id="L140">    MutexType: ?<span class="tok-type">type</span> = <span class="tok-null">null</span>,</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">    <span class="tok-comment">/// This is a temporary debugging trick you can use to turn segfaults into more helpful</span></span>
+<span class="line" id="L143">    <span class="tok-comment">/// logged error messages with stack trace details. The downside is that every allocation</span></span>
+<span class="line" id="L144">    <span class="tok-comment">/// will be leaked, unless used with retain_metadata!</span></span>
+<span class="line" id="L145">    never_unmap: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L146"></span>
+<span class="line" id="L147">    <span class="tok-comment">/// This is a temporary debugging aid that retains metadata about allocations indefinitely.</span></span>
+<span class="line" id="L148">    <span class="tok-comment">/// This allows a greater range of double frees to be reported. All metadata is freed when</span></span>
+<span class="line" id="L149">    <span class="tok-comment">/// deinit is called. When used with never_unmap, deliberately leaked memory is also freed</span></span>
+<span class="line" id="L150">    <span class="tok-comment">/// during deinit. Currently should be used with never_unmap to avoid segfaults.</span></span>
+<span class="line" id="L151">    <span class="tok-comment">/// TODO https://github.com/ziglang/zig/issues/4298 will allow use without never_unmap</span></span>
+<span class="line" id="L152">    retain_metadata: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L153"></span>
+<span class="line" id="L154">    <span class="tok-comment">/// Enables emitting info messages with the size and address of every allocation.</span></span>
+<span class="line" id="L155">    verbose_log: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L156">};</span>
+<span class="line" id="L157"></span>
+<span class="line" id="L158"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Check = <span class="tok-kw">enum</span> { ok, leak };</span>
+<span class="line" id="L159"></span>
+<span class="line" id="L160"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">GeneralPurposeAllocator</span>(<span class="tok-kw">comptime</span> config: Config) <span class="tok-type">type</span> {</span>
+<span class="line" id="L161">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L162">        backing_allocator: Allocator = std.heap.page_allocator,</span>
+<span class="line" id="L163">        buckets: [small_bucket_count]?*BucketHeader = [<span class="tok-number">1</span>]?*BucketHeader{<span class="tok-null">null</span>} ** small_bucket_count,</span>
+<span class="line" id="L164">        large_allocations: LargeAllocTable = .{},</span>
+<span class="line" id="L165">        small_allocations: <span class="tok-kw">if</span> (config.safety) SmallAllocTable <span class="tok-kw">else</span> <span class="tok-type">void</span> = <span class="tok-kw">if</span> (config.safety) .{} <span class="tok-kw">else</span> {},</span>
+<span class="line" id="L166">        empty_buckets: <span class="tok-kw">if</span> (config.retain_metadata) ?*BucketHeader <span class="tok-kw">else</span> <span class="tok-type">void</span> =</span>
+<span class="line" id="L167">            <span class="tok-kw">if</span> (config.retain_metadata) <span class="tok-null">null</span> <span class="tok-kw">else</span> {},</span>
+<span class="line" id="L168"></span>
+<span class="line" id="L169">        total_requested_bytes: <span class="tok-builtin">@TypeOf</span>(total_requested_bytes_init) = total_requested_bytes_init,</span>
+<span class="line" id="L170">        requested_memory_limit: <span class="tok-builtin">@TypeOf</span>(requested_memory_limit_init) = requested_memory_limit_init,</span>
+<span class="line" id="L171"></span>
+<span class="line" id="L172">        mutex: <span class="tok-builtin">@TypeOf</span>(mutex_init) = mutex_init,</span>
+<span class="line" id="L173"></span>
+<span class="line" id="L174">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176">        <span class="tok-kw">const</span> total_requested_bytes_init = <span class="tok-kw">if</span> (config.enable_memory_limit) <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">0</span>) <span class="tok-kw">else</span> {};</span>
+<span class="line" id="L177">        <span class="tok-kw">const</span> requested_memory_limit_init = <span class="tok-kw">if</span> (config.enable_memory_limit) <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, math.maxInt(<span class="tok-type">usize</span>)) <span class="tok-kw">else</span> {};</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179">        <span class="tok-kw">const</span> mutex_init = <span class="tok-kw">if</span> (config.MutexType) |T|</span>
+<span class="line" id="L180">            T{}</span>
+<span class="line" id="L181">        <span class="tok-kw">else</span> <span class="tok-kw">if</span> (config.thread_safe)</span>
+<span class="line" id="L182">            std.Thread.Mutex{}</span>
+<span class="line" id="L183">        <span class="tok-kw">else</span></span>
+<span class="line" id="L184">            DummyMutex{};</span>
+<span class="line" id="L185"></span>
+<span class="line" id="L186">        <span class="tok-kw">const</span> DummyMutex = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L187">            <span class="tok-kw">fn</span> <span class="tok-fn">lock</span>(_: *DummyMutex) <span class="tok-type">void</span> {}</span>
+<span class="line" id="L188">            <span class="tok-kw">fn</span> <span class="tok-fn">unlock</span>(_: *DummyMutex) <span class="tok-type">void</span> {}</span>
+<span class="line" id="L189">        };</span>
+<span class="line" id="L190"></span>
+<span class="line" id="L191">        <span class="tok-kw">const</span> stack_n = config.stack_trace_frames;</span>
+<span class="line" id="L192">        <span class="tok-kw">const</span> one_trace_size = <span class="tok-builtin">@sizeOf</span>(<span class="tok-type">usize</span>) * stack_n;</span>
+<span class="line" id="L193">        <span class="tok-kw">const</span> traces_per_slot = <span class="tok-number">2</span>;</span>
+<span class="line" id="L194"></span>
+<span class="line" id="L195">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = mem.Allocator.Error;</span>
+<span class="line" id="L196"></span>
+<span class="line" id="L197">        <span class="tok-kw">const</span> small_bucket_count = math.log2(page_size);</span>
+<span class="line" id="L198">        <span class="tok-kw">const</span> largest_bucket_object_size = <span class="tok-number">1</span> &lt;&lt; (small_bucket_count - <span class="tok-number">1</span>);</span>
+<span class="line" id="L199"></span>
+<span class="line" id="L200">        <span class="tok-kw">const</span> SmallAlloc = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L201">            requested_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L202">            log2_ptr_align: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L203">        };</span>
+<span class="line" id="L204"></span>
+<span class="line" id="L205">        <span class="tok-kw">const</span> LargeAlloc = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L206">            bytes: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L207">            requested_size: <span class="tok-kw">if</span> (config.enable_memory_limit) <span class="tok-type">usize</span> <span class="tok-kw">else</span> <span class="tok-type">void</span>,</span>
+<span class="line" id="L208">            stack_addresses: [trace_n][stack_n]<span class="tok-type">usize</span>,</span>
+<span class="line" id="L209">            freed: <span class="tok-kw">if</span> (config.retain_metadata) <span class="tok-type">bool</span> <span class="tok-kw">else</span> <span class="tok-type">void</span>,</span>
+<span class="line" id="L210">            log2_ptr_align: <span class="tok-kw">if</span> (config.never_unmap <span class="tok-kw">and</span> config.retain_metadata) <span class="tok-type">u8</span> <span class="tok-kw">else</span> <span class="tok-type">void</span>,</span>
+<span class="line" id="L211"></span>
+<span class="line" id="L212">            <span class="tok-kw">const</span> trace_n = <span class="tok-kw">if</span> (config.retain_metadata) traces_per_slot <span class="tok-kw">else</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L213"></span>
+<span class="line" id="L214">            <span class="tok-kw">fn</span> <span class="tok-fn">dumpStackTrace</span>(self: *LargeAlloc, trace_kind: TraceKind) <span class="tok-type">void</span> {</span>
+<span class="line" id="L215">                std.debug.dumpStackTrace(self.getStackTrace(trace_kind));</span>
+<span class="line" id="L216">            }</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218">            <span class="tok-kw">fn</span> <span class="tok-fn">getStackTrace</span>(self: *LargeAlloc, trace_kind: TraceKind) std.builtin.StackTrace {</span>
+<span class="line" id="L219">                assert(<span class="tok-builtin">@intFromEnum</span>(trace_kind) &lt; trace_n);</span>
+<span class="line" id="L220">                <span class="tok-kw">const</span> stack_addresses = &amp;self.stack_addresses[<span class="tok-builtin">@intFromEnum</span>(trace_kind)];</span>
+<span class="line" id="L221">                <span class="tok-kw">var</span> len: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L222">                <span class="tok-kw">while</span> (len &lt; stack_n <span class="tok-kw">and</span> stack_addresses[len] != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L223">                    len += <span class="tok-number">1</span>;</span>
+<span class="line" id="L224">                }</span>
+<span class="line" id="L225">                <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L226">                    .instruction_addresses = stack_addresses,</span>
+<span class="line" id="L227">                    .index = len,</span>
+<span class="line" id="L228">                };</span>
+<span class="line" id="L229">            }</span>
+<span class="line" id="L230"></span>
+<span class="line" id="L231">            <span class="tok-kw">fn</span> <span class="tok-fn">captureStackTrace</span>(self: *LargeAlloc, ret_addr: <span class="tok-type">usize</span>, trace_kind: TraceKind) <span class="tok-type">void</span> {</span>
+<span class="line" id="L232">                assert(<span class="tok-builtin">@intFromEnum</span>(trace_kind) &lt; trace_n);</span>
+<span class="line" id="L233">                <span class="tok-kw">const</span> stack_addresses = &amp;self.stack_addresses[<span class="tok-builtin">@intFromEnum</span>(trace_kind)];</span>
+<span class="line" id="L234">                collectStackTrace(ret_addr, stack_addresses);</span>
+<span class="line" id="L235">            }</span>
+<span class="line" id="L236">        };</span>
+<span class="line" id="L237">        <span class="tok-kw">const</span> LargeAllocTable = std.AutoHashMapUnmanaged(<span class="tok-type">usize</span>, LargeAlloc);</span>
+<span class="line" id="L238">        <span class="tok-kw">const</span> SmallAllocTable = std.AutoHashMapUnmanaged(<span class="tok-type">usize</span>, SmallAlloc);</span>
+<span class="line" id="L239"></span>
+<span class="line" id="L240">        <span class="tok-comment">// Bucket: In memory, in order:</span>
+</span>
+<span class="line" id="L241">        <span class="tok-comment">// * BucketHeader</span>
+</span>
+<span class="line" id="L242">        <span class="tok-comment">// * bucket_used_bits: [N]u8, // 1 bit for every slot; 1 byte for every 8 slots</span>
+</span>
+<span class="line" id="L243">        <span class="tok-comment">// * stack_trace_addresses: [N]usize, // traces_per_slot for every allocation</span>
+</span>
+<span class="line" id="L244"></span>
+<span class="line" id="L245">        <span class="tok-kw">const</span> BucketHeader = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L246">            prev: *BucketHeader,</span>
+<span class="line" id="L247">            next: *BucketHeader,</span>
+<span class="line" id="L248">            page: [*]<span class="tok-kw">align</span>(page_size) <span class="tok-type">u8</span>,</span>
+<span class="line" id="L249">            alloc_cursor: SlotIndex,</span>
+<span class="line" id="L250">            used_count: SlotIndex,</span>
+<span class="line" id="L251"></span>
+<span class="line" id="L252">            <span class="tok-kw">fn</span> <span class="tok-fn">usedBits</span>(bucket: *BucketHeader, index: <span class="tok-type">usize</span>) *<span class="tok-type">u8</span> {</span>
+<span class="line" id="L253">                <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(*<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrFromInt</span>(<span class="tok-builtin">@intFromPtr</span>(bucket) + <span class="tok-builtin">@sizeOf</span>(BucketHeader) + index));</span>
+<span class="line" id="L254">            }</span>
+<span class="line" id="L255"></span>
+<span class="line" id="L256">            <span class="tok-kw">fn</span> <span class="tok-fn">stackTracePtr</span>(</span>
+<span class="line" id="L257">                bucket: *BucketHeader,</span>
+<span class="line" id="L258">                size_class: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L259">                slot_index: SlotIndex,</span>
+<span class="line" id="L260">                trace_kind: TraceKind,</span>
+<span class="line" id="L261">            ) *[stack_n]<span class="tok-type">usize</span> {</span>
+<span class="line" id="L262">                <span class="tok-kw">const</span> start_ptr = <span class="tok-builtin">@as</span>([*]<span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(bucket)) + bucketStackFramesStart(size_class);</span>
+<span class="line" id="L263">                <span class="tok-kw">const</span> addr = start_ptr + one_trace_size * traces_per_slot * slot_index +</span>
+<span class="line" id="L264">                    <span class="tok-builtin">@intFromEnum</span>(trace_kind) * <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, one_trace_size);</span>
+<span class="line" id="L265">                <span class="tok-kw">return</span> <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(addr));</span>
+<span class="line" id="L266">            }</span>
+<span class="line" id="L267"></span>
+<span class="line" id="L268">            <span class="tok-kw">fn</span> <span class="tok-fn">captureStackTrace</span>(</span>
+<span class="line" id="L269">                bucket: *BucketHeader,</span>
+<span class="line" id="L270">                ret_addr: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L271">                size_class: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L272">                slot_index: SlotIndex,</span>
+<span class="line" id="L273">                trace_kind: TraceKind,</span>
+<span class="line" id="L274">            ) <span class="tok-type">void</span> {</span>
+<span class="line" id="L275">                <span class="tok-comment">// Initialize them to 0. When determining the count we must look</span>
+</span>
+<span class="line" id="L276">                <span class="tok-comment">// for non zero addresses.</span>
+</span>
+<span class="line" id="L277">                <span class="tok-kw">const</span> stack_addresses = bucket.stackTracePtr(size_class, slot_index, trace_kind);</span>
+<span class="line" id="L278">                collectStackTrace(ret_addr, stack_addresses);</span>
+<span class="line" id="L279">            }</span>
+<span class="line" id="L280">        };</span>
+<span class="line" id="L281"></span>
+<span class="line" id="L282">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">allocator</span>(self: *Self) Allocator {</span>
+<span class="line" id="L283">            <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L284">                .ptr = self,</span>
+<span class="line" id="L285">                .vtable = &amp;.{</span>
+<span class="line" id="L286">                    .alloc = alloc,</span>
+<span class="line" id="L287">                    .resize = resize,</span>
+<span class="line" id="L288">                    .free = free,</span>
+<span class="line" id="L289">                },</span>
+<span class="line" id="L290">            };</span>
+<span class="line" id="L291">        }</span>
+<span class="line" id="L292"></span>
+<span class="line" id="L293">        <span class="tok-kw">fn</span> <span class="tok-fn">bucketStackTrace</span>(</span>
+<span class="line" id="L294">            bucket: *BucketHeader,</span>
+<span class="line" id="L295">            size_class: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L296">            slot_index: SlotIndex,</span>
+<span class="line" id="L297">            trace_kind: TraceKind,</span>
+<span class="line" id="L298">        ) StackTrace {</span>
+<span class="line" id="L299">            <span class="tok-kw">const</span> stack_addresses = bucket.stackTracePtr(size_class, slot_index, trace_kind);</span>
+<span class="line" id="L300">            <span class="tok-kw">var</span> len: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L301">            <span class="tok-kw">while</span> (len &lt; stack_n <span class="tok-kw">and</span> stack_addresses[len] != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L302">                len += <span class="tok-number">1</span>;</span>
+<span class="line" id="L303">            }</span>
+<span class="line" id="L304">            <span class="tok-kw">return</span> StackTrace{</span>
+<span class="line" id="L305">                .instruction_addresses = stack_addresses,</span>
+<span class="line" id="L306">                .index = len,</span>
+<span class="line" id="L307">            };</span>
+<span class="line" id="L308">        }</span>
+<span class="line" id="L309"></span>
+<span class="line" id="L310">        <span class="tok-kw">fn</span> <span class="tok-fn">bucketStackFramesStart</span>(size_class: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L311">            <span class="tok-kw">return</span> mem.alignForward(</span>
+<span class="line" id="L312">                <span class="tok-type">usize</span>,</span>
+<span class="line" id="L313">                <span class="tok-builtin">@sizeOf</span>(BucketHeader) + usedBitsCount(size_class),</span>
+<span class="line" id="L314">                <span class="tok-builtin">@alignOf</span>(<span class="tok-type">usize</span>),</span>
+<span class="line" id="L315">            );</span>
+<span class="line" id="L316">        }</span>
+<span class="line" id="L317"></span>
+<span class="line" id="L318">        <span class="tok-kw">fn</span> <span class="tok-fn">bucketSize</span>(size_class: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L319">            <span class="tok-kw">const</span> slot_count = <span class="tok-builtin">@divExact</span>(page_size, size_class);</span>
+<span class="line" id="L320">            <span class="tok-kw">return</span> bucketStackFramesStart(size_class) + one_trace_size * traces_per_slot * slot_count;</span>
+<span class="line" id="L321">        }</span>
+<span class="line" id="L322"></span>
+<span class="line" id="L323">        <span class="tok-kw">fn</span> <span class="tok-fn">usedBitsCount</span>(size_class: <span class="tok-type">usize</span>) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L324">            <span class="tok-kw">const</span> slot_count = <span class="tok-builtin">@divExact</span>(page_size, size_class);</span>
+<span class="line" id="L325">            <span class="tok-kw">if</span> (slot_count &lt; <span class="tok-number">8</span>) <span class="tok-kw">return</span> <span class="tok-number">1</span>;</span>
+<span class="line" id="L326">            <span class="tok-kw">return</span> <span class="tok-builtin">@divExact</span>(slot_count, <span class="tok-number">8</span>);</span>
+<span class="line" id="L327">        }</span>
+<span class="line" id="L328"></span>
+<span class="line" id="L329">        <span class="tok-kw">fn</span> <span class="tok-fn">detectLeaksInBucket</span>(</span>
+<span class="line" id="L330">            bucket: *BucketHeader,</span>
+<span class="line" id="L331">            size_class: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L332">            used_bits_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L333">        ) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L334">            <span class="tok-kw">var</span> leaks = <span class="tok-null">false</span>;</span>
+<span class="line" id="L335">            <span class="tok-kw">var</span> used_bits_byte: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L336">            <span class="tok-kw">while</span> (used_bits_byte &lt; used_bits_count) : (used_bits_byte += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L337">                <span class="tok-kw">const</span> used_byte = bucket.usedBits(used_bits_byte).*;</span>
+<span class="line" id="L338">                <span class="tok-kw">if</span> (used_byte != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L339">                    <span class="tok-kw">var</span> bit_index: <span class="tok-type">u3</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L340">                    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : (bit_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L341">                        <span class="tok-kw">const</span> is_used = <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(used_byte &gt;&gt; bit_index)) != <span class="tok-number">0</span>;</span>
+<span class="line" id="L342">                        <span class="tok-kw">if</span> (is_used) {</span>
+<span class="line" id="L343">                            <span class="tok-kw">const</span> slot_index = <span class="tok-builtin">@as</span>(SlotIndex, <span class="tok-builtin">@intCast</span>(used_bits_byte * <span class="tok-number">8</span> + bit_index));</span>
+<span class="line" id="L344">                            <span class="tok-kw">const</span> stack_trace = bucketStackTrace(bucket, size_class, slot_index, .alloc);</span>
+<span class="line" id="L345">                            <span class="tok-kw">const</span> addr = bucket.page + slot_index * size_class;</span>
+<span class="line" id="L346">                            log.err(<span class="tok-str">&quot;memory address 0x{x} leaked: {}&quot;</span>, .{</span>
+<span class="line" id="L347">                                <span class="tok-builtin">@intFromPtr</span>(addr), stack_trace,</span>
+<span class="line" id="L348">                            });</span>
+<span class="line" id="L349">                            leaks = <span class="tok-null">true</span>;</span>
+<span class="line" id="L350">                        }</span>
+<span class="line" id="L351">                        <span class="tok-kw">if</span> (bit_index == math.maxInt(<span class="tok-type">u3</span>))</span>
+<span class="line" id="L352">                            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L353">                    }</span>
+<span class="line" id="L354">                }</span>
+<span class="line" id="L355">            }</span>
+<span class="line" id="L356">            <span class="tok-kw">return</span> leaks;</span>
+<span class="line" id="L357">        }</span>
+<span class="line" id="L358"></span>
+<span class="line" id="L359">        <span class="tok-comment">/// Emits log messages for leaks and then returns whether there were any leaks.</span></span>
+<span class="line" id="L360">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">detectLeaks</span>(self: *Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L361">            <span class="tok-kw">var</span> leaks = <span class="tok-null">false</span>;</span>
+<span class="line" id="L362">            <span class="tok-kw">for</span> (self.buckets, <span class="tok-number">0</span>..) |optional_bucket, bucket_i| {</span>
+<span class="line" id="L363">                <span class="tok-kw">const</span> first_bucket = optional_bucket <span class="tok-kw">orelse</span> <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L364">                <span class="tok-kw">const</span> size_class = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@as</span>(math.Log2Int(<span class="tok-type">usize</span>), <span class="tok-builtin">@intCast</span>(bucket_i));</span>
+<span class="line" id="L365">                <span class="tok-kw">const</span> used_bits_count = usedBitsCount(size_class);</span>
+<span class="line" id="L366">                <span class="tok-kw">var</span> bucket = first_bucket;</span>
+<span class="line" id="L367">                <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L368">                    leaks = detectLeaksInBucket(bucket, size_class, used_bits_count) <span class="tok-kw">or</span> leaks;</span>
+<span class="line" id="L369">                    bucket = bucket.next;</span>
+<span class="line" id="L370">                    <span class="tok-kw">if</span> (bucket == first_bucket)</span>
+<span class="line" id="L371">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L372">                }</span>
+<span class="line" id="L373">            }</span>
+<span class="line" id="L374">            <span class="tok-kw">var</span> it = self.large_allocations.valueIterator();</span>
+<span class="line" id="L375">            <span class="tok-kw">while</span> (it.next()) |large_alloc| {</span>
+<span class="line" id="L376">                <span class="tok-kw">if</span> (config.retain_metadata <span class="tok-kw">and</span> large_alloc.freed) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L377">                <span class="tok-kw">const</span> stack_trace = large_alloc.getStackTrace(.alloc);</span>
+<span class="line" id="L378">                log.err(<span class="tok-str">&quot;memory address 0x{x} leaked: {}&quot;</span>, .{</span>
+<span class="line" id="L379">                    <span class="tok-builtin">@intFromPtr</span>(large_alloc.bytes.ptr), stack_trace,</span>
+<span class="line" id="L380">                });</span>
+<span class="line" id="L381">                leaks = <span class="tok-null">true</span>;</span>
+<span class="line" id="L382">            }</span>
+<span class="line" id="L383">            <span class="tok-kw">return</span> leaks;</span>
+<span class="line" id="L384">        }</span>
+<span class="line" id="L385"></span>
+<span class="line" id="L386">        <span class="tok-kw">fn</span> <span class="tok-fn">freeBucket</span>(self: *Self, bucket: *BucketHeader, size_class: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L387">            <span class="tok-kw">const</span> bucket_size = bucketSize(size_class);</span>
+<span class="line" id="L388">            <span class="tok-kw">const</span> bucket_slice = <span class="tok-builtin">@as</span>([*]<span class="tok-kw">align</span>(<span class="tok-builtin">@alignOf</span>(BucketHeader)) <span class="tok-type">u8</span>, <span class="tok-builtin">@ptrCast</span>(bucket))[<span class="tok-number">0</span>..bucket_size];</span>
+<span class="line" id="L389">            self.backing_allocator.free(bucket_slice);</span>
+<span class="line" id="L390">        }</span>
+<span class="line" id="L391"></span>
+<span class="line" id="L392">        <span class="tok-kw">fn</span> <span class="tok-fn">freeRetainedMetadata</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L393">            <span class="tok-kw">if</span> (config.retain_metadata) {</span>
+<span class="line" id="L394">                <span class="tok-kw">if</span> (config.never_unmap) {</span>
+<span class="line" id="L395">                    <span class="tok-comment">// free large allocations that were intentionally leaked by never_unmap</span>
+</span>
+<span class="line" id="L396">                    <span class="tok-kw">var</span> it = self.large_allocations.iterator();</span>
+<span class="line" id="L397">                    <span class="tok-kw">while</span> (it.next()) |large| {</span>
+<span class="line" id="L398">                        <span class="tok-kw">if</span> (large.value_ptr.freed) {</span>
+<span class="line" id="L399">                            self.backing_allocator.rawFree(large.value_ptr.bytes, large.value_ptr.log2_ptr_align, <span class="tok-builtin">@returnAddress</span>());</span>
+<span class="line" id="L400">                        }</span>
+<span class="line" id="L401">                    }</span>
+<span class="line" id="L402">                }</span>
+<span class="line" id="L403">                <span class="tok-comment">// free retained metadata for small allocations</span>
+</span>
+<span class="line" id="L404">                <span class="tok-kw">if</span> (self.empty_buckets) |first_bucket| {</span>
+<span class="line" id="L405">                    <span class="tok-kw">var</span> bucket = first_bucket;</span>
+<span class="line" id="L406">                    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L407">                        <span class="tok-kw">const</span> prev = bucket.prev;</span>
+<span class="line" id="L408">                        <span class="tok-kw">if</span> (config.never_unmap) {</span>
+<span class="line" id="L409">                            <span class="tok-comment">// free page that was intentionally leaked by never_unmap</span>
+</span>
+<span class="line" id="L410">                            self.backing_allocator.free(bucket.page[<span class="tok-number">0</span>..page_size]);</span>
+<span class="line" id="L411">                        }</span>
+<span class="line" id="L412">                        <span class="tok-comment">// alloc_cursor was set to slot count when bucket added to empty_buckets</span>
+</span>
+<span class="line" id="L413">                        self.freeBucket(bucket, <span class="tok-builtin">@divExact</span>(page_size, bucket.alloc_cursor));</span>
+<span class="line" id="L414">                        bucket = prev;</span>
+<span class="line" id="L415">                        <span class="tok-kw">if</span> (bucket == first_bucket)</span>
+<span class="line" id="L416">                            <span class="tok-kw">break</span>;</span>
+<span class="line" id="L417">                    }</span>
+<span class="line" id="L418">                    self.empty_buckets = <span class="tok-null">null</span>;</span>
+<span class="line" id="L419">                }</span>
+<span class="line" id="L420">            }</span>
+<span class="line" id="L421">        }</span>
+<span class="line" id="L422"></span>
+<span class="line" id="L423">        <span class="tok-kw">pub</span> <span class="tok-kw">usingnamespace</span> <span class="tok-kw">if</span> (config.retain_metadata) <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L424">            <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">flushRetainedMetadata</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L425">                self.freeRetainedMetadata();</span>
+<span class="line" id="L426">                <span class="tok-comment">// also remove entries from large_allocations</span>
+</span>
+<span class="line" id="L427">                <span class="tok-kw">var</span> it = self.large_allocations.iterator();</span>
+<span class="line" id="L428">                <span class="tok-kw">while</span> (it.next()) |large| {</span>
+<span class="line" id="L429">                    <span class="tok-kw">if</span> (large.value_ptr.freed) {</span>
+<span class="line" id="L430">                        _ = self.large_allocations.remove(<span class="tok-builtin">@intFromPtr</span>(large.value_ptr.bytes.ptr));</span>
+<span class="line" id="L431">                    }</span>
+<span class="line" id="L432">                }</span>
+<span class="line" id="L433">            }</span>
+<span class="line" id="L434">        } <span class="tok-kw">else</span> <span class="tok-kw">struct</span> {};</span>
+<span class="line" id="L435"></span>
+<span class="line" id="L436">        <span class="tok-comment">/// Returns `Check.leak` if there were leaks; `Check.ok` otherwise.</span></span>
+<span class="line" id="L437">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: *Self) Check {</span>
+<span class="line" id="L438">            <span class="tok-kw">const</span> leaks = <span class="tok-kw">if</span> (config.safety) self.detectLeaks() <span class="tok-kw">else</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L439">            <span class="tok-kw">if</span> (config.retain_metadata) {</span>
+<span class="line" id="L440">                self.freeRetainedMetadata();</span>
+<span class="line" id="L441">            }</span>
+<span class="line" id="L442">            self.large_allocations.deinit(self.backing_allocator);</span>
+<span class="line" id="L443">            <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L444">                self.small_allocations.deinit(self.backing_allocator);</span>
+<span class="line" id="L445">            }</span>
+<span class="line" id="L446">            self.* = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L447">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(Check, <span class="tok-builtin">@enumFromInt</span>(<span class="tok-builtin">@intFromBool</span>(leaks)));</span>
+<span class="line" id="L448">        }</span>
+<span class="line" id="L449"></span>
+<span class="line" id="L450">        <span class="tok-kw">fn</span> <span class="tok-fn">collectStackTrace</span>(first_trace_addr: <span class="tok-type">usize</span>, addresses: *[stack_n]<span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L451">            <span class="tok-kw">if</span> (stack_n == <span class="tok-number">0</span>) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L452">            <span class="tok-builtin">@memset</span>(addresses, <span class="tok-number">0</span>);</span>
+<span class="line" id="L453">            <span class="tok-kw">var</span> stack_trace = StackTrace{</span>
+<span class="line" id="L454">                .instruction_addresses = addresses,</span>
+<span class="line" id="L455">                .index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L456">            };</span>
+<span class="line" id="L457">            std.debug.captureStackTrace(first_trace_addr, &amp;stack_trace);</span>
+<span class="line" id="L458">        }</span>
+<span class="line" id="L459"></span>
+<span class="line" id="L460">        <span class="tok-kw">fn</span> <span class="tok-fn">reportDoubleFree</span>(ret_addr: <span class="tok-type">usize</span>, alloc_stack_trace: StackTrace, free_stack_trace: StackTrace) <span class="tok-type">void</span> {</span>
+<span class="line" id="L461">            <span class="tok-kw">var</span> addresses: [stack_n]<span class="tok-type">usize</span> = [<span class="tok-number">1</span>]<span class="tok-type">usize</span>{<span class="tok-number">0</span>} ** stack_n;</span>
+<span class="line" id="L462">            <span class="tok-kw">var</span> second_free_stack_trace = StackTrace{</span>
+<span class="line" id="L463">                .instruction_addresses = &amp;addresses,</span>
+<span class="line" id="L464">                .index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L465">            };</span>
+<span class="line" id="L466">            std.debug.captureStackTrace(ret_addr, &amp;second_free_stack_trace);</span>
+<span class="line" id="L467">            log.err(<span class="tok-str">&quot;Double free detected. Allocation: {} First free: {} Second free: {}&quot;</span>, .{</span>
+<span class="line" id="L468">                alloc_stack_trace, free_stack_trace, second_free_stack_trace,</span>
+<span class="line" id="L469">            });</span>
+<span class="line" id="L470">        }</span>
+<span class="line" id="L471"></span>
+<span class="line" id="L472">        <span class="tok-kw">fn</span> <span class="tok-fn">allocSlot</span>(self: *Self, size_class: <span class="tok-type">usize</span>, trace_addr: <span class="tok-type">usize</span>) Error![*]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L473">            <span class="tok-kw">const</span> bucket_index = math.log2(size_class);</span>
+<span class="line" id="L474">            <span class="tok-kw">const</span> first_bucket = self.buckets[bucket_index] <span class="tok-kw">orelse</span> <span class="tok-kw">try</span> self.createBucket(</span>
+<span class="line" id="L475">                size_class,</span>
+<span class="line" id="L476">                bucket_index,</span>
+<span class="line" id="L477">            );</span>
+<span class="line" id="L478">            <span class="tok-kw">var</span> bucket = first_bucket;</span>
+<span class="line" id="L479">            <span class="tok-kw">const</span> slot_count = <span class="tok-builtin">@divExact</span>(page_size, size_class);</span>
+<span class="line" id="L480">            <span class="tok-kw">while</span> (bucket.alloc_cursor == slot_count) {</span>
+<span class="line" id="L481">                <span class="tok-kw">const</span> prev_bucket = bucket;</span>
+<span class="line" id="L482">                bucket = prev_bucket.next;</span>
+<span class="line" id="L483">                <span class="tok-kw">if</span> (bucket == first_bucket) {</span>
+<span class="line" id="L484">                    <span class="tok-comment">// make a new one</span>
+</span>
+<span class="line" id="L485">                    bucket = <span class="tok-kw">try</span> self.createBucket(size_class, bucket_index);</span>
+<span class="line" id="L486">                    bucket.prev = prev_bucket;</span>
+<span class="line" id="L487">                    bucket.next = prev_bucket.next;</span>
+<span class="line" id="L488">                    prev_bucket.next = bucket;</span>
+<span class="line" id="L489">                    bucket.next.prev = bucket;</span>
+<span class="line" id="L490">                }</span>
+<span class="line" id="L491">            }</span>
+<span class="line" id="L492">            <span class="tok-comment">// change the allocator's current bucket to be this one</span>
+</span>
+<span class="line" id="L493">            self.buckets[bucket_index] = bucket;</span>
+<span class="line" id="L494"></span>
+<span class="line" id="L495">            <span class="tok-kw">const</span> slot_index = bucket.alloc_cursor;</span>
+<span class="line" id="L496">            bucket.alloc_cursor += <span class="tok-number">1</span>;</span>
+<span class="line" id="L497"></span>
+<span class="line" id="L498">            <span class="tok-kw">var</span> used_bits_byte = bucket.usedBits(slot_index / <span class="tok-number">8</span>);</span>
+<span class="line" id="L499">            <span class="tok-kw">const</span> used_bit_index: <span class="tok-type">u3</span> = <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(slot_index % <span class="tok-number">8</span>)); <span class="tok-comment">// TODO cast should be unnecessary</span>
+</span>
+<span class="line" id="L500">            used_bits_byte.* |= (<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">1</span>) &lt;&lt; used_bit_index);</span>
+<span class="line" id="L501">            bucket.used_count += <span class="tok-number">1</span>;</span>
+<span class="line" id="L502">            bucket.captureStackTrace(trace_addr, size_class, slot_index, .alloc);</span>
+<span class="line" id="L503">            <span class="tok-kw">return</span> bucket.page + slot_index * size_class;</span>
+<span class="line" id="L504">        }</span>
+<span class="line" id="L505"></span>
+<span class="line" id="L506">        <span class="tok-kw">fn</span> <span class="tok-fn">searchBucket</span>(</span>
+<span class="line" id="L507">            bucket_list: ?*BucketHeader,</span>
+<span class="line" id="L508">            addr: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L509">        ) ?*BucketHeader {</span>
+<span class="line" id="L510">            <span class="tok-kw">const</span> first_bucket = bucket_list <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L511">            <span class="tok-kw">var</span> bucket = first_bucket;</span>
+<span class="line" id="L512">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L513">                <span class="tok-kw">const</span> in_bucket_range = (addr &gt;= <span class="tok-builtin">@intFromPtr</span>(bucket.page) <span class="tok-kw">and</span></span>
+<span class="line" id="L514">                    addr &lt; <span class="tok-builtin">@intFromPtr</span>(bucket.page) + page_size);</span>
+<span class="line" id="L515">                <span class="tok-kw">if</span> (in_bucket_range) <span class="tok-kw">return</span> bucket;</span>
+<span class="line" id="L516">                bucket = bucket.prev;</span>
+<span class="line" id="L517">                <span class="tok-kw">if</span> (bucket == first_bucket) {</span>
+<span class="line" id="L518">                    <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L519">                }</span>
+<span class="line" id="L520">            }</span>
+<span class="line" id="L521">        }</span>
+<span class="line" id="L522"></span>
+<span class="line" id="L523">        <span class="tok-comment">/// This function assumes the object is in the large object storage regardless</span></span>
+<span class="line" id="L524">        <span class="tok-comment">/// of the parameters.</span></span>
+<span class="line" id="L525">        <span class="tok-kw">fn</span> <span class="tok-fn">resizeLarge</span>(</span>
+<span class="line" id="L526">            self: *Self,</span>
+<span class="line" id="L527">            old_mem: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L528">            log2_old_align: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L529">            new_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L530">            ret_addr: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L531">        ) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L532">            <span class="tok-kw">const</span> entry = self.large_allocations.getEntry(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr)) <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L533">                <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L534">                    <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Invalid free&quot;</span>);</span>
+<span class="line" id="L535">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L536">                    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L537">                }</span>
+<span class="line" id="L538">            };</span>
+<span class="line" id="L539"></span>
+<span class="line" id="L540">            <span class="tok-kw">if</span> (config.retain_metadata <span class="tok-kw">and</span> entry.value_ptr.freed) {</span>
+<span class="line" id="L541">                <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L542">                    reportDoubleFree(ret_addr, entry.value_ptr.getStackTrace(.alloc), entry.value_ptr.getStackTrace(.free));</span>
+<span class="line" id="L543">                    <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Unrecoverable double free&quot;</span>);</span>
+<span class="line" id="L544">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L545">                    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L546">                }</span>
+<span class="line" id="L547">            }</span>
+<span class="line" id="L548"></span>
+<span class="line" id="L549">            <span class="tok-kw">if</span> (config.safety <span class="tok-kw">and</span> old_mem.len != entry.value_ptr.bytes.len) {</span>
+<span class="line" id="L550">                <span class="tok-kw">var</span> addresses: [stack_n]<span class="tok-type">usize</span> = [<span class="tok-number">1</span>]<span class="tok-type">usize</span>{<span class="tok-number">0</span>} ** stack_n;</span>
+<span class="line" id="L551">                <span class="tok-kw">var</span> free_stack_trace = StackTrace{</span>
+<span class="line" id="L552">                    .instruction_addresses = &amp;addresses,</span>
+<span class="line" id="L553">                    .index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L554">                };</span>
+<span class="line" id="L555">                std.debug.captureStackTrace(ret_addr, &amp;free_stack_trace);</span>
+<span class="line" id="L556">                log.err(<span class="tok-str">&quot;Allocation size {d} bytes does not match free size {d}. Allocation: {} Free: {}&quot;</span>, .{</span>
+<span class="line" id="L557">                    entry.value_ptr.bytes.len,</span>
+<span class="line" id="L558">                    old_mem.len,</span>
+<span class="line" id="L559">                    entry.value_ptr.getStackTrace(.alloc),</span>
+<span class="line" id="L560">                    free_stack_trace,</span>
+<span class="line" id="L561">                });</span>
+<span class="line" id="L562">            }</span>
+<span class="line" id="L563"></span>
+<span class="line" id="L564">            <span class="tok-comment">// Do memory limit accounting with requested sizes rather than what</span>
+</span>
+<span class="line" id="L565">            <span class="tok-comment">// backing_allocator returns because if we want to return</span>
+</span>
+<span class="line" id="L566">            <span class="tok-comment">// error.OutOfMemory, we have to leave allocation untouched, and</span>
+</span>
+<span class="line" id="L567">            <span class="tok-comment">// that is impossible to guarantee after calling</span>
+</span>
+<span class="line" id="L568">            <span class="tok-comment">// backing_allocator.rawResize.</span>
+</span>
+<span class="line" id="L569">            <span class="tok-kw">const</span> prev_req_bytes = self.total_requested_bytes;</span>
+<span class="line" id="L570">            <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L571">                <span class="tok-kw">const</span> new_req_bytes = prev_req_bytes + new_size - entry.value_ptr.requested_size;</span>
+<span class="line" id="L572">                <span class="tok-kw">if</span> (new_req_bytes &gt; prev_req_bytes <span class="tok-kw">and</span> new_req_bytes &gt; self.requested_memory_limit) {</span>
+<span class="line" id="L573">                    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L574">                }</span>
+<span class="line" id="L575">                self.total_requested_bytes = new_req_bytes;</span>
+<span class="line" id="L576">            }</span>
+<span class="line" id="L577"></span>
+<span class="line" id="L578">            <span class="tok-kw">if</span> (!self.backing_allocator.rawResize(old_mem, log2_old_align, new_size, ret_addr)) {</span>
+<span class="line" id="L579">                <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L580">                    self.total_requested_bytes = prev_req_bytes;</span>
+<span class="line" id="L581">                }</span>
+<span class="line" id="L582">                <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L583">            }</span>
+<span class="line" id="L584"></span>
+<span class="line" id="L585">            <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L586">                entry.value_ptr.requested_size = new_size;</span>
+<span class="line" id="L587">            }</span>
+<span class="line" id="L588"></span>
+<span class="line" id="L589">            <span class="tok-kw">if</span> (config.verbose_log) {</span>
+<span class="line" id="L590">                log.info(<span class="tok-str">&quot;large resize {d} bytes at {*} to {d}&quot;</span>, .{</span>
+<span class="line" id="L591">                    old_mem.len, old_mem.ptr, new_size,</span>
+<span class="line" id="L592">                });</span>
+<span class="line" id="L593">            }</span>
+<span class="line" id="L594">            entry.value_ptr.bytes = old_mem.ptr[<span class="tok-number">0</span>..new_size];</span>
+<span class="line" id="L595">            entry.value_ptr.captureStackTrace(ret_addr, .alloc);</span>
+<span class="line" id="L596">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L597">        }</span>
+<span class="line" id="L598"></span>
+<span class="line" id="L599">        <span class="tok-comment">/// This function assumes the object is in the large object storage regardless</span></span>
+<span class="line" id="L600">        <span class="tok-comment">/// of the parameters.</span></span>
+<span class="line" id="L601">        <span class="tok-kw">fn</span> <span class="tok-fn">freeLarge</span>(</span>
+<span class="line" id="L602">            self: *Self,</span>
+<span class="line" id="L603">            old_mem: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L604">            log2_old_align: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L605">            ret_addr: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L606">        ) <span class="tok-type">void</span> {</span>
+<span class="line" id="L607">            <span class="tok-kw">const</span> entry = self.large_allocations.getEntry(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr)) <span class="tok-kw">orelse</span> {</span>
+<span class="line" id="L608">                <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L609">                    <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Invalid free&quot;</span>);</span>
+<span class="line" id="L610">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L611">                    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L612">                }</span>
+<span class="line" id="L613">            };</span>
+<span class="line" id="L614"></span>
+<span class="line" id="L615">            <span class="tok-kw">if</span> (config.retain_metadata <span class="tok-kw">and</span> entry.value_ptr.freed) {</span>
+<span class="line" id="L616">                <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L617">                    reportDoubleFree(ret_addr, entry.value_ptr.getStackTrace(.alloc), entry.value_ptr.getStackTrace(.free));</span>
+<span class="line" id="L618">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L619">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L620">                    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L621">                }</span>
+<span class="line" id="L622">            }</span>
+<span class="line" id="L623"></span>
+<span class="line" id="L624">            <span class="tok-kw">if</span> (config.safety <span class="tok-kw">and</span> old_mem.len != entry.value_ptr.bytes.len) {</span>
+<span class="line" id="L625">                <span class="tok-kw">var</span> addresses: [stack_n]<span class="tok-type">usize</span> = [<span class="tok-number">1</span>]<span class="tok-type">usize</span>{<span class="tok-number">0</span>} ** stack_n;</span>
+<span class="line" id="L626">                <span class="tok-kw">var</span> free_stack_trace = StackTrace{</span>
+<span class="line" id="L627">                    .instruction_addresses = &amp;addresses,</span>
+<span class="line" id="L628">                    .index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L629">                };</span>
+<span class="line" id="L630">                std.debug.captureStackTrace(ret_addr, &amp;free_stack_trace);</span>
+<span class="line" id="L631">                log.err(<span class="tok-str">&quot;Allocation size {d} bytes does not match free size {d}. Allocation: {} Free: {}&quot;</span>, .{</span>
+<span class="line" id="L632">                    entry.value_ptr.bytes.len,</span>
+<span class="line" id="L633">                    old_mem.len,</span>
+<span class="line" id="L634">                    entry.value_ptr.getStackTrace(.alloc),</span>
+<span class="line" id="L635">                    free_stack_trace,</span>
+<span class="line" id="L636">                });</span>
+<span class="line" id="L637">            }</span>
+<span class="line" id="L638"></span>
+<span class="line" id="L639">            <span class="tok-kw">if</span> (!config.never_unmap) {</span>
+<span class="line" id="L640">                self.backing_allocator.rawFree(old_mem, log2_old_align, ret_addr);</span>
+<span class="line" id="L641">            }</span>
+<span class="line" id="L642"></span>
+<span class="line" id="L643">            <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L644">                self.total_requested_bytes -= entry.value_ptr.requested_size;</span>
+<span class="line" id="L645">            }</span>
+<span class="line" id="L646"></span>
+<span class="line" id="L647">            <span class="tok-kw">if</span> (config.verbose_log) {</span>
+<span class="line" id="L648">                log.info(<span class="tok-str">&quot;large free {d} bytes at {*}&quot;</span>, .{ old_mem.len, old_mem.ptr });</span>
+<span class="line" id="L649">            }</span>
+<span class="line" id="L650"></span>
+<span class="line" id="L651">            <span class="tok-kw">if</span> (!config.retain_metadata) {</span>
+<span class="line" id="L652">                assert(self.large_allocations.remove(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr)));</span>
+<span class="line" id="L653">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L654">                entry.value_ptr.freed = <span class="tok-null">true</span>;</span>
+<span class="line" id="L655">                entry.value_ptr.captureStackTrace(ret_addr, .free);</span>
+<span class="line" id="L656">            }</span>
+<span class="line" id="L657">        }</span>
+<span class="line" id="L658"></span>
+<span class="line" id="L659">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">setRequestedMemoryLimit</span>(self: *Self, limit: <span class="tok-type">usize</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L660">            self.requested_memory_limit = limit;</span>
+<span class="line" id="L661">        }</span>
+<span class="line" id="L662"></span>
+<span class="line" id="L663">        <span class="tok-kw">fn</span> <span class="tok-fn">resize</span>(</span>
+<span class="line" id="L664">            ctx: *<span class="tok-type">anyopaque</span>,</span>
+<span class="line" id="L665">            old_mem: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L666">            log2_old_align_u8: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L667">            new_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L668">            ret_addr: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L669">        ) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L670">            <span class="tok-kw">const</span> self: *Self = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(ctx));</span>
+<span class="line" id="L671">            <span class="tok-kw">const</span> log2_old_align = <span class="tok-builtin">@as</span>(Allocator.Log2Align, <span class="tok-builtin">@intCast</span>(log2_old_align_u8));</span>
+<span class="line" id="L672">            self.mutex.lock();</span>
+<span class="line" id="L673">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L674"></span>
+<span class="line" id="L675">            assert(old_mem.len != <span class="tok-number">0</span>);</span>
+<span class="line" id="L676"></span>
+<span class="line" id="L677">            <span class="tok-kw">const</span> aligned_size = <span class="tok-builtin">@max</span>(old_mem.len, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; log2_old_align);</span>
+<span class="line" id="L678">            <span class="tok-kw">if</span> (aligned_size &gt; largest_bucket_object_size) {</span>
+<span class="line" id="L679">                <span class="tok-kw">return</span> self.resizeLarge(old_mem, log2_old_align, new_size, ret_addr);</span>
+<span class="line" id="L680">            }</span>
+<span class="line" id="L681">            <span class="tok-kw">const</span> size_class_hint = math.ceilPowerOfTwoAssert(<span class="tok-type">usize</span>, aligned_size);</span>
+<span class="line" id="L682"></span>
+<span class="line" id="L683">            <span class="tok-kw">var</span> bucket_index = math.log2(size_class_hint);</span>
+<span class="line" id="L684">            <span class="tok-kw">var</span> size_class: <span class="tok-type">usize</span> = size_class_hint;</span>
+<span class="line" id="L685">            <span class="tok-kw">const</span> bucket = <span class="tok-kw">while</span> (bucket_index &lt; small_bucket_count) : (bucket_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L686">                <span class="tok-kw">if</span> (searchBucket(self.buckets[bucket_index], <span class="tok-builtin">@intFromPtr</span>(old_mem.ptr))) |bucket| {</span>
+<span class="line" id="L687">                    <span class="tok-comment">// move bucket to head of list to optimize search for nearby allocations</span>
+</span>
+<span class="line" id="L688">                    self.buckets[bucket_index] = bucket;</span>
+<span class="line" id="L689">                    <span class="tok-kw">break</span> bucket;</span>
+<span class="line" id="L690">                }</span>
+<span class="line" id="L691">                size_class *= <span class="tok-number">2</span>;</span>
+<span class="line" id="L692">            } <span class="tok-kw">else</span> blk: {</span>
+<span class="line" id="L693">                <span class="tok-kw">if</span> (config.retain_metadata) {</span>
+<span class="line" id="L694">                    <span class="tok-kw">if</span> (!self.large_allocations.contains(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr))) {</span>
+<span class="line" id="L695">                        <span class="tok-comment">// object not in active buckets or a large allocation, so search empty buckets</span>
+</span>
+<span class="line" id="L696">                        <span class="tok-kw">if</span> (searchBucket(self.empty_buckets, <span class="tok-builtin">@intFromPtr</span>(old_mem.ptr))) |bucket| {</span>
+<span class="line" id="L697">                            <span class="tok-comment">// bucket is empty so is_used below will always be false and we exit there</span>
+</span>
+<span class="line" id="L698">                            <span class="tok-kw">break</span> :blk bucket;</span>
+<span class="line" id="L699">                        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L700">                            <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Invalid free&quot;</span>);</span>
+<span class="line" id="L701">                        }</span>
+<span class="line" id="L702">                    }</span>
+<span class="line" id="L703">                }</span>
+<span class="line" id="L704">                <span class="tok-kw">return</span> self.resizeLarge(old_mem, log2_old_align, new_size, ret_addr);</span>
+<span class="line" id="L705">            };</span>
+<span class="line" id="L706">            <span class="tok-kw">const</span> byte_offset = <span class="tok-builtin">@intFromPtr</span>(old_mem.ptr) - <span class="tok-builtin">@intFromPtr</span>(bucket.page);</span>
+<span class="line" id="L707">            <span class="tok-kw">const</span> slot_index = <span class="tok-builtin">@as</span>(SlotIndex, <span class="tok-builtin">@intCast</span>(byte_offset / size_class));</span>
+<span class="line" id="L708">            <span class="tok-kw">const</span> used_byte_index = slot_index / <span class="tok-number">8</span>;</span>
+<span class="line" id="L709">            <span class="tok-kw">const</span> used_bit_index = <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(slot_index % <span class="tok-number">8</span>));</span>
+<span class="line" id="L710">            <span class="tok-kw">const</span> used_byte = bucket.usedBits(used_byte_index);</span>
+<span class="line" id="L711">            <span class="tok-kw">const</span> is_used = <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(used_byte.* &gt;&gt; used_bit_index)) != <span class="tok-number">0</span>;</span>
+<span class="line" id="L712">            <span class="tok-kw">if</span> (!is_used) {</span>
+<span class="line" id="L713">                <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L714">                    reportDoubleFree(ret_addr, bucketStackTrace(bucket, size_class, slot_index, .alloc), bucketStackTrace(bucket, size_class, slot_index, .free));</span>
+<span class="line" id="L715">                    <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Unrecoverable double free&quot;</span>);</span>
+<span class="line" id="L716">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L717">                    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L718">                }</span>
+<span class="line" id="L719">            }</span>
+<span class="line" id="L720"></span>
+<span class="line" id="L721">            <span class="tok-comment">// Definitely an in-use small alloc now.</span>
+</span>
+<span class="line" id="L722">            <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L723">                <span class="tok-kw">const</span> entry = self.small_allocations.getEntry(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr)) <span class="tok-kw">orelse</span></span>
+<span class="line" id="L724">                    <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Invalid free&quot;</span>);</span>
+<span class="line" id="L725">                <span class="tok-kw">if</span> (old_mem.len != entry.value_ptr.requested_size <span class="tok-kw">or</span> log2_old_align != entry.value_ptr.log2_ptr_align) {</span>
+<span class="line" id="L726">                    <span class="tok-kw">var</span> addresses: [stack_n]<span class="tok-type">usize</span> = [<span class="tok-number">1</span>]<span class="tok-type">usize</span>{<span class="tok-number">0</span>} ** stack_n;</span>
+<span class="line" id="L727">                    <span class="tok-kw">var</span> free_stack_trace = StackTrace{</span>
+<span class="line" id="L728">                        .instruction_addresses = &amp;addresses,</span>
+<span class="line" id="L729">                        .index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L730">                    };</span>
+<span class="line" id="L731">                    std.debug.captureStackTrace(ret_addr, &amp;free_stack_trace);</span>
+<span class="line" id="L732">                    <span class="tok-kw">if</span> (old_mem.len != entry.value_ptr.requested_size) {</span>
+<span class="line" id="L733">                        log.err(<span class="tok-str">&quot;Allocation size {d} bytes does not match resize size {d}. Allocation: {} Resize: {}&quot;</span>, .{</span>
+<span class="line" id="L734">                            entry.value_ptr.requested_size,</span>
+<span class="line" id="L735">                            old_mem.len,</span>
+<span class="line" id="L736">                            bucketStackTrace(bucket, size_class, slot_index, .alloc),</span>
+<span class="line" id="L737">                            free_stack_trace,</span>
+<span class="line" id="L738">                        });</span>
+<span class="line" id="L739">                    }</span>
+<span class="line" id="L740">                    <span class="tok-kw">if</span> (log2_old_align != entry.value_ptr.log2_ptr_align) {</span>
+<span class="line" id="L741">                        log.err(<span class="tok-str">&quot;Allocation alignment {d} does not match resize alignment {d}. Allocation: {} Resize: {}&quot;</span>, .{</span>
+<span class="line" id="L742">                            <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@as</span>(math.Log2Int(<span class="tok-type">usize</span>), <span class="tok-builtin">@intCast</span>(entry.value_ptr.log2_ptr_align)),</span>
+<span class="line" id="L743">                            <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@as</span>(math.Log2Int(<span class="tok-type">usize</span>), <span class="tok-builtin">@intCast</span>(log2_old_align)),</span>
+<span class="line" id="L744">                            bucketStackTrace(bucket, size_class, slot_index, .alloc),</span>
+<span class="line" id="L745">                            free_stack_trace,</span>
+<span class="line" id="L746">                        });</span>
+<span class="line" id="L747">                    }</span>
+<span class="line" id="L748">                }</span>
+<span class="line" id="L749">            }</span>
+<span class="line" id="L750">            <span class="tok-kw">const</span> prev_req_bytes = self.total_requested_bytes;</span>
+<span class="line" id="L751">            <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L752">                <span class="tok-kw">const</span> new_req_bytes = prev_req_bytes + new_size - old_mem.len;</span>
+<span class="line" id="L753">                <span class="tok-kw">if</span> (new_req_bytes &gt; prev_req_bytes <span class="tok-kw">and</span> new_req_bytes &gt; self.requested_memory_limit) {</span>
+<span class="line" id="L754">                    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L755">                }</span>
+<span class="line" id="L756">                self.total_requested_bytes = new_req_bytes;</span>
+<span class="line" id="L757">            }</span>
+<span class="line" id="L758"></span>
+<span class="line" id="L759">            <span class="tok-kw">const</span> new_aligned_size = <span class="tok-builtin">@max</span>(new_size, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; log2_old_align);</span>
+<span class="line" id="L760">            <span class="tok-kw">const</span> new_size_class = math.ceilPowerOfTwoAssert(<span class="tok-type">usize</span>, new_aligned_size);</span>
+<span class="line" id="L761">            <span class="tok-kw">if</span> (new_size_class &lt;= size_class) {</span>
+<span class="line" id="L762">                <span class="tok-kw">if</span> (old_mem.len &gt; new_size) {</span>
+<span class="line" id="L763">                    <span class="tok-builtin">@memset</span>(old_mem[new_size..], <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L764">                }</span>
+<span class="line" id="L765">                <span class="tok-kw">if</span> (config.verbose_log) {</span>
+<span class="line" id="L766">                    log.info(<span class="tok-str">&quot;small resize {d} bytes at {*} to {d}&quot;</span>, .{</span>
+<span class="line" id="L767">                        old_mem.len, old_mem.ptr, new_size,</span>
+<span class="line" id="L768">                    });</span>
+<span class="line" id="L769">                }</span>
+<span class="line" id="L770">                <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L771">                    <span class="tok-kw">const</span> entry = self.small_allocations.getEntry(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr)).?;</span>
+<span class="line" id="L772">                    entry.value_ptr.requested_size = new_size;</span>
+<span class="line" id="L773">                }</span>
+<span class="line" id="L774">                <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L775">            }</span>
+<span class="line" id="L776"></span>
+<span class="line" id="L777">            <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L778">                self.total_requested_bytes = prev_req_bytes;</span>
+<span class="line" id="L779">            }</span>
+<span class="line" id="L780">            <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L781">        }</span>
+<span class="line" id="L782"></span>
+<span class="line" id="L783">        <span class="tok-kw">fn</span> <span class="tok-fn">free</span>(</span>
+<span class="line" id="L784">            ctx: *<span class="tok-type">anyopaque</span>,</span>
+<span class="line" id="L785">            old_mem: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L786">            log2_old_align_u8: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L787">            ret_addr: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L788">        ) <span class="tok-type">void</span> {</span>
+<span class="line" id="L789">            <span class="tok-kw">const</span> self: *Self = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(ctx));</span>
+<span class="line" id="L790">            <span class="tok-kw">const</span> log2_old_align = <span class="tok-builtin">@as</span>(Allocator.Log2Align, <span class="tok-builtin">@intCast</span>(log2_old_align_u8));</span>
+<span class="line" id="L791">            self.mutex.lock();</span>
+<span class="line" id="L792">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L793"></span>
+<span class="line" id="L794">            assert(old_mem.len != <span class="tok-number">0</span>);</span>
+<span class="line" id="L795"></span>
+<span class="line" id="L796">            <span class="tok-kw">const</span> aligned_size = <span class="tok-builtin">@max</span>(old_mem.len, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; log2_old_align);</span>
+<span class="line" id="L797">            <span class="tok-kw">if</span> (aligned_size &gt; largest_bucket_object_size) {</span>
+<span class="line" id="L798">                self.freeLarge(old_mem, log2_old_align, ret_addr);</span>
+<span class="line" id="L799">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L800">            }</span>
+<span class="line" id="L801">            <span class="tok-kw">const</span> size_class_hint = math.ceilPowerOfTwoAssert(<span class="tok-type">usize</span>, aligned_size);</span>
+<span class="line" id="L802"></span>
+<span class="line" id="L803">            <span class="tok-kw">var</span> bucket_index = math.log2(size_class_hint);</span>
+<span class="line" id="L804">            <span class="tok-kw">var</span> size_class: <span class="tok-type">usize</span> = size_class_hint;</span>
+<span class="line" id="L805">            <span class="tok-kw">const</span> bucket = <span class="tok-kw">while</span> (bucket_index &lt; small_bucket_count) : (bucket_index += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L806">                <span class="tok-kw">if</span> (searchBucket(self.buckets[bucket_index], <span class="tok-builtin">@intFromPtr</span>(old_mem.ptr))) |bucket| {</span>
+<span class="line" id="L807">                    <span class="tok-comment">// move bucket to head of list to optimize search for nearby allocations</span>
+</span>
+<span class="line" id="L808">                    self.buckets[bucket_index] = bucket;</span>
+<span class="line" id="L809">                    <span class="tok-kw">break</span> bucket;</span>
+<span class="line" id="L810">                }</span>
+<span class="line" id="L811">                size_class *= <span class="tok-number">2</span>;</span>
+<span class="line" id="L812">            } <span class="tok-kw">else</span> blk: {</span>
+<span class="line" id="L813">                <span class="tok-kw">if</span> (config.retain_metadata) {</span>
+<span class="line" id="L814">                    <span class="tok-kw">if</span> (!self.large_allocations.contains(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr))) {</span>
+<span class="line" id="L815">                        <span class="tok-comment">// object not in active buckets or a large allocation, so search empty buckets</span>
+</span>
+<span class="line" id="L816">                        <span class="tok-kw">if</span> (searchBucket(self.empty_buckets, <span class="tok-builtin">@intFromPtr</span>(old_mem.ptr))) |bucket| {</span>
+<span class="line" id="L817">                            <span class="tok-comment">// bucket is empty so is_used below will always be false and we exit there</span>
+</span>
+<span class="line" id="L818">                            <span class="tok-kw">break</span> :blk bucket;</span>
+<span class="line" id="L819">                        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L820">                            <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Invalid free&quot;</span>);</span>
+<span class="line" id="L821">                        }</span>
+<span class="line" id="L822">                    }</span>
+<span class="line" id="L823">                }</span>
+<span class="line" id="L824">                self.freeLarge(old_mem, log2_old_align, ret_addr);</span>
+<span class="line" id="L825">                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L826">            };</span>
+<span class="line" id="L827">            <span class="tok-kw">const</span> byte_offset = <span class="tok-builtin">@intFromPtr</span>(old_mem.ptr) - <span class="tok-builtin">@intFromPtr</span>(bucket.page);</span>
+<span class="line" id="L828">            <span class="tok-kw">const</span> slot_index = <span class="tok-builtin">@as</span>(SlotIndex, <span class="tok-builtin">@intCast</span>(byte_offset / size_class));</span>
+<span class="line" id="L829">            <span class="tok-kw">const</span> used_byte_index = slot_index / <span class="tok-number">8</span>;</span>
+<span class="line" id="L830">            <span class="tok-kw">const</span> used_bit_index = <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@intCast</span>(slot_index % <span class="tok-number">8</span>));</span>
+<span class="line" id="L831">            <span class="tok-kw">const</span> used_byte = bucket.usedBits(used_byte_index);</span>
+<span class="line" id="L832">            <span class="tok-kw">const</span> is_used = <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(used_byte.* &gt;&gt; used_bit_index)) != <span class="tok-number">0</span>;</span>
+<span class="line" id="L833">            <span class="tok-kw">if</span> (!is_used) {</span>
+<span class="line" id="L834">                <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L835">                    reportDoubleFree(ret_addr, bucketStackTrace(bucket, size_class, slot_index, .alloc), bucketStackTrace(bucket, size_class, slot_index, .free));</span>
+<span class="line" id="L836">                    <span class="tok-comment">// Recoverable if this is a free.</span>
+</span>
+<span class="line" id="L837">                    <span class="tok-kw">return</span>;</span>
+<span class="line" id="L838">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L839">                    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L840">                }</span>
+<span class="line" id="L841">            }</span>
+<span class="line" id="L842"></span>
+<span class="line" id="L843">            <span class="tok-comment">// Definitely an in-use small alloc now.</span>
+</span>
+<span class="line" id="L844">            <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L845">                <span class="tok-kw">const</span> entry = self.small_allocations.getEntry(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr)) <span class="tok-kw">orelse</span></span>
+<span class="line" id="L846">                    <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;Invalid free&quot;</span>);</span>
+<span class="line" id="L847">                <span class="tok-kw">if</span> (old_mem.len != entry.value_ptr.requested_size <span class="tok-kw">or</span> log2_old_align != entry.value_ptr.log2_ptr_align) {</span>
+<span class="line" id="L848">                    <span class="tok-kw">var</span> addresses: [stack_n]<span class="tok-type">usize</span> = [<span class="tok-number">1</span>]<span class="tok-type">usize</span>{<span class="tok-number">0</span>} ** stack_n;</span>
+<span class="line" id="L849">                    <span class="tok-kw">var</span> free_stack_trace = StackTrace{</span>
+<span class="line" id="L850">                        .instruction_addresses = &amp;addresses,</span>
+<span class="line" id="L851">                        .index = <span class="tok-number">0</span>,</span>
+<span class="line" id="L852">                    };</span>
+<span class="line" id="L853">                    std.debug.captureStackTrace(ret_addr, &amp;free_stack_trace);</span>
+<span class="line" id="L854">                    <span class="tok-kw">if</span> (old_mem.len != entry.value_ptr.requested_size) {</span>
+<span class="line" id="L855">                        log.err(<span class="tok-str">&quot;Allocation size {d} bytes does not match free size {d}. Allocation: {} Free: {}&quot;</span>, .{</span>
+<span class="line" id="L856">                            entry.value_ptr.requested_size,</span>
+<span class="line" id="L857">                            old_mem.len,</span>
+<span class="line" id="L858">                            bucketStackTrace(bucket, size_class, slot_index, .alloc),</span>
+<span class="line" id="L859">                            free_stack_trace,</span>
+<span class="line" id="L860">                        });</span>
+<span class="line" id="L861">                    }</span>
+<span class="line" id="L862">                    <span class="tok-kw">if</span> (log2_old_align != entry.value_ptr.log2_ptr_align) {</span>
+<span class="line" id="L863">                        log.err(<span class="tok-str">&quot;Allocation alignment {d} does not match free alignment {d}. Allocation: {} Free: {}&quot;</span>, .{</span>
+<span class="line" id="L864">                            <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@as</span>(math.Log2Int(<span class="tok-type">usize</span>), <span class="tok-builtin">@intCast</span>(entry.value_ptr.log2_ptr_align)),</span>
+<span class="line" id="L865">                            <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@as</span>(math.Log2Int(<span class="tok-type">usize</span>), <span class="tok-builtin">@intCast</span>(log2_old_align)),</span>
+<span class="line" id="L866">                            bucketStackTrace(bucket, size_class, slot_index, .alloc),</span>
+<span class="line" id="L867">                            free_stack_trace,</span>
+<span class="line" id="L868">                        });</span>
+<span class="line" id="L869">                    }</span>
+<span class="line" id="L870">                }</span>
+<span class="line" id="L871">            }</span>
+<span class="line" id="L872"></span>
+<span class="line" id="L873">            <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L874">                self.total_requested_bytes -= old_mem.len;</span>
+<span class="line" id="L875">            }</span>
+<span class="line" id="L876"></span>
+<span class="line" id="L877">            <span class="tok-comment">// Capture stack trace to be the &quot;first free&quot;, in case a double free happens.</span>
+</span>
+<span class="line" id="L878">            bucket.captureStackTrace(ret_addr, size_class, slot_index, .free);</span>
+<span class="line" id="L879"></span>
+<span class="line" id="L880">            used_byte.* &amp;= ~(<span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-number">1</span>) &lt;&lt; used_bit_index);</span>
+<span class="line" id="L881">            bucket.used_count -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L882">            <span class="tok-kw">if</span> (bucket.used_count == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L883">                <span class="tok-kw">if</span> (bucket.next == bucket) {</span>
+<span class="line" id="L884">                    <span class="tok-comment">// it's the only bucket and therefore the current one</span>
+</span>
+<span class="line" id="L885">                    self.buckets[bucket_index] = <span class="tok-null">null</span>;</span>
+<span class="line" id="L886">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L887">                    bucket.next.prev = bucket.prev;</span>
+<span class="line" id="L888">                    bucket.prev.next = bucket.next;</span>
+<span class="line" id="L889">                    self.buckets[bucket_index] = bucket.prev;</span>
+<span class="line" id="L890">                }</span>
+<span class="line" id="L891">                <span class="tok-kw">if</span> (!config.never_unmap) {</span>
+<span class="line" id="L892">                    self.backing_allocator.free(bucket.page[<span class="tok-number">0</span>..page_size]);</span>
+<span class="line" id="L893">                }</span>
+<span class="line" id="L894">                <span class="tok-kw">if</span> (!config.retain_metadata) {</span>
+<span class="line" id="L895">                    self.freeBucket(bucket, size_class);</span>
+<span class="line" id="L896">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L897">                    <span class="tok-comment">// move alloc_cursor to end so we can tell size_class later</span>
+</span>
+<span class="line" id="L898">                    <span class="tok-kw">const</span> slot_count = <span class="tok-builtin">@divExact</span>(page_size, size_class);</span>
+<span class="line" id="L899">                    bucket.alloc_cursor = <span class="tok-builtin">@as</span>(SlotIndex, <span class="tok-builtin">@truncate</span>(slot_count));</span>
+<span class="line" id="L900">                    <span class="tok-kw">if</span> (self.empty_buckets) |prev_bucket| {</span>
+<span class="line" id="L901">                        <span class="tok-comment">// empty_buckets is ordered newest to oldest through prev so that if</span>
+</span>
+<span class="line" id="L902">                        <span class="tok-comment">// config.never_unmap is false and backing_allocator reuses freed memory</span>
+</span>
+<span class="line" id="L903">                        <span class="tok-comment">// then searchBuckets will always return the newer, relevant bucket</span>
+</span>
+<span class="line" id="L904">                        bucket.prev = prev_bucket;</span>
+<span class="line" id="L905">                        bucket.next = prev_bucket.next;</span>
+<span class="line" id="L906">                        prev_bucket.next = bucket;</span>
+<span class="line" id="L907">                        bucket.next.prev = bucket;</span>
+<span class="line" id="L908">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L909">                        bucket.prev = bucket;</span>
+<span class="line" id="L910">                        bucket.next = bucket;</span>
+<span class="line" id="L911">                    }</span>
+<span class="line" id="L912">                    self.empty_buckets = bucket;</span>
+<span class="line" id="L913">                }</span>
+<span class="line" id="L914">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L915">                <span class="tok-builtin">@memset</span>(old_mem, <span class="tok-null">undefined</span>);</span>
+<span class="line" id="L916">            }</span>
+<span class="line" id="L917">            <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L918">                assert(self.small_allocations.remove(<span class="tok-builtin">@intFromPtr</span>(old_mem.ptr)));</span>
+<span class="line" id="L919">            }</span>
+<span class="line" id="L920">            <span class="tok-kw">if</span> (config.verbose_log) {</span>
+<span class="line" id="L921">                log.info(<span class="tok-str">&quot;small free {d} bytes at {*}&quot;</span>, .{ old_mem.len, old_mem.ptr });</span>
+<span class="line" id="L922">            }</span>
+<span class="line" id="L923">        }</span>
+<span class="line" id="L924"></span>
+<span class="line" id="L925">        <span class="tok-comment">// Returns true if an allocation of `size` bytes is within the specified</span>
+</span>
+<span class="line" id="L926">        <span class="tok-comment">// limits if enable_memory_limit is true</span>
+</span>
+<span class="line" id="L927">        <span class="tok-kw">fn</span> <span class="tok-fn">isAllocationAllowed</span>(self: *Self, size: <span class="tok-type">usize</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L928">            <span class="tok-kw">if</span> (config.enable_memory_limit) {</span>
+<span class="line" id="L929">                <span class="tok-kw">const</span> new_req_bytes = self.total_requested_bytes + size;</span>
+<span class="line" id="L930">                <span class="tok-kw">if</span> (new_req_bytes &gt; self.requested_memory_limit)</span>
+<span class="line" id="L931">                    <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L932">                self.total_requested_bytes = new_req_bytes;</span>
+<span class="line" id="L933">            }</span>
+<span class="line" id="L934"></span>
+<span class="line" id="L935">            <span class="tok-kw">return</span> <span class="tok-null">true</span>;</span>
+<span class="line" id="L936">        }</span>
+<span class="line" id="L937"></span>
+<span class="line" id="L938">        <span class="tok-kw">fn</span> <span class="tok-fn">alloc</span>(ctx: *<span class="tok-type">anyopaque</span>, len: <span class="tok-type">usize</span>, log2_ptr_align: <span class="tok-type">u8</span>, ret_addr: <span class="tok-type">usize</span>) ?[*]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L939">            <span class="tok-kw">const</span> self: *Self = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(ctx));</span>
+<span class="line" id="L940">            self.mutex.lock();</span>
+<span class="line" id="L941">            <span class="tok-kw">defer</span> self.mutex.unlock();</span>
+<span class="line" id="L942">            <span class="tok-kw">if</span> (!self.isAllocationAllowed(len)) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L943">            <span class="tok-kw">return</span> allocInner(self, len, <span class="tok-builtin">@as</span>(Allocator.Log2Align, <span class="tok-builtin">@intCast</span>(log2_ptr_align)), ret_addr) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L944">        }</span>
+<span class="line" id="L945"></span>
+<span class="line" id="L946">        <span class="tok-kw">fn</span> <span class="tok-fn">allocInner</span>(</span>
+<span class="line" id="L947">            self: *Self,</span>
+<span class="line" id="L948">            len: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L949">            log2_ptr_align: Allocator.Log2Align,</span>
+<span class="line" id="L950">            ret_addr: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L951">        ) Allocator.Error![*]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L952">            <span class="tok-kw">const</span> new_aligned_size = <span class="tok-builtin">@max</span>(len, <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@as</span>(Allocator.Log2Align, <span class="tok-builtin">@intCast</span>(log2_ptr_align)));</span>
+<span class="line" id="L953">            <span class="tok-kw">if</span> (new_aligned_size &gt; largest_bucket_object_size) {</span>
+<span class="line" id="L954">                <span class="tok-kw">try</span> self.large_allocations.ensureUnusedCapacity(self.backing_allocator, <span class="tok-number">1</span>);</span>
+<span class="line" id="L955">                <span class="tok-kw">const</span> ptr = self.backing_allocator.rawAlloc(len, log2_ptr_align, ret_addr) <span class="tok-kw">orelse</span></span>
+<span class="line" id="L956">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.OutOfMemory;</span>
+<span class="line" id="L957">                <span class="tok-kw">const</span> slice = ptr[<span class="tok-number">0</span>..len];</span>
+<span class="line" id="L958"></span>
+<span class="line" id="L959">                <span class="tok-kw">const</span> gop = self.large_allocations.getOrPutAssumeCapacity(<span class="tok-builtin">@intFromPtr</span>(slice.ptr));</span>
+<span class="line" id="L960">                <span class="tok-kw">if</span> (config.retain_metadata <span class="tok-kw">and</span> !config.never_unmap) {</span>
+<span class="line" id="L961">                    <span class="tok-comment">// Backing allocator may be reusing memory that we're retaining metadata for</span>
+</span>
+<span class="line" id="L962">                    assert(!gop.found_existing <span class="tok-kw">or</span> gop.value_ptr.freed);</span>
+<span class="line" id="L963">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L964">                    assert(!gop.found_existing); <span class="tok-comment">// This would mean the kernel double-mapped pages.</span>
+</span>
+<span class="line" id="L965">                }</span>
+<span class="line" id="L966">                gop.value_ptr.bytes = slice;</span>
+<span class="line" id="L967">                <span class="tok-kw">if</span> (config.enable_memory_limit)</span>
+<span class="line" id="L968">                    gop.value_ptr.requested_size = len;</span>
+<span class="line" id="L969">                gop.value_ptr.captureStackTrace(ret_addr, .alloc);</span>
+<span class="line" id="L970">                <span class="tok-kw">if</span> (config.retain_metadata) {</span>
+<span class="line" id="L971">                    gop.value_ptr.freed = <span class="tok-null">false</span>;</span>
+<span class="line" id="L972">                    <span class="tok-kw">if</span> (config.never_unmap) {</span>
+<span class="line" id="L973">                        gop.value_ptr.log2_ptr_align = log2_ptr_align;</span>
+<span class="line" id="L974">                    }</span>
+<span class="line" id="L975">                }</span>
+<span class="line" id="L976"></span>
+<span class="line" id="L977">                <span class="tok-kw">if</span> (config.verbose_log) {</span>
+<span class="line" id="L978">                    log.info(<span class="tok-str">&quot;large alloc {d} bytes at {*}&quot;</span>, .{ slice.len, slice.ptr });</span>
+<span class="line" id="L979">                }</span>
+<span class="line" id="L980">                <span class="tok-kw">return</span> slice.ptr;</span>
+<span class="line" id="L981">            }</span>
+<span class="line" id="L982"></span>
+<span class="line" id="L983">            <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L984">                <span class="tok-kw">try</span> self.small_allocations.ensureUnusedCapacity(self.backing_allocator, <span class="tok-number">1</span>);</span>
+<span class="line" id="L985">            }</span>
+<span class="line" id="L986">            <span class="tok-kw">const</span> new_size_class = math.ceilPowerOfTwoAssert(<span class="tok-type">usize</span>, new_aligned_size);</span>
+<span class="line" id="L987">            <span class="tok-kw">const</span> ptr = <span class="tok-kw">try</span> self.allocSlot(new_size_class, ret_addr);</span>
+<span class="line" id="L988">            <span class="tok-kw">if</span> (config.safety) {</span>
+<span class="line" id="L989">                <span class="tok-kw">const</span> gop = self.small_allocations.getOrPutAssumeCapacity(<span class="tok-builtin">@intFromPtr</span>(ptr));</span>
+<span class="line" id="L990">                gop.value_ptr.requested_size = len;</span>
+<span class="line" id="L991">                gop.value_ptr.log2_ptr_align = log2_ptr_align;</span>
+<span class="line" id="L992">            }</span>
+<span class="line" id="L993">            <span class="tok-kw">if</span> (config.verbose_log) {</span>
+<span class="line" id="L994">                log.info(<span class="tok-str">&quot;small alloc {d} bytes at {*}&quot;</span>, .{ len, ptr });</span>
+<span class="line" id="L995">            }</span>
+<span class="line" id="L996">            <span class="tok-kw">return</span> ptr;</span>
+<span class="line" id="L997">        }</span>
+<span class="line" id="L998"></span>
+<span class="line" id="L999">        <span class="tok-kw">fn</span> <span class="tok-fn">createBucket</span>(self: *Self, size_class: <span class="tok-type">usize</span>, bucket_index: <span class="tok-type">usize</span>) Error!*BucketHeader {</span>
+<span class="line" id="L1000">            <span class="tok-kw">const</span> page = <span class="tok-kw">try</span> self.backing_allocator.alignedAlloc(<span class="tok-type">u8</span>, page_size, page_size);</span>
+<span class="line" id="L1001">            <span class="tok-kw">errdefer</span> self.backing_allocator.free(page);</span>
+<span class="line" id="L1002"></span>
+<span class="line" id="L1003">            <span class="tok-kw">const</span> bucket_size = bucketSize(size_class);</span>
+<span class="line" id="L1004">            <span class="tok-kw">const</span> bucket_bytes = <span class="tok-kw">try</span> self.backing_allocator.alignedAlloc(<span class="tok-type">u8</span>, <span class="tok-builtin">@alignOf</span>(BucketHeader), bucket_size);</span>
+<span class="line" id="L1005">            <span class="tok-kw">const</span> ptr = <span class="tok-builtin">@as</span>(*BucketHeader, <span class="tok-builtin">@ptrCast</span>(bucket_bytes.ptr));</span>
+<span class="line" id="L1006">            ptr.* = BucketHeader{</span>
+<span class="line" id="L1007">                .prev = ptr,</span>
+<span class="line" id="L1008">                .next = ptr,</span>
+<span class="line" id="L1009">                .page = page.ptr,</span>
+<span class="line" id="L1010">                .alloc_cursor = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1011">                .used_count = <span class="tok-number">0</span>,</span>
+<span class="line" id="L1012">            };</span>
+<span class="line" id="L1013">            self.buckets[bucket_index] = ptr;</span>
+<span class="line" id="L1014">            <span class="tok-comment">// Set the used bits to all zeroes</span>
+</span>
+<span class="line" id="L1015">            <span class="tok-builtin">@memset</span>(<span class="tok-builtin">@as</span>([*]<span class="tok-type">u8</span>, <span class="tok-builtin">@as</span>(*[<span class="tok-number">1</span>]<span class="tok-type">u8</span>, ptr.usedBits(<span class="tok-number">0</span>)))[<span class="tok-number">0</span>..usedBitsCount(size_class)], <span class="tok-number">0</span>);</span>
+<span class="line" id="L1016">            <span class="tok-kw">return</span> ptr;</span>
+<span class="line" id="L1017">        }</span>
+<span class="line" id="L1018">    };</span>
+<span class="line" id="L1019">}</span>
+<span class="line" id="L1020"></span>
+<span class="line" id="L1021"><span class="tok-kw">const</span> TraceKind = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L1022">    alloc,</span>
+<span class="line" id="L1023">    free,</span>
+<span class="line" id="L1024">};</span>
+<span class="line" id="L1025"></span>
+<span class="line" id="L1026"><span class="tok-kw">const</span> test_config = Config{};</span>
+<span class="line" id="L1027"></span>
+<span class="line" id="L1028"><span class="tok-kw">test</span> <span class="tok-str">&quot;small allocations - free in same order&quot;</span> {</span>
+<span class="line" id="L1029">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1030">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1031">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1032"></span>
+<span class="line" id="L1033">    <span class="tok-kw">var</span> list = std.ArrayList(*<span class="tok-type">u64</span>).init(std.testing.allocator);</span>
+<span class="line" id="L1034">    <span class="tok-kw">defer</span> list.deinit();</span>
+<span class="line" id="L1035"></span>
+<span class="line" id="L1036">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1037">    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">513</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1038">        <span class="tok-kw">const</span> ptr = <span class="tok-kw">try</span> allocator.create(<span class="tok-type">u64</span>);</span>
+<span class="line" id="L1039">        <span class="tok-kw">try</span> list.append(ptr);</span>
+<span class="line" id="L1040">    }</span>
+<span class="line" id="L1041"></span>
+<span class="line" id="L1042">    <span class="tok-kw">for</span> (list.items) |ptr| {</span>
+<span class="line" id="L1043">        allocator.destroy(ptr);</span>
+<span class="line" id="L1044">    }</span>
+<span class="line" id="L1045">}</span>
+<span class="line" id="L1046"></span>
+<span class="line" id="L1047"><span class="tok-kw">test</span> <span class="tok-str">&quot;small allocations - free in reverse order&quot;</span> {</span>
+<span class="line" id="L1048">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1049">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1050">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1051"></span>
+<span class="line" id="L1052">    <span class="tok-kw">var</span> list = std.ArrayList(*<span class="tok-type">u64</span>).init(std.testing.allocator);</span>
+<span class="line" id="L1053">    <span class="tok-kw">defer</span> list.deinit();</span>
+<span class="line" id="L1054"></span>
+<span class="line" id="L1055">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1056">    <span class="tok-kw">while</span> (i &lt; <span class="tok-number">513</span>) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1057">        <span class="tok-kw">const</span> ptr = <span class="tok-kw">try</span> allocator.create(<span class="tok-type">u64</span>);</span>
+<span class="line" id="L1058">        <span class="tok-kw">try</span> list.append(ptr);</span>
+<span class="line" id="L1059">    }</span>
+<span class="line" id="L1060"></span>
+<span class="line" id="L1061">    <span class="tok-kw">while</span> (list.popOrNull()) |ptr| {</span>
+<span class="line" id="L1062">        allocator.destroy(ptr);</span>
+<span class="line" id="L1063">    }</span>
+<span class="line" id="L1064">}</span>
+<span class="line" id="L1065"></span>
+<span class="line" id="L1066"><span class="tok-kw">test</span> <span class="tok-str">&quot;large allocations&quot;</span> {</span>
+<span class="line" id="L1067">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1068">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1069">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1070"></span>
+<span class="line" id="L1071">    <span class="tok-kw">const</span> ptr1 = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u64</span>, <span class="tok-number">42768</span>);</span>
+<span class="line" id="L1072">    <span class="tok-kw">const</span> ptr2 = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u64</span>, <span class="tok-number">52768</span>);</span>
+<span class="line" id="L1073">    allocator.free(ptr1);</span>
+<span class="line" id="L1074">    <span class="tok-kw">const</span> ptr3 = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u64</span>, <span class="tok-number">62768</span>);</span>
+<span class="line" id="L1075">    allocator.free(ptr3);</span>
+<span class="line" id="L1076">    allocator.free(ptr2);</span>
+<span class="line" id="L1077">}</span>
+<span class="line" id="L1078"></span>
+<span class="line" id="L1079"><span class="tok-kw">test</span> <span class="tok-str">&quot;very large allocation&quot;</span> {</span>
+<span class="line" id="L1080">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1081">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1082">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1083"></span>
+<span class="line" id="L1084">    <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.OutOfMemory, allocator.alloc(<span class="tok-type">u8</span>, math.maxInt(<span class="tok-type">usize</span>)));</span>
+<span class="line" id="L1085">}</span>
+<span class="line" id="L1086"></span>
+<span class="line" id="L1087"><span class="tok-kw">test</span> <span class="tok-str">&quot;realloc&quot;</span> {</span>
+<span class="line" id="L1088">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1089">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1090">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1091"></span>
+<span class="line" id="L1092">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alignedAlloc(<span class="tok-type">u8</span>, <span class="tok-builtin">@alignOf</span>(<span class="tok-type">u32</span>), <span class="tok-number">1</span>);</span>
+<span class="line" id="L1093">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1094">    slice[<span class="tok-number">0</span>] = <span class="tok-number">0x12</span>;</span>
+<span class="line" id="L1095"></span>
+<span class="line" id="L1096">    <span class="tok-comment">// This reallocation should keep its pointer address.</span>
+</span>
+<span class="line" id="L1097">    <span class="tok-kw">const</span> old_slice = slice;</span>
+<span class="line" id="L1098">    slice = <span class="tok-kw">try</span> allocator.realloc(slice, <span class="tok-number">2</span>);</span>
+<span class="line" id="L1099">    <span class="tok-kw">try</span> std.testing.expect(old_slice.ptr == slice.ptr);</span>
+<span class="line" id="L1100">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1101">    slice[<span class="tok-number">1</span>] = <span class="tok-number">0x34</span>;</span>
+<span class="line" id="L1102"></span>
+<span class="line" id="L1103">    <span class="tok-comment">// This requires upgrading to a larger size class</span>
+</span>
+<span class="line" id="L1104">    slice = <span class="tok-kw">try</span> allocator.realloc(slice, <span class="tok-number">17</span>);</span>
+<span class="line" id="L1105">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1106">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">1</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1107">}</span>
+<span class="line" id="L1108"></span>
+<span class="line" id="L1109"><span class="tok-kw">test</span> <span class="tok-str">&quot;shrink&quot;</span> {</span>
+<span class="line" id="L1110">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1111">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1112">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1113"></span>
+<span class="line" id="L1114">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">20</span>);</span>
+<span class="line" id="L1115">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1116"></span>
+<span class="line" id="L1117">    <span class="tok-builtin">@memset</span>(slice, <span class="tok-number">0x11</span>);</span>
+<span class="line" id="L1118"></span>
+<span class="line" id="L1119">    <span class="tok-kw">try</span> std.testing.expect(allocator.resize(slice, <span class="tok-number">17</span>));</span>
+<span class="line" id="L1120">    slice = slice[<span class="tok-number">0</span>..<span class="tok-number">17</span>];</span>
+<span class="line" id="L1121"></span>
+<span class="line" id="L1122">    <span class="tok-kw">for</span> (slice) |b| {</span>
+<span class="line" id="L1123">        <span class="tok-kw">try</span> std.testing.expect(b == <span class="tok-number">0x11</span>);</span>
+<span class="line" id="L1124">    }</span>
+<span class="line" id="L1125"></span>
+<span class="line" id="L1126">    <span class="tok-kw">try</span> std.testing.expect(allocator.resize(slice, <span class="tok-number">16</span>));</span>
+<span class="line" id="L1127">    slice = slice[<span class="tok-number">0</span>..<span class="tok-number">16</span>];</span>
+<span class="line" id="L1128"></span>
+<span class="line" id="L1129">    <span class="tok-kw">for</span> (slice) |b| {</span>
+<span class="line" id="L1130">        <span class="tok-kw">try</span> std.testing.expect(b == <span class="tok-number">0x11</span>);</span>
+<span class="line" id="L1131">    }</span>
+<span class="line" id="L1132">}</span>
+<span class="line" id="L1133"></span>
+<span class="line" id="L1134"><span class="tok-kw">test</span> <span class="tok-str">&quot;large object - grow&quot;</span> {</span>
+<span class="line" id="L1135">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1136">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1137">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1138"></span>
+<span class="line" id="L1139">    <span class="tok-kw">var</span> slice1 = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, page_size * <span class="tok-number">2</span> - <span class="tok-number">20</span>);</span>
+<span class="line" id="L1140">    <span class="tok-kw">defer</span> allocator.free(slice1);</span>
+<span class="line" id="L1141"></span>
+<span class="line" id="L1142">    <span class="tok-kw">const</span> old = slice1;</span>
+<span class="line" id="L1143">    slice1 = <span class="tok-kw">try</span> allocator.realloc(slice1, page_size * <span class="tok-number">2</span> - <span class="tok-number">10</span>);</span>
+<span class="line" id="L1144">    <span class="tok-kw">try</span> std.testing.expect(slice1.ptr == old.ptr);</span>
+<span class="line" id="L1145"></span>
+<span class="line" id="L1146">    slice1 = <span class="tok-kw">try</span> allocator.realloc(slice1, page_size * <span class="tok-number">2</span>);</span>
+<span class="line" id="L1147">    <span class="tok-kw">try</span> std.testing.expect(slice1.ptr == old.ptr);</span>
+<span class="line" id="L1148"></span>
+<span class="line" id="L1149">    slice1 = <span class="tok-kw">try</span> allocator.realloc(slice1, page_size * <span class="tok-number">2</span> + <span class="tok-number">1</span>);</span>
+<span class="line" id="L1150">}</span>
+<span class="line" id="L1151"></span>
+<span class="line" id="L1152"><span class="tok-kw">test</span> <span class="tok-str">&quot;realloc small object to large object&quot;</span> {</span>
+<span class="line" id="L1153">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1154">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1155">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1156"></span>
+<span class="line" id="L1157">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">70</span>);</span>
+<span class="line" id="L1158">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1159">    slice[<span class="tok-number">0</span>] = <span class="tok-number">0x12</span>;</span>
+<span class="line" id="L1160">    slice[<span class="tok-number">60</span>] = <span class="tok-number">0x34</span>;</span>
+<span class="line" id="L1161"></span>
+<span class="line" id="L1162">    <span class="tok-comment">// This requires upgrading to a large object</span>
+</span>
+<span class="line" id="L1163">    <span class="tok-kw">const</span> large_object_size = page_size * <span class="tok-number">2</span> + <span class="tok-number">50</span>;</span>
+<span class="line" id="L1164">    slice = <span class="tok-kw">try</span> allocator.realloc(slice, large_object_size);</span>
+<span class="line" id="L1165">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1166">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">60</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1167">}</span>
+<span class="line" id="L1168"></span>
+<span class="line" id="L1169"><span class="tok-kw">test</span> <span class="tok-str">&quot;shrink large object to large object&quot;</span> {</span>
+<span class="line" id="L1170">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1171">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1172">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1173"></span>
+<span class="line" id="L1174">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, page_size * <span class="tok-number">2</span> + <span class="tok-number">50</span>);</span>
+<span class="line" id="L1175">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1176">    slice[<span class="tok-number">0</span>] = <span class="tok-number">0x12</span>;</span>
+<span class="line" id="L1177">    slice[<span class="tok-number">60</span>] = <span class="tok-number">0x34</span>;</span>
+<span class="line" id="L1178"></span>
+<span class="line" id="L1179">    <span class="tok-kw">if</span> (!allocator.resize(slice, page_size * <span class="tok-number">2</span> + <span class="tok-number">1</span>)) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L1180">    slice = slice.ptr[<span class="tok-number">0</span> .. page_size * <span class="tok-number">2</span> + <span class="tok-number">1</span>];</span>
+<span class="line" id="L1181">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1182">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">60</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1183"></span>
+<span class="line" id="L1184">    <span class="tok-kw">try</span> std.testing.expect(allocator.resize(slice, page_size * <span class="tok-number">2</span> + <span class="tok-number">1</span>));</span>
+<span class="line" id="L1185">    slice = slice[<span class="tok-number">0</span> .. page_size * <span class="tok-number">2</span> + <span class="tok-number">1</span>];</span>
+<span class="line" id="L1186">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1187">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">60</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1188"></span>
+<span class="line" id="L1189">    slice = <span class="tok-kw">try</span> allocator.realloc(slice, page_size * <span class="tok-number">2</span>);</span>
+<span class="line" id="L1190">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1191">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">60</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1192">}</span>
+<span class="line" id="L1193"></span>
+<span class="line" id="L1194"><span class="tok-kw">test</span> <span class="tok-str">&quot;shrink large object to large object with larger alignment&quot;</span> {</span>
+<span class="line" id="L1195">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1196">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1197">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1198"></span>
+<span class="line" id="L1199">    <span class="tok-kw">var</span> debug_buffer: [<span class="tok-number">1000</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1200">    <span class="tok-kw">var</span> fba = std.heap.FixedBufferAllocator.init(&amp;debug_buffer);</span>
+<span class="line" id="L1201">    <span class="tok-kw">const</span> debug_allocator = fba.allocator();</span>
+<span class="line" id="L1202"></span>
+<span class="line" id="L1203">    <span class="tok-kw">const</span> alloc_size = page_size * <span class="tok-number">2</span> + <span class="tok-number">50</span>;</span>
+<span class="line" id="L1204">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alignedAlloc(<span class="tok-type">u8</span>, <span class="tok-number">16</span>, alloc_size);</span>
+<span class="line" id="L1205">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1206"></span>
+<span class="line" id="L1207">    <span class="tok-kw">const</span> big_alignment: <span class="tok-type">usize</span> = <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L1208">        .windows =&gt; page_size * <span class="tok-number">32</span>, <span class="tok-comment">// Windows aligns to 64K.</span>
+</span>
+<span class="line" id="L1209">        <span class="tok-kw">else</span> =&gt; page_size * <span class="tok-number">2</span>,</span>
+<span class="line" id="L1210">    };</span>
+<span class="line" id="L1211">    <span class="tok-comment">// This loop allocates until we find a page that is not aligned to the big</span>
+</span>
+<span class="line" id="L1212">    <span class="tok-comment">// alignment. Then we shrink the allocation after the loop, but increase the</span>
+</span>
+<span class="line" id="L1213">    <span class="tok-comment">// alignment to the higher one, that we know will force it to realloc.</span>
+</span>
+<span class="line" id="L1214">    <span class="tok-kw">var</span> stuff_to_free = std.ArrayList([]<span class="tok-kw">align</span>(<span class="tok-number">16</span>) <span class="tok-type">u8</span>).init(debug_allocator);</span>
+<span class="line" id="L1215">    <span class="tok-kw">while</span> (mem.isAligned(<span class="tok-builtin">@intFromPtr</span>(slice.ptr), big_alignment)) {</span>
+<span class="line" id="L1216">        <span class="tok-kw">try</span> stuff_to_free.append(slice);</span>
+<span class="line" id="L1217">        slice = <span class="tok-kw">try</span> allocator.alignedAlloc(<span class="tok-type">u8</span>, <span class="tok-number">16</span>, alloc_size);</span>
+<span class="line" id="L1218">    }</span>
+<span class="line" id="L1219">    <span class="tok-kw">while</span> (stuff_to_free.popOrNull()) |item| {</span>
+<span class="line" id="L1220">        allocator.free(item);</span>
+<span class="line" id="L1221">    }</span>
+<span class="line" id="L1222">    slice[<span class="tok-number">0</span>] = <span class="tok-number">0x12</span>;</span>
+<span class="line" id="L1223">    slice[<span class="tok-number">60</span>] = <span class="tok-number">0x34</span>;</span>
+<span class="line" id="L1224"></span>
+<span class="line" id="L1225">    slice = <span class="tok-kw">try</span> allocator.reallocAdvanced(slice, big_alignment, alloc_size / <span class="tok-number">2</span>);</span>
+<span class="line" id="L1226">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1227">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">60</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1228">}</span>
+<span class="line" id="L1229"></span>
+<span class="line" id="L1230"><span class="tok-kw">test</span> <span class="tok-str">&quot;realloc large object to small object&quot;</span> {</span>
+<span class="line" id="L1231">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1232">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1233">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1234"></span>
+<span class="line" id="L1235">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, page_size * <span class="tok-number">2</span> + <span class="tok-number">50</span>);</span>
+<span class="line" id="L1236">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1237">    slice[<span class="tok-number">0</span>] = <span class="tok-number">0x12</span>;</span>
+<span class="line" id="L1238">    slice[<span class="tok-number">16</span>] = <span class="tok-number">0x34</span>;</span>
+<span class="line" id="L1239"></span>
+<span class="line" id="L1240">    slice = <span class="tok-kw">try</span> allocator.realloc(slice, <span class="tok-number">19</span>);</span>
+<span class="line" id="L1241">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1242">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">16</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1243">}</span>
+<span class="line" id="L1244"></span>
+<span class="line" id="L1245"><span class="tok-kw">test</span> <span class="tok-str">&quot;overridable mutexes&quot;</span> {</span>
+<span class="line" id="L1246">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(.{ .MutexType = std.Thread.Mutex }){</span>
+<span class="line" id="L1247">        .backing_allocator = std.testing.allocator,</span>
+<span class="line" id="L1248">        .mutex = std.Thread.Mutex{},</span>
+<span class="line" id="L1249">    };</span>
+<span class="line" id="L1250">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1251">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1252"></span>
+<span class="line" id="L1253">    <span class="tok-kw">const</span> ptr = <span class="tok-kw">try</span> allocator.create(<span class="tok-type">i32</span>);</span>
+<span class="line" id="L1254">    <span class="tok-kw">defer</span> allocator.destroy(ptr);</span>
+<span class="line" id="L1255">}</span>
+<span class="line" id="L1256"></span>
+<span class="line" id="L1257"><span class="tok-kw">test</span> <span class="tok-str">&quot;non-page-allocator backing allocator&quot;</span> {</span>
+<span class="line" id="L1258">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(.{}){ .backing_allocator = std.testing.allocator };</span>
+<span class="line" id="L1259">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1260">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1261"></span>
+<span class="line" id="L1262">    <span class="tok-kw">const</span> ptr = <span class="tok-kw">try</span> allocator.create(<span class="tok-type">i32</span>);</span>
+<span class="line" id="L1263">    <span class="tok-kw">defer</span> allocator.destroy(ptr);</span>
+<span class="line" id="L1264">}</span>
+<span class="line" id="L1265"></span>
+<span class="line" id="L1266"><span class="tok-kw">test</span> <span class="tok-str">&quot;realloc large object to larger alignment&quot;</span> {</span>
+<span class="line" id="L1267">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1268">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1269">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1270"></span>
+<span class="line" id="L1271">    <span class="tok-kw">var</span> debug_buffer: [<span class="tok-number">1000</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1272">    <span class="tok-kw">var</span> fba = std.heap.FixedBufferAllocator.init(&amp;debug_buffer);</span>
+<span class="line" id="L1273">    <span class="tok-kw">const</span> debug_allocator = fba.allocator();</span>
+<span class="line" id="L1274"></span>
+<span class="line" id="L1275">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alignedAlloc(<span class="tok-type">u8</span>, <span class="tok-number">16</span>, page_size * <span class="tok-number">2</span> + <span class="tok-number">50</span>);</span>
+<span class="line" id="L1276">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1277"></span>
+<span class="line" id="L1278">    <span class="tok-kw">const</span> big_alignment: <span class="tok-type">usize</span> = <span class="tok-kw">switch</span> (builtin.os.tag) {</span>
+<span class="line" id="L1279">        .windows =&gt; page_size * <span class="tok-number">32</span>, <span class="tok-comment">// Windows aligns to 64K.</span>
+</span>
+<span class="line" id="L1280">        <span class="tok-kw">else</span> =&gt; page_size * <span class="tok-number">2</span>,</span>
+<span class="line" id="L1281">    };</span>
+<span class="line" id="L1282">    <span class="tok-comment">// This loop allocates until we find a page that is not aligned to the big alignment.</span>
+</span>
+<span class="line" id="L1283">    <span class="tok-kw">var</span> stuff_to_free = std.ArrayList([]<span class="tok-kw">align</span>(<span class="tok-number">16</span>) <span class="tok-type">u8</span>).init(debug_allocator);</span>
+<span class="line" id="L1284">    <span class="tok-kw">while</span> (mem.isAligned(<span class="tok-builtin">@intFromPtr</span>(slice.ptr), big_alignment)) {</span>
+<span class="line" id="L1285">        <span class="tok-kw">try</span> stuff_to_free.append(slice);</span>
+<span class="line" id="L1286">        slice = <span class="tok-kw">try</span> allocator.alignedAlloc(<span class="tok-type">u8</span>, <span class="tok-number">16</span>, page_size * <span class="tok-number">2</span> + <span class="tok-number">50</span>);</span>
+<span class="line" id="L1287">    }</span>
+<span class="line" id="L1288">    <span class="tok-kw">while</span> (stuff_to_free.popOrNull()) |item| {</span>
+<span class="line" id="L1289">        allocator.free(item);</span>
+<span class="line" id="L1290">    }</span>
+<span class="line" id="L1291">    slice[<span class="tok-number">0</span>] = <span class="tok-number">0x12</span>;</span>
+<span class="line" id="L1292">    slice[<span class="tok-number">16</span>] = <span class="tok-number">0x34</span>;</span>
+<span class="line" id="L1293"></span>
+<span class="line" id="L1294">    slice = <span class="tok-kw">try</span> allocator.reallocAdvanced(slice, <span class="tok-number">32</span>, page_size * <span class="tok-number">2</span> + <span class="tok-number">100</span>);</span>
+<span class="line" id="L1295">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1296">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">16</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1297"></span>
+<span class="line" id="L1298">    slice = <span class="tok-kw">try</span> allocator.reallocAdvanced(slice, <span class="tok-number">32</span>, page_size * <span class="tok-number">2</span> + <span class="tok-number">25</span>);</span>
+<span class="line" id="L1299">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1300">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">16</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1301"></span>
+<span class="line" id="L1302">    slice = <span class="tok-kw">try</span> allocator.reallocAdvanced(slice, big_alignment, page_size * <span class="tok-number">2</span> + <span class="tok-number">100</span>);</span>
+<span class="line" id="L1303">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1304">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">16</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1305">}</span>
+<span class="line" id="L1306"></span>
+<span class="line" id="L1307"><span class="tok-kw">test</span> <span class="tok-str">&quot;large object shrinks to small but allocation fails during shrink&quot;</span> {</span>
+<span class="line" id="L1308">    <span class="tok-kw">var</span> failing_allocator = std.testing.FailingAllocator.init(std.heap.page_allocator, <span class="tok-number">3</span>);</span>
+<span class="line" id="L1309">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(.{}){ .backing_allocator = failing_allocator.allocator() };</span>
+<span class="line" id="L1310">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1311">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1312"></span>
+<span class="line" id="L1313">    <span class="tok-kw">var</span> slice = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, page_size * <span class="tok-number">2</span> + <span class="tok-number">50</span>);</span>
+<span class="line" id="L1314">    <span class="tok-kw">defer</span> allocator.free(slice);</span>
+<span class="line" id="L1315">    slice[<span class="tok-number">0</span>] = <span class="tok-number">0x12</span>;</span>
+<span class="line" id="L1316">    slice[<span class="tok-number">3</span>] = <span class="tok-number">0x34</span>;</span>
+<span class="line" id="L1317"></span>
+<span class="line" id="L1318">    <span class="tok-comment">// Next allocation will fail in the backing allocator of the GeneralPurposeAllocator</span>
+</span>
+<span class="line" id="L1319"></span>
+<span class="line" id="L1320">    <span class="tok-kw">try</span> std.testing.expect(allocator.resize(slice, <span class="tok-number">4</span>));</span>
+<span class="line" id="L1321">    slice = slice[<span class="tok-number">0</span>..<span class="tok-number">4</span>];</span>
+<span class="line" id="L1322">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">0</span>] == <span class="tok-number">0x12</span>);</span>
+<span class="line" id="L1323">    <span class="tok-kw">try</span> std.testing.expect(slice[<span class="tok-number">3</span>] == <span class="tok-number">0x34</span>);</span>
+<span class="line" id="L1324">}</span>
+<span class="line" id="L1325"></span>
+<span class="line" id="L1326"><span class="tok-kw">test</span> <span class="tok-str">&quot;objects of size 1024 and 2048&quot;</span> {</span>
+<span class="line" id="L1327">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(test_config){};</span>
+<span class="line" id="L1328">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1329">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1330"></span>
+<span class="line" id="L1331">    <span class="tok-kw">const</span> slice = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">1025</span>);</span>
+<span class="line" id="L1332">    <span class="tok-kw">const</span> slice2 = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">3000</span>);</span>
+<span class="line" id="L1333"></span>
+<span class="line" id="L1334">    allocator.free(slice);</span>
+<span class="line" id="L1335">    allocator.free(slice2);</span>
+<span class="line" id="L1336">}</span>
+<span class="line" id="L1337"></span>
+<span class="line" id="L1338"><span class="tok-kw">test</span> <span class="tok-str">&quot;setting a memory cap&quot;</span> {</span>
+<span class="line" id="L1339">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(.{ .enable_memory_limit = <span class="tok-null">true</span> }){};</span>
+<span class="line" id="L1340">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1341">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1342"></span>
+<span class="line" id="L1343">    gpa.setRequestedMemoryLimit(<span class="tok-number">1010</span>);</span>
+<span class="line" id="L1344"></span>
+<span class="line" id="L1345">    <span class="tok-kw">const</span> small = <span class="tok-kw">try</span> allocator.create(<span class="tok-type">i32</span>);</span>
+<span class="line" id="L1346">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == <span class="tok-number">4</span>);</span>
+<span class="line" id="L1347"></span>
+<span class="line" id="L1348">    <span class="tok-kw">const</span> big = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">1000</span>);</span>
+<span class="line" id="L1349">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == <span class="tok-number">1004</span>);</span>
+<span class="line" id="L1350"></span>
+<span class="line" id="L1351">    <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.OutOfMemory, allocator.create(<span class="tok-type">u64</span>));</span>
+<span class="line" id="L1352"></span>
+<span class="line" id="L1353">    allocator.destroy(small);</span>
+<span class="line" id="L1354">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == <span class="tok-number">1000</span>);</span>
+<span class="line" id="L1355"></span>
+<span class="line" id="L1356">    allocator.free(big);</span>
+<span class="line" id="L1357">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == <span class="tok-number">0</span>);</span>
+<span class="line" id="L1358"></span>
+<span class="line" id="L1359">    <span class="tok-kw">const</span> exact = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">1010</span>);</span>
+<span class="line" id="L1360">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == <span class="tok-number">1010</span>);</span>
+<span class="line" id="L1361">    allocator.free(exact);</span>
+<span class="line" id="L1362">}</span>
+<span class="line" id="L1363"></span>
+<span class="line" id="L1364"><span class="tok-kw">test</span> <span class="tok-str">&quot;double frees&quot;</span> {</span>
+<span class="line" id="L1365">    <span class="tok-comment">// use a GPA to back a GPA to check for leaks of the latter's metadata</span>
+</span>
+<span class="line" id="L1366">    <span class="tok-kw">var</span> backing_gpa = GeneralPurposeAllocator(.{ .safety = <span class="tok-null">true</span> }){};</span>
+<span class="line" id="L1367">    <span class="tok-kw">defer</span> std.testing.expect(backing_gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1368"></span>
+<span class="line" id="L1369">    <span class="tok-kw">const</span> GPA = GeneralPurposeAllocator(.{ .safety = <span class="tok-null">true</span>, .never_unmap = <span class="tok-null">true</span>, .retain_metadata = <span class="tok-null">true</span> });</span>
+<span class="line" id="L1370">    <span class="tok-kw">var</span> gpa = GPA{ .backing_allocator = backing_gpa.allocator() };</span>
+<span class="line" id="L1371">    <span class="tok-kw">defer</span> std.testing.expect(gpa.deinit() == .ok) <span class="tok-kw">catch</span> <span class="tok-builtin">@panic</span>(<span class="tok-str">&quot;leak&quot;</span>);</span>
+<span class="line" id="L1372">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1373"></span>
+<span class="line" id="L1374">    <span class="tok-comment">// detect a small allocation double free, even though bucket is emptied</span>
+</span>
+<span class="line" id="L1375">    <span class="tok-kw">const</span> index: <span class="tok-type">usize</span> = <span class="tok-number">6</span>;</span>
+<span class="line" id="L1376">    <span class="tok-kw">const</span> size_class: <span class="tok-type">usize</span> = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-number">6</span>;</span>
+<span class="line" id="L1377">    <span class="tok-kw">const</span> small = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, size_class);</span>
+<span class="line" id="L1378">    <span class="tok-kw">try</span> std.testing.expect(GPA.searchBucket(gpa.buckets[index], <span class="tok-builtin">@intFromPtr</span>(small.ptr)) != <span class="tok-null">null</span>);</span>
+<span class="line" id="L1379">    allocator.free(small);</span>
+<span class="line" id="L1380">    <span class="tok-kw">try</span> std.testing.expect(GPA.searchBucket(gpa.buckets[index], <span class="tok-builtin">@intFromPtr</span>(small.ptr)) == <span class="tok-null">null</span>);</span>
+<span class="line" id="L1381">    <span class="tok-kw">try</span> std.testing.expect(GPA.searchBucket(gpa.empty_buckets, <span class="tok-builtin">@intFromPtr</span>(small.ptr)) != <span class="tok-null">null</span>);</span>
+<span class="line" id="L1382"></span>
+<span class="line" id="L1383">    <span class="tok-comment">// detect a large allocation double free</span>
+</span>
+<span class="line" id="L1384">    <span class="tok-kw">const</span> large = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">2</span> * page_size);</span>
+<span class="line" id="L1385">    <span class="tok-kw">try</span> std.testing.expect(gpa.large_allocations.contains(<span class="tok-builtin">@intFromPtr</span>(large.ptr)));</span>
+<span class="line" id="L1386">    <span class="tok-kw">try</span> std.testing.expectEqual(gpa.large_allocations.getEntry(<span class="tok-builtin">@intFromPtr</span>(large.ptr)).?.value_ptr.bytes, large);</span>
+<span class="line" id="L1387">    allocator.free(large);</span>
+<span class="line" id="L1388">    <span class="tok-kw">try</span> std.testing.expect(gpa.large_allocations.contains(<span class="tok-builtin">@intFromPtr</span>(large.ptr)));</span>
+<span class="line" id="L1389">    <span class="tok-kw">try</span> std.testing.expect(gpa.large_allocations.getEntry(<span class="tok-builtin">@intFromPtr</span>(large.ptr)).?.value_ptr.freed);</span>
+<span class="line" id="L1390"></span>
+<span class="line" id="L1391">    <span class="tok-kw">const</span> normal_small = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, size_class);</span>
+<span class="line" id="L1392">    <span class="tok-kw">defer</span> allocator.free(normal_small);</span>
+<span class="line" id="L1393">    <span class="tok-kw">const</span> normal_large = <span class="tok-kw">try</span> allocator.alloc(<span class="tok-type">u8</span>, <span class="tok-number">2</span> * page_size);</span>
+<span class="line" id="L1394">    <span class="tok-kw">defer</span> allocator.free(normal_large);</span>
+<span class="line" id="L1395"></span>
+<span class="line" id="L1396">    <span class="tok-comment">// check that flushing retained metadata doesn't disturb live allocations</span>
+</span>
+<span class="line" id="L1397">    gpa.flushRetainedMetadata();</span>
+<span class="line" id="L1398">    <span class="tok-kw">try</span> std.testing.expect(gpa.empty_buckets == <span class="tok-null">null</span>);</span>
+<span class="line" id="L1399">    <span class="tok-kw">try</span> std.testing.expect(GPA.searchBucket(gpa.buckets[index], <span class="tok-builtin">@intFromPtr</span>(normal_small.ptr)) != <span class="tok-null">null</span>);</span>
+<span class="line" id="L1400">    <span class="tok-kw">try</span> std.testing.expect(gpa.large_allocations.contains(<span class="tok-builtin">@intFromPtr</span>(normal_large.ptr)));</span>
+<span class="line" id="L1401">    <span class="tok-kw">try</span> std.testing.expect(!gpa.large_allocations.contains(<span class="tok-builtin">@intFromPtr</span>(large.ptr)));</span>
+<span class="line" id="L1402">}</span>
+<span class="line" id="L1403"></span>
+<span class="line" id="L1404"><span class="tok-kw">test</span> <span class="tok-str">&quot;bug 9995 fix, large allocs count requested size not backing size&quot;</span> {</span>
+<span class="line" id="L1405">    <span class="tok-comment">// with AtLeast, buffer likely to be larger than requested, especially when shrinking</span>
+</span>
+<span class="line" id="L1406">    <span class="tok-kw">var</span> gpa = GeneralPurposeAllocator(.{ .enable_memory_limit = <span class="tok-null">true</span> }){};</span>
+<span class="line" id="L1407">    <span class="tok-kw">const</span> allocator = gpa.allocator();</span>
+<span class="line" id="L1408"></span>
+<span class="line" id="L1409">    <span class="tok-kw">var</span> buf = <span class="tok-kw">try</span> allocator.alignedAlloc(<span class="tok-type">u8</span>, <span class="tok-number">1</span>, page_size + <span class="tok-number">1</span>);</span>
+<span class="line" id="L1410">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == page_size + <span class="tok-number">1</span>);</span>
+<span class="line" id="L1411">    buf = <span class="tok-kw">try</span> allocator.realloc(buf, <span class="tok-number">1</span>);</span>
+<span class="line" id="L1412">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == <span class="tok-number">1</span>);</span>
+<span class="line" id="L1413">    buf = <span class="tok-kw">try</span> allocator.realloc(buf, <span class="tok-number">2</span>);</span>
+<span class="line" id="L1414">    <span class="tok-kw">try</span> std.testing.expect(gpa.total_requested_bytes == <span class="tok-number">2</span>);</span>
+<span class="line" id="L1415">}</span>
+<span class="line" id="L1416"></span>
+</code></pre></body>
+</html>
