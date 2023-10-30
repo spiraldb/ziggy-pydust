@@ -283,7 +283,7 @@ pub fn Trampoline(comptime T: type) type {
         const ZigCallArgs = struct {
             argsStruct: T,
 
-            pub fn unwrap(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!T {
+            pub fn unwrap(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!@This() {
                 var kwargs = py.Kwargs.init(py.allocator);
                 if (pykwargs) |kw| {
                     var iter = kw.itemsIterator();
@@ -300,11 +300,11 @@ pub fn Trampoline(comptime T: type) type {
                     }
                 }
 
-                return .{ .argsStruct = funcs.unwrapArgs(T, args, kwargs) };
+                return .{ .argsStruct = try funcs.unwrapArgs(T, args, kwargs) };
             }
 
             pub fn deinit(self: @This()) void {
-                funcs.deinitArgs(self.argsStruct);
+                funcs.deinitArgs(T, self.argsStruct);
             }
         };
     };
