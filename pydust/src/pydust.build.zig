@@ -9,6 +9,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+const builtin = @import("builtin");
 const std = @import("std");
 const Step = std.Build.Step;
 const LazyPath = std.Build.LazyPath;
@@ -295,7 +296,7 @@ fn getLibpython(allocator: std.mem.Allocator, python_exe: []const u8) ![]const u
 }
 
 fn getPythonOutput(allocator: std.mem.Allocator, python_exe: []const u8, code: []const u8) ![]const u8 {
-    const result = try std.process.Child.exec(.{
+    const result = try runProcess(.{
         .allocator = allocator,
         .argv = &.{ python_exe, "-c", code },
     });
@@ -308,7 +309,7 @@ fn getPythonOutput(allocator: std.mem.Allocator, python_exe: []const u8, code: [
 }
 
 fn getStdOutput(allocator: std.mem.Allocator, argv: []const []const u8) ![]const u8 {
-    const result = try std.process.Child.exec(.{ .allocator = allocator, .argv = argv });
+    const result = try runProcess(.{ .allocator = allocator, .argv = argv });
     if (result.term.Exited != 0) {
         std.debug.print("Failed to execute {any}:\n{s}\n", .{ argv, result.stderr });
         std.process.exit(1);
@@ -316,3 +317,5 @@ fn getStdOutput(allocator: std.mem.Allocator, argv: []const []const u8) ![]const
     allocator.free(result.stderr);
     return result.stdout;
 }
+
+const runProcess = if (builtin.zig_version.minor >= 12) std.process.Child.run else std.process.Child.exec;

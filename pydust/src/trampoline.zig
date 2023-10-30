@@ -287,7 +287,6 @@ pub fn Trampoline(comptime T: type) type {
             }
 
             const args = try py.allocator.alloc(py.PyObject, if (pyargs) |a| a.length() else 0);
-            defer py.allocator.free(args);
             if (pyargs) |a| {
                 for (0..a.length()) |i| {
                     args[i] = try a.getItem(py.PyObject, i);
