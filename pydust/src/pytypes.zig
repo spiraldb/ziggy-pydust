@@ -272,9 +272,9 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
                 const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
 
                 const init_args = tramp.Trampoline(Args).unwrapCallArgs(args, kwargs) catch return -1;
-                defer funcs.deinitArgs(Args, init_args);
+                defer init_args.deinit();
 
-                tramp.coerceError(definition.__init__(self, init_args)) catch return -1;
+                tramp.coerceError(definition.__init__(self, init_args.argsStruct)) catch return -1;
             } else if (sig.selfParam) |_| {
                 tramp.coerceError(definition.__init__(self)) catch return -1;
             } else {
@@ -364,9 +364,9 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
 
             const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return null;
             const call_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;
-            defer funcs.deinitArgs(sig.argsParam.?, call_args);
+            defer call_args.deinit();
 
-            const result = tramp.coerceError(definition.__call__(self, call_args)) catch return null;
+            const result = tramp.coerceError(definition.__call__(self, call_args.argsStruct)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };
