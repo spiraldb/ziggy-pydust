@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+const builtin = @import("builtin");
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
@@ -91,7 +92,7 @@ fn getPythonIncludePath(
     python_exe: []const u8,
     allocator: std.mem.Allocator,
 ) ![]const u8 {
-    const includeResult = try std.process.Child.exec(.{
+    const includeResult = try runProcess(.{
         .allocator = allocator,
         .argv = &.{ python_exe, "-c", "import sysconfig; print(sysconfig.get_path('include'), end='')" },
     });
@@ -100,7 +101,7 @@ fn getPythonIncludePath(
 }
 
 fn getPythonLibraryPath(python_exe: []const u8, allocator: std.mem.Allocator) ![]const u8 {
-    const includeResult = try std.process.Child.exec(.{
+    const includeResult = try runProcess(.{
         .allocator = allocator,
         .argv = &.{ python_exe, "-c", "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')" },
     });
@@ -109,10 +110,12 @@ fn getPythonLibraryPath(python_exe: []const u8, allocator: std.mem.Allocator) ![
 }
 
 fn getPythonLDVersion(python_exe: []const u8, allocator: std.mem.Allocator) ![]const u8 {
-    const includeResult = try std.process.Child.exec(.{
+    const includeResult = try runProcess(.{
         .allocator = allocator,
         .argv = &.{ python_exe, "-c", "import sysconfig; print(sysconfig.get_config_var('LDVERSION'), end='')" },
     });
     defer allocator.free(includeResult.stderr);
     return includeResult.stdout;
 }
+
+const runProcess = if (builtin.zig_version.minor >= 12) std.process.Child.run else std.process.Child.exec;
