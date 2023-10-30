@@ -362,7 +362,10 @@ pub fn deinitArgs(comptime Args: type, args: Args, allPosArgs: []py.PyObject) vo
     const s = @typeInfo(Args).Struct;
     if (comptime varArgsIdx(Args)) |idx| {
         py.allocator.free(allPosArgs[0..idx]);
+    } else {
+        py.allocator.free(allPosArgs);
     }
+
     inline for (s.fields) |field| {
         if (field.type == py.Args) {
             py.allocator.free(@field(args, field.name));
