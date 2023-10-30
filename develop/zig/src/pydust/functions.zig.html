@@ -461,246 +461,223 @@
 <span class="line" id="L332">    <span class="tok-kw">var</span> args: Args = <span class="tok-null">undefined</span>;</span>
 <span class="line" id="L333"></span>
 <span class="line" id="L334">    <span class="tok-kw">const</span> s = <span class="tok-builtin">@typeInfo</span>(Args).Struct;</span>
-<span class="line" id="L335">    <span class="tok-kw">var</span> varargsFieldIdx: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
-<span class="line" id="L336">    <span class="tok-kw">var</span> varkwargsFieldIdx: <span class="tok-type">usize</span> = <span class="tok-null">undefined</span>;</span>
-<span class="line" id="L337">    <span class="tok-kw">var</span> argIdx: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
-<span class="line" id="L338">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (s.fields, <span class="tok-number">0</span>..) |field, fieldIdx| {</span>
-<span class="line" id="L339">        <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Args) {</span>
-<span class="line" id="L340">            <span class="tok-comment">// Variadic args</span>
+<span class="line" id="L335">    <span class="tok-kw">var</span> argIdx: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L336">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (s.fields) |field| {</span>
+<span class="line" id="L337">        <span class="tok-kw">if</span> (field.default_value) |def_value| {</span>
+<span class="line" id="L338">            <span class="tok-comment">// We have a kwarg.</span>
 </span>
-<span class="line" id="L341">            varargsFieldIdx = fieldIdx;</span>
-<span class="line" id="L342">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Kwargs) {</span>
-<span class="line" id="L343">            <span class="tok-comment">// Variadic kwargs</span>
+<span class="line" id="L339">            <span class="tok-kw">if</span> (kwargs.fetchRemove(field.name)) |entry| {</span>
+<span class="line" id="L340">                <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-kw">try</span> py.as(field.<span class="tok-type">type</span>, entry.value);</span>
+<span class="line" id="L341">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L342">                <span class="tok-comment">// Use the default value</span>
 </span>
-<span class="line" id="L344">            varkwargsFieldIdx = fieldIdx;</span>
-<span class="line" id="L345">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field.default_value) |def_value| {</span>
-<span class="line" id="L346">            <span class="tok-comment">// We have a kwarg.</span>
+<span class="line" id="L343">                <span class="tok-kw">const</span> defaultValue: *field.<span class="tok-type">type</span> = <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@constCast</span>(def_value)));</span>
+<span class="line" id="L344">                <span class="tok-builtin">@field</span>(args, field.name) = defaultValue.*;</span>
+<span class="line" id="L345">            }</span>
+<span class="line" id="L346">        } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> != py.Args <span class="tok-kw">and</span> field.<span class="tok-type">type</span> != py.Kwargs) {</span>
+<span class="line" id="L347">            <span class="tok-comment">// Otherwise, we have a regular argument.</span>
 </span>
-<span class="line" id="L347">            <span class="tok-kw">if</span> (kwargs.fetchRemove(field.name)) |entry| {</span>
-<span class="line" id="L348">                <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-kw">try</span> py.as(field.<span class="tok-type">type</span>, entry.value);</span>
-<span class="line" id="L349">            } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L350">                <span class="tok-comment">// Use the default value</span>
+<span class="line" id="L348">            <span class="tok-kw">if</span> (argIdx &gt;= pyargs.len) {</span>
+<span class="line" id="L349">                <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;Expected {d} arg{s}&quot;</span>, .{</span>
+<span class="line" id="L350">                    argCount(Args), <span class="tok-kw">if</span> (argCount(Args) &gt; <span class="tok-number">1</span>) <span class="tok-str">&quot;s&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;&quot;</span>,</span>
+<span class="line" id="L351">                });</span>
+<span class="line" id="L352">            }</span>
+<span class="line" id="L353">            <span class="tok-kw">const</span> value = pyargs[argIdx];</span>
+<span class="line" id="L354">            argIdx += <span class="tok-number">1</span>;</span>
+<span class="line" id="L355">            <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-kw">try</span> py.as(field.<span class="tok-type">type</span>, value);</span>
+<span class="line" id="L356">        }</span>
+<span class="line" id="L357">    }</span>
+<span class="line" id="L358"></span>
+<span class="line" id="L359">    <span class="tok-comment">// Now to handle var args.</span>
 </span>
-<span class="line" id="L351">                <span class="tok-kw">const</span> defaultValue: *field.<span class="tok-type">type</span> = <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@constCast</span>(def_value)));</span>
-<span class="line" id="L352">                <span class="tok-builtin">@field</span>(args, field.name) = defaultValue.*;</span>
-<span class="line" id="L353">            }</span>
-<span class="line" id="L354">        } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L355">            <span class="tok-comment">// Otherwise, we have a regular argument.</span>
-</span>
-<span class="line" id="L356">            <span class="tok-kw">if</span> (argIdx &gt;= pyargs.len) {</span>
-<span class="line" id="L357">                <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;Expected {d} arg{s}&quot;</span>, .{</span>
-<span class="line" id="L358">                    argCount(Args), <span class="tok-kw">if</span> (argCount(Args) &gt; <span class="tok-number">1</span>) <span class="tok-str">&quot;s&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;&quot;</span>,</span>
-<span class="line" id="L359">                });</span>
-<span class="line" id="L360">            }</span>
-<span class="line" id="L361">            <span class="tok-kw">const</span> value = pyargs[argIdx];</span>
-<span class="line" id="L362">            argIdx += <span class="tok-number">1</span>;</span>
-<span class="line" id="L363">            <span class="tok-builtin">@field</span>(args, field.name) = <span class="tok-kw">try</span> py.as(field.<span class="tok-type">type</span>, value);</span>
-<span class="line" id="L364">        }</span>
+<span class="line" id="L360">    <span class="tok-kw">if</span> (argIdx &lt; pyargs.len <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> varArgsIdx(Args) == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L361">        <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;Too many args, expected {d}&quot;</span>, .{argCount(Args)});</span>
+<span class="line" id="L362">    }</span>
+<span class="line" id="L363">    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> varArgsIdx(Args)) |idx| {</span>
+<span class="line" id="L364">        <span class="tok-builtin">@field</span>(args, s.fields[idx].name) = pyargs[argIdx..];</span>
 <span class="line" id="L365">    }</span>
 <span class="line" id="L366"></span>
-<span class="line" id="L367">    <span class="tok-comment">// Now to handle var args.</span>
-</span>
-<span class="line" id="L368">    <span class="tok-kw">if</span> (argIdx &lt; pyargs.len <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> varArgsIdx(Args) == <span class="tok-null">null</span>) {</span>
-<span class="line" id="L369">        <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;Too many args, expected {d}&quot;</span>, .{argCount(Args)});</span>
+<span class="line" id="L367">    <span class="tok-kw">if</span> (kwargs.count() &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> varKwargsIdx(Args) == <span class="tok-null">null</span>) {</span>
+<span class="line" id="L368">        <span class="tok-kw">var</span> iterator = kwargs.keyIterator();</span>
+<span class="line" id="L369">        <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;Unexpected kwarg '{s}'&quot;</span>, .{iterator.next().?.*});</span>
 <span class="line" id="L370">    }</span>
-<span class="line" id="L371">    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> varArgsIdx(Args)) |idx| {</span>
-<span class="line" id="L372">        <span class="tok-builtin">@field</span>(args, s.fields[idx].name) = pyargs[argIdx..];</span>
+<span class="line" id="L371">    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> varKwargsIdx(Args)) |idx| {</span>
+<span class="line" id="L372">        <span class="tok-builtin">@field</span>(args, s.fields[idx].name) = kwargs;</span>
 <span class="line" id="L373">    }</span>
 <span class="line" id="L374"></span>
-<span class="line" id="L375">    <span class="tok-kw">if</span> (kwargs.count() &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> <span class="tok-kw">comptime</span> varKwargsIdx(Args) == <span class="tok-null">null</span>) {</span>
-<span class="line" id="L376">        <span class="tok-kw">var</span> iterator = kwargs.keyIterator();</span>
-<span class="line" id="L377">        <span class="tok-kw">return</span> py.TypeError.raiseFmt(<span class="tok-str">&quot;Unexpected kwarg '{s}'&quot;</span>, .{iterator.next().?.*});</span>
-<span class="line" id="L378">    }</span>
-<span class="line" id="L379">    <span class="tok-kw">if</span> (<span class="tok-kw">comptime</span> varKwargsIdx(Args)) |idx| {</span>
-<span class="line" id="L380">        <span class="tok-builtin">@field</span>(args, s.fields[idx].name) = kwargs;</span>
-<span class="line" id="L381">    }</span>
-<span class="line" id="L382"></span>
-<span class="line" id="L383">    <span class="tok-kw">return</span> args;</span>
-<span class="line" id="L384">}</span>
-<span class="line" id="L385"></span>
-<span class="line" id="L386"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinitArgs</span>(<span class="tok-kw">comptime</span> Args: <span class="tok-type">type</span>, args: Args) <span class="tok-type">void</span> {</span>
-<span class="line" id="L387">    <span class="tok-kw">const</span> s = <span class="tok-builtin">@typeInfo</span>(Args).Struct;</span>
-<span class="line" id="L388">    <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (s.fields) |field| {</span>
-<span class="line" id="L389">        <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Args) {</span>
-<span class="line" id="L390">            py.allocator.free(<span class="tok-builtin">@field</span>(args, field.name));</span>
-<span class="line" id="L391">        }</span>
-<span class="line" id="L392">        <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Kwargs) {</span>
-<span class="line" id="L393">            <span class="tok-kw">var</span> kwargs: py.Kwargs = <span class="tok-builtin">@field</span>(args, field.name);</span>
-<span class="line" id="L394">            kwargs.deinit();</span>
-<span class="line" id="L395">        }</span>
-<span class="line" id="L396">    }</span>
-<span class="line" id="L397">}</span>
+<span class="line" id="L375">    <span class="tok-kw">return</span> args;</span>
+<span class="line" id="L376">}</span>
+<span class="line" id="L377"></span>
+<span class="line" id="L378"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Methods</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L379">    <span class="tok-kw">const</span> empty = ffi.PyMethodDef{ .ml_name = <span class="tok-null">null</span>, .ml_meth = <span class="tok-null">null</span>, .ml_flags = <span class="tok-number">0</span>, .ml_doc = <span class="tok-null">null</span> };</span>
+<span class="line" id="L380"></span>
+<span class="line" id="L381">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L382">        <span class="tok-kw">const</span> methodCount = b: {</span>
+<span class="line" id="L383">            <span class="tok-kw">var</span> mc: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L384">            <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |decl| {</span>
+<span class="line" id="L385">                <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, decl.name);</span>
+<span class="line" id="L386">                <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(value));</span>
+<span class="line" id="L387"></span>
+<span class="line" id="L388">                <span class="tok-kw">if</span> (typeInfo != .Fn <span class="tok-kw">or</span> isReserved(decl.name) <span class="tok-kw">or</span> State.isPrivate(&amp;value)) {</span>
+<span class="line" id="L389">                    <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L390">                }</span>
+<span class="line" id="L391">                mc += <span class="tok-number">1</span>;</span>
+<span class="line" id="L392">            }</span>
+<span class="line" id="L393">            <span class="tok-kw">break</span> :b mc;</span>
+<span class="line" id="L394">        };</span>
+<span class="line" id="L395"></span>
+<span class="line" id="L396">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> pydefs: [methodCount:empty]ffi.PyMethodDef = blk: {</span>
+<span class="line" id="L397">            <span class="tok-kw">var</span> defs: [methodCount:empty]ffi.PyMethodDef = <span class="tok-null">undefined</span>;</span>
 <span class="line" id="L398"></span>
-<span class="line" id="L399"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Methods</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L400">    <span class="tok-kw">const</span> empty = ffi.PyMethodDef{ .ml_name = <span class="tok-null">null</span>, .ml_meth = <span class="tok-null">null</span>, .ml_flags = <span class="tok-number">0</span>, .ml_doc = <span class="tok-null">null</span> };</span>
-<span class="line" id="L401"></span>
-<span class="line" id="L402">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L403">        <span class="tok-kw">const</span> methodCount = b: {</span>
-<span class="line" id="L404">            <span class="tok-kw">var</span> mc: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
-<span class="line" id="L405">            <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |decl| {</span>
-<span class="line" id="L406">                <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, decl.name);</span>
-<span class="line" id="L407">                <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(value));</span>
-<span class="line" id="L408"></span>
-<span class="line" id="L409">                <span class="tok-kw">if</span> (typeInfo != .Fn <span class="tok-kw">or</span> isReserved(decl.name) <span class="tok-kw">or</span> State.isPrivate(&amp;value)) {</span>
-<span class="line" id="L410">                    <span class="tok-kw">continue</span>;</span>
-<span class="line" id="L411">                }</span>
-<span class="line" id="L412">                mc += <span class="tok-number">1</span>;</span>
+<span class="line" id="L399">            <span class="tok-kw">var</span> idx: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L400">            <span class="tok-builtin">@setEvalBranchQuota</span>(<span class="tok-number">10000</span>);</span>
+<span class="line" id="L401">            <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |decl| {</span>
+<span class="line" id="L402">                <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, decl.name);</span>
+<span class="line" id="L403">                <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(value));</span>
+<span class="line" id="L404"></span>
+<span class="line" id="L405">                <span class="tok-comment">// For now, we skip non-function declarations.</span>
+</span>
+<span class="line" id="L406">                <span class="tok-kw">if</span> (typeInfo != .Fn <span class="tok-kw">or</span> isReserved(decl.name) <span class="tok-kw">or</span> State.isPrivate(&amp;value)) {</span>
+<span class="line" id="L407">                    <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L408">                }</span>
+<span class="line" id="L409"></span>
+<span class="line" id="L410">                <span class="tok-kw">const</span> sig = parseSignature(decl.name, typeInfo.Fn, &amp;.{ py.PyObject, *definition, *<span class="tok-kw">const</span> definition });</span>
+<span class="line" id="L411">                defs[idx] = wrap(definition, value, sig, <span class="tok-number">0</span>).aspy();</span>
+<span class="line" id="L412">                idx += <span class="tok-number">1</span>;</span>
 <span class="line" id="L413">            }</span>
-<span class="line" id="L414">            <span class="tok-kw">break</span> :b mc;</span>
-<span class="line" id="L415">        };</span>
-<span class="line" id="L416"></span>
-<span class="line" id="L417">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> pydefs: [methodCount:empty]ffi.PyMethodDef = blk: {</span>
-<span class="line" id="L418">            <span class="tok-kw">var</span> defs: [methodCount:empty]ffi.PyMethodDef = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L414"></span>
+<span class="line" id="L415">            <span class="tok-kw">break</span> :blk defs;</span>
+<span class="line" id="L416">        };</span>
+<span class="line" id="L417">    };</span>
+<span class="line" id="L418">}</span>
 <span class="line" id="L419"></span>
-<span class="line" id="L420">            <span class="tok-kw">var</span> idx: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
-<span class="line" id="L421">            <span class="tok-builtin">@setEvalBranchQuota</span>(<span class="tok-number">10000</span>);</span>
-<span class="line" id="L422">            <span class="tok-kw">for</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.decls) |decl| {</span>
-<span class="line" id="L423">                <span class="tok-kw">const</span> value = <span class="tok-builtin">@field</span>(definition, decl.name);</span>
-<span class="line" id="L424">                <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(value));</span>
-<span class="line" id="L425"></span>
-<span class="line" id="L426">                <span class="tok-comment">// For now, we skip non-function declarations.</span>
-</span>
-<span class="line" id="L427">                <span class="tok-kw">if</span> (typeInfo != .Fn <span class="tok-kw">or</span> isReserved(decl.name) <span class="tok-kw">or</span> State.isPrivate(&amp;value)) {</span>
-<span class="line" id="L428">                    <span class="tok-kw">continue</span>;</span>
-<span class="line" id="L429">                }</span>
-<span class="line" id="L430"></span>
-<span class="line" id="L431">                <span class="tok-kw">const</span> sig = parseSignature(decl.name, typeInfo.Fn, &amp;.{ py.PyObject, *definition, *<span class="tok-kw">const</span> definition });</span>
-<span class="line" id="L432">                defs[idx] = wrap(definition, value, sig, <span class="tok-number">0</span>).aspy();</span>
-<span class="line" id="L433">                idx += <span class="tok-number">1</span>;</span>
-<span class="line" id="L434">            }</span>
-<span class="line" id="L435"></span>
-<span class="line" id="L436">            <span class="tok-kw">break</span> :blk defs;</span>
-<span class="line" id="L437">        };</span>
-<span class="line" id="L438">    };</span>
-<span class="line" id="L439">}</span>
-<span class="line" id="L440"></span>
-<span class="line" id="L441"><span class="tok-comment">/// Generate minimal function docstring to populate __text_signature__ function field.</span></span>
-<span class="line" id="L442"><span class="tok-comment">/// Format is `funcName($self, arg0Name...)\n--\n\n`.</span></span>
-<span class="line" id="L443"><span class="tok-comment">/// Self arg can be named however but must start with `$`</span></span>
-<span class="line" id="L444"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">textSignature</span>(<span class="tok-kw">comptime</span> sig: Signature) [sigSize(sig):<span class="tok-number">0</span>]<span class="tok-type">u8</span> {</span>
-<span class="line" id="L445">    <span class="tok-kw">const</span> args = sigArgs(sig) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Too many arguments&quot;</span>);</span>
-<span class="line" id="L446">    <span class="tok-kw">const</span> argSize = sigSize(sig);</span>
+<span class="line" id="L420"><span class="tok-comment">/// Generate minimal function docstring to populate __text_signature__ function field.</span></span>
+<span class="line" id="L421"><span class="tok-comment">/// Format is `funcName($self, arg0Name...)\n--\n\n`.</span></span>
+<span class="line" id="L422"><span class="tok-comment">/// Self arg can be named however but must start with `$`</span></span>
+<span class="line" id="L423"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">textSignature</span>(<span class="tok-kw">comptime</span> sig: Signature) [sigSize(sig):<span class="tok-number">0</span>]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L424">    <span class="tok-kw">const</span> args = sigArgs(sig) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Too many arguments&quot;</span>);</span>
+<span class="line" id="L425">    <span class="tok-kw">const</span> argSize = sigSize(sig);</span>
+<span class="line" id="L426"></span>
+<span class="line" id="L427">    <span class="tok-kw">var</span> buffer: [argSize:<span class="tok-number">0</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L428">    writeTextSig(sig.name, args, &amp;buffer) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Text signature buffer is too small&quot;</span>);</span>
+<span class="line" id="L429">    <span class="tok-kw">return</span> buffer;</span>
+<span class="line" id="L430">}</span>
+<span class="line" id="L431"></span>
+<span class="line" id="L432"><span class="tok-kw">fn</span> <span class="tok-fn">writeTextSig</span>(name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, args: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, buffer: [:<span class="tok-number">0</span>]<span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L433">    <span class="tok-kw">var</span> buf = std.io.fixedBufferStream(buffer);</span>
+<span class="line" id="L434">    <span class="tok-kw">const</span> writer = buf.writer();</span>
+<span class="line" id="L435">    <span class="tok-kw">try</span> writer.writeAll(name);</span>
+<span class="line" id="L436">    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'('</span>);</span>
+<span class="line" id="L437">    <span class="tok-kw">for</span> (args, <span class="tok-number">0</span>..) |arg, i| {</span>
+<span class="line" id="L438">        <span class="tok-kw">try</span> writer.writeAll(arg);</span>
+<span class="line" id="L439"></span>
+<span class="line" id="L440">        <span class="tok-kw">if</span> (i &lt; args.len - <span class="tok-number">1</span>) {</span>
+<span class="line" id="L441">            <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;, &quot;</span>);</span>
+<span class="line" id="L442">        }</span>
+<span class="line" id="L443">    }</span>
+<span class="line" id="L444">    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;)\n--\n\n&quot;</span>);</span>
+<span class="line" id="L445">    buffer[buffer.len] = <span class="tok-number">0</span>;</span>
+<span class="line" id="L446">}</span>
 <span class="line" id="L447"></span>
-<span class="line" id="L448">    <span class="tok-kw">var</span> buffer: [argSize:<span class="tok-number">0</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
-<span class="line" id="L449">    writeTextSig(sig.name, args, &amp;buffer) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Text signature buffer is too small&quot;</span>);</span>
-<span class="line" id="L450">    <span class="tok-kw">return</span> buffer;</span>
-<span class="line" id="L451">}</span>
-<span class="line" id="L452"></span>
-<span class="line" id="L453"><span class="tok-kw">fn</span> <span class="tok-fn">writeTextSig</span>(name: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, args: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, buffer: [:<span class="tok-number">0</span>]<span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
-<span class="line" id="L454">    <span class="tok-kw">var</span> buf = std.io.fixedBufferStream(buffer);</span>
-<span class="line" id="L455">    <span class="tok-kw">const</span> writer = buf.writer();</span>
-<span class="line" id="L456">    <span class="tok-kw">try</span> writer.writeAll(name);</span>
-<span class="line" id="L457">    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'('</span>);</span>
-<span class="line" id="L458">    <span class="tok-kw">for</span> (args, <span class="tok-number">0</span>..) |arg, i| {</span>
-<span class="line" id="L459">        <span class="tok-kw">try</span> writer.writeAll(arg);</span>
+<span class="line" id="L448"><span class="tok-kw">fn</span> <span class="tok-fn">sigSize</span>(<span class="tok-kw">comptime</span> sig: Signature) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L449">    <span class="tok-kw">const</span> args = sigArgs(sig) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Too many arguments&quot;</span>);</span>
+<span class="line" id="L450">    <span class="tok-kw">var</span> argSize: <span class="tok-type">u64</span> = sig.name.len;</span>
+<span class="line" id="L451">    <span class="tok-comment">// Count the size of the output string</span>
+</span>
+<span class="line" id="L452">    <span class="tok-kw">for</span> (args) |arg| {</span>
+<span class="line" id="L453">        <span class="tok-comment">// +2 for &quot;, &quot;</span>
+</span>
+<span class="line" id="L454">        argSize += arg.len + <span class="tok-number">2</span>;</span>
+<span class="line" id="L455">    }</span>
+<span class="line" id="L456"></span>
+<span class="line" id="L457">    <span class="tok-kw">if</span> (args.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L458">        argSize -= <span class="tok-number">2</span>;</span>
+<span class="line" id="L459">    }</span>
 <span class="line" id="L460"></span>
-<span class="line" id="L461">        <span class="tok-kw">if</span> (i &lt; args.len - <span class="tok-number">1</span>) {</span>
-<span class="line" id="L462">            <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;, &quot;</span>);</span>
-<span class="line" id="L463">        }</span>
-<span class="line" id="L464">    }</span>
-<span class="line" id="L465">    <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;)\n--\n\n&quot;</span>);</span>
-<span class="line" id="L466">    buffer[buffer.len] = <span class="tok-number">0</span>;</span>
-<span class="line" id="L467">}</span>
-<span class="line" id="L468"></span>
-<span class="line" id="L469"><span class="tok-kw">fn</span> <span class="tok-fn">sigSize</span>(<span class="tok-kw">comptime</span> sig: Signature) <span class="tok-type">usize</span> {</span>
-<span class="line" id="L470">    <span class="tok-kw">const</span> args = sigArgs(sig) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Too many arguments&quot;</span>);</span>
-<span class="line" id="L471">    <span class="tok-kw">var</span> argSize: <span class="tok-type">u64</span> = sig.name.len;</span>
-<span class="line" id="L472">    <span class="tok-comment">// Count the size of the output string</span>
+<span class="line" id="L461">    <span class="tok-comment">// The size is the size of all arguments plus the padding after argument list</span>
 </span>
-<span class="line" id="L473">    <span class="tok-kw">for</span> (args) |arg| {</span>
-<span class="line" id="L474">        <span class="tok-comment">// +2 for &quot;, &quot;</span>
+<span class="line" id="L462">    <span class="tok-comment">// &quot;(&quot; + &quot;)\n--\n\n&quot; =&gt; 7</span>
 </span>
-<span class="line" id="L475">        argSize += arg.len + <span class="tok-number">2</span>;</span>
+<span class="line" id="L463">    <span class="tok-kw">return</span> argSize + <span class="tok-number">7</span>;</span>
+<span class="line" id="L464">}</span>
+<span class="line" id="L465"></span>
+<span class="line" id="L466"><span class="tok-kw">fn</span> <span class="tok-fn">sigArgs</span>(<span class="tok-kw">comptime</span> sig: Signature) ![]<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L467">    <span class="tok-comment">// 5 = self + &quot;/&quot; + &quot;*&quot; + &quot;*args&quot; + &quot;**kwargs&quot;</span>
+</span>
+<span class="line" id="L468">    <span class="tok-kw">const</span> ArgBuf = std.BoundedArray([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, sig.nargs + sig.nkwargs + <span class="tok-number">5</span>);</span>
+<span class="line" id="L469">    <span class="tok-kw">var</span> sigargs = ArgBuf.init(<span class="tok-number">0</span>) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
+<span class="line" id="L470">    <span class="tok-kw">if</span> (sig.selfParam) |self| {</span>
+<span class="line" id="L471">        <span class="tok-kw">if</span> (self == <span class="tok-builtin">@TypeOf</span>(py.PyObject)) {</span>
+<span class="line" id="L472">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;$cls&quot;</span>);</span>
+<span class="line" id="L473">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L474">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;$self&quot;</span>);</span>
+<span class="line" id="L475">        }</span>
 <span class="line" id="L476">    }</span>
 <span class="line" id="L477"></span>
-<span class="line" id="L478">    <span class="tok-kw">if</span> (args.len &gt; <span class="tok-number">0</span>) {</span>
-<span class="line" id="L479">        argSize -= <span class="tok-number">2</span>;</span>
-<span class="line" id="L480">    }</span>
-<span class="line" id="L481"></span>
-<span class="line" id="L482">    <span class="tok-comment">// The size is the size of all arguments plus the padding after argument list</span>
+<span class="line" id="L478">    <span class="tok-kw">if</span> (sig.argsParam) |Args| {</span>
+<span class="line" id="L479">        <span class="tok-kw">const</span> fields = <span class="tok-builtin">@typeInfo</span>(Args).Struct.fields;</span>
+<span class="line" id="L480"></span>
+<span class="line" id="L481">        <span class="tok-kw">var</span> inKwargs = <span class="tok-null">false</span>;</span>
+<span class="line" id="L482">        <span class="tok-kw">for</span> (fields) |field| {</span>
+<span class="line" id="L483">            <span class="tok-kw">if</span> (field.default_value) |def| {</span>
+<span class="line" id="L484">                <span class="tok-comment">// We have a kwarg</span>
 </span>
-<span class="line" id="L483">    <span class="tok-comment">// &quot;(&quot; + &quot;)\n--\n\n&quot; =&gt; 7</span>
+<span class="line" id="L485">                <span class="tok-kw">if</span> (!inKwargs) {</span>
+<span class="line" id="L486">                    inKwargs = <span class="tok-null">true</span>;</span>
+<span class="line" id="L487">                    <span class="tok-comment">// Marker for end of positional only args</span>
 </span>
-<span class="line" id="L484">    <span class="tok-kw">return</span> argSize + <span class="tok-number">7</span>;</span>
-<span class="line" id="L485">}</span>
-<span class="line" id="L486"></span>
-<span class="line" id="L487"><span class="tok-kw">fn</span> <span class="tok-fn">sigArgs</span>(<span class="tok-kw">comptime</span> sig: Signature) ![]<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L488">    <span class="tok-comment">// 5 = self + &quot;/&quot; + &quot;*&quot; + &quot;*args&quot; + &quot;**kwargs&quot;</span>
+<span class="line" id="L488">                    <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
+<span class="line" id="L489">                    <span class="tok-comment">// Marker for start of keyword only args</span>
 </span>
-<span class="line" id="L489">    <span class="tok-kw">const</span> ArgBuf = std.BoundedArray([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, sig.nargs + sig.nkwargs + <span class="tok-number">5</span>);</span>
-<span class="line" id="L490">    <span class="tok-kw">var</span> sigargs = ArgBuf.init(<span class="tok-number">0</span>) <span class="tok-kw">catch</span> <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;OOM&quot;</span>);</span>
-<span class="line" id="L491">    <span class="tok-kw">if</span> (sig.selfParam) |self| {</span>
-<span class="line" id="L492">        <span class="tok-kw">if</span> (self == <span class="tok-builtin">@TypeOf</span>(py.PyObject)) {</span>
-<span class="line" id="L493">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;$cls&quot;</span>);</span>
-<span class="line" id="L494">        } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L495">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;$self&quot;</span>);</span>
-<span class="line" id="L496">        }</span>
-<span class="line" id="L497">    }</span>
-<span class="line" id="L498"></span>
-<span class="line" id="L499">    <span class="tok-kw">if</span> (sig.argsParam) |Args| {</span>
-<span class="line" id="L500">        <span class="tok-kw">const</span> fields = <span class="tok-builtin">@typeInfo</span>(Args).Struct.fields;</span>
-<span class="line" id="L501"></span>
-<span class="line" id="L502">        <span class="tok-kw">var</span> inKwargs = <span class="tok-null">false</span>;</span>
-<span class="line" id="L503">        <span class="tok-kw">for</span> (fields) |field| {</span>
-<span class="line" id="L504">            <span class="tok-kw">if</span> (field.default_value) |def| {</span>
-<span class="line" id="L505">                <span class="tok-comment">// We have a kwarg</span>
+<span class="line" id="L490">                    <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;*&quot;</span>);</span>
+<span class="line" id="L491">                }</span>
+<span class="line" id="L492"></span>
+<span class="line" id="L493">                <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;{s}={s}&quot;</span>, .{ field.name, valueToStr(field.<span class="tok-type">type</span>, def) }));</span>
+<span class="line" id="L494">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Args) {</span>
+<span class="line" id="L495">                <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;*{s}&quot;</span>, .{field.name}));</span>
+<span class="line" id="L496">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Kwargs) {</span>
+<span class="line" id="L497">                <span class="tok-kw">if</span> (!inKwargs) {</span>
+<span class="line" id="L498">                    inKwargs = <span class="tok-null">true</span>;</span>
+<span class="line" id="L499">                    <span class="tok-comment">// Marker for end of positional only args</span>
 </span>
-<span class="line" id="L506">                <span class="tok-kw">if</span> (!inKwargs) {</span>
-<span class="line" id="L507">                    inKwargs = <span class="tok-null">true</span>;</span>
-<span class="line" id="L508">                    <span class="tok-comment">// Marker for end of positional only args</span>
+<span class="line" id="L500">                    <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
+<span class="line" id="L501">                    <span class="tok-comment">// Note: we don't mark the start of keyword only args since that's implied by **.</span>
 </span>
-<span class="line" id="L509">                    <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
-<span class="line" id="L510">                    <span class="tok-comment">// Marker for start of keyword only args</span>
+<span class="line" id="L502">                    <span class="tok-comment">// See https://bugs.python.org/issue2613</span>
 </span>
-<span class="line" id="L511">                    <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;*&quot;</span>);</span>
-<span class="line" id="L512">                }</span>
-<span class="line" id="L513"></span>
-<span class="line" id="L514">                <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;{s}={s}&quot;</span>, .{ field.name, valueToStr(field.<span class="tok-type">type</span>, def) }));</span>
-<span class="line" id="L515">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Args) {</span>
-<span class="line" id="L516">                <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;*{s}&quot;</span>, .{field.name}));</span>
-<span class="line" id="L517">            } <span class="tok-kw">else</span> <span class="tok-kw">if</span> (field.<span class="tok-type">type</span> == py.Kwargs) {</span>
-<span class="line" id="L518">                <span class="tok-kw">if</span> (!inKwargs) {</span>
-<span class="line" id="L519">                    inKwargs = <span class="tok-null">true</span>;</span>
-<span class="line" id="L520">                    <span class="tok-comment">// Marker for end of positional only args</span>
+<span class="line" id="L503">                }</span>
+<span class="line" id="L504">                <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;**{s}&quot;</span>, .{field.name}));</span>
+<span class="line" id="L505">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L506">                <span class="tok-comment">// We have an arg</span>
 </span>
-<span class="line" id="L521">                    <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
-<span class="line" id="L522">                    <span class="tok-comment">// Note: we don't mark the start of keyword only args since that's implied by **.</span>
+<span class="line" id="L507">                <span class="tok-kw">try</span> sigargs.append(field.name);</span>
+<span class="line" id="L508">            }</span>
+<span class="line" id="L509">        }</span>
+<span class="line" id="L510"></span>
+<span class="line" id="L511">        <span class="tok-kw">if</span> (!inKwargs) {</span>
+<span class="line" id="L512">            <span class="tok-comment">// Always mark end of positional only args</span>
 </span>
-<span class="line" id="L523">                    <span class="tok-comment">// See https://bugs.python.org/issue2613</span>
-</span>
-<span class="line" id="L524">                }</span>
-<span class="line" id="L525">                <span class="tok-kw">try</span> sigargs.append(std.fmt.comptimePrint(<span class="tok-str">&quot;**{s}&quot;</span>, .{field.name}));</span>
-<span class="line" id="L526">            } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L527">                <span class="tok-comment">// We have an arg</span>
-</span>
-<span class="line" id="L528">                <span class="tok-kw">try</span> sigargs.append(field.name);</span>
-<span class="line" id="L529">            }</span>
-<span class="line" id="L530">        }</span>
-<span class="line" id="L531"></span>
-<span class="line" id="L532">        <span class="tok-kw">if</span> (!inKwargs) {</span>
-<span class="line" id="L533">            <span class="tok-comment">// Always mark end of positional only args</span>
-</span>
-<span class="line" id="L534">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
-<span class="line" id="L535">        }</span>
-<span class="line" id="L536">    }</span>
-<span class="line" id="L537"></span>
-<span class="line" id="L538">    <span class="tok-kw">return</span> sigargs.constSlice();</span>
-<span class="line" id="L539">}</span>
-<span class="line" id="L540"></span>
-<span class="line" id="L541"><span class="tok-kw">fn</span> <span class="tok-fn">valueToStr</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, value: *<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
-<span class="line" id="L542">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
-<span class="line" id="L543">        <span class="tok-kw">inline</span> .Pointer =&gt; |p| p: {</span>
-<span class="line" id="L544">            <span class="tok-kw">break</span> :p <span class="tok-kw">switch</span> (p.child) {</span>
-<span class="line" id="L545">                <span class="tok-kw">inline</span> <span class="tok-type">u8</span> =&gt; std.fmt.comptimePrint(<span class="tok-str">&quot;\&quot;{s}\&quot;&quot;</span>, .{<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> T, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).*}),</span>
-<span class="line" id="L546">                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; <span class="tok-str">&quot;...&quot;</span>,</span>
-<span class="line" id="L547">            };</span>
-<span class="line" id="L548">        },</span>
-<span class="line" id="L549">        <span class="tok-kw">inline</span> .Bool =&gt; <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> <span class="tok-type">bool</span>, <span class="tok-builtin">@ptrCast</span>(value)).*) <span class="tok-str">&quot;True&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;False&quot;</span>,</span>
-<span class="line" id="L550">        <span class="tok-kw">inline</span> .Struct =&gt; <span class="tok-str">&quot;...&quot;</span>,</span>
-<span class="line" id="L551">        <span class="tok-kw">inline</span> .Optional =&gt; |o| <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> ?o.child, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).* == <span class="tok-null">null</span>) <span class="tok-str">&quot;None&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;...&quot;</span>,</span>
-<span class="line" id="L552">        <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; std.fmt.comptimePrint(<span class="tok-str">&quot;{any}&quot;</span>, .{<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> T, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).*}),</span>
-<span class="line" id="L553">    };</span>
-<span class="line" id="L554">}</span>
-<span class="line" id="L555"></span>
+<span class="line" id="L513">            <span class="tok-kw">try</span> sigargs.append(<span class="tok-str">&quot;/&quot;</span>);</span>
+<span class="line" id="L514">        }</span>
+<span class="line" id="L515">    }</span>
+<span class="line" id="L516"></span>
+<span class="line" id="L517">    <span class="tok-kw">return</span> sigargs.constSlice();</span>
+<span class="line" id="L518">}</span>
+<span class="line" id="L519"></span>
+<span class="line" id="L520"><span class="tok-kw">fn</span> <span class="tok-fn">valueToStr</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, value: *<span class="tok-kw">const</span> <span class="tok-type">anyopaque</span>) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L521">    <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (<span class="tok-builtin">@typeInfo</span>(T)) {</span>
+<span class="line" id="L522">        <span class="tok-kw">inline</span> .Pointer =&gt; |p| p: {</span>
+<span class="line" id="L523">            <span class="tok-kw">break</span> :p <span class="tok-kw">switch</span> (p.child) {</span>
+<span class="line" id="L524">                <span class="tok-kw">inline</span> <span class="tok-type">u8</span> =&gt; std.fmt.comptimePrint(<span class="tok-str">&quot;\&quot;{s}\&quot;&quot;</span>, .{<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> T, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).*}),</span>
+<span class="line" id="L525">                <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; <span class="tok-str">&quot;...&quot;</span>,</span>
+<span class="line" id="L526">            };</span>
+<span class="line" id="L527">        },</span>
+<span class="line" id="L528">        <span class="tok-kw">inline</span> .Bool =&gt; <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> <span class="tok-type">bool</span>, <span class="tok-builtin">@ptrCast</span>(value)).*) <span class="tok-str">&quot;True&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;False&quot;</span>,</span>
+<span class="line" id="L529">        <span class="tok-kw">inline</span> .Struct =&gt; <span class="tok-str">&quot;...&quot;</span>,</span>
+<span class="line" id="L530">        <span class="tok-kw">inline</span> .Optional =&gt; |o| <span class="tok-kw">if</span> (<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> ?o.child, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).* == <span class="tok-null">null</span>) <span class="tok-str">&quot;None&quot;</span> <span class="tok-kw">else</span> <span class="tok-str">&quot;...&quot;</span>,</span>
+<span class="line" id="L531">        <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; std.fmt.comptimePrint(<span class="tok-str">&quot;{any}&quot;</span>, .{<span class="tok-builtin">@as</span>(*<span class="tok-kw">const</span> T, <span class="tok-builtin">@alignCast</span>(<span class="tok-builtin">@ptrCast</span>(value))).*}),</span>
+<span class="line" id="L532">    };</span>
+<span class="line" id="L533">}</span>
+<span class="line" id="L534"></span>
 </code></pre></body>
 </html>
