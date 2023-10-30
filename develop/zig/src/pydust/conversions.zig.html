@@ -136,81 +136,110 @@
 <span class="line" id="L12"></span>
 <span class="line" id="L13"><span class="tok-kw">const</span> py = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;./pydust.zig&quot;</span>);</span>
 <span class="line" id="L14"><span class="tok-kw">const</span> tramp = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;./trampoline.zig&quot;</span>);</span>
-<span class="line" id="L15"></span>
-<span class="line" id="L16"><span class="tok-comment">/// Zig PyObject-like -&gt; ffi.PyObject. Convert a Zig PyObject-like value into a py.PyObject.</span></span>
-<span class="line" id="L17"><span class="tok-comment">///  e.g. py.PyObject, py.PyTuple, ffi.PyObject, etc.</span></span>
-<span class="line" id="L18"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">object</span>(value: <span class="tok-kw">anytype</span>) py.PyObject {</span>
-<span class="line" id="L19">    <span class="tok-kw">return</span> tramp.Trampoline(<span class="tok-builtin">@TypeOf</span>(value)).asObject(value);</span>
-<span class="line" id="L20">}</span>
-<span class="line" id="L21"></span>
-<span class="line" id="L22"><span class="tok-comment">/// Zig -&gt; Python. Return a Python representation of a Zig object.</span></span>
-<span class="line" id="L23"><span class="tok-comment">/// For Zig primitives, this constructs a new Python object.</span></span>
-<span class="line" id="L24"><span class="tok-comment">/// For PyObject-like values, this returns the value without creating a new reference.</span></span>
-<span class="line" id="L25"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">createOwned</span>(value: <span class="tok-kw">anytype</span>) py.PyError!py.PyObject {</span>
-<span class="line" id="L26">    <span class="tok-kw">const</span> trampoline = tramp.Trampoline(<span class="tok-builtin">@TypeOf</span>(value));</span>
-<span class="line" id="L27">    <span class="tok-kw">defer</span> trampoline.decref_objectlike(value);</span>
-<span class="line" id="L28">    <span class="tok-kw">return</span> trampoline.wrap(value);</span>
-<span class="line" id="L29">}</span>
-<span class="line" id="L30"></span>
-<span class="line" id="L31"><span class="tok-comment">/// Zig -&gt; Python. Convert a Zig object into a Python object. Returns a new object.</span></span>
-<span class="line" id="L32"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(value: <span class="tok-kw">anytype</span>) py.PyError!py.PyObject {</span>
-<span class="line" id="L33">    <span class="tok-kw">return</span> tramp.Trampoline(<span class="tok-builtin">@TypeOf</span>(value)).wrap(value);</span>
-<span class="line" id="L34">}</span>
-<span class="line" id="L35"></span>
-<span class="line" id="L36"><span class="tok-comment">/// Python -&gt; Zig. Return a Zig object representing the Python object.</span></span>
-<span class="line" id="L37"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">as</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, obj: <span class="tok-kw">anytype</span>) py.PyError!T {</span>
-<span class="line" id="L38">    <span class="tok-kw">return</span> tramp.Trampoline(T).unwrap(object(obj));</span>
-<span class="line" id="L39">}</span>
-<span class="line" id="L40"></span>
-<span class="line" id="L41"><span class="tok-kw">const</span> testing = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>).testing;</span>
-<span class="line" id="L42"><span class="tok-kw">const</span> expect = testing.expect;</span>
-<span class="line" id="L43"></span>
-<span class="line" id="L44"><span class="tok-kw">test</span> <span class="tok-str">&quot;as py -&gt; zig&quot;</span> {</span>
-<span class="line" id="L45">    py.initialize();</span>
-<span class="line" id="L46">    <span class="tok-kw">defer</span> py.finalize();</span>
-<span class="line" id="L47"></span>
-<span class="line" id="L48">    <span class="tok-comment">// Start with a Python object</span>
+<span class="line" id="L15"><span class="tok-kw">const</span> pytypes = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;./pytypes.zig&quot;</span>);</span>
+<span class="line" id="L16"><span class="tok-kw">const</span> State = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;./discovery.zig&quot;</span>).State;</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-comment">/// Zig PyObject-like -&gt; ffi.PyObject. Convert a Zig PyObject-like value into a py.PyObject.</span></span>
+<span class="line" id="L19"><span class="tok-comment">///  e.g. py.PyObject, py.PyTuple, ffi.PyObject, etc.</span></span>
+<span class="line" id="L20"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">object</span>(value: <span class="tok-kw">anytype</span>) py.PyObject {</span>
+<span class="line" id="L21">    <span class="tok-kw">return</span> tramp.Trampoline(<span class="tok-builtin">@TypeOf</span>(value)).asObject(value);</span>
+<span class="line" id="L22">}</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24"><span class="tok-comment">/// Zig -&gt; Python. Return a Python representation of a Zig object.</span></span>
+<span class="line" id="L25"><span class="tok-comment">/// For Zig primitives, this constructs a new Python object.</span></span>
+<span class="line" id="L26"><span class="tok-comment">/// For PyObject-like values, this returns the value without creating a new reference.</span></span>
+<span class="line" id="L27"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">createOwned</span>(value: <span class="tok-kw">anytype</span>) py.PyError!py.PyObject {</span>
+<span class="line" id="L28">    <span class="tok-kw">const</span> trampoline = tramp.Trampoline(<span class="tok-builtin">@TypeOf</span>(value));</span>
+<span class="line" id="L29">    <span class="tok-kw">defer</span> trampoline.decref_objectlike(value);</span>
+<span class="line" id="L30">    <span class="tok-kw">return</span> trampoline.wrap(value);</span>
+<span class="line" id="L31">}</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33"><span class="tok-comment">/// Zig -&gt; Python. Convert a Zig object into a Python object. Returns a new object.</span></span>
+<span class="line" id="L34"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">create</span>(value: <span class="tok-kw">anytype</span>) py.PyError!py.PyObject {</span>
+<span class="line" id="L35">    <span class="tok-kw">return</span> tramp.Trampoline(<span class="tok-builtin">@TypeOf</span>(value)).wrap(value);</span>
+<span class="line" id="L36">}</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-comment">/// Python -&gt; Zig. Return a Zig object representing the Python object.</span></span>
+<span class="line" id="L39"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">as</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, obj: <span class="tok-kw">anytype</span>) py.PyError!T {</span>
+<span class="line" id="L40">    <span class="tok-kw">return</span> tramp.Trampoline(T).unwrap(object(obj));</span>
+<span class="line" id="L41">}</span>
+<span class="line" id="L42"></span>
+<span class="line" id="L43"><span class="tok-comment">/// Python -&gt; Pydust. Perform a checked cast from a PyObject to a given PyDust class type.</span></span>
+<span class="line" id="L44"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">checked</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, obj: py.PyObject) py.PyError!T {</span>
+<span class="line" id="L45">    <span class="tok-kw">const</span> definition = State.getDefinition(<span class="tok-builtin">@typeInfo</span>(T).Pointer.child);</span>
+<span class="line" id="L46">    <span class="tok-kw">if</span> (definition.<span class="tok-type">type</span> != .class) {</span>
+<span class="line" id="L47">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Can only perform checked cast into a PyDust class type&quot;</span>);</span>
+<span class="line" id="L48">    }</span>
+<span class="line" id="L49"></span>
+<span class="line" id="L50">    <span class="tok-comment">// TODO(ngates): to perform fast type checking, we need to store our PyType on the parent module.</span>
 </span>
-<span class="line" id="L49">    <span class="tok-kw">const</span> str = <span class="tok-kw">try</span> py.PyString.create(<span class="tok-str">&quot;hello&quot;</span>);</span>
-<span class="line" id="L50">    <span class="tok-kw">try</span> expect(py.refcnt(str) == <span class="tok-number">1</span>);</span>
-<span class="line" id="L51"></span>
-<span class="line" id="L52">    <span class="tok-comment">// Return a slice representation of it, and ensure the refcnt is untouched</span>
+<span class="line" id="L51">    <span class="tok-comment">// See how the Python JSON module did this: https://github.com/python/cpython/commit/33f15a16d40cb8010a8c758952cbf88d7912ee2d#diff-efe183ae0b85e5b8d9bbbc588452dd4de80b39fd5c5174ee499ba554217a39edR1814</span>
 </span>
-<span class="line" id="L53">    _ = <span class="tok-kw">try</span> py.as([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, str);</span>
-<span class="line" id="L54">    <span class="tok-kw">try</span> expect(py.refcnt(str) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L52">    <span class="tok-comment">// For now, we perform a slow import/isinstance check by using the `as` conversion.</span>
+</span>
+<span class="line" id="L53">    <span class="tok-kw">return</span> as(T, obj);</span>
+<span class="line" id="L54">}</span>
 <span class="line" id="L55"></span>
-<span class="line" id="L56">    <span class="tok-comment">// Return a PyObject representation of it, and ensure the refcnt is untouched.</span>
+<span class="line" id="L56"><span class="tok-comment">/// Python -&gt; Pydust. Perform an unchecked cast from a PyObject to a given PyDust class type.</span></span>
+<span class="line" id="L57"><span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">unchecked</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, obj: py.PyObject) T {</span>
+<span class="line" id="L58">    <span class="tok-kw">const</span> Definition = <span class="tok-builtin">@typeInfo</span>(T).Pointer.child;</span>
+<span class="line" id="L59">    <span class="tok-kw">const</span> definition = State.getDefinition(Definition);</span>
+<span class="line" id="L60">    <span class="tok-kw">if</span> (definition.<span class="tok-type">type</span> != .class) {</span>
+<span class="line" id="L61">        <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Can only perform unchecked cast into a PyDust class type. Found &quot;</span> ++ <span class="tok-builtin">@typeName</span>(Definition));</span>
+<span class="line" id="L62">    }</span>
+<span class="line" id="L63">    <span class="tok-kw">const</span> instance: *pytypes.PyTypeStruct(Definition) = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@alignCast</span>(obj.py));</span>
+<span class="line" id="L64">    <span class="tok-kw">return</span> &amp;instance.state;</span>
+<span class="line" id="L65">}</span>
+<span class="line" id="L66"></span>
+<span class="line" id="L67"><span class="tok-kw">const</span> testing = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>).testing;</span>
+<span class="line" id="L68"><span class="tok-kw">const</span> expect = testing.expect;</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70"><span class="tok-kw">test</span> <span class="tok-str">&quot;as py -&gt; zig&quot;</span> {</span>
+<span class="line" id="L71">    py.initialize();</span>
+<span class="line" id="L72">    <span class="tok-kw">defer</span> py.finalize();</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74">    <span class="tok-comment">// Start with a Python object</span>
 </span>
-<span class="line" id="L57">    _ = <span class="tok-kw">try</span> py.as(py.PyObject, str);</span>
-<span class="line" id="L58">    <span class="tok-kw">try</span> expect(py.refcnt(str) == <span class="tok-number">1</span>);</span>
-<span class="line" id="L59">}</span>
-<span class="line" id="L60"></span>
-<span class="line" id="L61"><span class="tok-kw">test</span> <span class="tok-str">&quot;create&quot;</span> {</span>
-<span class="line" id="L62">    py.initialize();</span>
-<span class="line" id="L63">    <span class="tok-kw">defer</span> py.finalize();</span>
-<span class="line" id="L64"></span>
-<span class="line" id="L65">    <span class="tok-kw">const</span> str = <span class="tok-kw">try</span> py.PyString.create(<span class="tok-str">&quot;Hello&quot;</span>);</span>
-<span class="line" id="L66">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
-<span class="line" id="L67"></span>
-<span class="line" id="L68">    <span class="tok-kw">const</span> some_tuple = <span class="tok-kw">try</span> py.create(.{str});</span>
-<span class="line" id="L69">    <span class="tok-kw">defer</span> some_tuple.decref();</span>
-<span class="line" id="L70">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">2</span>), py.refcnt(str));</span>
-<span class="line" id="L71"></span>
-<span class="line" id="L72">    str.decref();</span>
-<span class="line" id="L73">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
-<span class="line" id="L74">}</span>
-<span class="line" id="L75"></span>
-<span class="line" id="L76"><span class="tok-kw">test</span> <span class="tok-str">&quot;createOwned&quot;</span> {</span>
-<span class="line" id="L77">    py.initialize();</span>
-<span class="line" id="L78">    <span class="tok-kw">defer</span> py.finalize();</span>
-<span class="line" id="L79"></span>
-<span class="line" id="L80">    <span class="tok-kw">const</span> str = <span class="tok-kw">try</span> py.PyString.create(<span class="tok-str">&quot;Hello&quot;</span>);</span>
-<span class="line" id="L81">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
-<span class="line" id="L82"></span>
-<span class="line" id="L83">    <span class="tok-kw">const</span> some_tuple = <span class="tok-kw">try</span> py.createOwned(.{str});</span>
-<span class="line" id="L84">    <span class="tok-kw">defer</span> some_tuple.decref();</span>
-<span class="line" id="L85">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
-<span class="line" id="L86">}</span>
-<span class="line" id="L87"></span>
+<span class="line" id="L75">    <span class="tok-kw">const</span> str = <span class="tok-kw">try</span> py.PyString.create(<span class="tok-str">&quot;hello&quot;</span>);</span>
+<span class="line" id="L76">    <span class="tok-kw">try</span> expect(py.refcnt(str) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">    <span class="tok-comment">// Return a slice representation of it, and ensure the refcnt is untouched</span>
+</span>
+<span class="line" id="L79">    _ = <span class="tok-kw">try</span> py.as([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>, str);</span>
+<span class="line" id="L80">    <span class="tok-kw">try</span> expect(py.refcnt(str) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L81"></span>
+<span class="line" id="L82">    <span class="tok-comment">// Return a PyObject representation of it, and ensure the refcnt is untouched.</span>
+</span>
+<span class="line" id="L83">    _ = <span class="tok-kw">try</span> py.as(py.PyObject, str);</span>
+<span class="line" id="L84">    <span class="tok-kw">try</span> expect(py.refcnt(str) == <span class="tok-number">1</span>);</span>
+<span class="line" id="L85">}</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87"><span class="tok-kw">test</span> <span class="tok-str">&quot;create&quot;</span> {</span>
+<span class="line" id="L88">    py.initialize();</span>
+<span class="line" id="L89">    <span class="tok-kw">defer</span> py.finalize();</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91">    <span class="tok-kw">const</span> str = <span class="tok-kw">try</span> py.PyString.create(<span class="tok-str">&quot;Hello&quot;</span>);</span>
+<span class="line" id="L92">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
+<span class="line" id="L93"></span>
+<span class="line" id="L94">    <span class="tok-kw">const</span> some_tuple = <span class="tok-kw">try</span> py.create(.{str});</span>
+<span class="line" id="L95">    <span class="tok-kw">defer</span> some_tuple.decref();</span>
+<span class="line" id="L96">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">2</span>), py.refcnt(str));</span>
+<span class="line" id="L97"></span>
+<span class="line" id="L98">    str.decref();</span>
+<span class="line" id="L99">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
+<span class="line" id="L100">}</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102"><span class="tok-kw">test</span> <span class="tok-str">&quot;createOwned&quot;</span> {</span>
+<span class="line" id="L103">    py.initialize();</span>
+<span class="line" id="L104">    <span class="tok-kw">defer</span> py.finalize();</span>
+<span class="line" id="L105"></span>
+<span class="line" id="L106">    <span class="tok-kw">const</span> str = <span class="tok-kw">try</span> py.PyString.create(<span class="tok-str">&quot;Hello&quot;</span>);</span>
+<span class="line" id="L107">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
+<span class="line" id="L108"></span>
+<span class="line" id="L109">    <span class="tok-kw">const</span> some_tuple = <span class="tok-kw">try</span> py.createOwned(.{str});</span>
+<span class="line" id="L110">    <span class="tok-kw">defer</span> some_tuple.decref();</span>
+<span class="line" id="L111">    <span class="tok-kw">try</span> testing.expectEqual(<span class="tok-builtin">@as</span>(<span class="tok-type">isize</span>, <span class="tok-number">1</span>), py.refcnt(str));</span>
+<span class="line" id="L112">}</span>
+<span class="line" id="L113"></span>
 </code></pre></body>
 </html>
