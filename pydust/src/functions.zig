@@ -315,17 +315,9 @@ pub fn unwrapArgs(comptime Args: type, pyargs: py.Args, pykwargs: py.Kwargs) !Ar
     var args: Args = undefined;
 
     const s = @typeInfo(Args).Struct;
-    var varargsFieldIdx: usize = undefined;
-    var varkwargsFieldIdx: usize = undefined;
     var argIdx: usize = 0;
-    inline for (s.fields, 0..) |field, fieldIdx| {
-        if (field.type == py.Args) {
-            // Variadic args
-            varargsFieldIdx = fieldIdx;
-        } else if (field.type == py.Kwargs) {
-            // Variadic kwargs
-            varkwargsFieldIdx = fieldIdx;
-        } else if (field.default_value) |def_value| {
+    inline for (s.fields) |field| {
+        if (field.default_value) |def_value| {
             // We have a kwarg.
             if (kwargs.fetchRemove(field.name)) |entry| {
                 @field(args, field.name) = try py.as(field.type, entry.value);
@@ -334,7 +326,7 @@ pub fn unwrapArgs(comptime Args: type, pyargs: py.Args, pykwargs: py.Kwargs) !Ar
                 const defaultValue: *field.type = @alignCast(@ptrCast(@constCast(def_value)));
                 @field(args, field.name) = defaultValue.*;
             }
-        } else {
+        } else if (field.type != py.Args and field.type != py.Kwargs) {
             // Otherwise, we have a regular argument.
             if (argIdx >= pyargs.len) {
                 return py.TypeError.raiseFmt("Expected {d} arg{s}", .{
@@ -366,8 +358,11 @@ pub fn unwrapArgs(comptime Args: type, pyargs: py.Args, pykwargs: py.Kwargs) !Ar
     return args;
 }
 
-pub fn deinitArgs(comptime Args: type, args: Args) void {
+pub fn deinitArgs(comptime Args: type, args: Args, allPosArgs: []py.PyObject) void {
     const s = @typeInfo(Args).Struct;
+    if (comptime varArgsIdx(Args)) |idx| {
+        py.allocator.free(allPosArgs[0..idx]);
+    }
     inline for (s.fields) |field| {
         if (field.type == py.Args) {
             py.allocator.free(@field(args, field.name));
