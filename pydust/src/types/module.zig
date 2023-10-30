@@ -31,7 +31,7 @@ pub const PyModule = extern struct {
         return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.PyRaised } };
     }
 
-    pub fn getState(self: PyModule, comptime state: type) !*state {
+    pub fn getState(self: PyModule, comptime ModState: type) !*ModState {
         const statePtr = ffi.PyModule_GetState(self.obj.py) orelse return PyError.PyRaised;
         return @ptrCast(@alignCast(statePtr));
     }

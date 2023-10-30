@@ -666,7 +666,7 @@ fn RichCompare(comptime definition: type) type {
             const CompareOpArg = typeInfo.params[2].type.?;
             if (CompareOpArg != py.CompareOp) @compileError("Third parameter of __richcompare__ must be a py.CompareOp");
 
-            const self = py.as(Self, pyself) catch return null;
+            const self = py.unchecked(Self, .{ .py = pyself });
             const otherArg = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) catch return null;
             const opEnum: py.CompareOp = @enumFromInt(op);
 
