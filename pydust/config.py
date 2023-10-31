@@ -13,9 +13,9 @@ limitations under the License.
 """
 
 import functools
+import importlib.metadata
 from pathlib import Path
 
-import pkg_resources
 import tomllib
 from pydantic import BaseModel, Field, model_validator
 
@@ -75,7 +75,7 @@ def load() -> ToolPydust:
 
     # Since Poetry doesn't support locking the build-system.requires dependencies,
     # we perform a check here to prevent the versions from diverging.
-    pydust_version = pkg_resources.get_distribution("ziggy-pydust").version
+    pydust_version = importlib.metadata.version("ziggy-pydust")
 
     # Skip 0.1.0 as it's the development version when installed locally.
     if pydust_version != "0.1.0":
