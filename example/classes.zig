@@ -179,9 +179,8 @@ pub const GetAttr = py.class(struct {
         _ = self;
     }
 
-    pub fn __getattr__(self: *const Self, attr: py.PyObject) !py.PyObject {
-        const attrName = try py.PyString.checked(attr);
-        const name = try attrName.asSlice();
+    pub fn __getattr__(self: *const Self, attr: py.String) !py.PyObject {
+        const name = try attr.asSlice();
         if (std.mem.eql(u8, name, "number")) {
             return py.create(42);
         }
