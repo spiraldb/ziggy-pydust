@@ -172,6 +172,22 @@ pub const Callable = py.class(struct {
     }
 });
 
+pub const GetAttr = py.class(struct {
+    const Self = @This();
+
+    pub fn __init__(self: *Self) void {
+        _ = self;
+    }
+
+    pub fn __getattr__(self: *const Self, attr: py.PyString) !py.PyObject {
+        const name = try attr.asSlice();
+        if (std.mem.eql(u8, name, "number")) {
+            return py.create(42);
+        }
+        return py.object(self).getAttribute(name);
+    }
+});
+
 comptime {
     py.rootmodule(@This());
 }

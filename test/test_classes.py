@@ -98,3 +98,11 @@ def test_refcnt():
     rc = sys.getrefcount(classes)
     classes.Hash(42)
     assert sys.getrefcount(classes) == rc
+
+
+def test_getattr():
+    c = classes.GetAttr()
+    assert c.number == 42
+    with pytest.raises(AttributeError) as exc_info:
+        c.attr
+    assert str(exc_info.value) == "'example.classes.GetAttr' object has no attribute 'attr'"

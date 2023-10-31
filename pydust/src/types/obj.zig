@@ -55,6 +55,14 @@ pub const PyObject = extern struct {
         return .{ .py = ffi.PyObject_GetAttr(self.py, attrStr.obj.py) orelse return PyError.PyRaised };
     }
 
+    /// Returns a new reference to the attribute of the object using default lookup semantics.
+    pub fn getAttribute(self: PyObject, attrName: []const u8) !py.PyObject {
+        const attrStr = try py.PyString.create(attrName);
+        defer attrStr.decref();
+
+        return .{ .py = ffi.PyObject_GenericGetAttr(self.py, attrStr.obj.py) orelse return PyError.PyRaised };
+    }
+
     /// Returns a new reference to the attribute of the object.
     pub fn getAs(self: PyObject, comptime T: type, attrName: []const u8) !T {
         return try py.as(T, try self.get(attrName));
