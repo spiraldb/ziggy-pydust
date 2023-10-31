@@ -326,3 +326,48 @@ class Ops:
         """
         ...
     def num(self, /): ...
+
+class UnaryOps:
+    def __init__(self, num, /):
+        pass
+    def __neg__(self, /):
+        """
+        -self
+        """
+        ...
+    def __pos__(self, /):
+        """
+        +self
+        """
+        ...
+    def __abs__(self, /):
+        """
+        abs(self)
+        """
+        ...
+    def __bool__(self, /):
+        """
+        True if self else False
+        """
+        ...
+    def __invert__(self, /):
+        """
+        ~self
+        """
+        ...
+    def __int__(self, /):
+        """
+        int(self)
+        """
+        ...
+    def __float__(self, /):
+        """
+        float(self)
+        """
+        ...
+    def __index__(self, /):
+        """
+        Return self converted to an integer, if self is suitable for use as an index into a list.
+        """
+        ...
+    def num(self, /): ...

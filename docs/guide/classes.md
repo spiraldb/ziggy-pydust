@@ -167,6 +167,8 @@ Also note the shorthand signatures:
 
 ```zig
 const binaryfunc = fn(*Self, object) !object;
+const unaryfunc = fn(*Self) !object;
+const inquiry = fn(*Self) !bool;
 ```
 
 ### Type Methods
@@ -209,7 +211,6 @@ The remaining mapping methods are yet to be implemented.
 | `__ne__` | `#!zig fn(*Self, object) !bool` |
 | `__gt__` | `#!zig fn(*Self, object) !bool` |
 | `__ge__` | `#!zig fn(*Self, object) !bool` |
-
 
 !!! note
 
@@ -258,6 +259,14 @@ to implement the full comparison logic in a single `__richcompare__` function.
 | `__ifloordiv__` | `binaryfunc` |
 | `__matmul__`    | `binaryfunc` |
 | `__imatmul__`   | `binaryfunc` |
+| `__neg__`       | `unaryfunc`  |
+| `__pos__`       | `unaryfunc`  |
+| `__abs__`       | `unaryfunc`  |
+| `__invert__`    | `unaryfunc`  |
+| `__int__`       | `unaryfunc`  |
+| `__float__`     | `unaryfunc`  |
+| `__index__`     | `unaryfunc`  |
+| `__bool__`      | `inquiry`    |
 
 !!! note
 
