@@ -23,6 +23,15 @@ class Counter:
 
     count: ...
 
+class GetAttr:
+    def __init__(self, /):
+        pass
+    def __getattribute__(self, name, /):
+        """
+        Return getattr(self, name).
+        """
+        ...
+
 class Hash:
     def __init__(self, x, /):
         pass

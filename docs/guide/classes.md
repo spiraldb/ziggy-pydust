@@ -173,17 +173,18 @@ const inquiry = fn(*Self) !bool;
 
 ### Type Methods
 
-| Method     | Signature                                |
-| :--------- | :--------------------------------------- |
-| `__init__` | `#!zig fn() void`                        |
-| `__init__` | `#!zig fn(*Self) !void`                  |
-| `__init__` | `#!zig fn(*Self, CallArgs) !void`        |
-| `__del__`  | `#!zig fn(*Self) void`                   |
-| `__repr__` | `#!zig fn(*Self) !py.PyString`           |
-| `__str__`  | `#!zig fn(*Self) !py.PyString`           |
-| `__call__` | `#!zig fn(*Self, CallArgs) !py.PyObject` |
-| `__iter__` | `#!zig fn(*Self) !object`                |
-| `__next__` | `#!zig fn(*Self) !?object`               |
+| Method        | Signature                                |
+| :------------ | :--------------------------------------- |
+| `__init__`    | `#!zig fn() void`                        |
+| `__init__`    | `#!zig fn(*Self) !void`                  |
+| `__init__`    | `#!zig fn(*Self, CallArgs) !void`        |
+| `__del__`     | `#!zig fn(*Self) void`                   |
+| `__repr__`    | `#!zig fn(*Self) !py.PyString`           |
+| `__str__`     | `#!zig fn(*Self) !py.PyString`           |
+| `__call__`    | `#!zig fn(*Self, CallArgs) !py.PyObject` |
+| `__iter__`    | `#!zig fn(*Self) !object`                |
+| `__next__`    | `#!zig fn(*Self) !?object`               |
+| `__getattr__` | `#!zig fn(*Self, object) !?object`       |
 
 ### Sequence Methods
 

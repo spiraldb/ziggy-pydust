@@ -81,6 +81,7 @@ pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
     .{ "__matmul__", ffi.Py_nb_matrix_multiply },
     .{ "__imatmul__", ffi.Py_nb_inplace_matrix_multiply },
     .{ "__getitem__", ffi.Py_mp_subscript },
+    .{ "__getattr__", ffi.Py_tp_getattro },
 });
 
 // TODO(marko): Move this somewhere.
