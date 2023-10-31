@@ -165,6 +165,53 @@ pub const Ops = py.class(struct {
 });
 // --8<-- [end:all]
 
+pub const UnaryOps = py.class(struct {
+    const Self = @This();
+
+    num: i64,
+
+    pub fn __init__(self: *Self, args: struct { num: i64 }) !void {
+        self.num = args.num;
+    }
+
+    pub fn num(self: *const Self) i64 {
+        return self.num;
+    }
+
+    pub fn __neg__(self: *Self) !py.PyLong {
+        return py.PyLong.create(-self.num);
+    }
+
+    pub fn __pos__(self: *Self) !*Self {
+        py.incref(self);
+        return self;
+    }
+
+    pub fn __abs__(self: *Self) !*Self {
+        return py.init(Self, .{ .num = @as(i64, @intCast(std.math.absCast(self.num))) });
+    }
+
+    pub fn __invert__(self: *Self) !*Self {
+        return py.init(Self, .{ .num = ~self.num });
+    }
+
+    pub fn __int__(self: *Self) !py.PyLong {
+        return py.PyLong.create(self.num);
+    }
+
+    pub fn __float__(self: *Self) !py.PyFloat {
+        return py.PyFloat.create(@as(f64, @floatFromInt(self.num)));
+    }
+
+    pub fn __index__(self: *Self) !py.PyLong {
+        return py.PyLong.create(self.num);
+    }
+
+    pub fn __bool__(self: *Self) !bool {
+        return self.num == 1;
+    }
+});
+
 // --8<-- [start:ops]
 pub const Operator = py.class(struct {
     const Self = @This();

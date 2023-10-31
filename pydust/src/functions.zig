@@ -42,6 +42,16 @@ pub const Signature = struct {
     }
 };
 
+pub const UnaryOperators = std.ComptimeStringMap(c_int, .{
+    .{ "__neg__", ffi.Py_nb_negative },
+    .{ "__pos__", ffi.Py_nb_positive },
+    .{ "__abs__", ffi.Py_nb_absolute },
+    .{ "__invert__", ffi.Py_nb_invert },
+    .{ "__int__", ffi.Py_nb_int },
+    .{ "__float__", ffi.Py_nb_float },
+    .{ "__index__", ffi.Py_nb_index },
+});
+
 pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
     .{ "__add__", ffi.Py_nb_add },
     .{ "__iadd__", ffi.Py_nb_inplace_add },
@@ -72,7 +82,6 @@ pub const BinaryOperators = std.ComptimeStringMap(c_int, .{
     .{ "__imatmul__", ffi.Py_nb_inplace_matrix_multiply },
     .{ "__getitem__", ffi.Py_mp_subscript },
 });
-pub const NBinaryOperators = BinaryOperators.kvs.len;
 
 // TODO(marko): Move this somewhere.
 fn keys(comptime stringMap: type) [stringMap.kvs.len][]const u8 {
@@ -93,19 +102,20 @@ pub const compareFuncs = .{
 };
 
 const reservedNames = .{
-    "__new__",
-    "__init__",
-    "__len__",
-    "__del__",
+    "__bool__",
     "__buffer__",
-    "__str__",
-    "__repr__",
-    "__release_buffer__",
-    "__iter__",
-    "__next__",
+    "__del__",
     "__hash__",
+    "__init__",
+    "__iter__",
+    "__len__",
+    "__new__",
+    "__next__",
+    "__release_buffer__",
+    "__repr__",
     "__richcompare__",
-} ++ compareFuncs ++ keys(BinaryOperators);
+    "__str__",
+} ++ compareFuncs ++ keys(BinaryOperators) ++ keys(UnaryOperators);
 
 /// Parse the arguments of a Zig function into a Pydust function siganture.
 pub fn parseSignature(comptime name: []const u8, comptime func: Type.Fn, comptime SelfTypes: []const type) Signature {

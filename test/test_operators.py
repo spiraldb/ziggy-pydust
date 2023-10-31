@@ -71,6 +71,29 @@ def test_iops(iop, expected):
     assert ops.num() == expected
 
 
+@pytest.mark.parametrize(
+    "op,expected",
+    [
+        (operator.pos, -3),
+        (operator.neg, 3),
+        (operator.invert, 2),
+        (operator.index, -3),
+        (operator.abs, 3),
+        (bool, False),
+        (int, -3),
+        (float, -3.0),
+    ],
+)
+def test_unaryops(op, expected):
+    ops = operators.UnaryOps(-3)
+    res = op(ops)
+
+    if isinstance(res, operators.UnaryOps):
+        assert res.num() == expected
+    else:
+        assert res == expected
+
+
 def test_divmod():
     ops = operators.Ops(3)
     other = operators.Ops(2)

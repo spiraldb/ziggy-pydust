@@ -215,6 +215,13 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
                 }};
             }
 
+            if (@hasDecl(definition, "__bool__")) {
+                slots_ = slots_ ++ .{ffi.PyType_Slot{
+                    .slot = ffi.Py_nb_bool,
+                    .pfunc = @ptrCast(@constCast(&nb_bool)),
+                }};
+            }
+
             if (richcmp.hasCompare) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
                     .slot = ffi.Py_tp_richcompare,
@@ -225,6 +232,16 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             for (funcs.BinaryOperators.kvs) |kv| {
                 if (@hasDecl(definition, kv.key)) {
                     const op = BinaryOperator(definition, kv.key);
+                    slots_ = slots_ ++ .{ffi.PyType_Slot{
+                        .slot = kv.value,
+                        .pfunc = @ptrCast(@constCast(&op.call)),
+                    }};
+                }
+            }
+
+            for (funcs.UnaryOperators.kvs) |kv| {
+                if (@hasDecl(definition, kv.key)) {
+                    const op = UnaryOperator(definition, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
                         .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
@@ -368,6 +385,12 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
 
             const result = tramp.coerceError(definition.__call__(self, call_args.argsStruct)) catch return null;
             return (py.createOwned(result) catch return null).py;
+        }
+
+        fn nb_bool(pyself: *ffi.PyObject) callconv(.C) c_int {
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+            const result = tramp.coerceError(definition.__bool__(&self.state)) catch return -1;
+            return @intCast(@intFromBool(result));
         }
     };
 }
@@ -588,6 +611,26 @@ fn BinaryOperator(
             const other = tramp.Trampoline(typeInfo.params[1].type.?).unwrap(.{ .py = pyother }) catch return null;
 
             const result = tramp.coerceError(func(&self.state, other)) catch return null;
+            return (py.createOwned(result) catch return null).py;
+        }
+    };
+}
+
+fn UnaryOperator(
+    comptime definition: type,
+    comptime op: []const u8,
+) type {
+    return struct {
+        fn call(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+            const func = @field(definition, op);
+            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
+
+            if (typeInfo.params.len != 1) @compileError(op ++ " must take exactly one parameter");
+
+            // TODO(ngates): do we want to trampoline the self argument?
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
+
+            const result = tramp.coerceError(func(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };
