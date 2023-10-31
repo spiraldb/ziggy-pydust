@@ -90,6 +90,7 @@ pub fn Trampoline(comptime T: type) type {
                         return obj;
                     }
                 },
+                .Optional => |o| return if (obj) |objP| Trampoline(o.child).asObject(objP) else std.debug.panic("Can't convert null to an object", .{}),
                 inline else => {},
             }
             @compileError("Cannot convert into PyObject: " ++ @typeName(T));
