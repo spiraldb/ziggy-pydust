@@ -59,7 +59,7 @@ pub fn fibonacci(args: struct { n: u64 }) u64 {
 }
 
 comptime {
-    py.module(@This());
+    py.rootmodule(@This());
 }
 ```
 
