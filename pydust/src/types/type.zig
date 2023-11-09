@@ -26,21 +26,29 @@ pub const PyType = extern struct {
 
     pub fn name(self: PyType) !py.PyString {
         return py.PyString.unchecked(.{
-            .py = ffi.PyType_GetName(typePtr(self.obj.py)) orelse return PyError.PyRaised,
+            .py = ffi.PyType_GetName(typePtr(self)) orelse return PyError.PyRaised,
         });
     }
 
     pub fn qualifiedName(self: PyType) !py.PyString {
         return py.PyString.unchecked(.{
-            .py = ffi.PyType_GetQualName(typePtr(self.obj.py)) orelse return PyError.PyRaised,
+            .py = ffi.PyType_GetQualName(typePtr(self)) orelse return PyError.PyRaised,
         });
     }
 
-    fn typePtr(obj: *ffi.PyObject) *ffi.PyTypeObject {
-        return @alignCast(@ptrCast(obj));
+    pub fn getSlot(self: PyType, slot: c_int) ?*anyopaque {
+        return ffi.PyType_GetSlot(typePtr(self), slot);
     }
 
-    fn objPtr(obj: *ffi.PyTypeObject) *ffi.PyObject {
+    pub fn hasFeature(self: PyType, feature: u64) bool {
+        return ffi.PyType_GetFlags(typePtr(self)) & feature != 0;
+    }
+
+    inline fn typePtr(self: PyType) *ffi.PyTypeObject {
+        return @alignCast(@ptrCast(self.obj.py));
+    }
+
+    inline fn objPtr(obj: *ffi.PyTypeObject) *ffi.PyObject {
         return @alignCast(@ptrCast(obj));
     }
 };

@@ -42,8 +42,16 @@ pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
         };
 
         const bases = Bases(definition);
-        const attrs = Attributes(definition);
         const slots = Slots(definition, name);
+
+        const flags = blk: {
+            var flags_: usize = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE;
+            if (slots.gc.needsGc) {
+                flags_ |= ffi.Py_TPFLAGS_HAVE_GC;
+            }
+
+            break :blk flags_;
+        };
 
         pub fn init(module: py.PyModule) PyError!py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;
@@ -61,7 +69,7 @@ pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
                 .name = qualifiedName.ptr,
                 .basicsize = @sizeOf(PyTypeStruct(definition)),
                 .itemsize = 0,
-                .flags = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE,
+                .flags = flags,
                 .slots = @constCast(slots.slots.ptr),
             };
 
@@ -105,10 +113,21 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
         const properties = Properties(definition);
         const doc = Doc(definition, name);
         const richcmp = RichCompare(definition);
+        const gc = GC(definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
             var slots_: [:empty]const ffi.PyType_Slot = &.{};
+
+            if (gc.needsGc) {
+                slots_ = slots_ ++ .{ ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_clear,
+                    .pfunc = @constCast(&gc.tp_clear),
+                }, ffi.PyType_Slot{
+                    .slot = ffi.Py_tp_traverse,
+                    .pfunc = @constCast(&gc.tp_traverse),
+                } };
+            }
 
             if (doc.docLen != 0) {
                 slots_ = slots_ ++ .{ffi.PyType_Slot{
@@ -305,7 +324,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
         /// Note: tp_del is deprecated in favour of tp_finalize.
         ///
         /// See https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_finalize.
-        fn tp_finalize(pyself: *ffi.PyObject) void {
+        fn tp_finalize(pyself: *ffi.PyObject) callconv(.C) void {
             // The finalize slot shouldn't alter any exception that is currently set.
             // So it's recommended we save the existing one (if any) and restore it afterwards.
             // NOTE(ngates): we may want to move this logic to PyErr if it happens more?
@@ -452,6 +471,183 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
 
             break :blk userDoc;
         };
+    };
+}
+
+fn GC(comptime definition: type) type {
+    const VisitProc = *const fn (*ffi.PyObject, *anyopaque) callconv(.C) c_int;
+
+    return struct {
+        const needsGc = classNeedsGc(definition);
+
+        fn classNeedsGc(comptime CT: type) bool {
+            inline for (@typeInfo(CT).Struct.fields) |field| {
+                if (typeNeedsGc(field.type)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        fn typeNeedsGc(comptime FT: type) bool {
+            return switch (@typeInfo(FT)) {
+                .Pointer => |p| @typeInfo(p.child) == .Struct and (p.child == ffi.PyObject or typeNeedsGc(p.child)),
+                .Struct => blk: {
+                    if (State.findDefinition(FT)) |def| {
+                        break :blk switch (def.type) {
+                            .attribute => typeNeedsGc(@typeInfo(FT).Struct.fields[0].type),
+                            .property => classNeedsGc(FT),
+                            .class, .module => false,
+                        };
+                    } else {
+                        break :blk @hasField(FT, "obj") and @hasField(std.meta.fieldInfo(FT, .obj).type, "py") or FT == py.PyObject;
+                    }
+                },
+                .Optional => |o| (@typeInfo(o.child) == .Struct or @typeInfo(o.child) == .Pointer) and typeNeedsGc(o.child),
+                else => return false,
+            };
+        }
+
+        fn tp_clear(pyself: *ffi.PyObject) callconv(.C) c_int {
+            var self: *PyTypeStruct(definition) = @ptrCast(pyself);
+            clearFields(self.state);
+            return 0;
+        }
+
+        fn clearFields(class: anytype) void {
+            inline for (@typeInfo(@TypeOf(class)).Struct.fields) |field| {
+                clear(@field(class, field.name));
+            }
+        }
+
+        fn clear(obj: anytype) void {
+            const fieldType = @TypeOf(obj);
+            switch (@typeInfo(fieldType)) {
+                .Pointer => |p| if (@typeInfo(p.child) == .Struct) {
+                    if (p.child == ffi.PyObject) {
+                        pyClear(obj);
+                    }
+                    if (State.findDefinition(fieldType)) |def| {
+                        if (def.type == .class) {
+                            pyClear(py.object(obj).py);
+                        }
+                    }
+                },
+                .Struct => {
+                    if (State.findDefinition(fieldType)) |def| {
+                        switch (def.type) {
+                            .attribute => clear(@field(obj, @typeInfo(fieldType).Struct.fields[0].name)),
+                            .property => clearFields(obj),
+                            .class, .module => {},
+                        }
+                    } else {
+                        if (@hasField(fieldType, "obj") and @hasField(std.meta.fieldInfo(fieldType, .obj).type, "py")) {
+                            pyClear(obj.obj.py);
+                        }
+
+                        if (fieldType == py.PyObject) {
+                            pyClear(obj.py);
+                        }
+                    }
+                },
+                .Optional => |o| if (@typeInfo(o.child) == .Struct or @typeInfo(o.child) == .Pointer) {
+                    if (obj == null) {
+                        return;
+                    }
+
+                    clear(obj.?);
+                },
+                else => {},
+            }
+        }
+
+        inline fn pyClear(obj: *ffi.PyObject) void {
+            var objRef = @constCast(&obj);
+            const objOld = objRef.*;
+            objRef.* = undefined;
+            py.decref(objOld);
+        }
+
+        /// Visit all members of pyself. We visit all PyObjects that this object references
+        fn tp_traverse(pyself: *ffi.PyObject, visit: VisitProc, arg: *anyopaque) callconv(.C) c_int {
+            if (pyVisit(py.type_(pyself).obj.py, visit, arg)) |ret| {
+                return ret;
+            }
+
+            const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
+            if (traverseFields(self.state, visit, arg)) |ret| {
+                return ret;
+            }
+            return 0;
+        }
+
+        fn traverseFields(class: anytype, visit: VisitProc, arg: *anyopaque) ?c_int {
+            inline for (@typeInfo(@TypeOf(class)).Struct.fields) |field| {
+                if (traverse(@field(class, field.name), visit, arg)) |ret| {
+                    return ret;
+                }
+            }
+            return null;
+        }
+
+        fn traverse(obj: anytype, visit: VisitProc, arg: *anyopaque) ?c_int {
+            const fieldType = @TypeOf(obj);
+            switch (@typeInfo(@TypeOf(obj))) {
+                .Pointer => |p| if (@typeInfo(p.child) == .Struct) {
+                    if (p.child == ffi.PyObject) {
+                        if (pyVisit(obj, visit, arg)) |ret| {
+                            return ret;
+                        }
+                    }
+                    if (State.findDefinition(fieldType)) |def| {
+                        if (def.type == .class) {
+                            if (pyVisit(py.object(obj).py, visit, arg)) |ret| {
+                                return ret;
+                            }
+                        }
+                    }
+                },
+                .Struct => if (State.findDefinition(fieldType)) |def| {
+                    switch (def.type) {
+                        .attribute => if (traverse(@field(obj, @typeInfo(@TypeOf(obj)).Struct.fields[0].name), visit, arg)) |ret| {
+                            return ret;
+                        },
+                        .property => if (traverseFields(obj, visit, arg)) |ret| {
+                            return ret;
+                        },
+                        .class, .module => {},
+                    }
+                } else {
+                    if (@hasField(fieldType, "obj") and @hasField(std.meta.fieldInfo(fieldType, .obj).type, "py")) {
+                        if (pyVisit(obj.obj.py, visit, arg)) |ret| {
+                            return ret;
+                        }
+                    }
+
+                    if (fieldType == py.PyObject) {
+                        if (pyVisit(obj.py, visit, arg)) |ret| {
+                            return ret;
+                        }
+                    }
+                },
+                .Optional => |o| if (@typeInfo(o.child) == .Struct or @typeInfo(o.child) == .Pointer) {
+                    if (obj == null) {
+                        return null;
+                    }
+
+                    if (traverse(obj.?, visit, arg)) |ret| {
+                        return ret;
+                    }
+                },
+                else => return null,
+            }
+            return null;
+        }
+
+        inline fn pyVisit(obj: *ffi.PyObject, visit: VisitProc, arg: *anyopaque) ?c_int {
+            const ret = visit(obj, arg);
+            return if (ret != 0) ret else null;
+        }
     };
 }
 

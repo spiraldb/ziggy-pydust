@@ -79,6 +79,7 @@ pub const User = py.class(struct {
         e: ?py.PyString = null,
 
         pub fn get(prop: *const Prop) ?py.PyString {
+            if (prop.e) |e| e.incref();
             return prop.e;
         }
 
@@ -87,6 +88,7 @@ pub const User = py.class(struct {
             if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
                 return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
             }
+            value.incref();
             prop.e = value;
         }
     }),
@@ -96,6 +98,11 @@ pub const User = py.class(struct {
             return py.PyString.createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
     }) = .{},
+
+    pub fn __del__(self: *Self) void {
+        self.name.decref();
+        if (self.email.e) |e| e.decref();
+    }
 });
 // --8<-- [end:properties]
 
