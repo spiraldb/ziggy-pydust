@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/pbkdf2.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> maxInt = std.math.maxInt;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> OutputTooLongError = std.crypto.errors.OutputTooLongError;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> WeakParametersError = std.crypto.errors.WeakParametersError;</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-comment">// RFC 2898 Section 5.2</span>
+</span>
+<span class="line" id="L8"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L9"><span class="tok-comment">// FromSpec:</span>
+</span>
+<span class="line" id="L10"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L11"><span class="tok-comment">// PBKDF2 applies a pseudorandom function (see Appendix B.1 for an</span>
+</span>
+<span class="line" id="L12"><span class="tok-comment">// example) to derive keys. The length of the derived key is essentially</span>
+</span>
+<span class="line" id="L13"><span class="tok-comment">// unbounded. (However, the maximum effective search space for the</span>
+</span>
+<span class="line" id="L14"><span class="tok-comment">// derived key may be limited by the structure of the underlying</span>
+</span>
+<span class="line" id="L15"><span class="tok-comment">// pseudorandom function. See Appendix B.1 for further discussion.)</span>
+</span>
+<span class="line" id="L16"><span class="tok-comment">// PBKDF2 is recommended for new applications.</span>
+</span>
+<span class="line" id="L17"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L18"><span class="tok-comment">// PBKDF2 (P, S, c, dk_len)</span>
+</span>
+<span class="line" id="L19"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L20"><span class="tok-comment">// Options:        PRF        underlying pseudorandom function (h_len</span>
+</span>
+<span class="line" id="L21"><span class="tok-comment">//                            denotes the length in octets of the</span>
+</span>
+<span class="line" id="L22"><span class="tok-comment">//                            pseudorandom function output)</span>
+</span>
+<span class="line" id="L23"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L24"><span class="tok-comment">// Input:          P          password, an octet string</span>
+</span>
+<span class="line" id="L25"><span class="tok-comment">//                 S          salt, an octet string</span>
+</span>
+<span class="line" id="L26"><span class="tok-comment">//                 c          iteration count, a positive integer</span>
+</span>
+<span class="line" id="L27"><span class="tok-comment">//                 dk_len      intended length in octets of the derived</span>
+</span>
+<span class="line" id="L28"><span class="tok-comment">//                            key, a positive integer, at most</span>
+</span>
+<span class="line" id="L29"><span class="tok-comment">//                            (2^32 - 1) * h_len</span>
+</span>
+<span class="line" id="L30"><span class="tok-comment">//</span>
+</span>
+<span class="line" id="L31"><span class="tok-comment">// Output:         DK         derived key, a dk_len-octet string</span>
+</span>
+<span class="line" id="L32"></span>
+<span class="line" id="L33"><span class="tok-comment">// Based on Apple's CommonKeyDerivation, based originally on code by Damien Bergamini.</span>
+</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35"><span class="tok-comment">/// Apply PBKDF2 to generate a key from a password.</span></span>
+<span class="line" id="L36"><span class="tok-comment">///</span></span>
+<span class="line" id="L37"><span class="tok-comment">/// PBKDF2 is defined in RFC 2898, and is a recommendation of NIST SP 800-132.</span></span>
+<span class="line" id="L38"><span class="tok-comment">///</span></span>
+<span class="line" id="L39"><span class="tok-comment">/// dk: Slice of appropriate size for generated key. Generally 16 or 32 bytes in length.</span></span>
+<span class="line" id="L40"><span class="tok-comment">///             May be uninitialized. All bytes will be overwritten.</span></span>
+<span class="line" id="L41"><span class="tok-comment">///             Maximum size is `maxInt(u32) * Hash.digest_length`</span></span>
+<span class="line" id="L42"><span class="tok-comment">///             It is a programming error to pass buffer longer than the maximum size.</span></span>
+<span class="line" id="L43"><span class="tok-comment">///</span></span>
+<span class="line" id="L44"><span class="tok-comment">/// password: Arbitrary sequence of bytes of any length, including empty.</span></span>
+<span class="line" id="L45"><span class="tok-comment">///</span></span>
+<span class="line" id="L46"><span class="tok-comment">/// salt: Arbitrary sequence of bytes of any length, including empty. A common length is 8 bytes.</span></span>
+<span class="line" id="L47"><span class="tok-comment">///</span></span>
+<span class="line" id="L48"><span class="tok-comment">/// rounds: Iteration count. Must be greater than 0. Common values range from 1,000 to 100,000.</span></span>
+<span class="line" id="L49"><span class="tok-comment">///         Larger iteration counts improve security by increasing the time required to compute</span></span>
+<span class="line" id="L50"><span class="tok-comment">///         the dk. It is common to tune this parameter to achieve approximately 100ms.</span></span>
+<span class="line" id="L51"><span class="tok-comment">///</span></span>
+<span class="line" id="L52"><span class="tok-comment">/// Prf: Pseudo-random function to use. A common choice is `std.crypto.auth.hmac.sha2.HmacSha256`.</span></span>
+<span class="line" id="L53"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pbkdf2</span>(dk: []<span class="tok-type">u8</span>, password: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, salt: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, rounds: <span class="tok-type">u32</span>, <span class="tok-kw">comptime</span> Prf: <span class="tok-type">type</span>) (WeakParametersError || OutputTooLongError)!<span class="tok-type">void</span> {</span>
+<span class="line" id="L54">    <span class="tok-kw">if</span> (rounds &lt; <span class="tok-number">1</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.WeakParameters;</span>
+<span class="line" id="L55"></span>
+<span class="line" id="L56">    <span class="tok-kw">const</span> dk_len = dk.len;</span>
+<span class="line" id="L57">    <span class="tok-kw">const</span> h_len = Prf.mac_length;</span>
+<span class="line" id="L58">    <span class="tok-kw">comptime</span> std.debug.assert(h_len &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L59"></span>
+<span class="line" id="L60">    <span class="tok-comment">// FromSpec:</span>
+</span>
+<span class="line" id="L61">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L62">    <span class="tok-comment">//   1. If dk_len &gt; maxInt(u32) * h_len, output &quot;derived key too long&quot; and</span>
+</span>
+<span class="line" id="L63">    <span class="tok-comment">//      stop.</span>
+</span>
+<span class="line" id="L64">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L65">    <span class="tok-kw">if</span> (dk_len / h_len &gt;= maxInt(<span class="tok-type">u32</span>)) {</span>
+<span class="line" id="L66">        <span class="tok-comment">// Counter starts at 1 and is 32 bit, so if we have to return more blocks, we would overflow</span>
+</span>
+<span class="line" id="L67">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.OutputTooLong;</span>
+<span class="line" id="L68">    }</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">    <span class="tok-comment">// FromSpec:</span>
+</span>
+<span class="line" id="L71">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L72">    <span class="tok-comment">//   2. Let l be the number of h_len-long blocks of bytes in the derived key,</span>
+</span>
+<span class="line" id="L73">    <span class="tok-comment">//      rounding up, and let r be the number of bytes in the last</span>
+</span>
+<span class="line" id="L74">    <span class="tok-comment">//      block</span>
+</span>
+<span class="line" id="L75">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L76"></span>
+<span class="line" id="L77">    <span class="tok-kw">const</span> blocks_count = <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(std.math.divCeil(<span class="tok-type">usize</span>, dk_len, h_len) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>));</span>
+<span class="line" id="L78">    <span class="tok-kw">var</span> r = dk_len % h_len;</span>
+<span class="line" id="L79">    <span class="tok-kw">if</span> (r == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L80">        r = h_len;</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    <span class="tok-comment">// FromSpec:</span>
+</span>
+<span class="line" id="L84">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L85">    <span class="tok-comment">//   3. For each block of the derived key apply the function F defined</span>
+</span>
+<span class="line" id="L86">    <span class="tok-comment">//      below to the password P, the salt S, the iteration count c, and</span>
+</span>
+<span class="line" id="L87">    <span class="tok-comment">//      the block index to compute the block:</span>
+</span>
+<span class="line" id="L88">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L89">    <span class="tok-comment">//                T_1 = F (P, S, c, 1) ,</span>
+</span>
+<span class="line" id="L90">    <span class="tok-comment">//                T_2 = F (P, S, c, 2) ,</span>
+</span>
+<span class="line" id="L91">    <span class="tok-comment">//                ...</span>
+</span>
+<span class="line" id="L92">    <span class="tok-comment">//                T_l = F (P, S, c, l) ,</span>
+</span>
+<span class="line" id="L93">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L94">    <span class="tok-comment">//      where the function F is defined as the exclusive-or sum of the</span>
+</span>
+<span class="line" id="L95">    <span class="tok-comment">//      first c iterates of the underlying pseudorandom function PRF</span>
+</span>
+<span class="line" id="L96">    <span class="tok-comment">//      applied to the password P and the concatenation of the salt S</span>
+</span>
+<span class="line" id="L97">    <span class="tok-comment">//      and the block index i:</span>
+</span>
+<span class="line" id="L98">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L99">    <span class="tok-comment">//                F (P, S, c, i) = U_1 \xor U_2 \xor ... \xor U_c</span>
+</span>
+<span class="line" id="L100">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L101">    <span class="tok-comment">//  where</span>
+</span>
+<span class="line" id="L102">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L103">    <span class="tok-comment">//            U_1 = PRF (P, S || INT (i)) ,</span>
+</span>
+<span class="line" id="L104">    <span class="tok-comment">//            U_2 = PRF (P, U_1) ,</span>
+</span>
+<span class="line" id="L105">    <span class="tok-comment">//            ...</span>
+</span>
+<span class="line" id="L106">    <span class="tok-comment">//            U_c = PRF (P, U_{c-1}) .</span>
+</span>
+<span class="line" id="L107">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L108">    <span class="tok-comment">//  Here, INT (i) is a four-octet encoding of the integer i, most</span>
+</span>
+<span class="line" id="L109">    <span class="tok-comment">//  significant octet first.</span>
+</span>
+<span class="line" id="L110">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L111">    <span class="tok-comment">//  4. Concatenate the blocks and extract the first dk_len octets to</span>
+</span>
+<span class="line" id="L112">    <span class="tok-comment">//  produce a derived key DK:</span>
+</span>
+<span class="line" id="L113">    <span class="tok-comment">//</span>
+</span>
+<span class="line" id="L114">    <span class="tok-comment">//            DK = T_1 || T_2 ||  ...  || T_l&lt;0..r-1&gt;</span>
+</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116">    <span class="tok-kw">var</span> block: <span class="tok-type">u32</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L117">    <span class="tok-kw">while</span> (block &lt; blocks_count) : (block += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L118">        <span class="tok-kw">var</span> prev_block: [h_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L119">        <span class="tok-kw">var</span> new_block: [h_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L120"></span>
+<span class="line" id="L121">        <span class="tok-comment">// U_1 = PRF (P, S || INT (i))</span>
+</span>
+<span class="line" id="L122">        <span class="tok-kw">const</span> block_index = mem.toBytes(mem.nativeToBig(<span class="tok-type">u32</span>, block + <span class="tok-number">1</span>)); <span class="tok-comment">// Block index starts at 0001</span>
+</span>
+<span class="line" id="L123">        <span class="tok-kw">var</span> ctx = Prf.init(password);</span>
+<span class="line" id="L124">        ctx.update(salt);</span>
+<span class="line" id="L125">        ctx.update(block_index[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L126">        ctx.final(prev_block[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L127"></span>
+<span class="line" id="L128">        <span class="tok-comment">// Choose portion of DK to write into (T_n) and initialize</span>
+</span>
+<span class="line" id="L129">        <span class="tok-kw">const</span> offset = block * h_len;</span>
+<span class="line" id="L130">        <span class="tok-kw">const</span> block_len = <span class="tok-kw">if</span> (block != blocks_count - <span class="tok-number">1</span>) h_len <span class="tok-kw">else</span> r;</span>
+<span class="line" id="L131">        <span class="tok-kw">const</span> dk_block: []<span class="tok-type">u8</span> = dk[offset..][<span class="tok-number">0</span>..block_len];</span>
+<span class="line" id="L132">        <span class="tok-builtin">@memcpy</span>(dk_block, prev_block[<span class="tok-number">0</span>..dk_block.len]);</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134">        <span class="tok-kw">var</span> i: <span class="tok-type">u32</span> = <span class="tok-number">1</span>;</span>
+<span class="line" id="L135">        <span class="tok-kw">while</span> (i &lt; rounds) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L136">            <span class="tok-comment">// U_c = PRF (P, U_{c-1})</span>
+</span>
+<span class="line" id="L137">            Prf.create(&amp;new_block, prev_block[<span class="tok-number">0</span>..], password);</span>
+<span class="line" id="L138">            prev_block = new_block;</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140">            <span class="tok-comment">// F (P, S, c, i) = U_1 \xor U_2 \xor ... \xor U_c</span>
+</span>
+<span class="line" id="L141">            <span class="tok-kw">for</span> (dk_block, <span class="tok-number">0</span>..) |_, j| {</span>
+<span class="line" id="L142">                dk_block[j] ^= new_block[j];</span>
+<span class="line" id="L143">            }</span>
+<span class="line" id="L144">        }</span>
+<span class="line" id="L145">    }</span>
+<span class="line" id="L146">}</span>
+<span class="line" id="L147"></span>
+<span class="line" id="L148"><span class="tok-kw">const</span> htest = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;test.zig&quot;</span>);</span>
+<span class="line" id="L149"><span class="tok-kw">const</span> HmacSha1 = std.crypto.auth.hmac.HmacSha1;</span>
+<span class="line" id="L150"></span>
+<span class="line" id="L151"><span class="tok-comment">// RFC 6070 PBKDF2 HMAC-SHA1 Test Vectors</span>
+</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153"><span class="tok-kw">test</span> <span class="tok-str">&quot;RFC 6070 one iteration&quot;</span> {</span>
+<span class="line" id="L154">    <span class="tok-kw">const</span> p = <span class="tok-str">&quot;password&quot;</span>;</span>
+<span class="line" id="L155">    <span class="tok-kw">const</span> s = <span class="tok-str">&quot;salt&quot;</span>;</span>
+<span class="line" id="L156">    <span class="tok-kw">const</span> c = <span class="tok-number">1</span>;</span>
+<span class="line" id="L157">    <span class="tok-kw">const</span> dk_len = <span class="tok-number">20</span>;</span>
+<span class="line" id="L158"></span>
+<span class="line" id="L159">    <span class="tok-kw">var</span> dk: [dk_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L160"></span>
+<span class="line" id="L161">    <span class="tok-kw">try</span> pbkdf2(&amp;dk, p, s, c, HmacSha1);</span>
+<span class="line" id="L162"></span>
+<span class="line" id="L163">    <span class="tok-kw">const</span> expected = <span class="tok-str">&quot;0c60c80f961f0e71f3a9b524af6012062fe037a6&quot;</span>;</span>
+<span class="line" id="L164"></span>
+<span class="line" id="L165">    <span class="tok-kw">try</span> htest.assertEqual(expected, dk[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L166">}</span>
+<span class="line" id="L167"></span>
+<span class="line" id="L168"><span class="tok-kw">test</span> <span class="tok-str">&quot;RFC 6070 two iterations&quot;</span> {</span>
+<span class="line" id="L169">    <span class="tok-kw">const</span> p = <span class="tok-str">&quot;password&quot;</span>;</span>
+<span class="line" id="L170">    <span class="tok-kw">const</span> s = <span class="tok-str">&quot;salt&quot;</span>;</span>
+<span class="line" id="L171">    <span class="tok-kw">const</span> c = <span class="tok-number">2</span>;</span>
+<span class="line" id="L172">    <span class="tok-kw">const</span> dk_len = <span class="tok-number">20</span>;</span>
+<span class="line" id="L173"></span>
+<span class="line" id="L174">    <span class="tok-kw">var</span> dk: [dk_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176">    <span class="tok-kw">try</span> pbkdf2(&amp;dk, p, s, c, HmacSha1);</span>
+<span class="line" id="L177"></span>
+<span class="line" id="L178">    <span class="tok-kw">const</span> expected = <span class="tok-str">&quot;ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957&quot;</span>;</span>
+<span class="line" id="L179"></span>
+<span class="line" id="L180">    <span class="tok-kw">try</span> htest.assertEqual(expected, dk[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L181">}</span>
+<span class="line" id="L182"></span>
+<span class="line" id="L183"><span class="tok-kw">test</span> <span class="tok-str">&quot;RFC 6070 4096 iterations&quot;</span> {</span>
+<span class="line" id="L184">    <span class="tok-kw">const</span> p = <span class="tok-str">&quot;password&quot;</span>;</span>
+<span class="line" id="L185">    <span class="tok-kw">const</span> s = <span class="tok-str">&quot;salt&quot;</span>;</span>
+<span class="line" id="L186">    <span class="tok-kw">const</span> c = <span class="tok-number">4096</span>;</span>
+<span class="line" id="L187">    <span class="tok-kw">const</span> dk_len = <span class="tok-number">20</span>;</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189">    <span class="tok-kw">var</span> dk: [dk_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L190"></span>
+<span class="line" id="L191">    <span class="tok-kw">try</span> pbkdf2(&amp;dk, p, s, c, HmacSha1);</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">    <span class="tok-kw">const</span> expected = <span class="tok-str">&quot;4b007901b765489abead49d926f721d065a429c1&quot;</span>;</span>
+<span class="line" id="L194"></span>
+<span class="line" id="L195">    <span class="tok-kw">try</span> htest.assertEqual(expected, dk[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L196">}</span>
+<span class="line" id="L197"></span>
+<span class="line" id="L198"><span class="tok-kw">test</span> <span class="tok-str">&quot;RFC 6070 16,777,216 iterations&quot;</span> {</span>
+<span class="line" id="L199">    <span class="tok-comment">// These iteration tests are slow so we always skip them. Results have been verified.</span>
+</span>
+<span class="line" id="L200">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L201">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L202">    }</span>
+<span class="line" id="L203"></span>
+<span class="line" id="L204">    <span class="tok-kw">const</span> p = <span class="tok-str">&quot;password&quot;</span>;</span>
+<span class="line" id="L205">    <span class="tok-kw">const</span> s = <span class="tok-str">&quot;salt&quot;</span>;</span>
+<span class="line" id="L206">    <span class="tok-kw">const</span> c = <span class="tok-number">16777216</span>;</span>
+<span class="line" id="L207">    <span class="tok-kw">const</span> dk_len = <span class="tok-number">20</span>;</span>
+<span class="line" id="L208"></span>
+<span class="line" id="L209">    <span class="tok-kw">var</span> dk = [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** dk_len;</span>
+<span class="line" id="L210"></span>
+<span class="line" id="L211">    <span class="tok-kw">try</span> pbkdf2(&amp;dk, p, s, c, HmacSha1);</span>
+<span class="line" id="L212"></span>
+<span class="line" id="L213">    <span class="tok-kw">const</span> expected = <span class="tok-str">&quot;eefe3d61cd4da4e4e9945b3d6ba2158c2634e984&quot;</span>;</span>
+<span class="line" id="L214"></span>
+<span class="line" id="L215">    <span class="tok-kw">try</span> htest.assertEqual(expected, dk[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L216">}</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218"><span class="tok-kw">test</span> <span class="tok-str">&quot;RFC 6070 multi-block salt and password&quot;</span> {</span>
+<span class="line" id="L219">    <span class="tok-kw">const</span> p = <span class="tok-str">&quot;passwordPASSWORDpassword&quot;</span>;</span>
+<span class="line" id="L220">    <span class="tok-kw">const</span> s = <span class="tok-str">&quot;saltSALTsaltSALTsaltSALTsaltSALTsalt&quot;</span>;</span>
+<span class="line" id="L221">    <span class="tok-kw">const</span> c = <span class="tok-number">4096</span>;</span>
+<span class="line" id="L222">    <span class="tok-kw">const</span> dk_len = <span class="tok-number">25</span>;</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">    <span class="tok-kw">var</span> dk: [dk_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L225"></span>
+<span class="line" id="L226">    <span class="tok-kw">try</span> pbkdf2(&amp;dk, p, s, c, HmacSha1);</span>
+<span class="line" id="L227"></span>
+<span class="line" id="L228">    <span class="tok-kw">const</span> expected = <span class="tok-str">&quot;3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038&quot;</span>;</span>
+<span class="line" id="L229"></span>
+<span class="line" id="L230">    <span class="tok-kw">try</span> htest.assertEqual(expected, dk[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L231">}</span>
+<span class="line" id="L232"></span>
+<span class="line" id="L233"><span class="tok-kw">test</span> <span class="tok-str">&quot;RFC 6070 embedded NUL&quot;</span> {</span>
+<span class="line" id="L234">    <span class="tok-kw">const</span> p = <span class="tok-str">&quot;pass\x00word&quot;</span>;</span>
+<span class="line" id="L235">    <span class="tok-kw">const</span> s = <span class="tok-str">&quot;sa\x00lt&quot;</span>;</span>
+<span class="line" id="L236">    <span class="tok-kw">const</span> c = <span class="tok-number">4096</span>;</span>
+<span class="line" id="L237">    <span class="tok-kw">const</span> dk_len = <span class="tok-number">16</span>;</span>
+<span class="line" id="L238"></span>
+<span class="line" id="L239">    <span class="tok-kw">var</span> dk: [dk_len]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L240"></span>
+<span class="line" id="L241">    <span class="tok-kw">try</span> pbkdf2(&amp;dk, p, s, c, HmacSha1);</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">    <span class="tok-kw">const</span> expected = <span class="tok-str">&quot;56fa6aa75548099dcc37d7f03425e0c3&quot;</span>;</span>
+<span class="line" id="L244"></span>
+<span class="line" id="L245">    <span class="tok-kw">try</span> htest.assertEqual(expected, dk[<span class="tok-number">0</span>..]);</span>
+<span class="line" id="L246">}</span>
+<span class="line" id="L247"></span>
+<span class="line" id="L248"><span class="tok-kw">test</span> <span class="tok-str">&quot;Very large dk_len&quot;</span> {</span>
+<span class="line" id="L249">    <span class="tok-comment">// This test allocates 8GB of memory and is expected to take several hours to run.</span>
+</span>
+<span class="line" id="L250">    <span class="tok-kw">if</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L251">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L252">    }</span>
+<span class="line" id="L253">    <span class="tok-kw">const</span> p = <span class="tok-str">&quot;password&quot;</span>;</span>
+<span class="line" id="L254">    <span class="tok-kw">const</span> s = <span class="tok-str">&quot;salt&quot;</span>;</span>
+<span class="line" id="L255">    <span class="tok-kw">const</span> c = <span class="tok-number">1</span>;</span>
+<span class="line" id="L256">    <span class="tok-kw">const</span> dk_len = <span class="tok-number">1</span> &lt;&lt; <span class="tok-number">33</span>;</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258">    <span class="tok-kw">var</span> dk = <span class="tok-kw">try</span> std.testing.allocator.alloc(<span class="tok-type">u8</span>, dk_len);</span>
+<span class="line" id="L259">    <span class="tok-kw">defer</span> {</span>
+<span class="line" id="L260">        std.testing.allocator.free(dk);</span>
+<span class="line" id="L261">    }</span>
+<span class="line" id="L262"></span>
+<span class="line" id="L263">    <span class="tok-comment">// Just verify this doesn't crash with an overflow</span>
+</span>
+<span class="line" id="L264">    <span class="tok-kw">try</span> pbkdf2(dk, p, s, c, HmacSha1);</span>
+<span class="line" id="L265">}</span>
+<span class="line" id="L266"></span>
+</code></pre></body>
+</html>

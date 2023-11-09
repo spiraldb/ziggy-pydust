@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/25519/curve25519.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-kw">const</span> IdentityElementError = crypto.errors.IdentityElementError;</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> NonCanonicalError = crypto.errors.NonCanonicalError;</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> WeakPublicKeyError = crypto.errors.WeakPublicKeyError;</span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-comment">/// Group operations over Curve25519.</span></span>
+<span class="line" id="L9"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Curve25519 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L10">    <span class="tok-comment">/// The underlying prime field.</span></span>
+<span class="line" id="L11">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Fe = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;field.zig&quot;</span>).Fe;</span>
+<span class="line" id="L12">    <span class="tok-comment">/// Field arithmetic mod the order of the main subgroup.</span></span>
+<span class="line" id="L13">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> scalar = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;scalar.zig&quot;</span>);</span>
+<span class="line" id="L14"></span>
+<span class="line" id="L15">    x: Fe,</span>
+<span class="line" id="L16"></span>
+<span class="line" id="L17">    <span class="tok-comment">/// Decode a Curve25519 point from its compressed (X) coordinates.</span></span>
+<span class="line" id="L18">    <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(s: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) Curve25519 {</span>
+<span class="line" id="L19">        <span class="tok-kw">return</span> .{ .x = Fe.fromBytes(s) };</span>
+<span class="line" id="L20">    }</span>
+<span class="line" id="L21"></span>
+<span class="line" id="L22">    <span class="tok-comment">/// Encode a Curve25519 point.</span></span>
+<span class="line" id="L23">    <span class="tok-kw">pub</span> <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">toBytes</span>(p: Curve25519) [<span class="tok-number">32</span>]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L24">        <span class="tok-kw">return</span> p.x.toBytes();</span>
+<span class="line" id="L25">    }</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27">    <span class="tok-comment">/// The Curve25519 base point.</span></span>
+<span class="line" id="L28">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> basePoint = Curve25519{ .x = Fe.curve25519BasePoint };</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30">    <span class="tok-comment">/// Check that the encoding of a Curve25519 point is canonical.</span></span>
+<span class="line" id="L31">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rejectNonCanonical</span>(s: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) NonCanonicalError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L32">        <span class="tok-kw">return</span> Fe.rejectNonCanonical(s, <span class="tok-null">false</span>);</span>
+<span class="line" id="L33">    }</span>
+<span class="line" id="L34"></span>
+<span class="line" id="L35">    <span class="tok-comment">/// Reject the neutral element.</span></span>
+<span class="line" id="L36">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rejectIdentity</span>(p: Curve25519) IdentityElementError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L37">        <span class="tok-kw">if</span> (p.x.isZero()) {</span>
+<span class="line" id="L38">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.IdentityElement;</span>
+<span class="line" id="L39">        }</span>
+<span class="line" id="L40">    }</span>
+<span class="line" id="L41"></span>
+<span class="line" id="L42">    <span class="tok-comment">/// Multiply a point by the cofactor, returning WeakPublicKey if the element is in a small-order group.</span></span>
+<span class="line" id="L43">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">clearCofactor</span>(p: Curve25519) WeakPublicKeyError!Curve25519 {</span>
+<span class="line" id="L44">        <span class="tok-kw">const</span> cofactor = [_]<span class="tok-type">u8</span>{<span class="tok-number">8</span>} ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-number">31</span>;</span>
+<span class="line" id="L45">        <span class="tok-kw">return</span> ladder(p, cofactor, <span class="tok-number">4</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.WeakPublicKey;</span>
+<span class="line" id="L46">    }</span>
+<span class="line" id="L47"></span>
+<span class="line" id="L48">    <span class="tok-kw">fn</span> <span class="tok-fn">ladder</span>(p: Curve25519, s: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> bits: <span class="tok-type">usize</span>) IdentityElementError!Curve25519 {</span>
+<span class="line" id="L49">        <span class="tok-kw">var</span> x1 = p.x;</span>
+<span class="line" id="L50">        <span class="tok-kw">var</span> x2 = Fe.one;</span>
+<span class="line" id="L51">        <span class="tok-kw">var</span> z2 = Fe.zero;</span>
+<span class="line" id="L52">        <span class="tok-kw">var</span> x3 = x1;</span>
+<span class="line" id="L53">        <span class="tok-kw">var</span> z3 = Fe.one;</span>
+<span class="line" id="L54">        <span class="tok-kw">var</span> swap: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L55">        <span class="tok-kw">var</span> pos: <span class="tok-type">usize</span> = bits - <span class="tok-number">1</span>;</span>
+<span class="line" id="L56">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : (pos -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L57">            <span class="tok-kw">const</span> bit = (s[pos &gt;&gt; <span class="tok-number">3</span>] &gt;&gt; <span class="tok-builtin">@as</span>(<span class="tok-type">u3</span>, <span class="tok-builtin">@truncate</span>(pos))) &amp; <span class="tok-number">1</span>;</span>
+<span class="line" id="L58">            swap ^= bit;</span>
+<span class="line" id="L59">            Fe.cSwap2(&amp;x2, &amp;x3, &amp;z2, &amp;z3, swap);</span>
+<span class="line" id="L60">            swap = bit;</span>
+<span class="line" id="L61">            <span class="tok-kw">const</span> a = x2.add(z2);</span>
+<span class="line" id="L62">            <span class="tok-kw">const</span> b = x2.sub(z2);</span>
+<span class="line" id="L63">            <span class="tok-kw">const</span> aa = a.sq();</span>
+<span class="line" id="L64">            <span class="tok-kw">const</span> bb = b.sq();</span>
+<span class="line" id="L65">            x2 = aa.mul(bb);</span>
+<span class="line" id="L66">            <span class="tok-kw">const</span> e = aa.sub(bb);</span>
+<span class="line" id="L67">            <span class="tok-kw">const</span> da = x3.sub(z3).mul(a);</span>
+<span class="line" id="L68">            <span class="tok-kw">const</span> cb = x3.add(z3).mul(b);</span>
+<span class="line" id="L69">            x3 = da.add(cb).sq();</span>
+<span class="line" id="L70">            z3 = x1.mul(da.sub(cb).sq());</span>
+<span class="line" id="L71">            z2 = e.mul(bb.add(e.mul32(<span class="tok-number">121666</span>)));</span>
+<span class="line" id="L72">            <span class="tok-kw">if</span> (pos == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L73">        }</span>
+<span class="line" id="L74">        Fe.cSwap2(&amp;x2, &amp;x3, &amp;z2, &amp;z3, swap);</span>
+<span class="line" id="L75">        z2 = z2.invert();</span>
+<span class="line" id="L76">        x2 = x2.mul(z2);</span>
+<span class="line" id="L77">        <span class="tok-kw">if</span> (x2.isZero()) {</span>
+<span class="line" id="L78">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.IdentityElement;</span>
+<span class="line" id="L79">        }</span>
+<span class="line" id="L80">        <span class="tok-kw">return</span> Curve25519{ .x = x2 };</span>
+<span class="line" id="L81">    }</span>
+<span class="line" id="L82"></span>
+<span class="line" id="L83">    <span class="tok-comment">/// Multiply a Curve25519 point by a scalar after &quot;clamping&quot; it.</span></span>
+<span class="line" id="L84">    <span class="tok-comment">/// Clamping forces the scalar to be a multiple of the cofactor in</span></span>
+<span class="line" id="L85">    <span class="tok-comment">/// order to prevent small subgroups attacks. This is the standard</span></span>
+<span class="line" id="L86">    <span class="tok-comment">/// way to use Curve25519 for a DH operation.</span></span>
+<span class="line" id="L87">    <span class="tok-comment">/// Return error.IdentityElement if the resulting point is</span></span>
+<span class="line" id="L88">    <span class="tok-comment">/// the identity element.</span></span>
+<span class="line" id="L89">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">clampedMul</span>(p: Curve25519, s: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) IdentityElementError!Curve25519 {</span>
+<span class="line" id="L90">        <span class="tok-kw">var</span> t: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = s;</span>
+<span class="line" id="L91">        scalar.clamp(&amp;t);</span>
+<span class="line" id="L92">        <span class="tok-kw">return</span> <span class="tok-kw">try</span> ladder(p, t, <span class="tok-number">255</span>);</span>
+<span class="line" id="L93">    }</span>
+<span class="line" id="L94"></span>
+<span class="line" id="L95">    <span class="tok-comment">/// Multiply a Curve25519 point by a scalar without clamping it.</span></span>
+<span class="line" id="L96">    <span class="tok-comment">/// Return error.IdentityElement if the resulting point is</span></span>
+<span class="line" id="L97">    <span class="tok-comment">/// the identity element or error.WeakPublicKey if the public</span></span>
+<span class="line" id="L98">    <span class="tok-comment">/// key is a low-order point.</span></span>
+<span class="line" id="L99">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mul</span>(p: Curve25519, s: [<span class="tok-number">32</span>]<span class="tok-type">u8</span>) (IdentityElementError || WeakPublicKeyError)!Curve25519 {</span>
+<span class="line" id="L100">        _ = <span class="tok-kw">try</span> p.clearCofactor();</span>
+<span class="line" id="L101">        <span class="tok-kw">return</span> <span class="tok-kw">try</span> ladder(p, s, <span class="tok-number">256</span>);</span>
+<span class="line" id="L102">    }</span>
+<span class="line" id="L103"></span>
+<span class="line" id="L104">    <span class="tok-comment">/// Compute the Curve25519 equivalent to an Edwards25519 point.</span></span>
+<span class="line" id="L105">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromEdwards25519</span>(p: crypto.ecc.Edwards25519) IdentityElementError!Curve25519 {</span>
+<span class="line" id="L106">        <span class="tok-kw">try</span> p.clearCofactor().rejectIdentity();</span>
+<span class="line" id="L107">        <span class="tok-kw">const</span> one = crypto.ecc.Edwards25519.Fe.one;</span>
+<span class="line" id="L108">        <span class="tok-kw">const</span> x = one.add(p.y).mul(one.sub(p.y).invert()); <span class="tok-comment">// xMont=(1+yEd)/(1-yEd)</span>
+</span>
+<span class="line" id="L109">        <span class="tok-kw">return</span> Curve25519{ .x = x };</span>
+<span class="line" id="L110">    }</span>
+<span class="line" id="L111">};</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113"><span class="tok-kw">test</span> <span class="tok-str">&quot;curve25519&quot;</span> {</span>
+<span class="line" id="L114">    <span class="tok-kw">var</span> s = [<span class="tok-number">32</span>]<span class="tok-type">u8</span>{ <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">8</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">8</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">8</span>, <span class="tok-number">1</span>, <span class="tok-number">2</span>, <span class="tok-number">3</span>, <span class="tok-number">4</span>, <span class="tok-number">5</span>, <span class="tok-number">6</span>, <span class="tok-number">7</span>, <span class="tok-number">8</span> };</span>
+<span class="line" id="L115">    <span class="tok-kw">const</span> p = <span class="tok-kw">try</span> Curve25519.basePoint.clampedMul(s);</span>
+<span class="line" id="L116">    <span class="tok-kw">try</span> p.rejectIdentity();</span>
+<span class="line" id="L117">    <span class="tok-kw">var</span> buf: [<span class="tok-number">128</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L118">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-kw">try</span> std.fmt.bufPrint(&amp;buf, <span class="tok-str">&quot;{s}&quot;</span>, .{std.fmt.fmtSliceHexUpper(&amp;p.toBytes())}), <span class="tok-str">&quot;E6F2A4D1C28EE5C7AD0329268255A468AD407D2672824C0C0EB30EA6EF450145&quot;</span>);</span>
+<span class="line" id="L119">    <span class="tok-kw">const</span> q = <span class="tok-kw">try</span> p.clampedMul(s);</span>
+<span class="line" id="L120">    <span class="tok-kw">try</span> std.testing.expectEqualStrings(<span class="tok-kw">try</span> std.fmt.bufPrint(&amp;buf, <span class="tok-str">&quot;{s}&quot;</span>, .{std.fmt.fmtSliceHexUpper(&amp;q.toBytes())}), <span class="tok-str">&quot;3614E119FFE55EC55B87D6B19971A9F4CBC78EFE80BEC55B96392BABCC712537&quot;</span>);</span>
+<span class="line" id="L121"></span>
+<span class="line" id="L122">    <span class="tok-kw">try</span> Curve25519.rejectNonCanonical(s);</span>
+<span class="line" id="L123">    s[<span class="tok-number">31</span>] |= <span class="tok-number">0x80</span>;</span>
+<span class="line" id="L124">    <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.NonCanonical, Curve25519.rejectNonCanonical(s));</span>
+<span class="line" id="L125">}</span>
+<span class="line" id="L126"></span>
+<span class="line" id="L127"><span class="tok-kw">test</span> <span class="tok-str">&quot;curve25519 small order check&quot;</span> {</span>
+<span class="line" id="L128">    <span class="tok-kw">var</span> s: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = [_]<span class="tok-type">u8</span>{<span class="tok-number">1</span>} ++ [_]<span class="tok-type">u8</span>{<span class="tok-number">0</span>} ** <span class="tok-number">31</span>;</span>
+<span class="line" id="L129">    <span class="tok-kw">const</span> small_order_ss: [<span class="tok-number">7</span>][<span class="tok-number">32</span>]<span class="tok-type">u8</span> = .{</span>
+<span class="line" id="L130">        .{</span>
+<span class="line" id="L131">            <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-comment">// 0 (order 4)</span>
+</span>
+<span class="line" id="L132">        },</span>
+<span class="line" id="L133">        .{</span>
+<span class="line" id="L134">            <span class="tok-number">0x01</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-number">0x00</span>, <span class="tok-comment">// 1 (order 1)</span>
+</span>
+<span class="line" id="L135">        },</span>
+<span class="line" id="L136">        .{</span>
+<span class="line" id="L137">            <span class="tok-number">0xe0</span>, <span class="tok-number">0xeb</span>, <span class="tok-number">0x7a</span>, <span class="tok-number">0x7c</span>, <span class="tok-number">0x3b</span>, <span class="tok-number">0x41</span>, <span class="tok-number">0xb8</span>, <span class="tok-number">0xae</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x56</span>, <span class="tok-number">0xe3</span>, <span class="tok-number">0xfa</span>, <span class="tok-number">0xf1</span>, <span class="tok-number">0x9f</span>, <span class="tok-number">0xc4</span>, <span class="tok-number">0x6a</span>, <span class="tok-number">0xda</span>, <span class="tok-number">0x09</span>, <span class="tok-number">0x8d</span>, <span class="tok-number">0xeb</span>, <span class="tok-number">0x9c</span>, <span class="tok-number">0x32</span>, <span class="tok-number">0xb1</span>, <span class="tok-number">0xfd</span>, <span class="tok-number">0x86</span>, <span class="tok-number">0x62</span>, <span class="tok-number">0x05</span>, <span class="tok-number">0x16</span>, <span class="tok-number">0x5f</span>, <span class="tok-number">0x49</span>, <span class="tok-number">0xb8</span>, <span class="tok-number">0x00</span>, <span class="tok-comment">// 325606250916557431795983626356110631294008115727848805560023387167927233504 (order 8) */</span>
+</span>
+<span class="line" id="L138">        },</span>
+<span class="line" id="L139">        .{</span>
+<span class="line" id="L140">            <span class="tok-number">0x5f</span>, <span class="tok-number">0x9c</span>, <span class="tok-number">0x95</span>, <span class="tok-number">0xbc</span>, <span class="tok-number">0xa3</span>, <span class="tok-number">0x50</span>, <span class="tok-number">0x8c</span>, <span class="tok-number">0x24</span>, <span class="tok-number">0xb1</span>, <span class="tok-number">0xd0</span>, <span class="tok-number">0xb1</span>, <span class="tok-number">0x55</span>, <span class="tok-number">0x9c</span>, <span class="tok-number">0x83</span>, <span class="tok-number">0xef</span>, <span class="tok-number">0x5b</span>, <span class="tok-number">0x04</span>, <span class="tok-number">0x44</span>, <span class="tok-number">0x5c</span>, <span class="tok-number">0xc4</span>, <span class="tok-number">0x58</span>, <span class="tok-number">0x1c</span>, <span class="tok-number">0x8e</span>, <span class="tok-number">0x86</span>, <span class="tok-number">0xd8</span>, <span class="tok-number">0x22</span>, <span class="tok-number">0x4e</span>, <span class="tok-number">0xdd</span>, <span class="tok-number">0xd0</span>, <span class="tok-number">0x9f</span>, <span class="tok-number">0x11</span>, <span class="tok-number">0x57</span>, <span class="tok-comment">// 39382357235489614581723060781553021112529911719440698176882885853963445705823 (order 8)</span>
+</span>
+<span class="line" id="L141">        },</span>
+<span class="line" id="L142">        .{</span>
+<span class="line" id="L143">            <span class="tok-number">0xec</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0x7f</span>, <span class="tok-comment">// p-1 (order 2)</span>
+</span>
+<span class="line" id="L144">        },</span>
+<span class="line" id="L145">        .{</span>
+<span class="line" id="L146">            <span class="tok-number">0xed</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0x7f</span>, <span class="tok-comment">// p (=0, order 4)</span>
+</span>
+<span class="line" id="L147">        },</span>
+<span class="line" id="L148">        .{</span>
+<span class="line" id="L149">            <span class="tok-number">0xee</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0xff</span>, <span class="tok-number">0x7f</span>, <span class="tok-comment">// p+1 (=1, order 1)</span>
+</span>
+<span class="line" id="L150">        },</span>
+<span class="line" id="L151">    };</span>
+<span class="line" id="L152">    <span class="tok-kw">for</span> (small_order_ss) |small_order_s| {</span>
+<span class="line" id="L153">        <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.WeakPublicKey, Curve25519.fromBytes(small_order_s).clearCofactor());</span>
+<span class="line" id="L154">        <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.WeakPublicKey, Curve25519.fromBytes(small_order_s).mul(s));</span>
+<span class="line" id="L155">        <span class="tok-kw">var</span> extra = small_order_s;</span>
+<span class="line" id="L156">        extra[<span class="tok-number">31</span>] ^= <span class="tok-number">0x80</span>;</span>
+<span class="line" id="L157">        <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.WeakPublicKey, Curve25519.fromBytes(extra).mul(s));</span>
+<span class="line" id="L158">        <span class="tok-kw">var</span> valid = small_order_s;</span>
+<span class="line" id="L159">        valid[<span class="tok-number">31</span>] = <span class="tok-number">0x40</span>;</span>
+<span class="line" id="L160">        s[<span class="tok-number">0</span>] = <span class="tok-number">0</span>;</span>
+<span class="line" id="L161">        <span class="tok-kw">try</span> std.testing.expectError(<span class="tok-kw">error</span>.IdentityElement, Curve25519.fromBytes(valid).mul(s));</span>
+<span class="line" id="L162">    }</span>
+<span class="line" id="L163">}</span>
+<span class="line" id="L164"></span>
+</code></pre></body>
+</html>
