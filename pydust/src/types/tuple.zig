@@ -120,7 +120,7 @@ test "PyTuple" {
     try std.testing.expectEqual(@as(f64, 1.0), try tuple.getItem(f64, 0));
 }
 
-test "PyTuple setOwneItem" {
+test "PyTuple setOwnedItem" {
     py.initialize();
     defer py.finalize();
 
