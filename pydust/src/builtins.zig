@@ -98,25 +98,25 @@ pub fn call(comptime ReturnType: type, object: anytype, args: anytype, kwargs: a
     }
     defer argsPy.decref();
 
-    // TODO(ngates): avoid creating empty dict for kwargs
-    var kwargsPy: py.PyDict = undefined;
-    if (@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null) {
-        kwargsPy = try py.PyDict.new();
-    } else {
+    var kwargsPy: ?py.PyDict = null;
+    defer {
+        if (kwargsPy) |kwpy| {
+            kwpy.decref();
+        }
+    }
+    if (!(@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null)) {
         // Annoyingly our trampoline turns an empty kwargs struct into a PyTuple.
         // This will be fixed by #94
         const kwobj = try py.create(kwargs);
         if (try py.len(kwobj) == 0) {
             kwobj.decref();
-            kwargsPy = try py.PyDict.new();
         } else {
             kwargsPy = try py.PyDict.checked(kwobj);
         }
     }
-    defer kwargsPy.decref();
 
     // Note, the caller is responsible for returning a result type that they are able to decref.
-    const result = ffi.PyObject_Call(pyobj.py, argsPy.obj.py, kwargsPy.obj.py) orelse return PyError.PyRaised;
+    const result = ffi.PyObject_Call(pyobj.py, argsPy.obj.py, if (kwargsPy) |kwpy| kwpy.obj.py else null) orelse return PyError.PyRaised;
     return try py.as(ReturnType, result);
 }
 
