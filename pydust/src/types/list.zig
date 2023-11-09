@@ -55,7 +55,7 @@ pub const PyList = extern struct {
 
     /// This function “steals” a reference to item and discards a reference to an item already in the list at the affected position.
     pub fn setOwnedItem(self: PyList, pos: usize, value: anytype) !void {
-        setOwnedItemZ(self, @intCast(pos), value);
+        try self.setOwnedItemZ(@intCast(pos), value);
     }
 
     pub fn setOwnedItemZ(self: PyList, pos: isize, value: anytype) !void {
@@ -145,4 +145,21 @@ test "PyList" {
     defer tuple.decref();
 
     try std.testing.expectEqual(@as(usize, 4), tuple.length());
+}
+
+test "PyList setOwneItem" {
+    py.initialize();
+    defer py.finalize();
+
+    var list = try PyList.new(2);
+    defer list.decref();
+    const py1 = try py.create(1);
+    defer py1.decref();
+    try list.setOwnedItem(0, py1);
+    const py2 = try py.create(2);
+    defer py2.decref();
+    try list.setOwnedItemZ(1, py2);
+
+    try std.testing.expectEqual(@as(u8, 1), try list.getItem(u8, 0));
+    try std.testing.expectEqual(@as(u8, 2), try list.getItem(u8, 1));
 }

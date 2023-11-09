@@ -127,3 +127,20 @@ test "PyTuple" {
     try tuple.setItem(0, second.obj);
     try std.testing.expectEqual(@as(f64, 1.0), try tuple.getItem(f64, 0));
 }
+
+test "PyTuple setOwneItem" {
+    py.initialize();
+    defer py.finalize();
+
+    var tuple = try PyTuple.new(2);
+    defer tuple.decref();
+    const py1 = try py.create(1);
+    defer py1.decref();
+    try tuple.setOwnedItem(0, py1);
+    const py2 = try py.create(2);
+    defer py2.decref();
+    try tuple.setOwnedItemZ(1, py2);
+
+    try std.testing.expectEqual(@as(u8, 1), try tuple.getItem(u8, 0));
+    try std.testing.expectEqual(@as(u8, 2), try tuple.getItem(u8, 1));
+}
