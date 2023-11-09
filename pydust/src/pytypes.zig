@@ -22,7 +22,6 @@ const funcs = @import("functions.zig");
 const PyError = @import("errors.zig").PyError;
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
 const tramp = @import("trampoline.zig");
-const unlimited = @import("unlimited_api.zig");
 
 /// For a given Pydust class definition, return the encapsulating PyType struct.
 pub fn PyTypeStruct(comptime definition: type) type {
@@ -118,10 +117,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
-            var slots_: [:empty]const ffi.PyType_Slot = &.{ffi.PyType_Slot{
-                .slot = ffi.Py_tp_dealloc,
-                .pfunc = @constCast(&tp_dealloc),
-            }};
+            var slots_: [:empty]const ffi.PyType_Slot = &.{};
 
             if (gc.needsGc) {
                 slots_ = slots_ ++ .{ ffi.PyType_Slot{
@@ -341,22 +337,6 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             definition.__del__(&instance.state);
 
             ffi.PyErr_Restore(error_type, error_value, error_tb);
-        }
-
-        /// Deallocte the type. Carefully handling cases where class implements `__del__`
-        fn tp_dealloc(pyself: *ffi.PyObject) callconv(.C) void {
-            const typeObj = py.type_(pyself);
-            unlimited.finalizeFromDealloc(pyself);
-
-            if (gc.needsGc) {
-                ffi.PyObject_GC_UnTrack(pyself);
-            }
-
-            _ = gc.tp_clear(pyself);
-
-            const freeFn: *const fn (*anyopaque) void = @alignCast(@ptrCast(typeObj.getSlot(ffi.Py_tp_free).?));
-            freeFn(pyself);
-            typeObj.decref();
         }
 
         fn bf_getbuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
