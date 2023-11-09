@@ -79,9 +79,7 @@ pub const User = py.class(struct {
         e: ?py.PyString = null,
 
         pub fn get(prop: *const Prop) ?py.PyString {
-            if (prop.e) |e| {
-                e.incref();
-            }
+            if (prop.e) |e| e.incref();
             return prop.e;
         }
 
@@ -100,6 +98,11 @@ pub const User = py.class(struct {
             return py.PyString.createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
     }) = .{},
+
+    pub fn __del__(self: *Self) void {
+        self.name.decref();
+        self.email.e.decref();
+    }
 });
 // --8<-- [end:properties]
 
