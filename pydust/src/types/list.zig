@@ -139,7 +139,7 @@ test "PyList" {
     try std.testing.expectEqual(@as(usize, 4), tuple.length());
 }
 
-test "PyList setOwneItem" {
+test "PyList setOwnedItem" {
     py.initialize();
     defer py.finalize();
 
