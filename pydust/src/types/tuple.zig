@@ -82,14 +82,22 @@ pub const PyTuple = extern struct {
     /// Insert a reference to object o at position pos of the tuple.
     ///
     /// Warning: steals a reference to value.
-    pub fn setOwnedItem(self: *const PyTuple, pos: isize, value: PyObject) !void {
-        if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), value.py) < 0) {
+    pub fn setOwnedItem(self: *const PyTuple, pos: usize, value: anytype) !void {
+        try setOwnedItemZ(self, @intCast(pos), py.object(value));
+    }
+
+    pub fn setOwnedItemZ(self: *const PyTuple, pos: isize, value: PyObject) !void {
+        if (ffi.PyTuple_SetItem(self.obj.py, pos, value.py) < 0) {
             return PyError.PyRaised;
         }
     }
 
     /// Insert a reference to object o at position pos of the tuple. Does not steal a reference to value.
-    pub fn setItem(self: *const PyTuple, pos: isize, value: PyObject) !void {
+    pub fn setItem(self: *const PyTuple, pos: usize, value: anytype) !void {
+        try setItemZ(self, @intCast(pos), try py.create(value));
+    }
+
+    pub fn setItemZ(self: *const PyTuple, pos: isize, value: PyObject) !void {
         if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), value.py) < 0) {
             return PyError.PyRaised;
         }

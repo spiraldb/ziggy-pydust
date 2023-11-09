@@ -54,7 +54,11 @@ pub const PyList = extern struct {
     }
 
     /// This function “steals” a reference to item and discards a reference to an item already in the list at the affected position.
-    pub fn setOwnedItem(self: PyList, pos: isize, value: anytype) !void {
+    pub fn setOwnedItem(self: PyList, pos: usize, value: anytype) !void {
+        setOwnedItemZ(self, @intCast(pos), value);
+    }
+
+    pub fn setOwnedItemZ(self: PyList, pos: isize, value: anytype) !void {
         // Since this function steals the reference, it can only accept object-like values.
         if (ffi.PyList_SetItem(self.obj.py, pos, py.object(value).py) < 0) {
             return PyError.PyRaised;
@@ -62,9 +66,13 @@ pub const PyList = extern struct {
     }
 
     /// Set the item at the given position.
-    pub fn setItem(self: PyList, pos: isize, value: anytype) !void {
+    pub fn setItem(self: PyList, pos: usize, value: anytype) !void {
+        try self.setItemZ(@intCast(pos), value);
+    }
+
+    pub fn setItemZ(self: PyList, pos: isize, value: anytype) !void {
         const valueObj = try py.create(value);
-        return self.setOwnedItem(pos, valueObj);
+        return self.setOwnedItemZ(pos, valueObj);
     }
 
     // Insert the item item into list list in front of index idx.
