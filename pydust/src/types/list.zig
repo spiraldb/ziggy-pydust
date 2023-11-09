@@ -55,24 +55,16 @@ pub const PyList = extern struct {
 
     /// This function “steals” a reference to item and discards a reference to an item already in the list at the affected position.
     pub fn setOwnedItem(self: PyList, pos: usize, value: anytype) !void {
-        try self.setOwnedItemZ(@intCast(pos), value);
-    }
-
-    pub fn setOwnedItemZ(self: PyList, pos: isize, value: anytype) !void {
         // Since this function steals the reference, it can only accept object-like values.
-        if (ffi.PyList_SetItem(self.obj.py, pos, py.object(value).py) < 0) {
+        if (ffi.PyList_SetItem(self.obj.py, @intCast(pos), py.object(value).py) < 0) {
             return PyError.PyRaised;
         }
     }
 
     /// Set the item at the given position.
     pub fn setItem(self: PyList, pos: usize, value: anytype) !void {
-        try self.setItemZ(@intCast(pos), value);
-    }
-
-    pub fn setItemZ(self: PyList, pos: isize, value: anytype) !void {
         const valueObj = try py.create(value);
-        return self.setOwnedItemZ(pos, valueObj);
+        return self.setOwnedItem(pos, valueObj);
     }
 
     // Insert the item item into list list in front of index idx.
@@ -158,7 +150,7 @@ test "PyList setOwneItem" {
     try list.setOwnedItem(0, py1);
     const py2 = try py.create(2);
     defer py2.decref();
-    try list.setOwnedItemZ(1, py2);
+    try list.setOwnedItem(1, py2);
 
     try std.testing.expectEqual(@as(u8, 1), try list.getItem(u8, 0));
     try std.testing.expectEqual(@as(u8, 2), try list.getItem(u8, 1));

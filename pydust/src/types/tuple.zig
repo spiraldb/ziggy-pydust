@@ -83,21 +83,13 @@ pub const PyTuple = extern struct {
     ///
     /// Warning: steals a reference to value.
     pub fn setOwnedItem(self: *const PyTuple, pos: usize, value: anytype) !void {
-        try setOwnedItemZ(self, @intCast(pos), py.object(value));
-    }
-
-    pub fn setOwnedItemZ(self: *const PyTuple, pos: isize, value: PyObject) !void {
-        if (ffi.PyTuple_SetItem(self.obj.py, pos, value.py) < 0) {
+        if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), py.object(value).py) < 0) {
             return PyError.PyRaised;
         }
     }
 
     /// Insert a reference to object o at position pos of the tuple. Does not steal a reference to value.
     pub fn setItem(self: *const PyTuple, pos: usize, value: anytype) !void {
-        try setItemZ(self, @intCast(pos), try py.create(value));
-    }
-
-    pub fn setItemZ(self: *const PyTuple, pos: isize, value: PyObject) !void {
         if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), value.py) < 0) {
             return PyError.PyRaised;
         }
@@ -139,7 +131,7 @@ test "PyTuple setOwneItem" {
     try tuple.setOwnedItem(0, py1);
     const py2 = try py.create(2);
     defer py2.decref();
-    try tuple.setOwnedItemZ(1, py2);
+    try tuple.setOwnedItem(1, py2);
 
     try std.testing.expectEqual(@as(u8, 1), try tuple.getItem(u8, 0));
     try std.testing.expectEqual(@as(u8, 2), try tuple.getItem(u8, 1));
