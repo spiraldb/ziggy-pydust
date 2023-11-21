@@ -60,7 +60,7 @@ test "PyBytes" {
     var ps = try PyBytes.create(a);
     defer ps.decref();
 
-    var ps_slice = try ps.asSlice();
+    const ps_slice = try ps.asSlice();
     try testing.expectEqual(a.len, ps_slice.len);
     try testing.expectEqual(a.len, try ps.length());
     try testing.expectEqual(@as(u8, 0), ps_slice[ps_slice.len]);

@@ -509,7 +509,7 @@ fn GC(comptime definition: type) type {
         }
 
         fn tp_clear(pyself: *ffi.PyObject) callconv(.C) c_int {
-            var self: *PyTypeStruct(definition) = @ptrCast(pyself);
+            const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             clearFields(self.state);
             return 0;
         }
@@ -562,7 +562,7 @@ fn GC(comptime definition: type) type {
         }
 
         inline fn pyClear(obj: *ffi.PyObject) void {
-            var objRef = @constCast(&obj);
+            const objRef = @constCast(&obj);
             const objOld = objRef.*;
             objRef.* = undefined;
             py.decref(objOld);
@@ -665,7 +665,7 @@ fn Members(comptime definition: type) type {
 
                 // We compute the offset of the attribute within the type, and then the value field within the attribute.
                 // Although the value within the attribute should always be 0 since it's the only field.
-                var offset = @offsetOf(PyTypeStruct(definition), "state") + @offsetOf(definition, field.name) + @offsetOf(field.type, "value");
+                const offset = @offsetOf(PyTypeStruct(definition), "state") + @offsetOf(definition, field.name) + @offsetOf(field.type, "value");
 
                 const T = @typeInfo(field.type).Struct.fields[0].type;
 
