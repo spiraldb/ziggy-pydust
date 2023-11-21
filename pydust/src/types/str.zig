@@ -105,7 +105,7 @@ test "PyString" {
     ps = try ps.appendSlice(b);
     defer ps.decref();
 
-    var ps_slice = try ps.asSlice();
+    const ps_slice = try ps.asSlice();
 
     // Null-terminated strings have len == non-null bytes, but are guaranteed to have a null byte
     // when indexed by their length.

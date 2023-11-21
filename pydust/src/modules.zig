@@ -50,7 +50,7 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
 
         /// A function to initialize the Python module from its definition.
         pub fn init() !py.PyObject {
-            var pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
+            const pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
             pyModuleDef.* = ffi.PyModuleDef{
                 .m_base = ffi.PyModuleDef_Base{
                     .ob_base = ffi.PyObject{
