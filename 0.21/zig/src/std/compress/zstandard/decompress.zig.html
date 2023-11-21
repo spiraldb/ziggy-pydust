@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>compress/zstandard/decompress.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L3"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L4"><span class="tok-kw">const</span> RingBuffer = std.RingBuffer;</span>
+<span class="line" id="L5"></span>
+<span class="line" id="L6"><span class="tok-kw">const</span> types = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;types.zig&quot;</span>);</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> frame = types.frame;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> LiteralsSection = types.compressed_block.LiteralsSection;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> SequencesSection = types.compressed_block.SequencesSection;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> SkippableHeader = types.frame.Skippable.Header;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> ZstandardHeader = types.frame.Zstandard.Header;</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> Table = types.compressed_block.Table;</span>
+<span class="line" id="L13"></span>
+<span class="line" id="L14"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> block = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;decode/block.zig&quot;</span>);</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16"><span class="tok-kw">const</span> readers = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;readers.zig&quot;</span>);</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-kw">const</span> readInt = std.mem.readIntLittle;</span>
+<span class="line" id="L19"><span class="tok-kw">const</span> readIntSlice = std.mem.readIntSliceLittle;</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21"><span class="tok-comment">/// Returns `true` is `magic` is a valid magic number for a skippable frame</span></span>
+<span class="line" id="L22"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isSkippableMagic</span>(magic: <span class="tok-type">u32</span>) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L23">    <span class="tok-kw">return</span> frame.Skippable.magic_number_min &lt;= magic <span class="tok-kw">and</span> magic &lt;= frame.Skippable.magic_number_max;</span>
+<span class="line" id="L24">}</span>
+<span class="line" id="L25"></span>
+<span class="line" id="L26"><span class="tok-comment">/// Returns the kind of frame at the beginning of `source`.</span></span>
+<span class="line" id="L27"><span class="tok-comment">///</span></span>
+<span class="line" id="L28"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L29"><span class="tok-comment">///   - `error.BadMagic` if `source` begins with bytes not equal to the</span></span>
+<span class="line" id="L30"><span class="tok-comment">///     Zstandard frame magic number, or outside the range of magic numbers for</span></span>
+<span class="line" id="L31"><span class="tok-comment">///     skippable frames.</span></span>
+<span class="line" id="L32"><span class="tok-comment">///   - `error.EndOfStream` if `source` contains fewer than 4 bytes</span></span>
+<span class="line" id="L33"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeFrameType</span>(source: <span class="tok-kw">anytype</span>) <span class="tok-kw">error</span>{ BadMagic, EndOfStream }!frame.Kind {</span>
+<span class="line" id="L34">    <span class="tok-kw">const</span> magic = <span class="tok-kw">try</span> source.readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L35">    <span class="tok-kw">return</span> frameType(magic);</span>
+<span class="line" id="L36">}</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-comment">/// Returns the kind of frame associated to `magic`.</span></span>
+<span class="line" id="L39"><span class="tok-comment">///</span></span>
+<span class="line" id="L40"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L41"><span class="tok-comment">///   - `error.BadMagic` if `magic` is not a valid magic number.</span></span>
+<span class="line" id="L42"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">frameType</span>(magic: <span class="tok-type">u32</span>) <span class="tok-kw">error</span>{BadMagic}!frame.Kind {</span>
+<span class="line" id="L43">    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (magic == frame.Zstandard.magic_number)</span>
+<span class="line" id="L44">        .zstandard</span>
+<span class="line" id="L45">    <span class="tok-kw">else</span> <span class="tok-kw">if</span> (isSkippableMagic(magic))</span>
+<span class="line" id="L46">        .skippable</span>
+<span class="line" id="L47">    <span class="tok-kw">else</span></span>
+<span class="line" id="L48">        <span class="tok-kw">error</span>.BadMagic;</span>
+<span class="line" id="L49">}</span>
+<span class="line" id="L50"></span>
+<span class="line" id="L51"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FrameHeader = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L52">    zstandard: ZstandardHeader,</span>
+<span class="line" id="L53">    skippable: SkippableHeader,</span>
+<span class="line" id="L54">};</span>
+<span class="line" id="L55"></span>
+<span class="line" id="L56"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> HeaderError = <span class="tok-kw">error</span>{ BadMagic, EndOfStream, ReservedBitSet };</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58"><span class="tok-comment">/// Returns the header of the frame at the beginning of `source`.</span></span>
+<span class="line" id="L59"><span class="tok-comment">///</span></span>
+<span class="line" id="L60"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L61"><span class="tok-comment">///   - `error.BadMagic` if `source` begins with bytes not equal to the</span></span>
+<span class="line" id="L62"><span class="tok-comment">///     Zstandard frame magic number, or outside the range of magic numbers for</span></span>
+<span class="line" id="L63"><span class="tok-comment">///     skippable frames.</span></span>
+<span class="line" id="L64"><span class="tok-comment">///   - `error.EndOfStream` if `source` contains fewer than 4 bytes</span></span>
+<span class="line" id="L65"><span class="tok-comment">///   - `error.ReservedBitSet` if the frame is a Zstandard frame and any of the</span></span>
+<span class="line" id="L66"><span class="tok-comment">///     reserved bits are set</span></span>
+<span class="line" id="L67"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeFrameHeader</span>(source: <span class="tok-kw">anytype</span>) (<span class="tok-builtin">@TypeOf</span>(source).Error || HeaderError)!FrameHeader {</span>
+<span class="line" id="L68">    <span class="tok-kw">const</span> magic = <span class="tok-kw">try</span> source.readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L69">    <span class="tok-kw">const</span> frame_type = <span class="tok-kw">try</span> frameType(magic);</span>
+<span class="line" id="L70">    <span class="tok-kw">switch</span> (frame_type) {</span>
+<span class="line" id="L71">        .zstandard =&gt; <span class="tok-kw">return</span> FrameHeader{ .zstandard = <span class="tok-kw">try</span> decodeZstandardHeader(source) },</span>
+<span class="line" id="L72">        .skippable =&gt; <span class="tok-kw">return</span> FrameHeader{</span>
+<span class="line" id="L73">            .skippable = .{</span>
+<span class="line" id="L74">                .magic_number = magic,</span>
+<span class="line" id="L75">                .frame_size = <span class="tok-kw">try</span> source.readIntLittle(<span class="tok-type">u32</span>),</span>
+<span class="line" id="L76">            },</span>
+<span class="line" id="L77">        },</span>
+<span class="line" id="L78">    }</span>
+<span class="line" id="L79">}</span>
+<span class="line" id="L80"></span>
+<span class="line" id="L81"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> ReadWriteCount = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L82">    read_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L83">    write_count: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L84">};</span>
+<span class="line" id="L85"></span>
+<span class="line" id="L86"><span class="tok-comment">/// Decodes frames from `src` into `dest`; returns the length of the result.</span></span>
+<span class="line" id="L87"><span class="tok-comment">/// The stream should not have extra trailing bytes - either all bytes in `src`</span></span>
+<span class="line" id="L88"><span class="tok-comment">/// will be decoded, or an error will be returned. An error will be returned if</span></span>
+<span class="line" id="L89"><span class="tok-comment">/// a Zstandard frame in `src` does not declare its content size.</span></span>
+<span class="line" id="L90"><span class="tok-comment">///</span></span>
+<span class="line" id="L91"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L92"><span class="tok-comment">///   - `error.DictionaryIdFlagUnsupported` if a `src` contains a frame that</span></span>
+<span class="line" id="L93"><span class="tok-comment">///     uses a dictionary</span></span>
+<span class="line" id="L94"><span class="tok-comment">///   - `error.MalformedFrame` if a frame in `src` is invalid</span></span>
+<span class="line" id="L95"><span class="tok-comment">///   - `error.UnknownContentSizeUnsupported` if a frame in `src` does not</span></span>
+<span class="line" id="L96"><span class="tok-comment">///     declare its content size</span></span>
+<span class="line" id="L97"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decode</span>(dest: []<span class="tok-type">u8</span>, src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, verify_checksum: <span class="tok-type">bool</span>) <span class="tok-kw">error</span>{</span>
+<span class="line" id="L98">    MalformedFrame,</span>
+<span class="line" id="L99">    UnknownContentSizeUnsupported,</span>
+<span class="line" id="L100">    DictionaryIdFlagUnsupported,</span>
+<span class="line" id="L101">}!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L102">    <span class="tok-kw">var</span> write_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L103">    <span class="tok-kw">var</span> read_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L104">    <span class="tok-kw">while</span> (read_count &lt; src.len) {</span>
+<span class="line" id="L105">        <span class="tok-kw">const</span> counts = decodeFrame(dest, src[read_count..], verify_checksum) <span class="tok-kw">catch</span> |err| {</span>
+<span class="line" id="L106">            <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L107">                <span class="tok-kw">error</span>.UnknownContentSizeUnsupported =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnknownContentSizeUnsupported,</span>
+<span class="line" id="L108">                <span class="tok-kw">error</span>.DictionaryIdFlagUnsupported =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DictionaryIdFlagUnsupported,</span>
+<span class="line" id="L109">                <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedFrame,</span>
+<span class="line" id="L110">            }</span>
+<span class="line" id="L111">        };</span>
+<span class="line" id="L112">        read_count += counts.read_count;</span>
+<span class="line" id="L113">        write_count += counts.write_count;</span>
+<span class="line" id="L114">    }</span>
+<span class="line" id="L115">    <span class="tok-kw">return</span> write_count;</span>
+<span class="line" id="L116">}</span>
+<span class="line" id="L117"></span>
+<span class="line" id="L118"><span class="tok-comment">/// Decodes a stream of frames from `src`; returns the decoded bytes. The stream</span></span>
+<span class="line" id="L119"><span class="tok-comment">/// should not have extra trailing bytes - either all bytes in `src` will be</span></span>
+<span class="line" id="L120"><span class="tok-comment">/// decoded, or an error will be returned.</span></span>
+<span class="line" id="L121"><span class="tok-comment">///</span></span>
+<span class="line" id="L122"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L123"><span class="tok-comment">///   - `error.DictionaryIdFlagUnsupported` if a `src` contains a frame that</span></span>
+<span class="line" id="L124"><span class="tok-comment">///     uses a dictionary</span></span>
+<span class="line" id="L125"><span class="tok-comment">///   - `error.MalformedFrame` if a frame in `src` is invalid</span></span>
+<span class="line" id="L126"><span class="tok-comment">///   - `error.OutOfMemory` if `allocator` cannot allocate enough memory</span></span>
+<span class="line" id="L127"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeAlloc</span>(</span>
+<span class="line" id="L128">    allocator: Allocator,</span>
+<span class="line" id="L129">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L130">    verify_checksum: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L131">    window_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L132">) <span class="tok-kw">error</span>{ DictionaryIdFlagUnsupported, MalformedFrame, OutOfMemory }![]<span class="tok-type">u8</span> {</span>
+<span class="line" id="L133">    <span class="tok-kw">var</span> result = std.ArrayList(<span class="tok-type">u8</span>).init(allocator);</span>
+<span class="line" id="L134">    <span class="tok-kw">errdefer</span> result.deinit();</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">    <span class="tok-kw">var</span> read_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L137">    <span class="tok-kw">while</span> (read_count &lt; src.len) {</span>
+<span class="line" id="L138">        read_count += decodeFrameArrayList(</span>
+<span class="line" id="L139">            allocator,</span>
+<span class="line" id="L140">            &amp;result,</span>
+<span class="line" id="L141">            src[read_count..],</span>
+<span class="line" id="L142">            verify_checksum,</span>
+<span class="line" id="L143">            window_size_max,</span>
+<span class="line" id="L144">        ) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L145">            <span class="tok-kw">error</span>.OutOfMemory =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.OutOfMemory,</span>
+<span class="line" id="L146">            <span class="tok-kw">error</span>.DictionaryIdFlagUnsupported =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DictionaryIdFlagUnsupported,</span>
+<span class="line" id="L147">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.MalformedFrame,</span>
+<span class="line" id="L148">        };</span>
+<span class="line" id="L149">    }</span>
+<span class="line" id="L150">    <span class="tok-kw">return</span> result.toOwnedSlice();</span>
+<span class="line" id="L151">}</span>
+<span class="line" id="L152"></span>
+<span class="line" id="L153"><span class="tok-comment">/// Decodes the frame at the start of `src` into `dest`. Returns the number of</span></span>
+<span class="line" id="L154"><span class="tok-comment">/// bytes read from `src` and written to `dest`. This function can only decode</span></span>
+<span class="line" id="L155"><span class="tok-comment">/// frames that declare the decompressed content size.</span></span>
+<span class="line" id="L156"><span class="tok-comment">///</span></span>
+<span class="line" id="L157"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L158"><span class="tok-comment">///   - `error.BadMagic` if the first 4 bytes of `src` is not a valid magic</span></span>
+<span class="line" id="L159"><span class="tok-comment">///     number for a Zstandard or skippable frame</span></span>
+<span class="line" id="L160"><span class="tok-comment">///   - `error.UnknownContentSizeUnsupported` if the frame does not declare the</span></span>
+<span class="line" id="L161"><span class="tok-comment">///     uncompressed content size</span></span>
+<span class="line" id="L162"><span class="tok-comment">///   - `error.WindowSizeUnknown` if the frame does not have a valid window size</span></span>
+<span class="line" id="L163"><span class="tok-comment">///   - `error.ContentTooLarge` if `dest` is smaller than the uncompressed data</span></span>
+<span class="line" id="L164"><span class="tok-comment">///     size declared by the frame header</span></span>
+<span class="line" id="L165"><span class="tok-comment">///   - `error.ContentSizeTooLarge` if the frame header indicates a content size</span></span>
+<span class="line" id="L166"><span class="tok-comment">///     that is larger than `std.math.maxInt(usize)`</span></span>
+<span class="line" id="L167"><span class="tok-comment">///   - `error.DictionaryIdFlagUnsupported` if the frame uses a dictionary</span></span>
+<span class="line" id="L168"><span class="tok-comment">///   - `error.ChecksumFailure` if `verify_checksum` is true and the frame</span></span>
+<span class="line" id="L169"><span class="tok-comment">///     contains a checksum that does not match the checksum of the decompressed</span></span>
+<span class="line" id="L170"><span class="tok-comment">///     data</span></span>
+<span class="line" id="L171"><span class="tok-comment">///   - `error.ReservedBitSet` if any of the reserved bits of the frame header</span></span>
+<span class="line" id="L172"><span class="tok-comment">///     are set</span></span>
+<span class="line" id="L173"><span class="tok-comment">///   - `error.EndOfStream` if `src` does not contain a complete frame</span></span>
+<span class="line" id="L174"><span class="tok-comment">///   - `error.BadContentSize` if the content size declared by the frame does</span></span>
+<span class="line" id="L175"><span class="tok-comment">///     not equal the actual size of decompressed data</span></span>
+<span class="line" id="L176"><span class="tok-comment">///   - an error in `block.Error` if there are errors decoding a block</span></span>
+<span class="line" id="L177"><span class="tok-comment">///   - `error.SkippableSizeTooLarge` if the frame is skippable and reports a</span></span>
+<span class="line" id="L178"><span class="tok-comment">///     size greater than `src.len`</span></span>
+<span class="line" id="L179"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeFrame</span>(</span>
+<span class="line" id="L180">    dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L181">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L182">    verify_checksum: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L183">) (<span class="tok-kw">error</span>{</span>
+<span class="line" id="L184">    BadMagic,</span>
+<span class="line" id="L185">    UnknownContentSizeUnsupported,</span>
+<span class="line" id="L186">    ContentTooLarge,</span>
+<span class="line" id="L187">    ContentSizeTooLarge,</span>
+<span class="line" id="L188">    WindowSizeUnknown,</span>
+<span class="line" id="L189">    DictionaryIdFlagUnsupported,</span>
+<span class="line" id="L190">    SkippableSizeTooLarge,</span>
+<span class="line" id="L191">} || FrameError)!ReadWriteCount {</span>
+<span class="line" id="L192">    <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src);</span>
+<span class="line" id="L193">    <span class="tok-kw">switch</span> (<span class="tok-kw">try</span> decodeFrameType(fbs.reader())) {</span>
+<span class="line" id="L194">        .zstandard =&gt; <span class="tok-kw">return</span> decodeZstandardFrame(dest, src, verify_checksum),</span>
+<span class="line" id="L195">        .skippable =&gt; {</span>
+<span class="line" id="L196">            <span class="tok-kw">const</span> content_size = <span class="tok-kw">try</span> fbs.reader().readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L197">            <span class="tok-kw">if</span> (content_size &gt; std.math.maxInt(<span class="tok-type">usize</span>) - <span class="tok-number">8</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkippableSizeTooLarge;</span>
+<span class="line" id="L198">            <span class="tok-kw">const</span> read_count = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, content_size) + <span class="tok-number">8</span>;</span>
+<span class="line" id="L199">            <span class="tok-kw">if</span> (read_count &gt; src.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkippableSizeTooLarge;</span>
+<span class="line" id="L200">            <span class="tok-kw">return</span> ReadWriteCount{</span>
+<span class="line" id="L201">                .read_count = read_count,</span>
+<span class="line" id="L202">                .write_count = <span class="tok-number">0</span>,</span>
+<span class="line" id="L203">            };</span>
+<span class="line" id="L204">        },</span>
+<span class="line" id="L205">    }</span>
+<span class="line" id="L206">}</span>
+<span class="line" id="L207"></span>
+<span class="line" id="L208"><span class="tok-comment">/// Decodes the frame at the start of `src` into `dest`. Returns the number of</span></span>
+<span class="line" id="L209"><span class="tok-comment">/// bytes read from `src`.</span></span>
+<span class="line" id="L210"><span class="tok-comment">///</span></span>
+<span class="line" id="L211"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L212"><span class="tok-comment">///   - `error.BadMagic` if the first 4 bytes of `src` is not a valid magic</span></span>
+<span class="line" id="L213"><span class="tok-comment">///     number for a Zstandard or skippable frame</span></span>
+<span class="line" id="L214"><span class="tok-comment">///   - `error.WindowSizeUnknown` if the frame does not have a valid window size</span></span>
+<span class="line" id="L215"><span class="tok-comment">///   - `error.WindowTooLarge` if the window size is larger than</span></span>
+<span class="line" id="L216"><span class="tok-comment">///     `window_size_max`</span></span>
+<span class="line" id="L217"><span class="tok-comment">///   - `error.ContentSizeTooLarge` if the frame header indicates a content size</span></span>
+<span class="line" id="L218"><span class="tok-comment">///     that is larger than `std.math.maxInt(usize)`</span></span>
+<span class="line" id="L219"><span class="tok-comment">///   - `error.DictionaryIdFlagUnsupported` if the frame uses a dictionary</span></span>
+<span class="line" id="L220"><span class="tok-comment">///   - `error.ChecksumFailure` if `verify_checksum` is true and the frame</span></span>
+<span class="line" id="L221"><span class="tok-comment">///     contains a checksum that does not match the checksum of the decompressed</span></span>
+<span class="line" id="L222"><span class="tok-comment">///     data</span></span>
+<span class="line" id="L223"><span class="tok-comment">///   - `error.ReservedBitSet` if any of the reserved bits of the frame header</span></span>
+<span class="line" id="L224"><span class="tok-comment">///     are set</span></span>
+<span class="line" id="L225"><span class="tok-comment">///   - `error.EndOfStream` if `src` does not contain a complete frame</span></span>
+<span class="line" id="L226"><span class="tok-comment">///   - `error.BadContentSize` if the content size declared by the frame does</span></span>
+<span class="line" id="L227"><span class="tok-comment">///     not equal the actual size of decompressed data</span></span>
+<span class="line" id="L228"><span class="tok-comment">///   - `error.OutOfMemory` if `allocator` cannot allocate enough memory</span></span>
+<span class="line" id="L229"><span class="tok-comment">///   - an error in `block.Error` if there are errors decoding a block</span></span>
+<span class="line" id="L230"><span class="tok-comment">///   - `error.SkippableSizeTooLarge` if the frame is skippable and reports a</span></span>
+<span class="line" id="L231"><span class="tok-comment">///     size greater than `src.len`</span></span>
+<span class="line" id="L232"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeFrameArrayList</span>(</span>
+<span class="line" id="L233">    allocator: Allocator,</span>
+<span class="line" id="L234">    dest: *std.ArrayList(<span class="tok-type">u8</span>),</span>
+<span class="line" id="L235">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L236">    verify_checksum: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L237">    window_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L238">) (<span class="tok-kw">error</span>{ BadMagic, OutOfMemory, SkippableSizeTooLarge } || FrameContext.Error || FrameError)!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L239">    <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src);</span>
+<span class="line" id="L240">    <span class="tok-kw">const</span> reader = fbs.reader();</span>
+<span class="line" id="L241">    <span class="tok-kw">const</span> magic = <span class="tok-kw">try</span> reader.readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L242">    <span class="tok-kw">switch</span> (<span class="tok-kw">try</span> frameType(magic)) {</span>
+<span class="line" id="L243">        .zstandard =&gt; <span class="tok-kw">return</span> decodeZstandardFrameArrayList(</span>
+<span class="line" id="L244">            allocator,</span>
+<span class="line" id="L245">            dest,</span>
+<span class="line" id="L246">            src,</span>
+<span class="line" id="L247">            verify_checksum,</span>
+<span class="line" id="L248">            window_size_max,</span>
+<span class="line" id="L249">        ),</span>
+<span class="line" id="L250">        .skippable =&gt; {</span>
+<span class="line" id="L251">            <span class="tok-kw">const</span> content_size = <span class="tok-kw">try</span> fbs.reader().readIntLittle(<span class="tok-type">u32</span>);</span>
+<span class="line" id="L252">            <span class="tok-kw">if</span> (content_size &gt; std.math.maxInt(<span class="tok-type">usize</span>) - <span class="tok-number">8</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkippableSizeTooLarge;</span>
+<span class="line" id="L253">            <span class="tok-kw">const</span> read_count = <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, content_size) + <span class="tok-number">8</span>;</span>
+<span class="line" id="L254">            <span class="tok-kw">if</span> (read_count &gt; src.len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkippableSizeTooLarge;</span>
+<span class="line" id="L255">            <span class="tok-kw">return</span> read_count;</span>
+<span class="line" id="L256">        },</span>
+<span class="line" id="L257">    }</span>
+<span class="line" id="L258">}</span>
+<span class="line" id="L259"></span>
+<span class="line" id="L260"><span class="tok-comment">/// Returns the frame checksum corresponding to the data fed into `hasher`</span></span>
+<span class="line" id="L261"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">computeChecksum</span>(hasher: *std.hash.XxHash64) <span class="tok-type">u32</span> {</span>
+<span class="line" id="L262">    <span class="tok-kw">const</span> hash = hasher.final();</span>
+<span class="line" id="L263">    <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u32</span>, <span class="tok-builtin">@intCast</span>(hash &amp; <span class="tok-number">0xFFFFFFFF</span>));</span>
+<span class="line" id="L264">}</span>
+<span class="line" id="L265"></span>
+<span class="line" id="L266"><span class="tok-kw">const</span> FrameError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L267">    ChecksumFailure,</span>
+<span class="line" id="L268">    BadContentSize,</span>
+<span class="line" id="L269">    EndOfStream,</span>
+<span class="line" id="L270">    ReservedBitSet,</span>
+<span class="line" id="L271">} || block.Error;</span>
+<span class="line" id="L272"></span>
+<span class="line" id="L273"><span class="tok-comment">/// Decode a Zstandard frame from `src` into `dest`, returning the number of</span></span>
+<span class="line" id="L274"><span class="tok-comment">/// bytes read from `src` and written to `dest`. The first four bytes of `src`</span></span>
+<span class="line" id="L275"><span class="tok-comment">/// must be the magic number for a Zstandard frame.</span></span>
+<span class="line" id="L276"><span class="tok-comment">///</span></span>
+<span class="line" id="L277"><span class="tok-comment">/// Error returned:</span></span>
+<span class="line" id="L278"><span class="tok-comment">///   - `error.UnknownContentSizeUnsupported` if the frame does not declare the</span></span>
+<span class="line" id="L279"><span class="tok-comment">///     uncompressed content size</span></span>
+<span class="line" id="L280"><span class="tok-comment">///   - `error.ContentTooLarge` if `dest` is smaller than the uncompressed data</span></span>
+<span class="line" id="L281"><span class="tok-comment">///     size declared by the frame header</span></span>
+<span class="line" id="L282"><span class="tok-comment">///   - `error.WindowSizeUnknown` if the frame does not have a valid window size</span></span>
+<span class="line" id="L283"><span class="tok-comment">///   - `error.DictionaryIdFlagUnsupported` if the frame uses a dictionary</span></span>
+<span class="line" id="L284"><span class="tok-comment">///   - `error.ContentSizeTooLarge` if the frame header indicates a content size</span></span>
+<span class="line" id="L285"><span class="tok-comment">///     that is larger than `std.math.maxInt(usize)`</span></span>
+<span class="line" id="L286"><span class="tok-comment">///   - `error.ChecksumFailure` if `verify_checksum` is true and the frame</span></span>
+<span class="line" id="L287"><span class="tok-comment">///     contains a checksum that does not match the checksum of the decompressed</span></span>
+<span class="line" id="L288"><span class="tok-comment">///     data</span></span>
+<span class="line" id="L289"><span class="tok-comment">///   - `error.ReservedBitSet` if the reserved bit of the frame header is set</span></span>
+<span class="line" id="L290"><span class="tok-comment">///   - `error.EndOfStream` if `src` does not contain a complete frame</span></span>
+<span class="line" id="L291"><span class="tok-comment">///   - an error in `block.Error` if there are errors decoding a block</span></span>
+<span class="line" id="L292"><span class="tok-comment">///   - `error.BadContentSize` if the content size declared by the frame does</span></span>
+<span class="line" id="L293"><span class="tok-comment">///     not equal the actual size of decompressed data</span></span>
+<span class="line" id="L294"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeZstandardFrame</span>(</span>
+<span class="line" id="L295">    dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L296">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L297">    verify_checksum: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L298">) (<span class="tok-kw">error</span>{</span>
+<span class="line" id="L299">    UnknownContentSizeUnsupported,</span>
+<span class="line" id="L300">    ContentTooLarge,</span>
+<span class="line" id="L301">    ContentSizeTooLarge,</span>
+<span class="line" id="L302">    WindowSizeUnknown,</span>
+<span class="line" id="L303">    DictionaryIdFlagUnsupported,</span>
+<span class="line" id="L304">} || FrameError)!ReadWriteCount {</span>
+<span class="line" id="L305">    assert(readInt(<span class="tok-type">u32</span>, src[<span class="tok-number">0</span>..<span class="tok-number">4</span>]) == frame.Zstandard.magic_number);</span>
+<span class="line" id="L306">    <span class="tok-kw">var</span> consumed_count: <span class="tok-type">usize</span> = <span class="tok-number">4</span>;</span>
+<span class="line" id="L307"></span>
+<span class="line" id="L308">    <span class="tok-kw">var</span> frame_context = context: {</span>
+<span class="line" id="L309">        <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src[consumed_count..]);</span>
+<span class="line" id="L310">        <span class="tok-kw">var</span> source = fbs.reader();</span>
+<span class="line" id="L311">        <span class="tok-kw">const</span> frame_header = <span class="tok-kw">try</span> decodeZstandardHeader(source);</span>
+<span class="line" id="L312">        consumed_count += fbs.pos;</span>
+<span class="line" id="L313">        <span class="tok-kw">break</span> :context FrameContext.init(</span>
+<span class="line" id="L314">            frame_header,</span>
+<span class="line" id="L315">            std.math.maxInt(<span class="tok-type">usize</span>),</span>
+<span class="line" id="L316">            verify_checksum,</span>
+<span class="line" id="L317">        ) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L318">            <span class="tok-kw">error</span>.WindowTooLarge =&gt; <span class="tok-kw">unreachable</span>,</span>
+<span class="line" id="L319">            <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L320">        };</span>
+<span class="line" id="L321">    };</span>
+<span class="line" id="L322">    <span class="tok-kw">const</span> counts = <span class="tok-kw">try</span> decodeZStandardFrameBlocks(</span>
+<span class="line" id="L323">        dest,</span>
+<span class="line" id="L324">        src[consumed_count..],</span>
+<span class="line" id="L325">        &amp;frame_context,</span>
+<span class="line" id="L326">    );</span>
+<span class="line" id="L327">    <span class="tok-kw">return</span> ReadWriteCount{</span>
+<span class="line" id="L328">        .read_count = counts.read_count + consumed_count,</span>
+<span class="line" id="L329">        .write_count = counts.write_count,</span>
+<span class="line" id="L330">    };</span>
+<span class="line" id="L331">}</span>
+<span class="line" id="L332"></span>
+<span class="line" id="L333"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeZStandardFrameBlocks</span>(</span>
+<span class="line" id="L334">    dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L335">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L336">    frame_context: *FrameContext,</span>
+<span class="line" id="L337">) (<span class="tok-kw">error</span>{ ContentTooLarge, UnknownContentSizeUnsupported } || FrameError)!ReadWriteCount {</span>
+<span class="line" id="L338">    <span class="tok-kw">const</span> content_size = frame_context.content_size <span class="tok-kw">orelse</span></span>
+<span class="line" id="L339">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnknownContentSizeUnsupported;</span>
+<span class="line" id="L340">    <span class="tok-kw">if</span> (dest.len &lt; content_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ContentTooLarge;</span>
+<span class="line" id="L341"></span>
+<span class="line" id="L342">    <span class="tok-kw">var</span> consumed_count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L343">    <span class="tok-kw">const</span> written_count = decodeFrameBlocksInner(</span>
+<span class="line" id="L344">        dest[<span class="tok-number">0</span>..content_size],</span>
+<span class="line" id="L345">        src[consumed_count..],</span>
+<span class="line" id="L346">        &amp;consumed_count,</span>
+<span class="line" id="L347">        <span class="tok-kw">if</span> (frame_context.hasher_opt) |*hasher| hasher <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L348">        frame_context.block_size_max,</span>
+<span class="line" id="L349">    ) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L350">        <span class="tok-kw">error</span>.DestTooSmall =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BadContentSize,</span>
+<span class="line" id="L351">        <span class="tok-kw">inline</span> <span class="tok-kw">else</span> =&gt; |e| <span class="tok-kw">return</span> e,</span>
+<span class="line" id="L352">    };</span>
+<span class="line" id="L353"></span>
+<span class="line" id="L354">    <span class="tok-kw">if</span> (written_count != content_size) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BadContentSize;</span>
+<span class="line" id="L355">    <span class="tok-kw">if</span> (frame_context.has_checksum) {</span>
+<span class="line" id="L356">        <span class="tok-kw">if</span> (src.len &lt; consumed_count + <span class="tok-number">4</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.EndOfStream;</span>
+<span class="line" id="L357">        <span class="tok-kw">const</span> checksum = readIntSlice(<span class="tok-type">u32</span>, src[consumed_count .. consumed_count + <span class="tok-number">4</span>]);</span>
+<span class="line" id="L358">        consumed_count += <span class="tok-number">4</span>;</span>
+<span class="line" id="L359">        <span class="tok-kw">if</span> (frame_context.hasher_opt) |*hasher| {</span>
+<span class="line" id="L360">            <span class="tok-kw">if</span> (checksum != computeChecksum(hasher)) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ChecksumFailure;</span>
+<span class="line" id="L361">        }</span>
+<span class="line" id="L362">    }</span>
+<span class="line" id="L363">    <span class="tok-kw">return</span> ReadWriteCount{ .read_count = consumed_count, .write_count = written_count };</span>
+<span class="line" id="L364">}</span>
+<span class="line" id="L365"></span>
+<span class="line" id="L366"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FrameContext = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L367">    hasher_opt: ?std.hash.XxHash64,</span>
+<span class="line" id="L368">    window_size: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L369">    has_checksum: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L370">    block_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L371">    content_size: ?<span class="tok-type">usize</span>,</span>
+<span class="line" id="L372"></span>
+<span class="line" id="L373">    <span class="tok-kw">const</span> Error = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L374">        DictionaryIdFlagUnsupported,</span>
+<span class="line" id="L375">        WindowSizeUnknown,</span>
+<span class="line" id="L376">        WindowTooLarge,</span>
+<span class="line" id="L377">        ContentSizeTooLarge,</span>
+<span class="line" id="L378">    };</span>
+<span class="line" id="L379">    <span class="tok-comment">/// Validates `frame_header` and returns the associated `FrameContext`.</span></span>
+<span class="line" id="L380">    <span class="tok-comment">///</span></span>
+<span class="line" id="L381">    <span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L382">    <span class="tok-comment">///   - `error.DictionaryIdFlagUnsupported` if the frame uses a dictionary</span></span>
+<span class="line" id="L383">    <span class="tok-comment">///   - `error.WindowSizeUnknown` if the frame does not have a valid window</span></span>
+<span class="line" id="L384">    <span class="tok-comment">///     size</span></span>
+<span class="line" id="L385">    <span class="tok-comment">///   - `error.WindowTooLarge` if the window size is larger than</span></span>
+<span class="line" id="L386">    <span class="tok-comment">///     `window_size_max`</span></span>
+<span class="line" id="L387">    <span class="tok-comment">///   - `error.ContentSizeTooLarge` if the frame header indicates a content</span></span>
+<span class="line" id="L388">    <span class="tok-comment">///     size larger than `std.math.maxInt(usize)`</span></span>
+<span class="line" id="L389">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>(</span>
+<span class="line" id="L390">        frame_header: ZstandardHeader,</span>
+<span class="line" id="L391">        window_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L392">        verify_checksum: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L393">    ) Error!FrameContext {</span>
+<span class="line" id="L394">        <span class="tok-kw">if</span> (frame_header.descriptor.dictionary_id_flag != <span class="tok-number">0</span>)</span>
+<span class="line" id="L395">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DictionaryIdFlagUnsupported;</span>
+<span class="line" id="L396"></span>
+<span class="line" id="L397">        <span class="tok-kw">const</span> window_size_raw = frameWindowSize(frame_header) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.WindowSizeUnknown;</span>
+<span class="line" id="L398">        <span class="tok-kw">const</span> window_size = <span class="tok-kw">if</span> (window_size_raw &gt; window_size_max)</span>
+<span class="line" id="L399">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.WindowTooLarge</span>
+<span class="line" id="L400">        <span class="tok-kw">else</span></span>
+<span class="line" id="L401">            <span class="tok-builtin">@as</span>(<span class="tok-type">usize</span>, <span class="tok-builtin">@intCast</span>(window_size_raw));</span>
+<span class="line" id="L402"></span>
+<span class="line" id="L403">        <span class="tok-kw">const</span> should_compute_checksum =</span>
+<span class="line" id="L404">            frame_header.descriptor.content_checksum_flag <span class="tok-kw">and</span> verify_checksum;</span>
+<span class="line" id="L405"></span>
+<span class="line" id="L406">        <span class="tok-kw">const</span> content_size = <span class="tok-kw">if</span> (frame_header.content_size) |size|</span>
+<span class="line" id="L407">            std.math.cast(<span class="tok-type">usize</span>, size) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ContentSizeTooLarge</span>
+<span class="line" id="L408">        <span class="tok-kw">else</span></span>
+<span class="line" id="L409">            <span class="tok-null">null</span>;</span>
+<span class="line" id="L410"></span>
+<span class="line" id="L411">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L412">            .hasher_opt = <span class="tok-kw">if</span> (should_compute_checksum) std.hash.XxHash64.init(<span class="tok-number">0</span>) <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L413">            .window_size = window_size,</span>
+<span class="line" id="L414">            .has_checksum = frame_header.descriptor.content_checksum_flag,</span>
+<span class="line" id="L415">            .block_size_max = <span class="tok-builtin">@min</span>(<span class="tok-number">1</span> &lt;&lt; <span class="tok-number">17</span>, window_size),</span>
+<span class="line" id="L416">            .content_size = content_size,</span>
+<span class="line" id="L417">        };</span>
+<span class="line" id="L418">    }</span>
+<span class="line" id="L419">};</span>
+<span class="line" id="L420"></span>
+<span class="line" id="L421"><span class="tok-comment">/// Decode a Zstandard from from `src` and return number of bytes read; see</span></span>
+<span class="line" id="L422"><span class="tok-comment">/// `decodeZstandardFrame()`. The first four bytes of `src` must be the magic</span></span>
+<span class="line" id="L423"><span class="tok-comment">/// number for a Zstandard frame.</span></span>
+<span class="line" id="L424"><span class="tok-comment">///</span></span>
+<span class="line" id="L425"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L426"><span class="tok-comment">///   - `error.WindowSizeUnknown` if the frame does not have a valid window size</span></span>
+<span class="line" id="L427"><span class="tok-comment">///   - `error.WindowTooLarge` if the window size is larger than</span></span>
+<span class="line" id="L428"><span class="tok-comment">///     `window_size_max`</span></span>
+<span class="line" id="L429"><span class="tok-comment">///   - `error.DictionaryIdFlagUnsupported` if the frame uses a dictionary</span></span>
+<span class="line" id="L430"><span class="tok-comment">///   - `error.ContentSizeTooLarge` if the frame header indicates a content size</span></span>
+<span class="line" id="L431"><span class="tok-comment">///     that is larger than `std.math.maxInt(usize)`</span></span>
+<span class="line" id="L432"><span class="tok-comment">///   - `error.ChecksumFailure` if `verify_checksum` is true and the frame</span></span>
+<span class="line" id="L433"><span class="tok-comment">///     contains a checksum that does not match the checksum of the decompressed</span></span>
+<span class="line" id="L434"><span class="tok-comment">///     data</span></span>
+<span class="line" id="L435"><span class="tok-comment">///   - `error.ReservedBitSet` if the reserved bit of the frame header is set</span></span>
+<span class="line" id="L436"><span class="tok-comment">///   - `error.EndOfStream` if `src` does not contain a complete frame</span></span>
+<span class="line" id="L437"><span class="tok-comment">///   - `error.OutOfMemory` if `allocator` cannot allocate enough memory</span></span>
+<span class="line" id="L438"><span class="tok-comment">///   - an error in `block.Error` if there are errors decoding a block</span></span>
+<span class="line" id="L439"><span class="tok-comment">///   - `error.BadContentSize` if the content size declared by the frame does</span></span>
+<span class="line" id="L440"><span class="tok-comment">///     not equal the size of decompressed data</span></span>
+<span class="line" id="L441"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeZstandardFrameArrayList</span>(</span>
+<span class="line" id="L442">    allocator: Allocator,</span>
+<span class="line" id="L443">    dest: *std.ArrayList(<span class="tok-type">u8</span>),</span>
+<span class="line" id="L444">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L445">    verify_checksum: <span class="tok-type">bool</span>,</span>
+<span class="line" id="L446">    window_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L447">) (<span class="tok-kw">error</span>{OutOfMemory} || FrameContext.Error || FrameError)!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L448">    assert(readInt(<span class="tok-type">u32</span>, src[<span class="tok-number">0</span>..<span class="tok-number">4</span>]) == frame.Zstandard.magic_number);</span>
+<span class="line" id="L449">    <span class="tok-kw">var</span> consumed_count: <span class="tok-type">usize</span> = <span class="tok-number">4</span>;</span>
+<span class="line" id="L450"></span>
+<span class="line" id="L451">    <span class="tok-kw">var</span> frame_context = context: {</span>
+<span class="line" id="L452">        <span class="tok-kw">var</span> fbs = std.io.fixedBufferStream(src[consumed_count..]);</span>
+<span class="line" id="L453">        <span class="tok-kw">var</span> source = fbs.reader();</span>
+<span class="line" id="L454">        <span class="tok-kw">const</span> frame_header = <span class="tok-kw">try</span> decodeZstandardHeader(source);</span>
+<span class="line" id="L455">        consumed_count += fbs.pos;</span>
+<span class="line" id="L456">        <span class="tok-kw">break</span> :context <span class="tok-kw">try</span> FrameContext.init(frame_header, window_size_max, verify_checksum);</span>
+<span class="line" id="L457">    };</span>
+<span class="line" id="L458"></span>
+<span class="line" id="L459">    consumed_count += <span class="tok-kw">try</span> decodeZstandardFrameBlocksArrayList(</span>
+<span class="line" id="L460">        allocator,</span>
+<span class="line" id="L461">        dest,</span>
+<span class="line" id="L462">        src[consumed_count..],</span>
+<span class="line" id="L463">        &amp;frame_context,</span>
+<span class="line" id="L464">    );</span>
+<span class="line" id="L465">    <span class="tok-kw">return</span> consumed_count;</span>
+<span class="line" id="L466">}</span>
+<span class="line" id="L467"></span>
+<span class="line" id="L468"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeZstandardFrameBlocksArrayList</span>(</span>
+<span class="line" id="L469">    allocator: Allocator,</span>
+<span class="line" id="L470">    dest: *std.ArrayList(<span class="tok-type">u8</span>),</span>
+<span class="line" id="L471">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L472">    frame_context: *FrameContext,</span>
+<span class="line" id="L473">) (<span class="tok-kw">error</span>{OutOfMemory} || FrameError)!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L474">    <span class="tok-kw">const</span> initial_len = dest.items.len;</span>
+<span class="line" id="L475"></span>
+<span class="line" id="L476">    <span class="tok-kw">var</span> ring_buffer = <span class="tok-kw">try</span> RingBuffer.init(allocator, frame_context.window_size);</span>
+<span class="line" id="L477">    <span class="tok-kw">defer</span> ring_buffer.deinit(allocator);</span>
+<span class="line" id="L478"></span>
+<span class="line" id="L479">    <span class="tok-comment">// These tables take 7680 bytes</span>
+</span>
+<span class="line" id="L480">    <span class="tok-kw">var</span> literal_fse_data: [types.compressed_block.table_size_max.literal]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L481">    <span class="tok-kw">var</span> match_fse_data: [types.compressed_block.table_size_max.match]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L482">    <span class="tok-kw">var</span> offset_fse_data: [types.compressed_block.table_size_max.offset]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L483"></span>
+<span class="line" id="L484">    <span class="tok-kw">var</span> block_header = <span class="tok-kw">try</span> block.decodeBlockHeaderSlice(src);</span>
+<span class="line" id="L485">    <span class="tok-kw">var</span> consumed_count: <span class="tok-type">usize</span> = <span class="tok-number">3</span>;</span>
+<span class="line" id="L486">    <span class="tok-kw">var</span> decode_state = block.DecodeState.init(&amp;literal_fse_data, &amp;match_fse_data, &amp;offset_fse_data);</span>
+<span class="line" id="L487">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : ({</span>
+<span class="line" id="L488">        block_header = <span class="tok-kw">try</span> block.decodeBlockHeaderSlice(src[consumed_count..]);</span>
+<span class="line" id="L489">        consumed_count += <span class="tok-number">3</span>;</span>
+<span class="line" id="L490">    }) {</span>
+<span class="line" id="L491">        <span class="tok-kw">const</span> written_size = <span class="tok-kw">try</span> block.decodeBlockRingBuffer(</span>
+<span class="line" id="L492">            &amp;ring_buffer,</span>
+<span class="line" id="L493">            src[consumed_count..],</span>
+<span class="line" id="L494">            block_header,</span>
+<span class="line" id="L495">            &amp;decode_state,</span>
+<span class="line" id="L496">            &amp;consumed_count,</span>
+<span class="line" id="L497">            frame_context.block_size_max,</span>
+<span class="line" id="L498">        );</span>
+<span class="line" id="L499">        <span class="tok-kw">if</span> (frame_context.content_size) |size| {</span>
+<span class="line" id="L500">            <span class="tok-kw">if</span> (dest.items.len - initial_len &gt; size) {</span>
+<span class="line" id="L501">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BadContentSize;</span>
+<span class="line" id="L502">            }</span>
+<span class="line" id="L503">        }</span>
+<span class="line" id="L504">        <span class="tok-kw">if</span> (written_size &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L505">            <span class="tok-kw">const</span> written_slice = ring_buffer.sliceLast(written_size);</span>
+<span class="line" id="L506">            <span class="tok-kw">try</span> dest.appendSlice(written_slice.first);</span>
+<span class="line" id="L507">            <span class="tok-kw">try</span> dest.appendSlice(written_slice.second);</span>
+<span class="line" id="L508">            <span class="tok-kw">if</span> (frame_context.hasher_opt) |*hasher| {</span>
+<span class="line" id="L509">                hasher.update(written_slice.first);</span>
+<span class="line" id="L510">                hasher.update(written_slice.second);</span>
+<span class="line" id="L511">            }</span>
+<span class="line" id="L512">        }</span>
+<span class="line" id="L513">        <span class="tok-kw">if</span> (block_header.last_block) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L514">    }</span>
+<span class="line" id="L515">    <span class="tok-kw">if</span> (frame_context.content_size) |size| {</span>
+<span class="line" id="L516">        <span class="tok-kw">if</span> (dest.items.len - initial_len != size) {</span>
+<span class="line" id="L517">            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.BadContentSize;</span>
+<span class="line" id="L518">        }</span>
+<span class="line" id="L519">    }</span>
+<span class="line" id="L520"></span>
+<span class="line" id="L521">    <span class="tok-kw">if</span> (frame_context.has_checksum) {</span>
+<span class="line" id="L522">        <span class="tok-kw">if</span> (src.len &lt; consumed_count + <span class="tok-number">4</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.EndOfStream;</span>
+<span class="line" id="L523">        <span class="tok-kw">const</span> checksum = readIntSlice(<span class="tok-type">u32</span>, src[consumed_count .. consumed_count + <span class="tok-number">4</span>]);</span>
+<span class="line" id="L524">        consumed_count += <span class="tok-number">4</span>;</span>
+<span class="line" id="L525">        <span class="tok-kw">if</span> (frame_context.hasher_opt) |*hasher| {</span>
+<span class="line" id="L526">            <span class="tok-kw">if</span> (checksum != computeChecksum(hasher)) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ChecksumFailure;</span>
+<span class="line" id="L527">        }</span>
+<span class="line" id="L528">    }</span>
+<span class="line" id="L529">    <span class="tok-kw">return</span> consumed_count;</span>
+<span class="line" id="L530">}</span>
+<span class="line" id="L531"></span>
+<span class="line" id="L532"><span class="tok-kw">fn</span> <span class="tok-fn">decodeFrameBlocksInner</span>(</span>
+<span class="line" id="L533">    dest: []<span class="tok-type">u8</span>,</span>
+<span class="line" id="L534">    src: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L535">    consumed_count: *<span class="tok-type">usize</span>,</span>
+<span class="line" id="L536">    hash: ?*std.hash.XxHash64,</span>
+<span class="line" id="L537">    block_size_max: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L538">) (<span class="tok-kw">error</span>{ EndOfStream, DestTooSmall } || block.Error)!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L539">    <span class="tok-comment">// These tables take 7680 bytes</span>
+</span>
+<span class="line" id="L540">    <span class="tok-kw">var</span> literal_fse_data: [types.compressed_block.table_size_max.literal]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L541">    <span class="tok-kw">var</span> match_fse_data: [types.compressed_block.table_size_max.match]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L542">    <span class="tok-kw">var</span> offset_fse_data: [types.compressed_block.table_size_max.offset]Table.Fse = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L543"></span>
+<span class="line" id="L544">    <span class="tok-kw">var</span> block_header = <span class="tok-kw">try</span> block.decodeBlockHeaderSlice(src);</span>
+<span class="line" id="L545">    <span class="tok-kw">var</span> bytes_read: <span class="tok-type">usize</span> = <span class="tok-number">3</span>;</span>
+<span class="line" id="L546">    <span class="tok-kw">defer</span> consumed_count.* += bytes_read;</span>
+<span class="line" id="L547">    <span class="tok-kw">var</span> decode_state = block.DecodeState.init(&amp;literal_fse_data, &amp;match_fse_data, &amp;offset_fse_data);</span>
+<span class="line" id="L548">    <span class="tok-kw">var</span> count: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L549">    <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : ({</span>
+<span class="line" id="L550">        block_header = <span class="tok-kw">try</span> block.decodeBlockHeaderSlice(src[bytes_read..]);</span>
+<span class="line" id="L551">        bytes_read += <span class="tok-number">3</span>;</span>
+<span class="line" id="L552">    }) {</span>
+<span class="line" id="L553">        <span class="tok-kw">const</span> written_size = <span class="tok-kw">try</span> block.decodeBlock(</span>
+<span class="line" id="L554">            dest,</span>
+<span class="line" id="L555">            src[bytes_read..],</span>
+<span class="line" id="L556">            block_header,</span>
+<span class="line" id="L557">            &amp;decode_state,</span>
+<span class="line" id="L558">            &amp;bytes_read,</span>
+<span class="line" id="L559">            block_size_max,</span>
+<span class="line" id="L560">            count,</span>
+<span class="line" id="L561">        );</span>
+<span class="line" id="L562">        <span class="tok-kw">if</span> (hash) |hash_state| hash_state.update(dest[count .. count + written_size]);</span>
+<span class="line" id="L563">        count += written_size;</span>
+<span class="line" id="L564">        <span class="tok-kw">if</span> (block_header.last_block) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L565">    }</span>
+<span class="line" id="L566">    <span class="tok-kw">return</span> count;</span>
+<span class="line" id="L567">}</span>
+<span class="line" id="L568"></span>
+<span class="line" id="L569"><span class="tok-comment">/// Decode the header of a skippable frame. The first four bytes of `src` must</span></span>
+<span class="line" id="L570"><span class="tok-comment">/// be a valid magic number for a skippable frame.</span></span>
+<span class="line" id="L571"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeSkippableHeader</span>(src: *<span class="tok-kw">const</span> [<span class="tok-number">8</span>]<span class="tok-type">u8</span>) SkippableHeader {</span>
+<span class="line" id="L572">    <span class="tok-kw">const</span> magic = readInt(<span class="tok-type">u32</span>, src[<span class="tok-number">0</span>..<span class="tok-number">4</span>]);</span>
+<span class="line" id="L573">    assert(isSkippableMagic(magic));</span>
+<span class="line" id="L574">    <span class="tok-kw">const</span> frame_size = readInt(<span class="tok-type">u32</span>, src[<span class="tok-number">4</span>..<span class="tok-number">8</span>]);</span>
+<span class="line" id="L575">    <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L576">        .magic_number = magic,</span>
+<span class="line" id="L577">        .frame_size = frame_size,</span>
+<span class="line" id="L578">    };</span>
+<span class="line" id="L579">}</span>
+<span class="line" id="L580"></span>
+<span class="line" id="L581"><span class="tok-comment">/// Returns the window size required to decompress a frame, or `null` if it</span></span>
+<span class="line" id="L582"><span class="tok-comment">/// cannot be determined (which indicates a malformed frame header).</span></span>
+<span class="line" id="L583"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">frameWindowSize</span>(header: ZstandardHeader) ?<span class="tok-type">u64</span> {</span>
+<span class="line" id="L584">    <span class="tok-kw">if</span> (header.window_descriptor) |descriptor| {</span>
+<span class="line" id="L585">        <span class="tok-kw">const</span> exponent = (descriptor &amp; <span class="tok-number">0b11111000</span>) &gt;&gt; <span class="tok-number">3</span>;</span>
+<span class="line" id="L586">        <span class="tok-kw">const</span> mantissa = descriptor &amp; <span class="tok-number">0b00000111</span>;</span>
+<span class="line" id="L587">        <span class="tok-kw">const</span> window_log = <span class="tok-number">10</span> + exponent;</span>
+<span class="line" id="L588">        <span class="tok-kw">const</span> window_base = <span class="tok-builtin">@as</span>(<span class="tok-type">u64</span>, <span class="tok-number">1</span>) &lt;&lt; <span class="tok-builtin">@as</span>(<span class="tok-type">u6</span>, <span class="tok-builtin">@intCast</span>(window_log));</span>
+<span class="line" id="L589">        <span class="tok-kw">const</span> window_add = (window_base / <span class="tok-number">8</span>) * mantissa;</span>
+<span class="line" id="L590">        <span class="tok-kw">return</span> window_base + window_add;</span>
+<span class="line" id="L591">    } <span class="tok-kw">else</span> <span class="tok-kw">return</span> header.content_size;</span>
+<span class="line" id="L592">}</span>
+<span class="line" id="L593"></span>
+<span class="line" id="L594"><span class="tok-comment">/// Decode the header of a Zstandard frame.</span></span>
+<span class="line" id="L595"><span class="tok-comment">///</span></span>
+<span class="line" id="L596"><span class="tok-comment">/// Errors returned:</span></span>
+<span class="line" id="L597"><span class="tok-comment">///   - `error.ReservedBitSet` if any of the reserved bits of the header are set</span></span>
+<span class="line" id="L598"><span class="tok-comment">///   - `error.EndOfStream` if `source` does not contain a complete header</span></span>
+<span class="line" id="L599"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">decodeZstandardHeader</span>(</span>
+<span class="line" id="L600">    source: <span class="tok-kw">anytype</span>,</span>
+<span class="line" id="L601">) (<span class="tok-builtin">@TypeOf</span>(source).Error || <span class="tok-kw">error</span>{ EndOfStream, ReservedBitSet })!ZstandardHeader {</span>
+<span class="line" id="L602">    <span class="tok-kw">const</span> descriptor = <span class="tok-builtin">@as</span>(ZstandardHeader.Descriptor, <span class="tok-builtin">@bitCast</span>(<span class="tok-kw">try</span> source.readByte()));</span>
+<span class="line" id="L603"></span>
+<span class="line" id="L604">    <span class="tok-kw">if</span> (descriptor.reserved) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReservedBitSet;</span>
+<span class="line" id="L605"></span>
+<span class="line" id="L606">    <span class="tok-kw">var</span> window_descriptor: ?<span class="tok-type">u8</span> = <span class="tok-null">null</span>;</span>
+<span class="line" id="L607">    <span class="tok-kw">if</span> (!descriptor.single_segment_flag) {</span>
+<span class="line" id="L608">        window_descriptor = <span class="tok-kw">try</span> source.readByte();</span>
+<span class="line" id="L609">    }</span>
+<span class="line" id="L610"></span>
+<span class="line" id="L611">    <span class="tok-kw">var</span> dictionary_id: ?<span class="tok-type">u32</span> = <span class="tok-null">null</span>;</span>
+<span class="line" id="L612">    <span class="tok-kw">if</span> (descriptor.dictionary_id_flag &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L613">        <span class="tok-comment">// if flag is 3 then field_size = 4, else field_size = flag</span>
+</span>
+<span class="line" id="L614">        <span class="tok-kw">const</span> field_size = (<span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-number">1</span>) &lt;&lt; descriptor.dictionary_id_flag) &gt;&gt; <span class="tok-number">1</span>;</span>
+<span class="line" id="L615">        dictionary_id = <span class="tok-kw">try</span> source.readVarInt(<span class="tok-type">u32</span>, .Little, field_size);</span>
+<span class="line" id="L616">    }</span>
+<span class="line" id="L617"></span>
+<span class="line" id="L618">    <span class="tok-kw">var</span> content_size: ?<span class="tok-type">u64</span> = <span class="tok-null">null</span>;</span>
+<span class="line" id="L619">    <span class="tok-kw">if</span> (descriptor.single_segment_flag <span class="tok-kw">or</span> descriptor.content_size_flag &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L620">        <span class="tok-kw">const</span> field_size = <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-number">1</span>) &lt;&lt; descriptor.content_size_flag;</span>
+<span class="line" id="L621">        content_size = <span class="tok-kw">try</span> source.readVarInt(<span class="tok-type">u64</span>, .Little, field_size);</span>
+<span class="line" id="L622">        <span class="tok-kw">if</span> (field_size == <span class="tok-number">2</span>) content_size.? += <span class="tok-number">256</span>;</span>
+<span class="line" id="L623">    }</span>
+<span class="line" id="L624"></span>
+<span class="line" id="L625">    <span class="tok-kw">const</span> header = ZstandardHeader{</span>
+<span class="line" id="L626">        .descriptor = descriptor,</span>
+<span class="line" id="L627">        .window_descriptor = window_descriptor,</span>
+<span class="line" id="L628">        .dictionary_id = dictionary_id,</span>
+<span class="line" id="L629">        .content_size = content_size,</span>
+<span class="line" id="L630">    };</span>
+<span class="line" id="L631">    <span class="tok-kw">return</span> header;</span>
+<span class="line" id="L632">}</span>
+<span class="line" id="L633"></span>
+<span class="line" id="L634"><span class="tok-kw">test</span> {</span>
+<span class="line" id="L635">    std.testing.refAllDecls(<span class="tok-builtin">@This</span>());</span>
+<span class="line" id="L636">}</span>
+<span class="line" id="L637"></span>
+</code></pre></body>
+</html>

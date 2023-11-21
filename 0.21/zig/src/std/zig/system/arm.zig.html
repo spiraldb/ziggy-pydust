@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>zig/system/arm.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L2"><span class="tok-kw">const</span> Target = std.Target;</span>
+<span class="line" id="L3"></span>
+<span class="line" id="L4"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> CoreInfo = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L5">    architecture: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L6">    implementer: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L7">    variant: <span class="tok-type">u8</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L8">    part: <span class="tok-type">u16</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L9">};</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> cpu_models = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L12">    <span class="tok-comment">// Shorthands to simplify the tables below.</span>
+</span>
+<span class="line" id="L13">    <span class="tok-kw">const</span> A32 = Target.arm.cpu;</span>
+<span class="line" id="L14">    <span class="tok-kw">const</span> A64 = Target.aarch64.cpu;</span>
+<span class="line" id="L15"></span>
+<span class="line" id="L16">    <span class="tok-kw">const</span> E = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L17">        part: <span class="tok-type">u16</span>,</span>
+<span class="line" id="L18">        variant: ?<span class="tok-type">u8</span> = <span class="tok-null">null</span>, <span class="tok-comment">// null if matches any variant</span>
+</span>
+<span class="line" id="L19">        m32: ?*<span class="tok-kw">const</span> Target.Cpu.Model = <span class="tok-null">null</span>,</span>
+<span class="line" id="L20">        m64: ?*<span class="tok-kw">const</span> Target.Cpu.Model = <span class="tok-null">null</span>,</span>
+<span class="line" id="L21">    };</span>
+<span class="line" id="L22"></span>
+<span class="line" id="L23">    <span class="tok-comment">// implementer = 0x41</span>
+</span>
+<span class="line" id="L24">    <span class="tok-kw">const</span> ARM = [_]E{</span>
+<span class="line" id="L25">        E{ .part = <span class="tok-number">0x926</span>, .m32 = &amp;A32.arm926ej_s, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L26">        E{ .part = <span class="tok-number">0xb02</span>, .m32 = &amp;A32.mpcore, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L27">        E{ .part = <span class="tok-number">0xb36</span>, .m32 = &amp;A32.arm1136j_s, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L28">        E{ .part = <span class="tok-number">0xb56</span>, .m32 = &amp;A32.arm1156t2_s, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L29">        E{ .part = <span class="tok-number">0xb76</span>, .m32 = &amp;A32.arm1176jz_s, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L30">        E{ .part = <span class="tok-number">0xc05</span>, .m32 = &amp;A32.cortex_a5, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L31">        E{ .part = <span class="tok-number">0xc07</span>, .m32 = &amp;A32.cortex_a7, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L32">        E{ .part = <span class="tok-number">0xc08</span>, .m32 = &amp;A32.cortex_a8, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L33">        E{ .part = <span class="tok-number">0xc09</span>, .m32 = &amp;A32.cortex_a9, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L34">        E{ .part = <span class="tok-number">0xc0d</span>, .m32 = &amp;A32.cortex_a17, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L35">        E{ .part = <span class="tok-number">0xc0f</span>, .m32 = &amp;A32.cortex_a15, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L36">        E{ .part = <span class="tok-number">0xc0e</span>, .m32 = &amp;A32.cortex_a17, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L37">        E{ .part = <span class="tok-number">0xc14</span>, .m32 = &amp;A32.cortex_r4, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L38">        E{ .part = <span class="tok-number">0xc15</span>, .m32 = &amp;A32.cortex_r5, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L39">        E{ .part = <span class="tok-number">0xc17</span>, .m32 = &amp;A32.cortex_r7, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L40">        E{ .part = <span class="tok-number">0xc18</span>, .m32 = &amp;A32.cortex_r8, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L41">        E{ .part = <span class="tok-number">0xc20</span>, .m32 = &amp;A32.cortex_m0, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L42">        E{ .part = <span class="tok-number">0xc21</span>, .m32 = &amp;A32.cortex_m1, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L43">        E{ .part = <span class="tok-number">0xc23</span>, .m32 = &amp;A32.cortex_m3, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L44">        E{ .part = <span class="tok-number">0xc24</span>, .m32 = &amp;A32.cortex_m4, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L45">        E{ .part = <span class="tok-number">0xc27</span>, .m32 = &amp;A32.cortex_m7, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L46">        E{ .part = <span class="tok-number">0xc60</span>, .m32 = &amp;A32.cortex_m0plus, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L47">        E{ .part = <span class="tok-number">0xd01</span>, .m32 = &amp;A32.cortex_a32, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L48">        E{ .part = <span class="tok-number">0xd03</span>, .m32 = &amp;A32.cortex_a53, .m64 = &amp;A64.cortex_a53 },</span>
+<span class="line" id="L49">        E{ .part = <span class="tok-number">0xd04</span>, .m32 = &amp;A32.cortex_a35, .m64 = &amp;A64.cortex_a35 },</span>
+<span class="line" id="L50">        E{ .part = <span class="tok-number">0xd05</span>, .m32 = &amp;A32.cortex_a55, .m64 = &amp;A64.cortex_a55 },</span>
+<span class="line" id="L51">        E{ .part = <span class="tok-number">0xd07</span>, .m32 = &amp;A32.cortex_a57, .m64 = &amp;A64.cortex_a57 },</span>
+<span class="line" id="L52">        E{ .part = <span class="tok-number">0xd08</span>, .m32 = &amp;A32.cortex_a72, .m64 = &amp;A64.cortex_a72 },</span>
+<span class="line" id="L53">        E{ .part = <span class="tok-number">0xd09</span>, .m32 = &amp;A32.cortex_a73, .m64 = &amp;A64.cortex_a73 },</span>
+<span class="line" id="L54">        E{ .part = <span class="tok-number">0xd0a</span>, .m32 = &amp;A32.cortex_a75, .m64 = &amp;A64.cortex_a75 },</span>
+<span class="line" id="L55">        E{ .part = <span class="tok-number">0xd0b</span>, .m32 = &amp;A32.cortex_a76, .m64 = &amp;A64.cortex_a76 },</span>
+<span class="line" id="L56">        E{ .part = <span class="tok-number">0xd0c</span>, .m32 = &amp;A32.neoverse_n1, .m64 = &amp;A64.neoverse_n1 },</span>
+<span class="line" id="L57">        E{ .part = <span class="tok-number">0xd0d</span>, .m32 = &amp;A32.cortex_a77, .m64 = &amp;A64.cortex_a77 },</span>
+<span class="line" id="L58">        E{ .part = <span class="tok-number">0xd13</span>, .m32 = &amp;A32.cortex_r52, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L59">        E{ .part = <span class="tok-number">0xd20</span>, .m32 = &amp;A32.cortex_m23, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L60">        E{ .part = <span class="tok-number">0xd21</span>, .m32 = &amp;A32.cortex_m33, .m64 = <span class="tok-null">null</span> },</span>
+<span class="line" id="L61">        E{ .part = <span class="tok-number">0xd41</span>, .m32 = &amp;A32.cortex_a78, .m64 = &amp;A64.cortex_a78 },</span>
+<span class="line" id="L62">        E{ .part = <span class="tok-number">0xd4b</span>, .m32 = &amp;A32.cortex_a78c, .m64 = &amp;A64.cortex_a78c },</span>
+<span class="line" id="L63">        E{ .part = <span class="tok-number">0xd4c</span>, .m32 = &amp;A32.cortex_x1c, .m64 = &amp;A64.cortex_x1c },</span>
+<span class="line" id="L64">        E{ .part = <span class="tok-number">0xd44</span>, .m32 = &amp;A32.cortex_x1, .m64 = &amp;A64.cortex_x1 },</span>
+<span class="line" id="L65">        E{ .part = <span class="tok-number">0xd02</span>, .m64 = &amp;A64.cortex_a34 },</span>
+<span class="line" id="L66">        E{ .part = <span class="tok-number">0xd06</span>, .m64 = &amp;A64.cortex_a65 },</span>
+<span class="line" id="L67">        E{ .part = <span class="tok-number">0xd43</span>, .m64 = &amp;A64.cortex_a65ae },</span>
+<span class="line" id="L68">    };</span>
+<span class="line" id="L69">    <span class="tok-comment">// implementer = 0x42</span>
+</span>
+<span class="line" id="L70">    <span class="tok-kw">const</span> Broadcom = [_]E{</span>
+<span class="line" id="L71">        E{ .part = <span class="tok-number">0x516</span>, .m64 = &amp;A64.thunderx2t99 },</span>
+<span class="line" id="L72">    };</span>
+<span class="line" id="L73">    <span class="tok-comment">// implementer = 0x43</span>
+</span>
+<span class="line" id="L74">    <span class="tok-kw">const</span> Cavium = [_]E{</span>
+<span class="line" id="L75">        E{ .part = <span class="tok-number">0x0a0</span>, .m64 = &amp;A64.thunderx },</span>
+<span class="line" id="L76">        E{ .part = <span class="tok-number">0x0a2</span>, .m64 = &amp;A64.thunderxt81 },</span>
+<span class="line" id="L77">        E{ .part = <span class="tok-number">0x0a3</span>, .m64 = &amp;A64.thunderxt83 },</span>
+<span class="line" id="L78">        E{ .part = <span class="tok-number">0x0a1</span>, .m64 = &amp;A64.thunderxt88 },</span>
+<span class="line" id="L79">        E{ .part = <span class="tok-number">0x0af</span>, .m64 = &amp;A64.thunderx2t99 },</span>
+<span class="line" id="L80">    };</span>
+<span class="line" id="L81">    <span class="tok-comment">// implementer = 0x46</span>
+</span>
+<span class="line" id="L82">    <span class="tok-kw">const</span> Fujitsu = [_]E{</span>
+<span class="line" id="L83">        E{ .part = <span class="tok-number">0x001</span>, .m64 = &amp;A64.a64fx },</span>
+<span class="line" id="L84">    };</span>
+<span class="line" id="L85">    <span class="tok-comment">// implementer = 0x48</span>
+</span>
+<span class="line" id="L86">    <span class="tok-kw">const</span> HiSilicon = [_]E{</span>
+<span class="line" id="L87">        E{ .part = <span class="tok-number">0xd01</span>, .m64 = &amp;A64.tsv110 },</span>
+<span class="line" id="L88">    };</span>
+<span class="line" id="L89">    <span class="tok-comment">// implementer = 0x4e</span>
+</span>
+<span class="line" id="L90">    <span class="tok-kw">const</span> Nvidia = [_]E{</span>
+<span class="line" id="L91">        E{ .part = <span class="tok-number">0x004</span>, .m64 = &amp;A64.carmel },</span>
+<span class="line" id="L92">    };</span>
+<span class="line" id="L93">    <span class="tok-comment">// implementer = 0x50</span>
+</span>
+<span class="line" id="L94">    <span class="tok-kw">const</span> Ampere = [_]E{</span>
+<span class="line" id="L95">        E{ .part = <span class="tok-number">0x000</span>, .variant = <span class="tok-number">3</span>, .m64 = &amp;A64.emag },</span>
+<span class="line" id="L96">        E{ .part = <span class="tok-number">0x000</span>, .m64 = &amp;A64.xgene1 },</span>
+<span class="line" id="L97">    };</span>
+<span class="line" id="L98">    <span class="tok-comment">// implementer = 0x51</span>
+</span>
+<span class="line" id="L99">    <span class="tok-kw">const</span> Qualcomm = [_]E{</span>
+<span class="line" id="L100">        E{ .part = <span class="tok-number">0x06f</span>, .m32 = &amp;A32.krait },</span>
+<span class="line" id="L101">        E{ .part = <span class="tok-number">0x201</span>, .m64 = &amp;A64.kryo, .m32 = &amp;A64.kryo },</span>
+<span class="line" id="L102">        E{ .part = <span class="tok-number">0x205</span>, .m64 = &amp;A64.kryo, .m32 = &amp;A64.kryo },</span>
+<span class="line" id="L103">        E{ .part = <span class="tok-number">0x211</span>, .m64 = &amp;A64.kryo, .m32 = &amp;A64.kryo },</span>
+<span class="line" id="L104">        E{ .part = <span class="tok-number">0x800</span>, .m64 = &amp;A64.cortex_a73, .m32 = &amp;A64.cortex_a73 },</span>
+<span class="line" id="L105">        E{ .part = <span class="tok-number">0x801</span>, .m64 = &amp;A64.cortex_a73, .m32 = &amp;A64.cortex_a73 },</span>
+<span class="line" id="L106">        E{ .part = <span class="tok-number">0x802</span>, .m64 = &amp;A64.cortex_a75, .m32 = &amp;A64.cortex_a75 },</span>
+<span class="line" id="L107">        E{ .part = <span class="tok-number">0x803</span>, .m64 = &amp;A64.cortex_a75, .m32 = &amp;A64.cortex_a75 },</span>
+<span class="line" id="L108">        E{ .part = <span class="tok-number">0x804</span>, .m64 = &amp;A64.cortex_a76, .m32 = &amp;A64.cortex_a76 },</span>
+<span class="line" id="L109">        E{ .part = <span class="tok-number">0x805</span>, .m64 = &amp;A64.cortex_a76, .m32 = &amp;A64.cortex_a76 },</span>
+<span class="line" id="L110">        E{ .part = <span class="tok-number">0xc00</span>, .m64 = &amp;A64.falkor },</span>
+<span class="line" id="L111">        E{ .part = <span class="tok-number">0xc01</span>, .m64 = &amp;A64.saphira },</span>
+<span class="line" id="L112">    };</span>
+<span class="line" id="L113"></span>
+<span class="line" id="L114">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isKnown</span>(core: CoreInfo, is_64bit: <span class="tok-type">bool</span>) ?*<span class="tok-kw">const</span> Target.Cpu.Model {</span>
+<span class="line" id="L115">        <span class="tok-kw">const</span> models = <span class="tok-kw">switch</span> (core.implementer) {</span>
+<span class="line" id="L116">            <span class="tok-number">0x41</span> =&gt; &amp;ARM,</span>
+<span class="line" id="L117">            <span class="tok-number">0x42</span> =&gt; &amp;Broadcom,</span>
+<span class="line" id="L118">            <span class="tok-number">0x43</span> =&gt; &amp;Cavium,</span>
+<span class="line" id="L119">            <span class="tok-number">0x46</span> =&gt; &amp;Fujitsu,</span>
+<span class="line" id="L120">            <span class="tok-number">0x48</span> =&gt; &amp;HiSilicon,</span>
+<span class="line" id="L121">            <span class="tok-number">0x50</span> =&gt; &amp;Ampere,</span>
+<span class="line" id="L122">            <span class="tok-number">0x51</span> =&gt; &amp;Qualcomm,</span>
+<span class="line" id="L123">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L124">        };</span>
+<span class="line" id="L125"></span>
+<span class="line" id="L126">        <span class="tok-kw">for</span> (models) |model| {</span>
+<span class="line" id="L127">            <span class="tok-kw">if</span> (model.part == core.part <span class="tok-kw">and</span></span>
+<span class="line" id="L128">                (model.variant == <span class="tok-null">null</span> <span class="tok-kw">or</span> model.variant.? == core.variant))</span>
+<span class="line" id="L129">                <span class="tok-kw">return</span> <span class="tok-kw">if</span> (is_64bit) model.m64 <span class="tok-kw">else</span> model.m32;</span>
+<span class="line" id="L130">        }</span>
+<span class="line" id="L131"></span>
+<span class="line" id="L132">        <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L133">    }</span>
+<span class="line" id="L134">};</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> aarch64 = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L137">    <span class="tok-kw">fn</span> <span class="tok-fn">setFeature</span>(cpu: *Target.Cpu, feature: Target.aarch64.Feature, enabled: <span class="tok-type">bool</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L138">        <span class="tok-kw">const</span> idx = <span class="tok-builtin">@as</span>(Target.Cpu.Feature.Set.Index, <span class="tok-builtin">@intFromEnum</span>(feature));</span>
+<span class="line" id="L139"></span>
+<span class="line" id="L140">        <span class="tok-kw">if</span> (enabled) cpu.features.addFeature(idx) <span class="tok-kw">else</span> cpu.features.removeFeature(idx);</span>
+<span class="line" id="L141">    }</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">bitField</span>(input: <span class="tok-type">u64</span>, offset: <span class="tok-type">u6</span>) <span class="tok-type">u4</span> {</span>
+<span class="line" id="L144">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@truncate</span>(input &gt;&gt; offset));</span>
+<span class="line" id="L145">    }</span>
+<span class="line" id="L146"></span>
+<span class="line" id="L147">    <span class="tok-comment">/// Input array should consist of readouts from 12 system registers such that:</span></span>
+<span class="line" id="L148">    <span class="tok-comment">/// 0  -&gt; MIDR_EL1</span></span>
+<span class="line" id="L149">    <span class="tok-comment">/// 1  -&gt; ID_AA64PFR0_EL1</span></span>
+<span class="line" id="L150">    <span class="tok-comment">/// 2  -&gt; ID_AA64PFR1_EL1</span></span>
+<span class="line" id="L151">    <span class="tok-comment">/// 3  -&gt; ID_AA64DFR0_EL1</span></span>
+<span class="line" id="L152">    <span class="tok-comment">/// 4  -&gt; ID_AA64DFR1_EL1</span></span>
+<span class="line" id="L153">    <span class="tok-comment">/// 5  -&gt; ID_AA64AFR0_EL1</span></span>
+<span class="line" id="L154">    <span class="tok-comment">/// 6  -&gt; ID_AA64AFR1_EL1</span></span>
+<span class="line" id="L155">    <span class="tok-comment">/// 7  -&gt; ID_AA64ISAR0_EL1</span></span>
+<span class="line" id="L156">    <span class="tok-comment">/// 8  -&gt; ID_AA64ISAR1_EL1</span></span>
+<span class="line" id="L157">    <span class="tok-comment">/// 9  -&gt; ID_AA64MMFR0_EL1</span></span>
+<span class="line" id="L158">    <span class="tok-comment">/// 10 -&gt; ID_AA64MMFR1_EL1</span></span>
+<span class="line" id="L159">    <span class="tok-comment">/// 11 -&gt; ID_AA64MMFR2_EL1</span></span>
+<span class="line" id="L160">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">detectNativeCpuAndFeatures</span>(arch: Target.Cpu.Arch, registers: [<span class="tok-number">12</span>]<span class="tok-type">u64</span>) ?Target.Cpu {</span>
+<span class="line" id="L161">        <span class="tok-kw">const</span> info = detectNativeCoreInfo(registers[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L162">        <span class="tok-kw">const</span> model = cpu_models.isKnown(info, <span class="tok-null">true</span>) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L163"></span>
+<span class="line" id="L164">        <span class="tok-kw">var</span> cpu = Target.Cpu{</span>
+<span class="line" id="L165">            .arch = arch,</span>
+<span class="line" id="L166">            .model = model,</span>
+<span class="line" id="L167">            .features = Target.Cpu.Feature.Set.empty,</span>
+<span class="line" id="L168">        };</span>
+<span class="line" id="L169"></span>
+<span class="line" id="L170">        detectNativeCpuFeatures(&amp;cpu, registers[<span class="tok-number">1</span>..<span class="tok-number">12</span>]);</span>
+<span class="line" id="L171">        addInstructionFusions(&amp;cpu, info);</span>
+<span class="line" id="L172"></span>
+<span class="line" id="L173">        <span class="tok-kw">return</span> cpu;</span>
+<span class="line" id="L174">    }</span>
+<span class="line" id="L175"></span>
+<span class="line" id="L176">    <span class="tok-comment">/// Takes readout of MIDR_EL1 register as input.</span></span>
+<span class="line" id="L177">    <span class="tok-kw">fn</span> <span class="tok-fn">detectNativeCoreInfo</span>(midr: <span class="tok-type">u64</span>) CoreInfo {</span>
+<span class="line" id="L178">        <span class="tok-kw">var</span> info = CoreInfo{</span>
+<span class="line" id="L179">            .implementer = <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(midr &gt;&gt; <span class="tok-number">24</span>)),</span>
+<span class="line" id="L180">            .part = <span class="tok-builtin">@as</span>(<span class="tok-type">u12</span>, <span class="tok-builtin">@truncate</span>(midr &gt;&gt; <span class="tok-number">4</span>)),</span>
+<span class="line" id="L181">        };</span>
+<span class="line" id="L182"></span>
+<span class="line" id="L183">        blk: {</span>
+<span class="line" id="L184">            <span class="tok-kw">if</span> (info.implementer == <span class="tok-number">0x41</span>) {</span>
+<span class="line" id="L185">                <span class="tok-comment">// ARM Ltd.</span>
+</span>
+<span class="line" id="L186">                <span class="tok-kw">const</span> special_bits: <span class="tok-type">u4</span> = <span class="tok-builtin">@truncate</span>(info.part &gt;&gt; <span class="tok-number">8</span>);</span>
+<span class="line" id="L187">                <span class="tok-kw">if</span> (special_bits == <span class="tok-number">0x0</span> <span class="tok-kw">or</span> special_bits == <span class="tok-number">0x7</span>) {</span>
+<span class="line" id="L188">                    <span class="tok-comment">// TODO Variant and arch encoded differently.</span>
+</span>
+<span class="line" id="L189">                    <span class="tok-kw">break</span> :blk;</span>
+<span class="line" id="L190">                }</span>
+<span class="line" id="L191">            }</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">            info.variant |= <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@intCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@truncate</span>(midr &gt;&gt; <span class="tok-number">20</span>)))) &lt;&lt; <span class="tok-number">4</span>;</span>
+<span class="line" id="L194">            info.variant |= <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@truncate</span>(midr));</span>
+<span class="line" id="L195">            info.architecture = <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@truncate</span>(midr &gt;&gt; <span class="tok-number">16</span>));</span>
+<span class="line" id="L196">        }</span>
+<span class="line" id="L197"></span>
+<span class="line" id="L198">        <span class="tok-kw">return</span> info;</span>
+<span class="line" id="L199">    }</span>
+<span class="line" id="L200"></span>
+<span class="line" id="L201">    <span class="tok-comment">/// Input array should consist of readouts from 11 system registers such that:</span></span>
+<span class="line" id="L202">    <span class="tok-comment">/// 0  -&gt; ID_AA64PFR0_EL1</span></span>
+<span class="line" id="L203">    <span class="tok-comment">/// 1  -&gt; ID_AA64PFR1_EL1</span></span>
+<span class="line" id="L204">    <span class="tok-comment">/// 2  -&gt; ID_AA64DFR0_EL1</span></span>
+<span class="line" id="L205">    <span class="tok-comment">/// 3  -&gt; ID_AA64DFR1_EL1</span></span>
+<span class="line" id="L206">    <span class="tok-comment">/// 4  -&gt; ID_AA64AFR0_EL1</span></span>
+<span class="line" id="L207">    <span class="tok-comment">/// 5  -&gt; ID_AA64AFR1_EL1</span></span>
+<span class="line" id="L208">    <span class="tok-comment">/// 6  -&gt; ID_AA64ISAR0_EL1</span></span>
+<span class="line" id="L209">    <span class="tok-comment">/// 7  -&gt; ID_AA64ISAR1_EL1</span></span>
+<span class="line" id="L210">    <span class="tok-comment">/// 8  -&gt; ID_AA64MMFR0_EL1</span></span>
+<span class="line" id="L211">    <span class="tok-comment">/// 9  -&gt; ID_AA64MMFR1_EL1</span></span>
+<span class="line" id="L212">    <span class="tok-comment">/// 10 -&gt; ID_AA64MMFR2_EL1</span></span>
+<span class="line" id="L213">    <span class="tok-kw">fn</span> <span class="tok-fn">detectNativeCpuFeatures</span>(cpu: *Target.Cpu, registers: *<span class="tok-kw">const</span> [<span class="tok-number">11</span>]<span class="tok-type">u64</span>) <span class="tok-type">void</span> {</span>
+<span class="line" id="L214">        <span class="tok-comment">// ID_AA64PFR0_EL1</span>
+</span>
+<span class="line" id="L215">        setFeature(cpu, .dit, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">48</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L216">        setFeature(cpu, .am, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">44</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L217">        setFeature(cpu, .amvs, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">44</span>) &gt;= <span class="tok-number">2</span>);</span>
+<span class="line" id="L218">        setFeature(cpu, .mpam, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">40</span>) &gt;= <span class="tok-number">1</span>); <span class="tok-comment">// MPAM v1.0</span>
+</span>
+<span class="line" id="L219">        setFeature(cpu, .sel2, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">36</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L220">        setFeature(cpu, .sve, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">32</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L221">        setFeature(cpu, .el3, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">12</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L222">        setFeature(cpu, .ras, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">28</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">        <span class="tok-kw">if</span> (bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">20</span>) &lt; <span class="tok-number">0xF</span>) blk: {</span>
+<span class="line" id="L225">            <span class="tok-kw">if</span> (bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">16</span>) != bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">20</span>)) <span class="tok-kw">break</span> :blk; <span class="tok-comment">// This should never occur</span>
+</span>
+<span class="line" id="L226"></span>
+<span class="line" id="L227">            setFeature(cpu, .neon, <span class="tok-null">true</span>);</span>
+<span class="line" id="L228">            setFeature(cpu, .fp_armv8, <span class="tok-null">true</span>);</span>
+<span class="line" id="L229">            setFeature(cpu, .fullfp16, bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">20</span>) &gt; <span class="tok-number">0</span>);</span>
+<span class="line" id="L230">        }</span>
+<span class="line" id="L231"></span>
+<span class="line" id="L232">        <span class="tok-comment">// ID_AA64PFR1_EL1</span>
+</span>
+<span class="line" id="L233">        setFeature(cpu, .mpam, bitField(registers[<span class="tok-number">1</span>], <span class="tok-number">16</span>) &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> bitField(registers[<span class="tok-number">0</span>], <span class="tok-number">40</span>) == <span class="tok-number">0</span>); <span class="tok-comment">// MPAM v0.1</span>
+</span>
+<span class="line" id="L234">        setFeature(cpu, .mte, bitField(registers[<span class="tok-number">1</span>], <span class="tok-number">8</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L235">        setFeature(cpu, .ssbs, bitField(registers[<span class="tok-number">1</span>], <span class="tok-number">4</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L236">        setFeature(cpu, .bti, bitField(registers[<span class="tok-number">1</span>], <span class="tok-number">0</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L237"></span>
+<span class="line" id="L238">        <span class="tok-comment">// ID_AA64DFR0_EL1</span>
+</span>
+<span class="line" id="L239">        setFeature(cpu, .tracev8_4, bitField(registers[<span class="tok-number">2</span>], <span class="tok-number">40</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L240">        setFeature(cpu, .spe, bitField(registers[<span class="tok-number">2</span>], <span class="tok-number">32</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L241">        setFeature(cpu, .perfmon, bitField(registers[<span class="tok-number">2</span>], <span class="tok-number">8</span>) &gt;= <span class="tok-number">1</span> <span class="tok-kw">and</span> bitField(registers[<span class="tok-number">2</span>], <span class="tok-number">8</span>) &lt; <span class="tok-number">0xF</span>);</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">        <span class="tok-comment">// ID_AA64DFR1_EL1 reserved</span>
+</span>
+<span class="line" id="L244">        <span class="tok-comment">// ID_AA64AFR0_EL1 reserved / implementation defined</span>
+</span>
+<span class="line" id="L245">        <span class="tok-comment">// ID_AA64AFR1_EL1 reserved</span>
+</span>
+<span class="line" id="L246"></span>
+<span class="line" id="L247">        <span class="tok-comment">// ID_AA64ISAR0_EL1</span>
+</span>
+<span class="line" id="L248">        setFeature(cpu, .rand, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">60</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L249">        setFeature(cpu, .tlb_rmi, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">56</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L250">        setFeature(cpu, .flagm, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">52</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L251">        setFeature(cpu, .fp16fml, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">48</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L252">        setFeature(cpu, .dotprod, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">44</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L253">        setFeature(cpu, .sm4, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">40</span>) &gt;= <span class="tok-number">1</span> <span class="tok-kw">and</span> bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">36</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L254">        setFeature(cpu, .sha3, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">32</span>) &gt;= <span class="tok-number">1</span> <span class="tok-kw">and</span> bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">12</span>) &gt;= <span class="tok-number">2</span>);</span>
+<span class="line" id="L255">        setFeature(cpu, .rdm, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">28</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L256">        setFeature(cpu, .lse, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">20</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L257">        setFeature(cpu, .crc, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">16</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L258">        setFeature(cpu, .sha2, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">12</span>) &gt;= <span class="tok-number">1</span> <span class="tok-kw">and</span> bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">8</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L259">        setFeature(cpu, .aes, bitField(registers[<span class="tok-number">6</span>], <span class="tok-number">4</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L260"></span>
+<span class="line" id="L261">        <span class="tok-comment">// ID_AA64ISAR1_EL1</span>
+</span>
+<span class="line" id="L262">        setFeature(cpu, .i8mm, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">52</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L263">        setFeature(cpu, .bf16, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">44</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L264">        setFeature(cpu, .predres, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">40</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L265">        setFeature(cpu, .sb, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">36</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L266">        setFeature(cpu, .fptoint, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">32</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L267">        setFeature(cpu, .rcpc, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">20</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L268">        setFeature(cpu, .rcpc_immo, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">20</span>) &gt;= <span class="tok-number">2</span>);</span>
+<span class="line" id="L269">        setFeature(cpu, .complxnum, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">16</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L270">        setFeature(cpu, .jsconv, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">12</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L271">        setFeature(cpu, .pauth, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">8</span>) &gt;= <span class="tok-number">1</span> <span class="tok-kw">or</span> bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">4</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L272">        setFeature(cpu, .ccpp, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">0</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L273">        setFeature(cpu, .ccdp, bitField(registers[<span class="tok-number">7</span>], <span class="tok-number">0</span>) &gt;= <span class="tok-number">2</span>);</span>
+<span class="line" id="L274"></span>
+<span class="line" id="L275">        <span class="tok-comment">// ID_AA64MMFR0_EL1</span>
+</span>
+<span class="line" id="L276">        setFeature(cpu, .ecv, bitField(registers[<span class="tok-number">8</span>], <span class="tok-number">60</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L277">        setFeature(cpu, .fgt, bitField(registers[<span class="tok-number">8</span>], <span class="tok-number">56</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L278"></span>
+<span class="line" id="L279">        <span class="tok-comment">// ID_AA64MMFR1_EL1</span>
+</span>
+<span class="line" id="L280">        setFeature(cpu, .pan, bitField(registers[<span class="tok-number">9</span>], <span class="tok-number">20</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L281">        setFeature(cpu, .pan_rwv, bitField(registers[<span class="tok-number">9</span>], <span class="tok-number">20</span>) &gt;= <span class="tok-number">2</span>);</span>
+<span class="line" id="L282">        setFeature(cpu, .lor, bitField(registers[<span class="tok-number">9</span>], <span class="tok-number">16</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L283">        setFeature(cpu, .vh, bitField(registers[<span class="tok-number">9</span>], <span class="tok-number">8</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L284">        setFeature(cpu, .contextidr_el2, bitField(registers[<span class="tok-number">9</span>], <span class="tok-number">8</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L285"></span>
+<span class="line" id="L286">        <span class="tok-comment">// ID_AA64MMFR2_EL1</span>
+</span>
+<span class="line" id="L287">        setFeature(cpu, .nv, bitField(registers[<span class="tok-number">10</span>], <span class="tok-number">24</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L288">        setFeature(cpu, .ccidx, bitField(registers[<span class="tok-number">10</span>], <span class="tok-number">20</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L289">        setFeature(cpu, .uaops, bitField(registers[<span class="tok-number">10</span>], <span class="tok-number">4</span>) &gt;= <span class="tok-number">1</span>);</span>
+<span class="line" id="L290">    }</span>
+<span class="line" id="L291"></span>
+<span class="line" id="L292">    <span class="tok-kw">fn</span> <span class="tok-fn">addInstructionFusions</span>(cpu: *Target.Cpu, info: CoreInfo) <span class="tok-type">void</span> {</span>
+<span class="line" id="L293">        <span class="tok-kw">switch</span> (info.implementer) {</span>
+<span class="line" id="L294">            <span class="tok-number">0x41</span> =&gt; <span class="tok-kw">switch</span> (info.part) {</span>
+<span class="line" id="L295">                <span class="tok-number">0xd4b</span>, <span class="tok-number">0xd4c</span> =&gt; {</span>
+<span class="line" id="L296">                    <span class="tok-comment">// According to A78C/X1C Core Software Optimization Guide, CPU fuses certain instructions.</span>
+</span>
+<span class="line" id="L297">                    setFeature(cpu, .cmp_bcc_fusion, <span class="tok-null">true</span>);</span>
+<span class="line" id="L298">                    setFeature(cpu, .fuse_aes, <span class="tok-null">true</span>);</span>
+<span class="line" id="L299">                },</span>
+<span class="line" id="L300">                <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L301">            },</span>
+<span class="line" id="L302">            <span class="tok-kw">else</span> =&gt; {},</span>
+<span class="line" id="L303">        }</span>
+<span class="line" id="L304">    }</span>
+<span class="line" id="L305">};</span>
+<span class="line" id="L306"></span>
+</code></pre></body>
+</html>
