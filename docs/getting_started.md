@@ -10,24 +10,20 @@ By far the easiest way to get started is by creating a project from our GitHub t
 
 This template includes:
 
-* A Python Poetry project
-* A `src/` directory containing a Pydust Python module
-* Pytest setup for running both Python and Zig unit tests
-* GitHub Actions workflows for building and publishing the package
-* VSCode settings for recommended extensions, debugger configurations, etc.
+- A Python Poetry project
+- A `src/` directory containing a Pydust Python module
+- Pytest setup for running both Python and Zig unit tests.
+- GitHub Actions workflows for building and publishing the package.
+- VSCode settings for recommended extensions, debugger configurations, etc.
 
 ## Poetry Setup
 
 Assuming you have an existing Poetry project, these are the changes you need to make to
-your project to setup Ziggy Pydust. 
-
-First, add Pydust as a dev dependency:
+your `pyproject.toml` to setup Ziggy Pydust. But first, add Pydust as a dev dependency:
 
 ```bash
 poetry add -G dev ziggy-pydust
 ```
-
-Second, make the following additions to your existing `pyproject.toml`:
 
 ```diff title="pyproject.toml"
 [tool.poetry]
@@ -44,8 +40,7 @@ packages = [ { include = "your-module" } ]
 build-backend = "poetry.core.masonry.api"
 ```
 
-Finally, for Poetry to invoke the Pydust build create a `build.py` file in the same directory 
-as `pyproject.toml` with the following contents:
+As well as creating the `build.py` for Poetry to invoke the Pydust build.
 
 ```python title="build.py"
 from pydust.build import build
