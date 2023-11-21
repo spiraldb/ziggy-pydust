@@ -562,7 +562,7 @@ fn GC(comptime definition: type) type {
         }
 
         inline fn pyClear(obj: *ffi.PyObject) void {
-            const objRef = @constCast(obj);
+            const objRef = @constCast(&obj);
             const objOld = objRef.*;
             objRef.* = undefined;
             py.decref(objOld);
