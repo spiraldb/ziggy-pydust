@@ -120,7 +120,7 @@ fn eagerEval(comptime definition: type) void {
     }
     for (@typeInfo(definition).Struct.decls) |d| {
         const value = @field(definition, d.name);
-        @setEvalBranchQuota(2048);
+        @setEvalBranchQuota(10000);
         if (State.findDefinition(value)) |_| {
             // If it's a Pydust definition, then we identify it.
             State.identify(value, d.name ++ "", definition);
