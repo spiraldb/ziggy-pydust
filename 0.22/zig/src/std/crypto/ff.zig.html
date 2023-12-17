@@ -1,0 +1,1057 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>crypto/ff.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! Allocation-free, (best-effort) constant-time, finite field arithmetic for large integers.</span></span>
+<span class="line" id="L2"><span class="tok-comment">//!</span></span>
+<span class="line" id="L3"><span class="tok-comment">//! Unlike `std.math.big`, these integers have a fixed maximum length and are only designed to be used for modular arithmetic.</span></span>
+<span class="line" id="L4"><span class="tok-comment">//! Arithmetic operations are meant to run in constant-time for a given modulus, making them suitable for cryptography.</span></span>
+<span class="line" id="L5"><span class="tok-comment">//!</span></span>
+<span class="line" id="L6"><span class="tok-comment">//! Parts of that code was ported from the BSD-licensed crypto/internal/bigmod/nat.go file in the Go language, itself inspired from BearSSL.</span></span>
+<span class="line" id="L7"></span>
+<span class="line" id="L8"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> builtin = std.builtin;</span>
+<span class="line" id="L10"><span class="tok-kw">const</span> crypto = std.crypto;</span>
+<span class="line" id="L11"><span class="tok-kw">const</span> math = std.math;</span>
+<span class="line" id="L12"><span class="tok-kw">const</span> mem = std.mem;</span>
+<span class="line" id="L13"><span class="tok-kw">const</span> meta = std.meta;</span>
+<span class="line" id="L14"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L15"><span class="tok-kw">const</span> BoundedArray = std.BoundedArray;</span>
+<span class="line" id="L16"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L17"></span>
+<span class="line" id="L18"><span class="tok-comment">// A Limb is a single digit in a big integer.</span>
+</span>
+<span class="line" id="L19"><span class="tok-kw">const</span> Limb = <span class="tok-type">usize</span>;</span>
+<span class="line" id="L20"></span>
+<span class="line" id="L21"><span class="tok-comment">// The number of reserved bits in a Limb.</span>
+</span>
+<span class="line" id="L22"><span class="tok-kw">const</span> carry_bits = <span class="tok-number">1</span>;</span>
+<span class="line" id="L23"></span>
+<span class="line" id="L24"><span class="tok-comment">// The number of active bits in a Limb.</span>
+</span>
+<span class="line" id="L25"><span class="tok-kw">const</span> t_bits: <span class="tok-type">usize</span> = <span class="tok-builtin">@bitSizeOf</span>(Limb) - carry_bits;</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27"><span class="tok-comment">// A TLimb is a Limb that is truncated to t_bits.</span>
+</span>
+<span class="line" id="L28"><span class="tok-kw">const</span> TLimb = meta.Int(.unsigned, t_bits);</span>
+<span class="line" id="L29"></span>
+<span class="line" id="L30"><span class="tok-kw">const</span> native_endian = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>).target.cpu.arch.endian();</span>
+<span class="line" id="L31"></span>
+<span class="line" id="L32"><span class="tok-comment">// A WideLimb is a Limb that is twice as wide as a normal Limb.</span>
+</span>
+<span class="line" id="L33"><span class="tok-kw">const</span> WideLimb = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L34">    hi: Limb,</span>
+<span class="line" id="L35">    lo: Limb,</span>
+<span class="line" id="L36">};</span>
+<span class="line" id="L37"></span>
+<span class="line" id="L38"><span class="tok-comment">/// Value is too large for the destination.</span></span>
+<span class="line" id="L39"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> OverflowError = <span class="tok-kw">error</span>{Overflow};</span>
+<span class="line" id="L40"></span>
+<span class="line" id="L41"><span class="tok-comment">/// Invalid modulus. Modulus must be odd.</span></span>
+<span class="line" id="L42"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> InvalidModulusError = <span class="tok-kw">error</span>{ EvenModulus, ModulusTooSmall };</span>
+<span class="line" id="L43"></span>
+<span class="line" id="L44"><span class="tok-comment">/// Exponentation with a null exponent.</span></span>
+<span class="line" id="L45"><span class="tok-comment">/// Exponentiation in cryptographic protocols is almost always a sign of a bug which can lead to trivial attacks.</span></span>
+<span class="line" id="L46"><span class="tok-comment">/// Therefore, this module returns an error when a null exponent is encountered, encouraging applications to handle this case explicitly.</span></span>
+<span class="line" id="L47"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> NullExponentError = <span class="tok-kw">error</span>{NullExponent};</span>
+<span class="line" id="L48"></span>
+<span class="line" id="L49"><span class="tok-comment">/// Invalid field element for the given modulus.</span></span>
+<span class="line" id="L50"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> FieldElementError = <span class="tok-kw">error</span>{NonCanonical};</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52"><span class="tok-comment">/// Invalid representation (Montgomery vs non-Montgomery domain.)</span></span>
+<span class="line" id="L53"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> RepresentationError = <span class="tok-kw">error</span>{UnexpectedRepresentation};</span>
+<span class="line" id="L54"></span>
+<span class="line" id="L55"><span class="tok-comment">/// The set of all possible errors `std.crypto.ff` functions can return.</span></span>
+<span class="line" id="L56"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Error = OverflowError || InvalidModulusError || NullExponentError || FieldElementError || RepresentationError;</span>
+<span class="line" id="L57"></span>
+<span class="line" id="L58"><span class="tok-comment">/// An unsigned big integer with a fixed maximum size (`max_bits`), suitable for cryptographic operations.</span></span>
+<span class="line" id="L59"><span class="tok-comment">/// Unless side-channels mitigations are explicitly disabled, operations are designed to be constant-time.</span></span>
+<span class="line" id="L60"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Uint</span>(<span class="tok-kw">comptime</span> max_bits: <span class="tok-type">comptime_int</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L61">    <span class="tok-kw">comptime</span> assert(<span class="tok-builtin">@bitSizeOf</span>(Limb) % <span class="tok-number">8</span> == <span class="tok-number">0</span>); <span class="tok-comment">// Limb size must be a multiple of 8</span>
+</span>
+<span class="line" id="L62"></span>
+<span class="line" id="L63">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L64">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66">        <span class="tok-kw">const</span> max_limbs_count = math.divCeil(<span class="tok-type">usize</span>, max_bits, t_bits) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L67">        <span class="tok-kw">const</span> Limbs = BoundedArray(Limb, max_limbs_count);</span>
+<span class="line" id="L68">        limbs: Limbs,</span>
+<span class="line" id="L69"></span>
+<span class="line" id="L70">        <span class="tok-comment">/// Number of bytes required to serialize an integer.</span></span>
+<span class="line" id="L71">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> encoded_bytes = math.divCeil(<span class="tok-type">usize</span>, max_bits, <span class="tok-number">8</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L72"></span>
+<span class="line" id="L73">        <span class="tok-comment">// Returns the number of active limbs.</span>
+</span>
+<span class="line" id="L74">        <span class="tok-kw">fn</span> <span class="tok-fn">limbs_count</span>(self: Self) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L75">            <span class="tok-kw">return</span> self.limbs.len;</span>
+<span class="line" id="L76">        }</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78">        <span class="tok-comment">// Removes limbs whose value is zero from the active limbs.</span>
+</span>
+<span class="line" id="L79">        <span class="tok-kw">fn</span> <span class="tok-fn">normalize</span>(self: Self) Self {</span>
+<span class="line" id="L80">            <span class="tok-kw">var</span> res = self;</span>
+<span class="line" id="L81">            <span class="tok-kw">if</span> (self.limbs_count() &lt; <span class="tok-number">2</span>) {</span>
+<span class="line" id="L82">                <span class="tok-kw">return</span> res;</span>
+<span class="line" id="L83">            }</span>
+<span class="line" id="L84">            <span class="tok-kw">var</span> i = self.limbs_count() - <span class="tok-number">1</span>;</span>
+<span class="line" id="L85">            <span class="tok-kw">while</span> (i &gt; <span class="tok-number">0</span> <span class="tok-kw">and</span> res.limbs.get(i) == <span class="tok-number">0</span>) : (i -= <span class="tok-number">1</span>) {}</span>
+<span class="line" id="L86">            res.limbs.resize(i + <span class="tok-number">1</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L87">            <span class="tok-kw">return</span> res;</span>
+<span class="line" id="L88">        }</span>
+<span class="line" id="L89"></span>
+<span class="line" id="L90">        <span class="tok-comment">/// The zero integer.</span></span>
+<span class="line" id="L91">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> zero = zero: {</span>
+<span class="line" id="L92">            <span class="tok-kw">var</span> limbs = Limbs.init(<span class="tok-number">0</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L93">            limbs.appendNTimesAssumeCapacity(<span class="tok-number">0</span>, max_limbs_count);</span>
+<span class="line" id="L94">            <span class="tok-kw">break</span> :zero Self{ .limbs = limbs };</span>
+<span class="line" id="L95">        };</span>
+<span class="line" id="L96"></span>
+<span class="line" id="L97">        <span class="tok-comment">/// Creates a new big integer from a primitive type.</span></span>
+<span class="line" id="L98">        <span class="tok-comment">/// This function may not run in constant time.</span></span>
+<span class="line" id="L99">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromPrimitive</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, x_: T) OverflowError!Self {</span>
+<span class="line" id="L100">            <span class="tok-kw">var</span> x = x_;</span>
+<span class="line" id="L101">            <span class="tok-kw">var</span> out = Self.zero;</span>
+<span class="line" id="L102">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..out.limbs.capacity()) |i| {</span>
+<span class="line" id="L103">                <span class="tok-kw">const</span> t = <span class="tok-kw">if</span> (<span class="tok-builtin">@bitSizeOf</span>(T) &gt; t_bits) <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(x)) <span class="tok-kw">else</span> x;</span>
+<span class="line" id="L104">                out.limbs.set(i, t);</span>
+<span class="line" id="L105">                x = math.shr(T, x, t_bits);</span>
+<span class="line" id="L106">            }</span>
+<span class="line" id="L107">            <span class="tok-kw">if</span> (x != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L108">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L109">            }</span>
+<span class="line" id="L110">            <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L111">        }</span>
+<span class="line" id="L112"></span>
+<span class="line" id="L113">        <span class="tok-comment">/// Converts a big integer to a primitive type.</span></span>
+<span class="line" id="L114">        <span class="tok-comment">/// This function may not run in constant time.</span></span>
+<span class="line" id="L115">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toPrimitive</span>(self: Self, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) OverflowError!T {</span>
+<span class="line" id="L116">            <span class="tok-kw">var</span> x: T = <span class="tok-number">0</span>;</span>
+<span class="line" id="L117">            <span class="tok-kw">var</span> i = self.limbs_count() - <span class="tok-number">1</span>;</span>
+<span class="line" id="L118">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : (i -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L119">                <span class="tok-kw">if</span> (<span class="tok-builtin">@bitSizeOf</span>(T) &gt;= t_bits <span class="tok-kw">and</span> math.shr(T, x, <span class="tok-builtin">@bitSizeOf</span>(T) - t_bits) != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L120">                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L121">                }</span>
+<span class="line" id="L122">                x = math.shl(T, x, t_bits);</span>
+<span class="line" id="L123">                <span class="tok-kw">const</span> v = math.cast(T, self.limbs.get(i)) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L124">                x |= v;</span>
+<span class="line" id="L125">                <span class="tok-kw">if</span> (i == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L126">            }</span>
+<span class="line" id="L127">            <span class="tok-kw">return</span> x;</span>
+<span class="line" id="L128">        }</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">        <span class="tok-comment">/// Encodes a big integer into a byte array.</span></span>
+<span class="line" id="L131">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toBytes</span>(self: Self, bytes: []<span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> endian: builtin.Endian) OverflowError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L132">            <span class="tok-kw">if</span> (bytes.len == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L133">                <span class="tok-kw">if</span> (self.isZero()) <span class="tok-kw">return</span>;</span>
+<span class="line" id="L134">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L135">            }</span>
+<span class="line" id="L136">            <span class="tok-builtin">@memset</span>(bytes, <span class="tok-number">0</span>);</span>
+<span class="line" id="L137">            <span class="tok-kw">var</span> shift: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L138">            <span class="tok-kw">var</span> out_i: <span class="tok-type">usize</span> = <span class="tok-kw">switch</span> (endian) {</span>
+<span class="line" id="L139">                .Big =&gt; bytes.len - <span class="tok-number">1</span>,</span>
+<span class="line" id="L140">                .Little =&gt; <span class="tok-number">0</span>,</span>
+<span class="line" id="L141">            };</span>
+<span class="line" id="L142">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..self.limbs.len) |i| {</span>
+<span class="line" id="L143">                <span class="tok-kw">var</span> remaining_bits = t_bits;</span>
+<span class="line" id="L144">                <span class="tok-kw">var</span> limb = self.limbs.get(i);</span>
+<span class="line" id="L145">                <span class="tok-kw">while</span> (remaining_bits &gt;= <span class="tok-number">8</span>) {</span>
+<span class="line" id="L146">                    bytes[out_i] |= math.shl(<span class="tok-type">u8</span>, <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(limb)), shift);</span>
+<span class="line" id="L147">                    <span class="tok-kw">const</span> consumed = <span class="tok-number">8</span> - shift;</span>
+<span class="line" id="L148">                    limb &gt;&gt;= <span class="tok-builtin">@as</span>(<span class="tok-type">u4</span>, <span class="tok-builtin">@truncate</span>(consumed));</span>
+<span class="line" id="L149">                    remaining_bits -= consumed;</span>
+<span class="line" id="L150">                    shift = <span class="tok-number">0</span>;</span>
+<span class="line" id="L151">                    <span class="tok-kw">switch</span> (endian) {</span>
+<span class="line" id="L152">                        .Big =&gt; {</span>
+<span class="line" id="L153">                            <span class="tok-kw">if</span> (out_i == <span class="tok-number">0</span>) {</span>
+<span class="line" id="L154">                                <span class="tok-kw">if</span> (i != self.limbs.len - <span class="tok-number">1</span> <span class="tok-kw">or</span> limb != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L155">                                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L156">                                }</span>
+<span class="line" id="L157">                                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L158">                            }</span>
+<span class="line" id="L159">                            out_i -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L160">                        },</span>
+<span class="line" id="L161">                        .Little =&gt; {</span>
+<span class="line" id="L162">                            out_i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L163">                            <span class="tok-kw">if</span> (out_i == bytes.len) {</span>
+<span class="line" id="L164">                                <span class="tok-kw">if</span> (i != self.limbs.len - <span class="tok-number">1</span> <span class="tok-kw">or</span> limb != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L165">                                    <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L166">                                }</span>
+<span class="line" id="L167">                                <span class="tok-kw">return</span>;</span>
+<span class="line" id="L168">                            }</span>
+<span class="line" id="L169">                        },</span>
+<span class="line" id="L170">                    }</span>
+<span class="line" id="L171">                }</span>
+<span class="line" id="L172">                bytes[out_i] |= <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(limb));</span>
+<span class="line" id="L173">                shift = remaining_bits;</span>
+<span class="line" id="L174">            }</span>
+<span class="line" id="L175">        }</span>
+<span class="line" id="L176"></span>
+<span class="line" id="L177">        <span class="tok-comment">/// Creates a new big integer from a byte array.</span></span>
+<span class="line" id="L178">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> endian: builtin.Endian) OverflowError!Self {</span>
+<span class="line" id="L179">            <span class="tok-kw">if</span> (bytes.len == <span class="tok-number">0</span>) <span class="tok-kw">return</span> Self.zero;</span>
+<span class="line" id="L180">            <span class="tok-kw">var</span> shift: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L181">            <span class="tok-kw">var</span> out = Self.zero;</span>
+<span class="line" id="L182">            <span class="tok-kw">var</span> out_i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L183">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-kw">switch</span> (endian) {</span>
+<span class="line" id="L184">                .Big =&gt; bytes.len - <span class="tok-number">1</span>,</span>
+<span class="line" id="L185">                .Little =&gt; <span class="tok-number">0</span>,</span>
+<span class="line" id="L186">            };</span>
+<span class="line" id="L187">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L188">                <span class="tok-kw">const</span> bi = bytes[i];</span>
+<span class="line" id="L189">                out.limbs.set(out_i, out.limbs.get(out_i) | math.shl(Limb, bi, shift));</span>
+<span class="line" id="L190">                shift += <span class="tok-number">8</span>;</span>
+<span class="line" id="L191">                <span class="tok-kw">if</span> (shift &gt;= t_bits) {</span>
+<span class="line" id="L192">                    shift -= t_bits;</span>
+<span class="line" id="L193">                    out.limbs.set(out_i, <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(out.limbs.get(out_i))));</span>
+<span class="line" id="L194">                    <span class="tok-kw">const</span> overflow = math.shr(Limb, bi, <span class="tok-number">8</span> - shift);</span>
+<span class="line" id="L195">                    out_i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L196">                    <span class="tok-kw">if</span> (out_i &gt;= out.limbs.len) {</span>
+<span class="line" id="L197">                        <span class="tok-kw">if</span> (overflow != <span class="tok-number">0</span> <span class="tok-kw">or</span> i != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L198">                            <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L199">                        }</span>
+<span class="line" id="L200">                        <span class="tok-kw">break</span>;</span>
+<span class="line" id="L201">                    }</span>
+<span class="line" id="L202">                    out.limbs.set(out_i, overflow);</span>
+<span class="line" id="L203">                }</span>
+<span class="line" id="L204">                <span class="tok-kw">switch</span> (endian) {</span>
+<span class="line" id="L205">                    .Big =&gt; {</span>
+<span class="line" id="L206">                        <span class="tok-kw">if</span> (i == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L207">                        i -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L208">                    },</span>
+<span class="line" id="L209">                    .Little =&gt; {</span>
+<span class="line" id="L210">                        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L211">                        <span class="tok-kw">if</span> (i == bytes.len) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L212">                    },</span>
+<span class="line" id="L213">                }</span>
+<span class="line" id="L214">            }</span>
+<span class="line" id="L215">            <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L216">        }</span>
+<span class="line" id="L217"></span>
+<span class="line" id="L218">        <span class="tok-comment">/// Returns `true` if both integers are equal.</span></span>
+<span class="line" id="L219">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(x: Self, y: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L220">            <span class="tok-kw">return</span> crypto.utils.timingSafeEql([max_limbs_count]Limb, x.limbs.buffer, y.limbs.buffer);</span>
+<span class="line" id="L221">        }</span>
+<span class="line" id="L222"></span>
+<span class="line" id="L223">        <span class="tok-comment">/// Compares two integers.</span></span>
+<span class="line" id="L224">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">compare</span>(x: Self, y: Self) math.Order {</span>
+<span class="line" id="L225">            <span class="tok-kw">return</span> crypto.utils.timingSafeCompare(</span>
+<span class="line" id="L226">                Limb,</span>
+<span class="line" id="L227">                x.limbs.constSlice(),</span>
+<span class="line" id="L228">                y.limbs.constSlice(),</span>
+<span class="line" id="L229">                .Little,</span>
+<span class="line" id="L230">            );</span>
+<span class="line" id="L231">        }</span>
+<span class="line" id="L232"></span>
+<span class="line" id="L233">        <span class="tok-comment">/// Returns `true` if the integer is zero.</span></span>
+<span class="line" id="L234">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isZero</span>(x: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L235">            <span class="tok-kw">const</span> x_limbs = x.limbs.constSlice();</span>
+<span class="line" id="L236">            <span class="tok-kw">var</span> t: Limb = <span class="tok-number">0</span>;</span>
+<span class="line" id="L237">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..x.limbs_count()) |i| {</span>
+<span class="line" id="L238">                t |= x_limbs[i];</span>
+<span class="line" id="L239">            }</span>
+<span class="line" id="L240">            <span class="tok-kw">return</span> ct.eql(t, <span class="tok-number">0</span>);</span>
+<span class="line" id="L241">        }</span>
+<span class="line" id="L242"></span>
+<span class="line" id="L243">        <span class="tok-comment">/// Returns `true` if the integer is odd.</span></span>
+<span class="line" id="L244">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isOdd</span>(x: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L245">            <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">bool</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(x.limbs.get(<span class="tok-number">0</span>)))));</span>
+<span class="line" id="L246">        }</span>
+<span class="line" id="L247"></span>
+<span class="line" id="L248">        <span class="tok-comment">/// Adds `y` to `x`, and returns `true` if the operation overflowed.</span></span>
+<span class="line" id="L249">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addWithOverflow</span>(x: *Self, y: Self) <span class="tok-type">u1</span> {</span>
+<span class="line" id="L250">            <span class="tok-kw">return</span> x.conditionalAddWithOverflow(<span class="tok-null">true</span>, y);</span>
+<span class="line" id="L251">        }</span>
+<span class="line" id="L252"></span>
+<span class="line" id="L253">        <span class="tok-comment">/// Subtracts `y` from `x`, and returns `true` if the operation overflowed.</span></span>
+<span class="line" id="L254">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">subWithOverflow</span>(x: *Self, y: Self) <span class="tok-type">u1</span> {</span>
+<span class="line" id="L255">            <span class="tok-kw">return</span> x.conditionalSubWithOverflow(<span class="tok-null">true</span>, y);</span>
+<span class="line" id="L256">        }</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258">        <span class="tok-comment">// Replaces the limbs of `x` with the limbs of `y` if `on` is `true`.</span>
+</span>
+<span class="line" id="L259">        <span class="tok-kw">fn</span> <span class="tok-fn">cmov</span>(x: *Self, on: <span class="tok-type">bool</span>, y: Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L260">            <span class="tok-kw">const</span> x_limbs = x.limbs.slice();</span>
+<span class="line" id="L261">            <span class="tok-kw">const</span> y_limbs = y.limbs.constSlice();</span>
+<span class="line" id="L262">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..y.limbs_count()) |i| {</span>
+<span class="line" id="L263">                x_limbs[i] = ct.select(on, y_limbs[i], x_limbs[i]);</span>
+<span class="line" id="L264">            }</span>
+<span class="line" id="L265">        }</span>
+<span class="line" id="L266"></span>
+<span class="line" id="L267">        <span class="tok-comment">// Adds `y` to `x` if `on` is `true`, and returns `true` if the operation overflowed.</span>
+</span>
+<span class="line" id="L268">        <span class="tok-kw">fn</span> <span class="tok-fn">conditionalAddWithOverflow</span>(x: *Self, on: <span class="tok-type">bool</span>, y: Self) <span class="tok-type">u1</span> {</span>
+<span class="line" id="L269">            assert(x.limbs_count() == y.limbs_count()); <span class="tok-comment">// Operands must have the same size.</span>
+</span>
+<span class="line" id="L270">            <span class="tok-kw">const</span> x_limbs = x.limbs.slice();</span>
+<span class="line" id="L271">            <span class="tok-kw">const</span> y_limbs = y.limbs.constSlice();</span>
+<span class="line" id="L272"></span>
+<span class="line" id="L273">            <span class="tok-kw">var</span> carry: <span class="tok-type">u1</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L274">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..x.limbs_count()) |i| {</span>
+<span class="line" id="L275">                <span class="tok-kw">const</span> res = x_limbs[i] + y_limbs[i] + carry;</span>
+<span class="line" id="L276">                x_limbs[i] = ct.select(on, <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(res)), x_limbs[i]);</span>
+<span class="line" id="L277">                carry = <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(res &gt;&gt; t_bits));</span>
+<span class="line" id="L278">            }</span>
+<span class="line" id="L279">            <span class="tok-kw">return</span> carry;</span>
+<span class="line" id="L280">        }</span>
+<span class="line" id="L281"></span>
+<span class="line" id="L282">        <span class="tok-comment">// Subtracts `y` from `x` if `on` is `true`, and returns `true` if the operation overflowed.</span>
+</span>
+<span class="line" id="L283">        <span class="tok-kw">fn</span> <span class="tok-fn">conditionalSubWithOverflow</span>(x: *Self, on: <span class="tok-type">bool</span>, y: Self) <span class="tok-type">u1</span> {</span>
+<span class="line" id="L284">            assert(x.limbs_count() == y.limbs_count()); <span class="tok-comment">// Operands must have the same size.</span>
+</span>
+<span class="line" id="L285">            <span class="tok-kw">const</span> x_limbs = x.limbs.slice();</span>
+<span class="line" id="L286">            <span class="tok-kw">const</span> y_limbs = y.limbs.constSlice();</span>
+<span class="line" id="L287"></span>
+<span class="line" id="L288">            <span class="tok-kw">var</span> borrow: <span class="tok-type">u1</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L289">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..x.limbs_count()) |i| {</span>
+<span class="line" id="L290">                <span class="tok-kw">const</span> res = x_limbs[i] -% y_limbs[i] -% borrow;</span>
+<span class="line" id="L291">                x_limbs[i] = ct.select(on, <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(res)), x_limbs[i]);</span>
+<span class="line" id="L292">                borrow = <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(res &gt;&gt; t_bits));</span>
+<span class="line" id="L293">            }</span>
+<span class="line" id="L294">            <span class="tok-kw">return</span> borrow;</span>
+<span class="line" id="L295">        }</span>
+<span class="line" id="L296">    };</span>
+<span class="line" id="L297">}</span>
+<span class="line" id="L298"></span>
+<span class="line" id="L299"><span class="tok-comment">/// A field element.</span></span>
+<span class="line" id="L300"><span class="tok-kw">fn</span> <span class="tok-fn">Fe_</span>(<span class="tok-kw">comptime</span> bits: <span class="tok-type">comptime_int</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L301">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L302">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L303"></span>
+<span class="line" id="L304">        <span class="tok-kw">const</span> FeUint = Uint(bits);</span>
+<span class="line" id="L305"></span>
+<span class="line" id="L306">        <span class="tok-comment">/// The element value as a `Uint`.</span></span>
+<span class="line" id="L307">        v: FeUint,</span>
+<span class="line" id="L308"></span>
+<span class="line" id="L309">        <span class="tok-comment">/// `true` is the element is in Montgomery form.</span></span>
+<span class="line" id="L310">        montgomery: <span class="tok-type">bool</span> = <span class="tok-null">false</span>,</span>
+<span class="line" id="L311"></span>
+<span class="line" id="L312">        <span class="tok-comment">/// The maximum number of bytes required to encode a field element.</span></span>
+<span class="line" id="L313">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> encoded_bytes = FeUint.encoded_bytes;</span>
+<span class="line" id="L314"></span>
+<span class="line" id="L315">        <span class="tok-comment">// The number of active limbs to represent the field element.</span>
+</span>
+<span class="line" id="L316">        <span class="tok-kw">fn</span> <span class="tok-fn">limbs_count</span>(self: Self) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L317">            <span class="tok-kw">return</span> self.v.limbs_count();</span>
+<span class="line" id="L318">        }</span>
+<span class="line" id="L319"></span>
+<span class="line" id="L320">        <span class="tok-comment">/// Creates a field element from a primitive.</span></span>
+<span class="line" id="L321">        <span class="tok-comment">/// This function may not run in constant time.</span></span>
+<span class="line" id="L322">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromPrimitive</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, m: Modulus(bits), x: T) (OverflowError || FieldElementError)!Self {</span>
+<span class="line" id="L323">            <span class="tok-kw">comptime</span> assert(<span class="tok-builtin">@bitSizeOf</span>(T) &lt;= bits); <span class="tok-comment">// Primitive type is larger than the modulus type.</span>
+</span>
+<span class="line" id="L324">            <span class="tok-kw">const</span> v = <span class="tok-kw">try</span> FeUint.fromPrimitive(T, x);</span>
+<span class="line" id="L325">            <span class="tok-kw">var</span> fe = Self{ .v = v };</span>
+<span class="line" id="L326">            <span class="tok-kw">try</span> m.shrink(&amp;fe);</span>
+<span class="line" id="L327">            <span class="tok-kw">try</span> m.rejectNonCanonical(fe);</span>
+<span class="line" id="L328">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L329">        }</span>
+<span class="line" id="L330"></span>
+<span class="line" id="L331">        <span class="tok-comment">/// Converts the field element to a primitive.</span></span>
+<span class="line" id="L332">        <span class="tok-comment">/// This function may not run in constant time.</span></span>
+<span class="line" id="L333">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toPrimitive</span>(self: Self, <span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>) OverflowError!T {</span>
+<span class="line" id="L334">            <span class="tok-kw">return</span> self.v.toPrimitive(T);</span>
+<span class="line" id="L335">        }</span>
+<span class="line" id="L336"></span>
+<span class="line" id="L337">        <span class="tok-comment">/// Creates a field element from a byte string.</span></span>
+<span class="line" id="L338">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(m: Modulus(bits), bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> endian: builtin.Endian) (OverflowError || FieldElementError)!Self {</span>
+<span class="line" id="L339">            <span class="tok-kw">const</span> v = <span class="tok-kw">try</span> FeUint.fromBytes(bytes, endian);</span>
+<span class="line" id="L340">            <span class="tok-kw">var</span> fe = Self{ .v = v };</span>
+<span class="line" id="L341">            <span class="tok-kw">try</span> m.shrink(&amp;fe);</span>
+<span class="line" id="L342">            <span class="tok-kw">try</span> m.rejectNonCanonical(fe);</span>
+<span class="line" id="L343">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L344">        }</span>
+<span class="line" id="L345"></span>
+<span class="line" id="L346">        <span class="tok-comment">/// Converts the field element to a byte string.</span></span>
+<span class="line" id="L347">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toBytes</span>(self: Self, bytes: []<span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> endian: builtin.Endian) OverflowError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L348">            <span class="tok-kw">return</span> self.v.toBytes(bytes, endian);</span>
+<span class="line" id="L349">        }</span>
+<span class="line" id="L350"></span>
+<span class="line" id="L351">        <span class="tok-comment">/// Returns `true` if the field elements are equal, in constant time.</span></span>
+<span class="line" id="L352">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(x: Self, y: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L353">            <span class="tok-kw">return</span> x.v.eql(y.v);</span>
+<span class="line" id="L354">        }</span>
+<span class="line" id="L355"></span>
+<span class="line" id="L356">        <span class="tok-comment">/// Compares two field elements in constant time.</span></span>
+<span class="line" id="L357">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">compare</span>(x: Self, y: Self) math.Order {</span>
+<span class="line" id="L358">            <span class="tok-kw">return</span> x.v.compare(y.v);</span>
+<span class="line" id="L359">        }</span>
+<span class="line" id="L360"></span>
+<span class="line" id="L361">        <span class="tok-comment">/// Returns `true` if the element is zero.</span></span>
+<span class="line" id="L362">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isZero</span>(self: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L363">            <span class="tok-kw">return</span> self.v.isZero();</span>
+<span class="line" id="L364">        }</span>
+<span class="line" id="L365"></span>
+<span class="line" id="L366">        <span class="tok-comment">/// Returns `true` is the element is odd.</span></span>
+<span class="line" id="L367">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">isOdd</span>(self: Self) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L368">            <span class="tok-kw">return</span> self.v.isOdd();</span>
+<span class="line" id="L369">        }</span>
+<span class="line" id="L370">    };</span>
+<span class="line" id="L371">}</span>
+<span class="line" id="L372"></span>
+<span class="line" id="L373"><span class="tok-comment">/// A modulus, defining a finite field.</span></span>
+<span class="line" id="L374"><span class="tok-comment">/// All operations within the field are performed modulo this modulus, without heap allocations.</span></span>
+<span class="line" id="L375"><span class="tok-comment">/// `max_bits` represents the number of bits in the maximum value the modulus can be set to.</span></span>
+<span class="line" id="L376"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">Modulus</span>(<span class="tok-kw">comptime</span> max_bits: <span class="tok-type">comptime_int</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L377">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L378">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L379"></span>
+<span class="line" id="L380">        <span class="tok-comment">/// A field element, representing a value within the field defined by this modulus.</span></span>
+<span class="line" id="L381">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> Fe = Fe_(max_bits);</span>
+<span class="line" id="L382"></span>
+<span class="line" id="L383">        <span class="tok-kw">const</span> FeUint = Fe.FeUint;</span>
+<span class="line" id="L384"></span>
+<span class="line" id="L385">        <span class="tok-comment">/// The neutral element.</span></span>
+<span class="line" id="L386">        zero: Fe,</span>
+<span class="line" id="L387"></span>
+<span class="line" id="L388">        <span class="tok-comment">/// The modulus value.</span></span>
+<span class="line" id="L389">        v: FeUint,</span>
+<span class="line" id="L390"></span>
+<span class="line" id="L391">        <span class="tok-comment">/// R^2 for the Montgomery representation.</span></span>
+<span class="line" id="L392">        rr: Fe,</span>
+<span class="line" id="L393">        <span class="tok-comment">/// Inverse of the first limb</span></span>
+<span class="line" id="L394">        m0inv: Limb,</span>
+<span class="line" id="L395">        <span class="tok-comment">/// Number of leading zero bits in the modulus.</span></span>
+<span class="line" id="L396">        leading: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L397"></span>
+<span class="line" id="L398">        <span class="tok-comment">// Number of active limbs in the modulus.</span>
+</span>
+<span class="line" id="L399">        <span class="tok-kw">fn</span> <span class="tok-fn">limbs_count</span>(self: Self) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L400">            <span class="tok-kw">return</span> self.v.limbs_count();</span>
+<span class="line" id="L401">        }</span>
+<span class="line" id="L402"></span>
+<span class="line" id="L403">        <span class="tok-comment">/// Actual size of the modulus, in bits.</span></span>
+<span class="line" id="L404">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">bits</span>(self: Self) <span class="tok-type">usize</span> {</span>
+<span class="line" id="L405">            <span class="tok-kw">return</span> self.limbs_count() * t_bits - self.leading;</span>
+<span class="line" id="L406">        }</span>
+<span class="line" id="L407"></span>
+<span class="line" id="L408">        <span class="tok-comment">/// Returns the element `1`.</span></span>
+<span class="line" id="L409">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">one</span>(self: Self) Fe {</span>
+<span class="line" id="L410">            <span class="tok-kw">var</span> fe = self.zero;</span>
+<span class="line" id="L411">            fe.v.limbs.set(<span class="tok-number">0</span>, <span class="tok-number">1</span>);</span>
+<span class="line" id="L412">            <span class="tok-kw">return</span> fe;</span>
+<span class="line" id="L413">        }</span>
+<span class="line" id="L414"></span>
+<span class="line" id="L415">        <span class="tok-comment">/// Creates a new modulus from a `Uint` value.</span></span>
+<span class="line" id="L416">        <span class="tok-comment">/// The modulus must be odd and larger than 2.</span></span>
+<span class="line" id="L417">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromUint</span>(v_: FeUint) InvalidModulusError!Self {</span>
+<span class="line" id="L418">            <span class="tok-kw">if</span> (!v_.isOdd()) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.EvenModulus;</span>
+<span class="line" id="L419"></span>
+<span class="line" id="L420">            <span class="tok-kw">var</span> v = v_.normalize();</span>
+<span class="line" id="L421">            <span class="tok-kw">const</span> hi = v.limbs.get(v.limbs_count() - <span class="tok-number">1</span>);</span>
+<span class="line" id="L422">            <span class="tok-kw">const</span> lo = v.limbs.get(<span class="tok-number">0</span>);</span>
+<span class="line" id="L423"></span>
+<span class="line" id="L424">            <span class="tok-kw">if</span> (v.limbs_count() &lt; <span class="tok-number">2</span> <span class="tok-kw">and</span> lo &lt; <span class="tok-number">3</span>) {</span>
+<span class="line" id="L425">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ModulusTooSmall;</span>
+<span class="line" id="L426">            }</span>
+<span class="line" id="L427"></span>
+<span class="line" id="L428">            <span class="tok-kw">const</span> leading = <span class="tok-builtin">@clz</span>(hi) - carry_bits;</span>
+<span class="line" id="L429"></span>
+<span class="line" id="L430">            <span class="tok-kw">var</span> y = lo;</span>
+<span class="line" id="L431"></span>
+<span class="line" id="L432">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-kw">comptime</span> math.log2_int(<span class="tok-type">usize</span>, t_bits)) |_| {</span>
+<span class="line" id="L433">                y = y *% (<span class="tok-number">2</span> -% lo *% y);</span>
+<span class="line" id="L434">            }</span>
+<span class="line" id="L435">            <span class="tok-kw">const</span> m0inv = (<span class="tok-builtin">@as</span>(Limb, <span class="tok-number">1</span>) &lt;&lt; t_bits) - (<span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(y)));</span>
+<span class="line" id="L436"></span>
+<span class="line" id="L437">            <span class="tok-kw">const</span> zero = Fe{ .v = FeUint.zero };</span>
+<span class="line" id="L438"></span>
+<span class="line" id="L439">            <span class="tok-kw">var</span> m = Self{</span>
+<span class="line" id="L440">                .zero = zero,</span>
+<span class="line" id="L441">                .v = v,</span>
+<span class="line" id="L442">                .leading = leading,</span>
+<span class="line" id="L443">                .m0inv = m0inv,</span>
+<span class="line" id="L444">                .rr = <span class="tok-null">undefined</span>, <span class="tok-comment">// will be computed right after</span>
+</span>
+<span class="line" id="L445">            };</span>
+<span class="line" id="L446">            m.shrink(&amp;m.zero) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L447">            computeRR(&amp;m);</span>
+<span class="line" id="L448"></span>
+<span class="line" id="L449">            <span class="tok-kw">return</span> m;</span>
+<span class="line" id="L450">        }</span>
+<span class="line" id="L451"></span>
+<span class="line" id="L452">        <span class="tok-comment">/// Creates a new modulus from a primitive value.</span></span>
+<span class="line" id="L453">        <span class="tok-comment">/// The modulus must be odd and larger than 2.</span></span>
+<span class="line" id="L454">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromPrimitive</span>(<span class="tok-kw">comptime</span> T: <span class="tok-type">type</span>, x: T) (InvalidModulusError || OverflowError)!Self {</span>
+<span class="line" id="L455">            <span class="tok-kw">comptime</span> assert(<span class="tok-builtin">@bitSizeOf</span>(T) &lt;= max_bits); <span class="tok-comment">// Primitive type is larger than the modulus type.</span>
+</span>
+<span class="line" id="L456">            <span class="tok-kw">const</span> v = <span class="tok-kw">try</span> FeUint.fromPrimitive(T, x);</span>
+<span class="line" id="L457">            <span class="tok-kw">return</span> <span class="tok-kw">try</span> Self.fromUint(v);</span>
+<span class="line" id="L458">        }</span>
+<span class="line" id="L459"></span>
+<span class="line" id="L460">        <span class="tok-comment">/// Creates a new modulus from a byte string.</span></span>
+<span class="line" id="L461">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromBytes</span>(bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> endian: builtin.Endian) (InvalidModulusError || OverflowError)!Self {</span>
+<span class="line" id="L462">            <span class="tok-kw">const</span> v = <span class="tok-kw">try</span> FeUint.fromBytes(bytes, endian);</span>
+<span class="line" id="L463">            <span class="tok-kw">return</span> <span class="tok-kw">try</span> Self.fromUint(v);</span>
+<span class="line" id="L464">        }</span>
+<span class="line" id="L465"></span>
+<span class="line" id="L466">        <span class="tok-comment">/// Serializes the modulus to a byte string.</span></span>
+<span class="line" id="L467">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toBytes</span>(self: Self, bytes: []<span class="tok-type">u8</span>, <span class="tok-kw">comptime</span> endian: builtin.Endian) OverflowError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L468">            <span class="tok-kw">return</span> self.v.toBytes(bytes, endian);</span>
+<span class="line" id="L469">        }</span>
+<span class="line" id="L470"></span>
+<span class="line" id="L471">        <span class="tok-comment">/// Rejects field elements that are not in the canonical form.</span></span>
+<span class="line" id="L472">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">rejectNonCanonical</span>(self: Self, fe: Fe) <span class="tok-kw">error</span>{NonCanonical}!<span class="tok-type">void</span> {</span>
+<span class="line" id="L473">            <span class="tok-kw">if</span> (fe.limbs_count() != self.limbs_count() <span class="tok-kw">or</span> ct.limbsCmpGeq(fe.v, self.v)) {</span>
+<span class="line" id="L474">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NonCanonical;</span>
+<span class="line" id="L475">            }</span>
+<span class="line" id="L476">        }</span>
+<span class="line" id="L477"></span>
+<span class="line" id="L478">        <span class="tok-comment">// Makes the number of active limbs in a field element match the one of the modulus.</span>
+</span>
+<span class="line" id="L479">        <span class="tok-kw">fn</span> <span class="tok-fn">shrink</span>(self: Self, fe: *Fe) OverflowError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L480">            <span class="tok-kw">const</span> new_len = self.limbs_count();</span>
+<span class="line" id="L481">            <span class="tok-kw">if</span> (fe.limbs_count() &lt; new_len) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L482">            <span class="tok-kw">var</span> acc: Limb = <span class="tok-number">0</span>;</span>
+<span class="line" id="L483">            <span class="tok-kw">for</span> (fe.v.limbs.constSlice()[new_len..]) |limb| {</span>
+<span class="line" id="L484">                acc |= limb;</span>
+<span class="line" id="L485">            }</span>
+<span class="line" id="L486">            <span class="tok-kw">if</span> (acc != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.Overflow;</span>
+<span class="line" id="L487">            <span class="tok-kw">try</span> fe.v.limbs.resize(new_len);</span>
+<span class="line" id="L488">        }</span>
+<span class="line" id="L489"></span>
+<span class="line" id="L490">        <span class="tok-comment">// Computes R^2 for the Montgomery representation.</span>
+</span>
+<span class="line" id="L491">        <span class="tok-kw">fn</span> <span class="tok-fn">computeRR</span>(self: *Self) <span class="tok-type">void</span> {</span>
+<span class="line" id="L492">            self.rr = self.zero;</span>
+<span class="line" id="L493">            <span class="tok-kw">const</span> n = self.rr.limbs_count();</span>
+<span class="line" id="L494">            self.rr.v.limbs.set(n - <span class="tok-number">1</span>, <span class="tok-number">1</span>);</span>
+<span class="line" id="L495">            <span class="tok-kw">for</span> ((n - <span class="tok-number">1</span>)..(<span class="tok-number">2</span> * n)) |_| {</span>
+<span class="line" id="L496">                self.shiftIn(&amp;self.rr, <span class="tok-number">0</span>);</span>
+<span class="line" id="L497">            }</span>
+<span class="line" id="L498">            self.shrink(&amp;self.rr) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L499">        }</span>
+<span class="line" id="L500"></span>
+<span class="line" id="L501">        <span class="tok-comment">/// Computes x &lt;&lt; t_bits + y (mod m)</span></span>
+<span class="line" id="L502">        <span class="tok-kw">fn</span> <span class="tok-fn">shiftIn</span>(self: Self, x: *Fe, y: Limb) <span class="tok-type">void</span> {</span>
+<span class="line" id="L503">            <span class="tok-kw">var</span> d = self.zero;</span>
+<span class="line" id="L504">            <span class="tok-kw">const</span> x_limbs = x.v.limbs.slice();</span>
+<span class="line" id="L505">            <span class="tok-kw">const</span> d_limbs = d.v.limbs.slice();</span>
+<span class="line" id="L506">            <span class="tok-kw">const</span> m_limbs = self.v.limbs.constSlice();</span>
+<span class="line" id="L507"></span>
+<span class="line" id="L508">            <span class="tok-kw">var</span> need_sub = <span class="tok-null">false</span>;</span>
+<span class="line" id="L509">            <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = t_bits - <span class="tok-number">1</span>;</span>
+<span class="line" id="L510">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : (i -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L511">                <span class="tok-kw">var</span> carry: <span class="tok-type">u1</span> = <span class="tok-builtin">@truncate</span>(math.shr(Limb, y, i));</span>
+<span class="line" id="L512">                <span class="tok-kw">var</span> borrow: <span class="tok-type">u1</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L513">                <span class="tok-kw">for</span> (<span class="tok-number">0</span>..self.limbs_count()) |j| {</span>
+<span class="line" id="L514">                    <span class="tok-kw">const</span> l = ct.select(need_sub, d_limbs[j], x_limbs[j]);</span>
+<span class="line" id="L515">                    <span class="tok-kw">var</span> res = (l &lt;&lt; <span class="tok-number">1</span>) + carry;</span>
+<span class="line" id="L516">                    x_limbs[j] = <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(res));</span>
+<span class="line" id="L517">                    carry = <span class="tok-builtin">@truncate</span>(res &gt;&gt; t_bits);</span>
+<span class="line" id="L518"></span>
+<span class="line" id="L519">                    res = x_limbs[j] -% m_limbs[j] -% borrow;</span>
+<span class="line" id="L520">                    d_limbs[j] = <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(res));</span>
+<span class="line" id="L521"></span>
+<span class="line" id="L522">                    borrow = <span class="tok-builtin">@truncate</span>(res &gt;&gt; t_bits);</span>
+<span class="line" id="L523">                }</span>
+<span class="line" id="L524">                need_sub = ct.eql(carry, borrow);</span>
+<span class="line" id="L525">                <span class="tok-kw">if</span> (i == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L526">            }</span>
+<span class="line" id="L527">            x.v.cmov(need_sub, d.v);</span>
+<span class="line" id="L528">        }</span>
+<span class="line" id="L529"></span>
+<span class="line" id="L530">        <span class="tok-comment">/// Adds two field elements (mod m).</span></span>
+<span class="line" id="L531">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">add</span>(self: Self, x: Fe, y: Fe) Fe {</span>
+<span class="line" id="L532">            <span class="tok-kw">var</span> out = x;</span>
+<span class="line" id="L533">            <span class="tok-kw">const</span> overflow = out.v.addWithOverflow(y.v);</span>
+<span class="line" id="L534">            <span class="tok-kw">const</span> underflow: <span class="tok-type">u1</span> = <span class="tok-builtin">@bitCast</span>(ct.limbsCmpLt(out.v, self.v));</span>
+<span class="line" id="L535">            <span class="tok-kw">const</span> need_sub = ct.eql(overflow, underflow);</span>
+<span class="line" id="L536">            _ = out.v.conditionalSubWithOverflow(need_sub, self.v);</span>
+<span class="line" id="L537">            <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L538">        }</span>
+<span class="line" id="L539"></span>
+<span class="line" id="L540">        <span class="tok-comment">/// Subtracts two field elements (mod m).</span></span>
+<span class="line" id="L541">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sub</span>(self: Self, x: Fe, y: Fe) Fe {</span>
+<span class="line" id="L542">            <span class="tok-kw">var</span> out = x;</span>
+<span class="line" id="L543">            <span class="tok-kw">const</span> underflow: <span class="tok-type">bool</span> = <span class="tok-builtin">@bitCast</span>(out.v.subWithOverflow(y.v));</span>
+<span class="line" id="L544">            _ = out.v.conditionalAddWithOverflow(underflow, self.v);</span>
+<span class="line" id="L545">            <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L546">        }</span>
+<span class="line" id="L547"></span>
+<span class="line" id="L548">        <span class="tok-comment">/// Converts a field element to the Montgomery form.</span></span>
+<span class="line" id="L549">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toMontgomery</span>(self: Self, x: *Fe) RepresentationError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L550">            <span class="tok-kw">if</span> (x.montgomery) {</span>
+<span class="line" id="L551">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedRepresentation;</span>
+<span class="line" id="L552">            }</span>
+<span class="line" id="L553">            self.shrink(x) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L554">            x.* = self.montgomeryMul(x.*, self.rr);</span>
+<span class="line" id="L555">            x.montgomery = <span class="tok-null">true</span>;</span>
+<span class="line" id="L556">        }</span>
+<span class="line" id="L557"></span>
+<span class="line" id="L558">        <span class="tok-comment">/// Takes a field element out of the Montgomery form.</span></span>
+<span class="line" id="L559">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromMontgomery</span>(self: Self, x: *Fe) RepresentationError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L560">            <span class="tok-kw">if</span> (!x.montgomery) {</span>
+<span class="line" id="L561">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedRepresentation;</span>
+<span class="line" id="L562">            }</span>
+<span class="line" id="L563">            self.shrink(x) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L564">            x.* = self.montgomeryMul(x.*, self.one());</span>
+<span class="line" id="L565">            x.montgomery = <span class="tok-null">false</span>;</span>
+<span class="line" id="L566">        }</span>
+<span class="line" id="L567"></span>
+<span class="line" id="L568">        <span class="tok-comment">/// Reduces an arbitrary `Uint`, converting it to a field element.</span></span>
+<span class="line" id="L569">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">reduce</span>(self: Self, x: <span class="tok-kw">anytype</span>) Fe {</span>
+<span class="line" id="L570">            <span class="tok-kw">var</span> out = self.zero;</span>
+<span class="line" id="L571">            <span class="tok-kw">var</span> i = x.limbs_count() - <span class="tok-number">1</span>;</span>
+<span class="line" id="L572">            <span class="tok-kw">if</span> (self.limbs_count() &gt;= <span class="tok-number">2</span>) {</span>
+<span class="line" id="L573">                <span class="tok-kw">const</span> start = <span class="tok-builtin">@min</span>(i, self.limbs_count() - <span class="tok-number">2</span>);</span>
+<span class="line" id="L574">                <span class="tok-kw">var</span> j = start;</span>
+<span class="line" id="L575">                <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : (j -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L576">                    out.v.limbs.set(j, x.limbs.get(i));</span>
+<span class="line" id="L577">                    i -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L578">                    <span class="tok-kw">if</span> (j == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L579">                }</span>
+<span class="line" id="L580">            }</span>
+<span class="line" id="L581">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) : (i -= <span class="tok-number">1</span>) {</span>
+<span class="line" id="L582">                self.shiftIn(&amp;out, x.limbs.get(i));</span>
+<span class="line" id="L583">                <span class="tok-kw">if</span> (i == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L584">            }</span>
+<span class="line" id="L585">            <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L586">        }</span>
+<span class="line" id="L587"></span>
+<span class="line" id="L588">        <span class="tok-kw">fn</span> <span class="tok-fn">montgomeryLoop</span>(self: Self, d: *Fe, x: Fe, y: Fe) <span class="tok-type">u1</span> {</span>
+<span class="line" id="L589">            assert(d.limbs_count() == x.limbs_count());</span>
+<span class="line" id="L590">            assert(d.limbs_count() == y.limbs_count());</span>
+<span class="line" id="L591">            assert(d.limbs_count() == self.limbs_count());</span>
+<span class="line" id="L592"></span>
+<span class="line" id="L593">            <span class="tok-kw">const</span> a_limbs = x.v.limbs.constSlice();</span>
+<span class="line" id="L594">            <span class="tok-kw">const</span> b_limbs = y.v.limbs.constSlice();</span>
+<span class="line" id="L595">            <span class="tok-kw">const</span> d_limbs = d.v.limbs.slice();</span>
+<span class="line" id="L596">            <span class="tok-kw">const</span> m_limbs = self.v.limbs.constSlice();</span>
+<span class="line" id="L597"></span>
+<span class="line" id="L598">            <span class="tok-kw">var</span> overflow: <span class="tok-type">u1</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L599">            <span class="tok-kw">for</span> (<span class="tok-number">0</span>..self.limbs_count()) |i| {</span>
+<span class="line" id="L600">                <span class="tok-kw">var</span> carry: Limb = <span class="tok-number">0</span>;</span>
+<span class="line" id="L601"></span>
+<span class="line" id="L602">                <span class="tok-kw">var</span> wide = ct.mulWide(a_limbs[i], b_limbs[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L603">                <span class="tok-kw">var</span> z_lo = <span class="tok-builtin">@addWithOverflow</span>(d_limbs[<span class="tok-number">0</span>], wide.lo);</span>
+<span class="line" id="L604">                <span class="tok-kw">const</span> f = <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(z_lo[<span class="tok-number">0</span>] *% self.m0inv));</span>
+<span class="line" id="L605">                <span class="tok-kw">var</span> z_hi = wide.hi +% z_lo[<span class="tok-number">1</span>];</span>
+<span class="line" id="L606">                wide = ct.mulWide(f, m_limbs[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L607">                z_lo = <span class="tok-builtin">@addWithOverflow</span>(z_lo[<span class="tok-number">0</span>], wide.lo);</span>
+<span class="line" id="L608">                z_hi +%= z_lo[<span class="tok-number">1</span>];</span>
+<span class="line" id="L609">                z_hi +%= wide.hi;</span>
+<span class="line" id="L610">                carry = (z_hi &lt;&lt; <span class="tok-number">1</span>) | (z_lo[<span class="tok-number">0</span>] &gt;&gt; t_bits);</span>
+<span class="line" id="L611"></span>
+<span class="line" id="L612">                <span class="tok-kw">for</span> (<span class="tok-number">1</span>..self.limbs_count()) |j| {</span>
+<span class="line" id="L613">                    wide = ct.mulWide(a_limbs[i], b_limbs[j]);</span>
+<span class="line" id="L614">                    z_lo = <span class="tok-builtin">@addWithOverflow</span>(d_limbs[j], wide.lo);</span>
+<span class="line" id="L615">                    z_hi = wide.hi +% z_lo[<span class="tok-number">1</span>];</span>
+<span class="line" id="L616">                    wide = ct.mulWide(f, m_limbs[j]);</span>
+<span class="line" id="L617">                    z_lo = <span class="tok-builtin">@addWithOverflow</span>(z_lo[<span class="tok-number">0</span>], wide.lo);</span>
+<span class="line" id="L618">                    z_hi +%= z_lo[<span class="tok-number">1</span>];</span>
+<span class="line" id="L619">                    z_hi +%= wide.hi;</span>
+<span class="line" id="L620">                    z_lo = <span class="tok-builtin">@addWithOverflow</span>(z_lo[<span class="tok-number">0</span>], carry);</span>
+<span class="line" id="L621">                    z_hi +%= z_lo[<span class="tok-number">1</span>];</span>
+<span class="line" id="L622">                    <span class="tok-kw">if</span> (j &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L623">                        d_limbs[j - <span class="tok-number">1</span>] = <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(z_lo[<span class="tok-number">0</span>]));</span>
+<span class="line" id="L624">                    }</span>
+<span class="line" id="L625">                    carry = (z_hi &lt;&lt; <span class="tok-number">1</span>) | (z_lo[<span class="tok-number">0</span>] &gt;&gt; t_bits);</span>
+<span class="line" id="L626">                }</span>
+<span class="line" id="L627">                <span class="tok-kw">const</span> z = overflow + carry;</span>
+<span class="line" id="L628">                d_limbs[self.limbs_count() - <span class="tok-number">1</span>] = <span class="tok-builtin">@as</span>(TLimb, <span class="tok-builtin">@truncate</span>(z));</span>
+<span class="line" id="L629">                overflow = <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>(z &gt;&gt; t_bits));</span>
+<span class="line" id="L630">            }</span>
+<span class="line" id="L631">            <span class="tok-kw">return</span> overflow;</span>
+<span class="line" id="L632">        }</span>
+<span class="line" id="L633"></span>
+<span class="line" id="L634">        <span class="tok-comment">// Montgomery multiplication.</span>
+</span>
+<span class="line" id="L635">        <span class="tok-kw">fn</span> <span class="tok-fn">montgomeryMul</span>(self: Self, x: Fe, y: Fe) Fe {</span>
+<span class="line" id="L636">            <span class="tok-kw">var</span> d = self.zero;</span>
+<span class="line" id="L637">            assert(x.limbs_count() == self.limbs_count());</span>
+<span class="line" id="L638">            assert(y.limbs_count() == self.limbs_count());</span>
+<span class="line" id="L639">            <span class="tok-kw">const</span> overflow = self.montgomeryLoop(&amp;d, x, y);</span>
+<span class="line" id="L640">            <span class="tok-kw">const</span> underflow = <span class="tok-number">1</span> -% <span class="tok-builtin">@intFromBool</span>(ct.limbsCmpGeq(d.v, self.v));</span>
+<span class="line" id="L641">            <span class="tok-kw">const</span> need_sub = ct.eql(overflow, underflow);</span>
+<span class="line" id="L642">            _ = d.v.conditionalSubWithOverflow(need_sub, self.v);</span>
+<span class="line" id="L643">            d.montgomery = x.montgomery == y.montgomery;</span>
+<span class="line" id="L644">            <span class="tok-kw">return</span> d;</span>
+<span class="line" id="L645">        }</span>
+<span class="line" id="L646"></span>
+<span class="line" id="L647">        <span class="tok-comment">// Montgomery squaring.</span>
+</span>
+<span class="line" id="L648">        <span class="tok-kw">fn</span> <span class="tok-fn">montgomerySq</span>(self: Self, x: Fe) Fe {</span>
+<span class="line" id="L649">            <span class="tok-kw">var</span> d = self.zero;</span>
+<span class="line" id="L650">            assert(x.limbs_count() == self.limbs_count());</span>
+<span class="line" id="L651">            <span class="tok-kw">const</span> overflow = self.montgomeryLoop(&amp;d, x, x);</span>
+<span class="line" id="L652">            <span class="tok-kw">const</span> underflow = <span class="tok-number">1</span> -% <span class="tok-builtin">@intFromBool</span>(ct.limbsCmpGeq(d.v, self.v));</span>
+<span class="line" id="L653">            <span class="tok-kw">const</span> need_sub = ct.eql(overflow, underflow);</span>
+<span class="line" id="L654">            _ = d.v.conditionalSubWithOverflow(need_sub, self.v);</span>
+<span class="line" id="L655">            d.montgomery = <span class="tok-null">true</span>;</span>
+<span class="line" id="L656">            <span class="tok-kw">return</span> d;</span>
+<span class="line" id="L657">        }</span>
+<span class="line" id="L658"></span>
+<span class="line" id="L659">        <span class="tok-comment">/// Multiplies two field elements.</span></span>
+<span class="line" id="L660">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">mul</span>(self: Self, x: Fe, y: Fe) Fe {</span>
+<span class="line" id="L661">            <span class="tok-kw">if</span> (x.montgomery != y.montgomery) {</span>
+<span class="line" id="L662">                <span class="tok-kw">return</span> self.montgomeryMul(x, y);</span>
+<span class="line" id="L663">            }</span>
+<span class="line" id="L664">            <span class="tok-kw">var</span> a_ = x;</span>
+<span class="line" id="L665">            <span class="tok-kw">if</span> (x.montgomery == <span class="tok-null">false</span>) {</span>
+<span class="line" id="L666">                self.toMontgomery(&amp;a_) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L667">            } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L668">                self.fromMontgomery(&amp;a_) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L669">            }</span>
+<span class="line" id="L670">            <span class="tok-kw">return</span> self.montgomeryMul(a_, y);</span>
+<span class="line" id="L671">        }</span>
+<span class="line" id="L672"></span>
+<span class="line" id="L673">        <span class="tok-comment">/// Squares a field element.</span></span>
+<span class="line" id="L674">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">sq</span>(self: Self, x: Fe) Fe {</span>
+<span class="line" id="L675">            <span class="tok-kw">var</span> out = x;</span>
+<span class="line" id="L676">            <span class="tok-kw">if</span> (x.montgomery == <span class="tok-null">true</span>) {</span>
+<span class="line" id="L677">                self.fromMontgomery(&amp;out) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L678">            }</span>
+<span class="line" id="L679">            out = self.montgomerySq(out);</span>
+<span class="line" id="L680">            out.montgomery = <span class="tok-null">false</span>;</span>
+<span class="line" id="L681">            self.toMontgomery(&amp;out) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L682">            <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L683">        }</span>
+<span class="line" id="L684"></span>
+<span class="line" id="L685">        <span class="tok-comment">/// Returns x^e (mod m) in constant time.</span></span>
+<span class="line" id="L686">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">pow</span>(self: Self, x: Fe, e: Fe) NullExponentError!Fe {</span>
+<span class="line" id="L687">            <span class="tok-kw">var</span> buf: [Fe.encoded_bytes]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L688">            e.toBytes(&amp;buf, native_endian) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L689">            <span class="tok-kw">return</span> self.powWithEncodedExponent(x, &amp;buf, native_endian);</span>
+<span class="line" id="L690">        }</span>
+<span class="line" id="L691"></span>
+<span class="line" id="L692">        <span class="tok-comment">/// Returns x^e (mod m), assuming that the exponent is public.</span></span>
+<span class="line" id="L693">        <span class="tok-comment">/// The function remains constant time with respect to `x`.</span></span>
+<span class="line" id="L694">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">powPublic</span>(self: Self, x: Fe, e: Fe) NullExponentError!Fe {</span>
+<span class="line" id="L695">            <span class="tok-kw">var</span> e_normalized = Fe{ .v = e.v.normalize() };</span>
+<span class="line" id="L696">            <span class="tok-kw">var</span> buf_: [Fe.encoded_bytes]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L697">            <span class="tok-kw">var</span> buf = buf_[<span class="tok-number">0</span> .. math.divCeil(<span class="tok-type">usize</span>, e_normalized.v.limbs_count() * t_bits, <span class="tok-number">8</span>) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>];</span>
+<span class="line" id="L698">            e_normalized.toBytes(buf, .Little) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L699">            <span class="tok-kw">const</span> leading = <span class="tok-builtin">@clz</span>(e_normalized.v.limbs.get(e_normalized.v.limbs_count() - carry_bits));</span>
+<span class="line" id="L700">            buf = buf[<span class="tok-number">0</span> .. buf.len - leading / <span class="tok-number">8</span>];</span>
+<span class="line" id="L701">            <span class="tok-kw">return</span> self.powWithEncodedExponent(x, buf, .Little);</span>
+<span class="line" id="L702">        }</span>
+<span class="line" id="L703"></span>
+<span class="line" id="L704">        <span class="tok-comment">/// Returns x^e (mod m), assuming that the exponent is public, and provided as a byte string.</span></span>
+<span class="line" id="L705">        <span class="tok-comment">/// Exponents are usually small, so this function is faster than `powPublic` as a field element</span></span>
+<span class="line" id="L706">        <span class="tok-comment">/// doesn't have to be created if a serialized representation is already available.</span></span>
+<span class="line" id="L707">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">powWithEncodedExponent</span>(self: Self, x: Fe, e: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, endian: builtin.Endian) NullExponentError!Fe {</span>
+<span class="line" id="L708">            <span class="tok-kw">var</span> acc: <span class="tok-type">u8</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L709">            <span class="tok-kw">for</span> (e) |b| acc |= b;</span>
+<span class="line" id="L710">            <span class="tok-kw">if</span> (acc == <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.NullExponent;</span>
+<span class="line" id="L711"></span>
+<span class="line" id="L712">            <span class="tok-kw">var</span> pc = [<span class="tok-number">1</span>]Fe{x} ++ [_]Fe{self.zero} ** <span class="tok-number">14</span>;</span>
+<span class="line" id="L713">            <span class="tok-kw">if</span> (x.montgomery == <span class="tok-null">false</span>) {</span>
+<span class="line" id="L714">                self.toMontgomery(&amp;pc[<span class="tok-number">0</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L715">            }</span>
+<span class="line" id="L716">            <span class="tok-kw">for</span> (<span class="tok-number">1</span>..pc.len) |i| {</span>
+<span class="line" id="L717">                pc[i] = self.montgomeryMul(pc[i - <span class="tok-number">1</span>], pc[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L718">            }</span>
+<span class="line" id="L719">            <span class="tok-kw">var</span> out = self.one();</span>
+<span class="line" id="L720">            self.toMontgomery(&amp;out) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L721">            <span class="tok-kw">var</span> t0 = self.zero;</span>
+<span class="line" id="L722">            <span class="tok-kw">var</span> s = <span class="tok-kw">switch</span> (endian) {</span>
+<span class="line" id="L723">                .Big =&gt; <span class="tok-number">0</span>,</span>
+<span class="line" id="L724">                .Little =&gt; e.len - <span class="tok-number">1</span>,</span>
+<span class="line" id="L725">            };</span>
+<span class="line" id="L726">            <span class="tok-kw">while</span> (<span class="tok-null">true</span>) {</span>
+<span class="line" id="L727">                <span class="tok-kw">const</span> b = e[s];</span>
+<span class="line" id="L728">                <span class="tok-kw">for</span> ([_]<span class="tok-type">u3</span>{ <span class="tok-number">4</span>, <span class="tok-number">0</span> }) |j| {</span>
+<span class="line" id="L729">                    <span class="tok-kw">for</span> (<span class="tok-number">0</span>..<span class="tok-number">4</span>) |_| {</span>
+<span class="line" id="L730">                        out = self.montgomerySq(out);</span>
+<span class="line" id="L731">                    }</span>
+<span class="line" id="L732">                    <span class="tok-kw">const</span> k = (b &gt;&gt; j) &amp; <span class="tok-number">0b1111</span>;</span>
+<span class="line" id="L733">                    <span class="tok-kw">if</span> (std.options.side_channels_mitigations == .none) {</span>
+<span class="line" id="L734">                        <span class="tok-kw">if</span> (k == <span class="tok-number">0</span>) <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L735">                        t0 = pc[k - <span class="tok-number">1</span>];</span>
+<span class="line" id="L736">                    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L737">                        <span class="tok-kw">for</span> (pc, <span class="tok-number">0</span>..) |t, i| {</span>
+<span class="line" id="L738">                            t0.v.cmov(ct.eql(k, <span class="tok-builtin">@as</span>(<span class="tok-type">u8</span>, <span class="tok-builtin">@truncate</span>(i + <span class="tok-number">1</span>))), t.v);</span>
+<span class="line" id="L739">                        }</span>
+<span class="line" id="L740">                    }</span>
+<span class="line" id="L741">                    <span class="tok-kw">const</span> t1 = self.montgomeryMul(out, t0);</span>
+<span class="line" id="L742">                    out.v.cmov(!ct.eql(k, <span class="tok-number">0</span>), t1.v);</span>
+<span class="line" id="L743">                }</span>
+<span class="line" id="L744">                <span class="tok-kw">switch</span> (endian) {</span>
+<span class="line" id="L745">                    .Big =&gt; {</span>
+<span class="line" id="L746">                        s += <span class="tok-number">1</span>;</span>
+<span class="line" id="L747">                        <span class="tok-kw">if</span> (s == e.len) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L748">                    },</span>
+<span class="line" id="L749">                    .Little =&gt; {</span>
+<span class="line" id="L750">                        <span class="tok-kw">if</span> (s == <span class="tok-number">0</span>) <span class="tok-kw">break</span>;</span>
+<span class="line" id="L751">                        s -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L752">                    },</span>
+<span class="line" id="L753">                }</span>
+<span class="line" id="L754">            }</span>
+<span class="line" id="L755">            self.fromMontgomery(&amp;out) <span class="tok-kw">catch</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L756">            <span class="tok-kw">return</span> out;</span>
+<span class="line" id="L757">        }</span>
+<span class="line" id="L758">    };</span>
+<span class="line" id="L759">}</span>
+<span class="line" id="L760"></span>
+<span class="line" id="L761"><span class="tok-kw">const</span> ct = <span class="tok-kw">if</span> (std.options.side_channels_mitigations == .none) ct_unprotected <span class="tok-kw">else</span> ct_protected;</span>
+<span class="line" id="L762"></span>
+<span class="line" id="L763"><span class="tok-kw">const</span> ct_protected = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L764">    <span class="tok-comment">// Returns x if on is true, otherwise y.</span>
+</span>
+<span class="line" id="L765">    <span class="tok-kw">fn</span> <span class="tok-fn">select</span>(on: <span class="tok-type">bool</span>, x: Limb, y: Limb) Limb {</span>
+<span class="line" id="L766">        <span class="tok-kw">const</span> mask = <span class="tok-builtin">@as</span>(Limb, <span class="tok-number">0</span>) -% <span class="tok-builtin">@intFromBool</span>(on);</span>
+<span class="line" id="L767">        <span class="tok-kw">return</span> y ^ (mask &amp; (y ^ x));</span>
+<span class="line" id="L768">    }</span>
+<span class="line" id="L769"></span>
+<span class="line" id="L770">    <span class="tok-comment">// Compares two values in constant time.</span>
+</span>
+<span class="line" id="L771">    <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(x: <span class="tok-kw">anytype</span>, y: <span class="tok-builtin">@TypeOf</span>(x)) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L772">        <span class="tok-kw">const</span> c1 = <span class="tok-builtin">@subWithOverflow</span>(x, y)[<span class="tok-number">1</span>];</span>
+<span class="line" id="L773">        <span class="tok-kw">const</span> c2 = <span class="tok-builtin">@subWithOverflow</span>(y, x)[<span class="tok-number">1</span>];</span>
+<span class="line" id="L774">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">bool</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-number">1</span> - (c1 | c2)));</span>
+<span class="line" id="L775">    }</span>
+<span class="line" id="L776"></span>
+<span class="line" id="L777">    <span class="tok-comment">// Compares two big integers in constant time, returning true if x &lt; y.</span>
+</span>
+<span class="line" id="L778">    <span class="tok-kw">fn</span> <span class="tok-fn">limbsCmpLt</span>(x: <span class="tok-kw">anytype</span>, y: <span class="tok-builtin">@TypeOf</span>(x)) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L779">        assert(x.limbs_count() == y.limbs_count());</span>
+<span class="line" id="L780">        <span class="tok-kw">const</span> x_limbs = x.limbs.constSlice();</span>
+<span class="line" id="L781">        <span class="tok-kw">const</span> y_limbs = y.limbs.constSlice();</span>
+<span class="line" id="L782"></span>
+<span class="line" id="L783">        <span class="tok-kw">var</span> c: <span class="tok-type">u1</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L784">        <span class="tok-kw">for</span> (<span class="tok-number">0</span>..x.limbs_count()) |i| {</span>
+<span class="line" id="L785">            c = <span class="tok-builtin">@as</span>(<span class="tok-type">u1</span>, <span class="tok-builtin">@truncate</span>((x_limbs[i] -% y_limbs[i] -% c) &gt;&gt; t_bits));</span>
+<span class="line" id="L786">        }</span>
+<span class="line" id="L787">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">bool</span>, <span class="tok-builtin">@bitCast</span>(c));</span>
+<span class="line" id="L788">    }</span>
+<span class="line" id="L789"></span>
+<span class="line" id="L790">    <span class="tok-comment">// Compares two big integers in constant time, returning true if x &gt;= y.</span>
+</span>
+<span class="line" id="L791">    <span class="tok-kw">fn</span> <span class="tok-fn">limbsCmpGeq</span>(x: <span class="tok-kw">anytype</span>, y: <span class="tok-builtin">@TypeOf</span>(x)) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L792">        <span class="tok-kw">return</span> <span class="tok-builtin">@as</span>(<span class="tok-type">bool</span>, <span class="tok-builtin">@bitCast</span>(<span class="tok-number">1</span> - <span class="tok-builtin">@intFromBool</span>(ct.limbsCmpLt(x, y))));</span>
+<span class="line" id="L793">    }</span>
+<span class="line" id="L794"></span>
+<span class="line" id="L795">    <span class="tok-comment">// Multiplies two limbs and returns the result as a wide limb.</span>
+</span>
+<span class="line" id="L796">    <span class="tok-kw">fn</span> <span class="tok-fn">mulWide</span>(x: Limb, y: Limb) WideLimb {</span>
+<span class="line" id="L797">        <span class="tok-kw">const</span> half_bits = <span class="tok-builtin">@typeInfo</span>(Limb).Int.bits / <span class="tok-number">2</span>;</span>
+<span class="line" id="L798">        <span class="tok-kw">const</span> Half = meta.Int(.unsigned, half_bits);</span>
+<span class="line" id="L799">        <span class="tok-kw">const</span> x0 = <span class="tok-builtin">@as</span>(Half, <span class="tok-builtin">@truncate</span>(x));</span>
+<span class="line" id="L800">        <span class="tok-kw">const</span> x1 = <span class="tok-builtin">@as</span>(Half, <span class="tok-builtin">@truncate</span>(x &gt;&gt; half_bits));</span>
+<span class="line" id="L801">        <span class="tok-kw">const</span> y0 = <span class="tok-builtin">@as</span>(Half, <span class="tok-builtin">@truncate</span>(y));</span>
+<span class="line" id="L802">        <span class="tok-kw">const</span> y1 = <span class="tok-builtin">@as</span>(Half, <span class="tok-builtin">@truncate</span>(y &gt;&gt; half_bits));</span>
+<span class="line" id="L803">        <span class="tok-kw">const</span> w0 = math.mulWide(Half, x0, y0);</span>
+<span class="line" id="L804">        <span class="tok-kw">const</span> t = math.mulWide(Half, x1, y0) + (w0 &gt;&gt; half_bits);</span>
+<span class="line" id="L805">        <span class="tok-kw">var</span> w1: Limb = <span class="tok-builtin">@as</span>(Half, <span class="tok-builtin">@truncate</span>(t));</span>
+<span class="line" id="L806">        <span class="tok-kw">const</span> w2 = <span class="tok-builtin">@as</span>(Half, <span class="tok-builtin">@truncate</span>(t &gt;&gt; half_bits));</span>
+<span class="line" id="L807">        w1 += math.mulWide(Half, x0, y1);</span>
+<span class="line" id="L808">        <span class="tok-kw">const</span> hi = math.mulWide(Half, x1, y1) + w2 + (w1 &gt;&gt; half_bits);</span>
+<span class="line" id="L809">        <span class="tok-kw">const</span> lo = x *% y;</span>
+<span class="line" id="L810">        <span class="tok-kw">return</span> .{ .hi = hi, .lo = lo };</span>
+<span class="line" id="L811">    }</span>
+<span class="line" id="L812">};</span>
+<span class="line" id="L813"></span>
+<span class="line" id="L814"><span class="tok-kw">const</span> ct_unprotected = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L815">    <span class="tok-comment">// Returns x if on is true, otherwise y.</span>
+</span>
+<span class="line" id="L816">    <span class="tok-kw">fn</span> <span class="tok-fn">select</span>(on: <span class="tok-type">bool</span>, x: Limb, y: Limb) Limb {</span>
+<span class="line" id="L817">        <span class="tok-kw">return</span> <span class="tok-kw">if</span> (on) x <span class="tok-kw">else</span> y;</span>
+<span class="line" id="L818">    }</span>
+<span class="line" id="L819"></span>
+<span class="line" id="L820">    <span class="tok-comment">// Compares two values in constant time.</span>
+</span>
+<span class="line" id="L821">    <span class="tok-kw">fn</span> <span class="tok-fn">eql</span>(x: <span class="tok-kw">anytype</span>, y: <span class="tok-builtin">@TypeOf</span>(x)) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L822">        <span class="tok-kw">return</span> x == y;</span>
+<span class="line" id="L823">    }</span>
+<span class="line" id="L824"></span>
+<span class="line" id="L825">    <span class="tok-comment">// Compares two big integers in constant time, returning true if x &lt; y.</span>
+</span>
+<span class="line" id="L826">    <span class="tok-kw">fn</span> <span class="tok-fn">limbsCmpLt</span>(x: <span class="tok-kw">anytype</span>, y: <span class="tok-builtin">@TypeOf</span>(x)) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L827">        assert(x.limbs_count() == y.limbs_count());</span>
+<span class="line" id="L828">        <span class="tok-kw">const</span> x_limbs = x.limbs.constSlice();</span>
+<span class="line" id="L829">        <span class="tok-kw">const</span> y_limbs = y.limbs.constSlice();</span>
+<span class="line" id="L830"></span>
+<span class="line" id="L831">        <span class="tok-kw">var</span> i = x.limbs_count();</span>
+<span class="line" id="L832">        <span class="tok-kw">while</span> (i != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L833">            i -= <span class="tok-number">1</span>;</span>
+<span class="line" id="L834">            <span class="tok-kw">if</span> (x_limbs[i] != y_limbs[i]) {</span>
+<span class="line" id="L835">                <span class="tok-kw">return</span> x_limbs[i] &lt; y_limbs[i];</span>
+<span class="line" id="L836">            }</span>
+<span class="line" id="L837">        }</span>
+<span class="line" id="L838">        <span class="tok-kw">return</span> <span class="tok-null">false</span>;</span>
+<span class="line" id="L839">    }</span>
+<span class="line" id="L840"></span>
+<span class="line" id="L841">    <span class="tok-comment">// Compares two big integers in constant time, returning true if x &gt;= y.</span>
+</span>
+<span class="line" id="L842">    <span class="tok-kw">fn</span> <span class="tok-fn">limbsCmpGeq</span>(x: <span class="tok-kw">anytype</span>, y: <span class="tok-builtin">@TypeOf</span>(x)) <span class="tok-type">bool</span> {</span>
+<span class="line" id="L843">        <span class="tok-kw">return</span> !ct.limbsCmpLt(x, y);</span>
+<span class="line" id="L844">    }</span>
+<span class="line" id="L845"></span>
+<span class="line" id="L846">    <span class="tok-comment">// Multiplies two limbs and returns the result as a wide limb.</span>
+</span>
+<span class="line" id="L847">    <span class="tok-kw">fn</span> <span class="tok-fn">mulWide</span>(x: Limb, y: Limb) WideLimb {</span>
+<span class="line" id="L848">        <span class="tok-kw">const</span> wide = math.mulWide(Limb, x, y);</span>
+<span class="line" id="L849">        <span class="tok-kw">return</span> .{</span>
+<span class="line" id="L850">            .hi = <span class="tok-builtin">@as</span>(Limb, <span class="tok-builtin">@truncate</span>(wide &gt;&gt; <span class="tok-builtin">@typeInfo</span>(Limb).Int.bits)),</span>
+<span class="line" id="L851">            .lo = <span class="tok-builtin">@as</span>(Limb, <span class="tok-builtin">@truncate</span>(wide)),</span>
+<span class="line" id="L852">        };</span>
+<span class="line" id="L853">    }</span>
+<span class="line" id="L854">};</span>
+<span class="line" id="L855"></span>
+<span class="line" id="L856"><span class="tok-kw">test</span> {</span>
+<span class="line" id="L857">    <span class="tok-kw">if</span> (<span class="tok-builtin">@import</span>(<span class="tok-str">&quot;builtin&quot;</span>).zig_backend == .stage2_c) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.SkipZigTest;</span>
+<span class="line" id="L858"></span>
+<span class="line" id="L859">    <span class="tok-kw">const</span> M = Modulus(<span class="tok-number">256</span>);</span>
+<span class="line" id="L860">    <span class="tok-kw">const</span> m = <span class="tok-kw">try</span> M.fromPrimitive(<span class="tok-type">u256</span>, <span class="tok-number">3429938563481314093726330772853735541133072814650493833233</span>);</span>
+<span class="line" id="L861">    <span class="tok-kw">var</span> x = <span class="tok-kw">try</span> M.Fe.fromPrimitive(<span class="tok-type">u256</span>, m, <span class="tok-number">80169837251094269539116136208111827396136208141182357733</span>);</span>
+<span class="line" id="L862">    <span class="tok-kw">var</span> y = <span class="tok-kw">try</span> M.Fe.fromPrimitive(<span class="tok-type">u256</span>, m, <span class="tok-number">24620149608466364616251608466389896540098571</span>);</span>
+<span class="line" id="L863"></span>
+<span class="line" id="L864">    <span class="tok-kw">const</span> x_ = <span class="tok-kw">try</span> x.toPrimitive(<span class="tok-type">u256</span>);</span>
+<span class="line" id="L865">    <span class="tok-kw">try</span> testing.expect((<span class="tok-kw">try</span> M.Fe.fromPrimitive(<span class="tok-builtin">@TypeOf</span>(x_), m, x_)).eql(x));</span>
+<span class="line" id="L866">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.Overflow, x.toPrimitive(<span class="tok-type">u50</span>));</span>
+<span class="line" id="L867"></span>
+<span class="line" id="L868">    <span class="tok-kw">const</span> bits = m.bits();</span>
+<span class="line" id="L869">    <span class="tok-kw">try</span> testing.expectEqual(bits, <span class="tok-number">192</span>);</span>
+<span class="line" id="L870"></span>
+<span class="line" id="L871">    <span class="tok-kw">var</span> x_y = m.mul(x, y);</span>
+<span class="line" id="L872">    <span class="tok-kw">try</span> testing.expectEqual(x_y.toPrimitive(<span class="tok-type">u256</span>), <span class="tok-number">1666576607955767413750776202132407807424848069716933450241</span>);</span>
+<span class="line" id="L873"></span>
+<span class="line" id="L874">    <span class="tok-kw">try</span> m.toMontgomery(&amp;x);</span>
+<span class="line" id="L875">    x_y = m.mul(x, y);</span>
+<span class="line" id="L876">    <span class="tok-kw">try</span> testing.expectEqual(x_y.toPrimitive(<span class="tok-type">u256</span>), <span class="tok-number">1666576607955767413750776202132407807424848069716933450241</span>);</span>
+<span class="line" id="L877">    <span class="tok-kw">try</span> m.fromMontgomery(&amp;x);</span>
+<span class="line" id="L878"></span>
+<span class="line" id="L879">    x = m.add(x, y);</span>
+<span class="line" id="L880">    <span class="tok-kw">try</span> testing.expectEqual(x.toPrimitive(<span class="tok-type">u256</span>), <span class="tok-number">80169837251118889688724602572728079004602598037722456304</span>);</span>
+<span class="line" id="L881">    x = m.sub(x, y);</span>
+<span class="line" id="L882">    <span class="tok-kw">try</span> testing.expectEqual(x.toPrimitive(<span class="tok-type">u256</span>), <span class="tok-number">80169837251094269539116136208111827396136208141182357733</span>);</span>
+<span class="line" id="L883"></span>
+<span class="line" id="L884">    <span class="tok-kw">const</span> big = <span class="tok-kw">try</span> Uint(<span class="tok-number">512</span>).fromPrimitive(<span class="tok-type">u495</span>, <span class="tok-number">77285373554113307281465049383342993856348131409372633077285373554113307281465049383323332333429938563481314093726330772853735541133072814650493833233</span>);</span>
+<span class="line" id="L885">    <span class="tok-kw">const</span> reduced = m.reduce(big);</span>
+<span class="line" id="L886">    <span class="tok-kw">try</span> testing.expectEqual(reduced.toPrimitive(<span class="tok-type">u495</span>), <span class="tok-number">858047099884257670294681641776170038885500210968322054970</span>);</span>
+<span class="line" id="L887"></span>
+<span class="line" id="L888">    <span class="tok-kw">const</span> x_pow_y = <span class="tok-kw">try</span> m.powPublic(x, y);</span>
+<span class="line" id="L889">    <span class="tok-kw">try</span> testing.expectEqual(x_pow_y.toPrimitive(<span class="tok-type">u256</span>), <span class="tok-number">1631933139300737762906024873185789093007782131928298618473</span>);</span>
+<span class="line" id="L890">    <span class="tok-kw">try</span> m.toMontgomery(&amp;x);</span>
+<span class="line" id="L891">    <span class="tok-kw">const</span> x_pow_y2 = <span class="tok-kw">try</span> m.powPublic(x, y);</span>
+<span class="line" id="L892">    <span class="tok-kw">try</span> m.fromMontgomery(&amp;x);</span>
+<span class="line" id="L893">    <span class="tok-kw">try</span> testing.expect(x_pow_y2.eql(x_pow_y));</span>
+<span class="line" id="L894">    <span class="tok-kw">try</span> testing.expectError(<span class="tok-kw">error</span>.NullExponent, m.powPublic(x, m.zero));</span>
+<span class="line" id="L895"></span>
+<span class="line" id="L896">    <span class="tok-kw">try</span> testing.expect(!x.isZero());</span>
+<span class="line" id="L897">    <span class="tok-kw">try</span> testing.expect(!y.isZero());</span>
+<span class="line" id="L898">    <span class="tok-kw">try</span> testing.expect(m.v.isOdd());</span>
+<span class="line" id="L899"></span>
+<span class="line" id="L900">    <span class="tok-kw">const</span> x_sq = m.sq(x);</span>
+<span class="line" id="L901">    <span class="tok-kw">const</span> x_sq2 = m.mul(x, x);</span>
+<span class="line" id="L902">    <span class="tok-kw">try</span> testing.expect(x_sq.eql(x_sq2));</span>
+<span class="line" id="L903">    <span class="tok-kw">try</span> m.toMontgomery(&amp;x);</span>
+<span class="line" id="L904">    <span class="tok-kw">const</span> x_sq3 = m.sq(x);</span>
+<span class="line" id="L905">    <span class="tok-kw">const</span> x_sq4 = m.mul(x, x);</span>
+<span class="line" id="L906">    <span class="tok-kw">try</span> testing.expect(x_sq.eql(x_sq3));</span>
+<span class="line" id="L907">    <span class="tok-kw">try</span> testing.expect(x_sq3.eql(x_sq4));</span>
+<span class="line" id="L908">    <span class="tok-kw">try</span> m.fromMontgomery(&amp;x);</span>
+<span class="line" id="L909">}</span>
+<span class="line" id="L910"></span>
+</code></pre></body>
+</html>
