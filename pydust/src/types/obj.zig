@@ -16,6 +16,13 @@ const str = @import("str.zig");
 const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
 
+// NOTE: Use only when accessing ob_refcnt.
+// From 3.12, ob_refcnt is anonymous union in CPython and is not accessible from Zig.
+pub const CPyObject = extern struct {
+    ob_refcnt: ffi.Py_ssize_t,
+    ob_type: ?*ffi.PyTypeObject
+};
+
 pub const PyObject = extern struct {
     py: *ffi.PyObject,
 
@@ -25,6 +32,11 @@ pub const PyObject = extern struct {
 
     pub fn decref(self: PyObject) void {
         ffi.Py_DECREF(self.py);
+    }
+
+    pub fn refcnt(self: PyObject) isize {
+        const local_py: *CPyObject = @ptrCast(self.py);
+        return local_py.ob_refcnt;
     }
 
     pub fn getTypeName(self: PyObject) ![:0]const u8 {

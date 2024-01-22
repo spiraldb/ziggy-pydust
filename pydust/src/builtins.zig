@@ -242,7 +242,7 @@ pub fn not_(object: anytype) !bool {
 /// Return the reference count of the object.
 pub fn refcnt(object: anytype) isize {
     const pyobj = py.object(object);
-    return pyobj.py.ob_refcnt;
+    return pyobj.refcnt();
 }
 
 /// Compute a string representation of object - using str(o).
