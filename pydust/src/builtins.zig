@@ -20,7 +20,6 @@ const pytypes = @import("./pytypes.zig");
 const State = @import("./discovery.zig").State;
 const ffi = @import("./ffi.zig");
 const PyError = @import("./errors.zig").PyError;
-const ffi_PyObject = @import("types/obj.zig").ffi_PyObject;
 
 /// Zig enum for python richcompare op int.
 /// The order of enums has to match the values of ffi.Py_LT, etc
