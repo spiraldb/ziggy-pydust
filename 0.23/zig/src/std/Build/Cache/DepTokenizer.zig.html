@@ -1,0 +1,1427 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Build/Cache/DepTokenizer.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAPNJREFUeNpi/P//PwMlgOXHUjly9E0G4hwgZmQiQZMqEK8H4v9QzUEgQSaoADK+zhH9iAGL+C0gDoAaNg9mGLoLfgA1awK9hS9gzgJxA9RQBmQDrgMxJzRMGKE4HYj/Ial5A8QmQLwCJoBsgBYW2+TR1ChDaWt4LOBxKsi/VUh8XiD+gq4IVyzwQAMJBoKwacZlAB8Qf0bi96IZhtOAe1D6LpqaEiz6rmEzQAeIzwGxCJpieFqApo/vQKyJboAaEBsAsSEupwI1MwKjGBTVHOhegMX5UajYRqiBjMgYmj400cVh0XgTiKdC0zhJgJHS7AwQYABm9EAdCKrEfAAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-kw">const</span> Tokenizer = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L2"></span>
+<span class="line" id="L3">index: <span class="tok-type">usize</span> = <span class="tok-number">0</span>,</span>
+<span class="line" id="L4">bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L5">state: State = .lhs,</span>
+<span class="line" id="L6"></span>
+<span class="line" id="L7"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> testing = std.testing;</span>
+<span class="line" id="L9"><span class="tok-kw">const</span> assert = std.debug.assert;</span>
+<span class="line" id="L10"></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(self: *Tokenizer) ?Token {</span>
+<span class="line" id="L12">    <span class="tok-kw">var</span> start = self.index;</span>
+<span class="line" id="L13">    <span class="tok-kw">var</span> must_resolve = <span class="tok-null">false</span>;</span>
+<span class="line" id="L14">    <span class="tok-kw">while</span> (self.index &lt; self.bytes.len) {</span>
+<span class="line" id="L15">        <span class="tok-kw">const</span> char = self.bytes[self.index];</span>
+<span class="line" id="L16">        <span class="tok-kw">switch</span> (self.state) {</span>
+<span class="line" id="L17">            .lhs =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L18">                <span class="tok-str">'\t'</span>, <span class="tok-str">'\n'</span>, <span class="tok-str">'\r'</span>, <span class="tok-str">' '</span> =&gt; {</span>
+<span class="line" id="L19">                    <span class="tok-comment">// silently ignore whitespace</span>
+</span>
+<span class="line" id="L20">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L21">                },</span>
+<span class="line" id="L22">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L23">                    start = self.index;</span>
+<span class="line" id="L24">                    self.state = .target;</span>
+<span class="line" id="L25">                },</span>
+<span class="line" id="L26">            },</span>
+<span class="line" id="L27">            .target =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L28">                <span class="tok-str">'\t'</span>, <span class="tok-str">'\n'</span>, <span class="tok-str">'\r'</span>, <span class="tok-str">' '</span> =&gt; {</span>
+<span class="line" id="L29">                    <span class="tok-kw">return</span> errorIllegalChar(.invalid_target, self.index, char);</span>
+<span class="line" id="L30">                },</span>
+<span class="line" id="L31">                <span class="tok-str">'$'</span> =&gt; {</span>
+<span class="line" id="L32">                    self.state = .target_dollar_sign;</span>
+<span class="line" id="L33">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L34">                },</span>
+<span class="line" id="L35">                <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L36">                    self.state = .target_reverse_solidus;</span>
+<span class="line" id="L37">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L38">                },</span>
+<span class="line" id="L39">                <span class="tok-str">':'</span> =&gt; {</span>
+<span class="line" id="L40">                    self.state = .target_colon;</span>
+<span class="line" id="L41">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L42">                },</span>
+<span class="line" id="L43">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L44">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L45">                },</span>
+<span class="line" id="L46">            },</span>
+<span class="line" id="L47">            .target_reverse_solidus =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L48">                <span class="tok-str">'\t'</span>, <span class="tok-str">'\n'</span>, <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L49">                    <span class="tok-kw">return</span> errorIllegalChar(.bad_target_escape, self.index, char);</span>
+<span class="line" id="L50">                },</span>
+<span class="line" id="L51">                <span class="tok-str">' '</span>, <span class="tok-str">'#'</span>, <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L52">                    must_resolve = <span class="tok-null">true</span>;</span>
+<span class="line" id="L53">                    self.state = .target;</span>
+<span class="line" id="L54">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L55">                },</span>
+<span class="line" id="L56">                <span class="tok-str">'$'</span> =&gt; {</span>
+<span class="line" id="L57">                    self.state = .target_dollar_sign;</span>
+<span class="line" id="L58">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L59">                },</span>
+<span class="line" id="L60">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L61">                    self.state = .target;</span>
+<span class="line" id="L62">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L63">                },</span>
+<span class="line" id="L64">            },</span>
+<span class="line" id="L65">            .target_dollar_sign =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L66">                <span class="tok-str">'$'</span> =&gt; {</span>
+<span class="line" id="L67">                    must_resolve = <span class="tok-null">true</span>;</span>
+<span class="line" id="L68">                    self.state = .target;</span>
+<span class="line" id="L69">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L70">                },</span>
+<span class="line" id="L71">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L72">                    <span class="tok-kw">return</span> errorIllegalChar(.expected_dollar_sign, self.index, char);</span>
+<span class="line" id="L73">                },</span>
+<span class="line" id="L74">            },</span>
+<span class="line" id="L75">            .target_colon =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L76">                <span class="tok-str">'\n'</span>, <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L77">                    <span class="tok-kw">const</span> bytes = self.bytes[start .. self.index - <span class="tok-number">1</span>];</span>
+<span class="line" id="L78">                    <span class="tok-kw">if</span> (bytes.len != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L79">                        self.state = .lhs;</span>
+<span class="line" id="L80">                        <span class="tok-kw">return</span> finishTarget(must_resolve, bytes);</span>
+<span class="line" id="L81">                    }</span>
+<span class="line" id="L82">                    <span class="tok-comment">// silently ignore null target</span>
+</span>
+<span class="line" id="L83">                    self.state = .lhs;</span>
+<span class="line" id="L84">                },</span>
+<span class="line" id="L85">                <span class="tok-str">'/'</span>, <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L86">                    self.state = .target_colon_reverse_solidus;</span>
+<span class="line" id="L87">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L88">                },</span>
+<span class="line" id="L89">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L90">                    <span class="tok-kw">const</span> bytes = self.bytes[start .. self.index - <span class="tok-number">1</span>];</span>
+<span class="line" id="L91">                    <span class="tok-kw">if</span> (bytes.len != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L92">                        self.state = .rhs;</span>
+<span class="line" id="L93">                        <span class="tok-kw">return</span> finishTarget(must_resolve, bytes);</span>
+<span class="line" id="L94">                    }</span>
+<span class="line" id="L95">                    <span class="tok-comment">// silently ignore null target</span>
+</span>
+<span class="line" id="L96">                    self.state = .lhs;</span>
+<span class="line" id="L97">                },</span>
+<span class="line" id="L98">            },</span>
+<span class="line" id="L99">            .target_colon_reverse_solidus =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L100">                <span class="tok-str">'\n'</span>, <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L101">                    <span class="tok-kw">const</span> bytes = self.bytes[start .. self.index - <span class="tok-number">2</span>];</span>
+<span class="line" id="L102">                    <span class="tok-kw">if</span> (bytes.len != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L103">                        self.state = .lhs;</span>
+<span class="line" id="L104">                        <span class="tok-kw">return</span> finishTarget(must_resolve, bytes);</span>
+<span class="line" id="L105">                    }</span>
+<span class="line" id="L106">                    <span class="tok-comment">// silently ignore null target</span>
+</span>
+<span class="line" id="L107">                    self.state = .lhs;</span>
+<span class="line" id="L108">                },</span>
+<span class="line" id="L109">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L110">                    self.state = .target;</span>
+<span class="line" id="L111">                },</span>
+<span class="line" id="L112">            },</span>
+<span class="line" id="L113">            .rhs =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L114">                <span class="tok-str">'\t'</span>, <span class="tok-str">' '</span> =&gt; {</span>
+<span class="line" id="L115">                    <span class="tok-comment">// silently ignore horizontal whitespace</span>
+</span>
+<span class="line" id="L116">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L117">                },</span>
+<span class="line" id="L118">                <span class="tok-str">'\n'</span>, <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L119">                    self.state = .lhs;</span>
+<span class="line" id="L120">                },</span>
+<span class="line" id="L121">                <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L122">                    self.state = .rhs_continuation;</span>
+<span class="line" id="L123">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L124">                },</span>
+<span class="line" id="L125">                <span class="tok-str">'&quot;'</span> =&gt; {</span>
+<span class="line" id="L126">                    self.state = .prereq_quote;</span>
+<span class="line" id="L127">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L128">                    start = self.index;</span>
+<span class="line" id="L129">                },</span>
+<span class="line" id="L130">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L131">                    start = self.index;</span>
+<span class="line" id="L132">                    self.state = .prereq;</span>
+<span class="line" id="L133">                },</span>
+<span class="line" id="L134">            },</span>
+<span class="line" id="L135">            .rhs_continuation =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L136">                <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L137">                    self.state = .rhs;</span>
+<span class="line" id="L138">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L139">                },</span>
+<span class="line" id="L140">                <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L141">                    self.state = .rhs_continuation_linefeed;</span>
+<span class="line" id="L142">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L143">                },</span>
+<span class="line" id="L144">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L145">                    <span class="tok-kw">return</span> errorIllegalChar(.continuation_eol, self.index, char);</span>
+<span class="line" id="L146">                },</span>
+<span class="line" id="L147">            },</span>
+<span class="line" id="L148">            .rhs_continuation_linefeed =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L149">                <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L150">                    self.state = .rhs;</span>
+<span class="line" id="L151">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L152">                },</span>
+<span class="line" id="L153">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L154">                    <span class="tok-kw">return</span> errorIllegalChar(.continuation_eol, self.index, char);</span>
+<span class="line" id="L155">                },</span>
+<span class="line" id="L156">            },</span>
+<span class="line" id="L157">            .prereq_quote =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L158">                <span class="tok-str">'&quot;'</span> =&gt; {</span>
+<span class="line" id="L159">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L160">                    self.state = .rhs;</span>
+<span class="line" id="L161">                    <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start .. self.index - <span class="tok-number">1</span>] };</span>
+<span class="line" id="L162">                },</span>
+<span class="line" id="L163">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L164">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L165">                },</span>
+<span class="line" id="L166">            },</span>
+<span class="line" id="L167">            .prereq =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L168">                <span class="tok-str">'\t'</span>, <span class="tok-str">' '</span> =&gt; {</span>
+<span class="line" id="L169">                    self.state = .rhs;</span>
+<span class="line" id="L170">                    <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start..self.index] };</span>
+<span class="line" id="L171">                },</span>
+<span class="line" id="L172">                <span class="tok-str">'\n'</span>, <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L173">                    self.state = .lhs;</span>
+<span class="line" id="L174">                    <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start..self.index] };</span>
+<span class="line" id="L175">                },</span>
+<span class="line" id="L176">                <span class="tok-str">'\\'</span> =&gt; {</span>
+<span class="line" id="L177">                    self.state = .prereq_continuation;</span>
+<span class="line" id="L178">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L179">                },</span>
+<span class="line" id="L180">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L181">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L182">                },</span>
+<span class="line" id="L183">            },</span>
+<span class="line" id="L184">            .prereq_continuation =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L185">                <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L186">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L187">                    self.state = .rhs;</span>
+<span class="line" id="L188">                    <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start .. self.index - <span class="tok-number">2</span>] };</span>
+<span class="line" id="L189">                },</span>
+<span class="line" id="L190">                <span class="tok-str">'\r'</span> =&gt; {</span>
+<span class="line" id="L191">                    self.state = .prereq_continuation_linefeed;</span>
+<span class="line" id="L192">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L193">                },</span>
+<span class="line" id="L194">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L195">                    <span class="tok-comment">// not continuation</span>
+</span>
+<span class="line" id="L196">                    self.state = .prereq;</span>
+<span class="line" id="L197">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L198">                },</span>
+<span class="line" id="L199">            },</span>
+<span class="line" id="L200">            .prereq_continuation_linefeed =&gt; <span class="tok-kw">switch</span> (char) {</span>
+<span class="line" id="L201">                <span class="tok-str">'\n'</span> =&gt; {</span>
+<span class="line" id="L202">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L203">                    self.state = .rhs;</span>
+<span class="line" id="L204">                    <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start .. self.index - <span class="tok-number">1</span>] };</span>
+<span class="line" id="L205">                },</span>
+<span class="line" id="L206">                <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L207">                    <span class="tok-kw">return</span> errorIllegalChar(.continuation_eol, self.index, char);</span>
+<span class="line" id="L208">                },</span>
+<span class="line" id="L209">            },</span>
+<span class="line" id="L210">        }</span>
+<span class="line" id="L211">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L212">        <span class="tok-kw">switch</span> (self.state) {</span>
+<span class="line" id="L213">            .lhs,</span>
+<span class="line" id="L214">            .rhs,</span>
+<span class="line" id="L215">            .rhs_continuation,</span>
+<span class="line" id="L216">            .rhs_continuation_linefeed,</span>
+<span class="line" id="L217">            =&gt; <span class="tok-kw">return</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L218">            .target =&gt; {</span>
+<span class="line" id="L219">                <span class="tok-kw">return</span> errorPosition(.incomplete_target, start, self.bytes[start..]);</span>
+<span class="line" id="L220">            },</span>
+<span class="line" id="L221">            .target_reverse_solidus,</span>
+<span class="line" id="L222">            .target_dollar_sign,</span>
+<span class="line" id="L223">            =&gt; {</span>
+<span class="line" id="L224">                <span class="tok-kw">const</span> idx = self.index - <span class="tok-number">1</span>;</span>
+<span class="line" id="L225">                <span class="tok-kw">return</span> errorIllegalChar(.incomplete_escape, idx, self.bytes[idx]);</span>
+<span class="line" id="L226">            },</span>
+<span class="line" id="L227">            .target_colon =&gt; {</span>
+<span class="line" id="L228">                <span class="tok-kw">const</span> bytes = self.bytes[start .. self.index - <span class="tok-number">1</span>];</span>
+<span class="line" id="L229">                <span class="tok-kw">if</span> (bytes.len != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L230">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L231">                    self.state = .rhs;</span>
+<span class="line" id="L232">                    <span class="tok-kw">return</span> finishTarget(must_resolve, bytes);</span>
+<span class="line" id="L233">                }</span>
+<span class="line" id="L234">                <span class="tok-comment">// silently ignore null target</span>
+</span>
+<span class="line" id="L235">                self.state = .lhs;</span>
+<span class="line" id="L236">                <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L237">            },</span>
+<span class="line" id="L238">            .target_colon_reverse_solidus =&gt; {</span>
+<span class="line" id="L239">                <span class="tok-kw">const</span> bytes = self.bytes[start .. self.index - <span class="tok-number">2</span>];</span>
+<span class="line" id="L240">                <span class="tok-kw">if</span> (bytes.len != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L241">                    self.index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L242">                    self.state = .rhs;</span>
+<span class="line" id="L243">                    <span class="tok-kw">return</span> finishTarget(must_resolve, bytes);</span>
+<span class="line" id="L244">                }</span>
+<span class="line" id="L245">                <span class="tok-comment">// silently ignore null target</span>
+</span>
+<span class="line" id="L246">                self.state = .lhs;</span>
+<span class="line" id="L247">                <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L248">            },</span>
+<span class="line" id="L249">            .prereq_quote =&gt; {</span>
+<span class="line" id="L250">                <span class="tok-kw">return</span> errorPosition(.incomplete_quoted_prerequisite, start, self.bytes[start..]);</span>
+<span class="line" id="L251">            },</span>
+<span class="line" id="L252">            .prereq =&gt; {</span>
+<span class="line" id="L253">                self.state = .lhs;</span>
+<span class="line" id="L254">                <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start..] };</span>
+<span class="line" id="L255">            },</span>
+<span class="line" id="L256">            .prereq_continuation =&gt; {</span>
+<span class="line" id="L257">                self.state = .lhs;</span>
+<span class="line" id="L258">                <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start .. self.index - <span class="tok-number">1</span>] };</span>
+<span class="line" id="L259">            },</span>
+<span class="line" id="L260">            .prereq_continuation_linefeed =&gt; {</span>
+<span class="line" id="L261">                self.state = .lhs;</span>
+<span class="line" id="L262">                <span class="tok-kw">return</span> Token{ .prereq = self.bytes[start .. self.index - <span class="tok-number">2</span>] };</span>
+<span class="line" id="L263">            },</span>
+<span class="line" id="L264">        }</span>
+<span class="line" id="L265">    }</span>
+<span class="line" id="L266">    <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L267">}</span>
+<span class="line" id="L268"></span>
+<span class="line" id="L269"><span class="tok-kw">fn</span> <span class="tok-fn">errorPosition</span>(<span class="tok-kw">comptime</span> id: std.meta.Tag(Token), index: <span class="tok-type">usize</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Token {</span>
+<span class="line" id="L270">    <span class="tok-kw">return</span> <span class="tok-builtin">@unionInit</span>(Token, <span class="tok-builtin">@tagName</span>(id), .{ .index = index, .bytes = bytes });</span>
+<span class="line" id="L271">}</span>
+<span class="line" id="L272"></span>
+<span class="line" id="L273"><span class="tok-kw">fn</span> <span class="tok-fn">errorIllegalChar</span>(<span class="tok-kw">comptime</span> id: std.meta.Tag(Token), index: <span class="tok-type">usize</span>, char: <span class="tok-type">u8</span>) Token {</span>
+<span class="line" id="L274">    <span class="tok-kw">return</span> <span class="tok-builtin">@unionInit</span>(Token, <span class="tok-builtin">@tagName</span>(id), .{ .index = index, .char = char });</span>
+<span class="line" id="L275">}</span>
+<span class="line" id="L276"></span>
+<span class="line" id="L277"><span class="tok-kw">fn</span> <span class="tok-fn">finishTarget</span>(must_resolve: <span class="tok-type">bool</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) Token {</span>
+<span class="line" id="L278">    <span class="tok-kw">return</span> <span class="tok-kw">if</span> (must_resolve) .{ .target_must_resolve = bytes } <span class="tok-kw">else</span> .{ .target = bytes };</span>
+<span class="line" id="L279">}</span>
+<span class="line" id="L280"></span>
+<span class="line" id="L281"><span class="tok-kw">const</span> State = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L282">    lhs,</span>
+<span class="line" id="L283">    target,</span>
+<span class="line" id="L284">    target_reverse_solidus,</span>
+<span class="line" id="L285">    target_dollar_sign,</span>
+<span class="line" id="L286">    target_colon,</span>
+<span class="line" id="L287">    target_colon_reverse_solidus,</span>
+<span class="line" id="L288">    rhs,</span>
+<span class="line" id="L289">    rhs_continuation,</span>
+<span class="line" id="L290">    rhs_continuation_linefeed,</span>
+<span class="line" id="L291">    prereq_quote,</span>
+<span class="line" id="L292">    prereq,</span>
+<span class="line" id="L293">    prereq_continuation,</span>
+<span class="line" id="L294">    prereq_continuation_linefeed,</span>
+<span class="line" id="L295">};</span>
+<span class="line" id="L296"></span>
+<span class="line" id="L297"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Token = <span class="tok-kw">union</span>(<span class="tok-kw">enum</span>) {</span>
+<span class="line" id="L298">    target: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L299">    target_must_resolve: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L300">    prereq: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L301"></span>
+<span class="line" id="L302">    incomplete_quoted_prerequisite: IndexAndBytes,</span>
+<span class="line" id="L303">    incomplete_target: IndexAndBytes,</span>
+<span class="line" id="L304"></span>
+<span class="line" id="L305">    invalid_target: IndexAndChar,</span>
+<span class="line" id="L306">    bad_target_escape: IndexAndChar,</span>
+<span class="line" id="L307">    expected_dollar_sign: IndexAndChar,</span>
+<span class="line" id="L308">    continuation_eol: IndexAndChar,</span>
+<span class="line" id="L309">    incomplete_escape: IndexAndChar,</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> IndexAndChar = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L312">        index: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L313">        char: <span class="tok-type">u8</span>,</span>
+<span class="line" id="L314">    };</span>
+<span class="line" id="L315"></span>
+<span class="line" id="L316">    <span class="tok-kw">pub</span> <span class="tok-kw">const</span> IndexAndBytes = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L317">        index: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L318">        bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L319">    };</span>
+<span class="line" id="L320"></span>
+<span class="line" id="L321">    <span class="tok-comment">/// Resolve escapes in target. Only valid with .target_must_resolve.</span></span>
+<span class="line" id="L322">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">resolve</span>(self: Token, writer: <span class="tok-kw">anytype</span>) <span class="tok-builtin">@TypeOf</span>(writer).Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L323">        <span class="tok-kw">const</span> bytes = self.target_must_resolve; <span class="tok-comment">// resolve called on incorrect token</span>
+</span>
+<span class="line" id="L324"></span>
+<span class="line" id="L325">        <span class="tok-kw">var</span> state: <span class="tok-kw">enum</span> { start, escape, dollar } = .start;</span>
+<span class="line" id="L326">        <span class="tok-kw">for</span> (bytes) |c| {</span>
+<span class="line" id="L327">            <span class="tok-kw">switch</span> (state) {</span>
+<span class="line" id="L328">                .start =&gt; {</span>
+<span class="line" id="L329">                    <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L330">                        <span class="tok-str">'\\'</span> =&gt; state = .escape,</span>
+<span class="line" id="L331">                        <span class="tok-str">'$'</span> =&gt; state = .dollar,</span>
+<span class="line" id="L332">                        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">try</span> writer.writeByte(c),</span>
+<span class="line" id="L333">                    }</span>
+<span class="line" id="L334">                },</span>
+<span class="line" id="L335">                .escape =&gt; {</span>
+<span class="line" id="L336">                    <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L337">                        <span class="tok-str">' '</span>, <span class="tok-str">'#'</span>, <span class="tok-str">'\\'</span> =&gt; {},</span>
+<span class="line" id="L338">                        <span class="tok-str">'$'</span> =&gt; {</span>
+<span class="line" id="L339">                            <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\\'</span>);</span>
+<span class="line" id="L340">                            state = .dollar;</span>
+<span class="line" id="L341">                            <span class="tok-kw">continue</span>;</span>
+<span class="line" id="L342">                        },</span>
+<span class="line" id="L343">                        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'\\'</span>),</span>
+<span class="line" id="L344">                    }</span>
+<span class="line" id="L345">                    <span class="tok-kw">try</span> writer.writeByte(c);</span>
+<span class="line" id="L346">                    state = .start;</span>
+<span class="line" id="L347">                },</span>
+<span class="line" id="L348">                .dollar =&gt; {</span>
+<span class="line" id="L349">                    <span class="tok-kw">try</span> writer.writeByte(<span class="tok-str">'$'</span>);</span>
+<span class="line" id="L350">                    <span class="tok-kw">switch</span> (c) {</span>
+<span class="line" id="L351">                        <span class="tok-str">'$'</span> =&gt; {},</span>
+<span class="line" id="L352">                        <span class="tok-kw">else</span> =&gt; <span class="tok-kw">try</span> writer.writeByte(c),</span>
+<span class="line" id="L353">                    }</span>
+<span class="line" id="L354">                    state = .start;</span>
+<span class="line" id="L355">                },</span>
+<span class="line" id="L356">            }</span>
+<span class="line" id="L357">        }</span>
+<span class="line" id="L358">    }</span>
+<span class="line" id="L359"></span>
+<span class="line" id="L360">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">printError</span>(self: Token, writer: <span class="tok-kw">anytype</span>) <span class="tok-builtin">@TypeOf</span>(writer).Error!<span class="tok-type">void</span> {</span>
+<span class="line" id="L361">        <span class="tok-kw">switch</span> (self) {</span>
+<span class="line" id="L362">            .target, .target_must_resolve, .prereq =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// not an error</span>
+</span>
+<span class="line" id="L363">            .incomplete_quoted_prerequisite,</span>
+<span class="line" id="L364">            .incomplete_target,</span>
+<span class="line" id="L365">            =&gt; |index_and_bytes| {</span>
+<span class="line" id="L366">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;{s} '&quot;</span>, .{self.errStr()});</span>
+<span class="line" id="L367">                <span class="tok-kw">if</span> (self == .incomplete_target) {</span>
+<span class="line" id="L368">                    <span class="tok-kw">const</span> tmp = Token{ .target_must_resolve = index_and_bytes.bytes };</span>
+<span class="line" id="L369">                    <span class="tok-kw">try</span> tmp.resolve(writer);</span>
+<span class="line" id="L370">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L371">                    <span class="tok-kw">try</span> printCharValues(writer, index_and_bytes.bytes);</span>
+<span class="line" id="L372">                }</span>
+<span class="line" id="L373">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot;' at position {d}&quot;</span>, .{index_and_bytes.index});</span>
+<span class="line" id="L374">            },</span>
+<span class="line" id="L375">            .invalid_target,</span>
+<span class="line" id="L376">            .bad_target_escape,</span>
+<span class="line" id="L377">            .expected_dollar_sign,</span>
+<span class="line" id="L378">            .continuation_eol,</span>
+<span class="line" id="L379">            .incomplete_escape,</span>
+<span class="line" id="L380">            =&gt; |index_and_char| {</span>
+<span class="line" id="L381">                <span class="tok-kw">try</span> writer.writeAll(<span class="tok-str">&quot;illegal char &quot;</span>);</span>
+<span class="line" id="L382">                <span class="tok-kw">try</span> printUnderstandableChar(writer, index_and_char.char);</span>
+<span class="line" id="L383">                <span class="tok-kw">try</span> writer.print(<span class="tok-str">&quot; at position {d}: {s}&quot;</span>, .{ index_and_char.index, self.errStr() });</span>
+<span class="line" id="L384">            },</span>
+<span class="line" id="L385">        }</span>
+<span class="line" id="L386">    }</span>
+<span class="line" id="L387"></span>
+<span class="line" id="L388">    <span class="tok-kw">fn</span> <span class="tok-fn">errStr</span>(self: Token) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L389">        <span class="tok-kw">return</span> <span class="tok-kw">switch</span> (self) {</span>
+<span class="line" id="L390">            .target, .target_must_resolve, .prereq =&gt; <span class="tok-kw">unreachable</span>, <span class="tok-comment">// not an error</span>
+</span>
+<span class="line" id="L391">            .incomplete_quoted_prerequisite =&gt; <span class="tok-str">&quot;incomplete quoted prerequisite&quot;</span>,</span>
+<span class="line" id="L392">            .incomplete_target =&gt; <span class="tok-str">&quot;incomplete target&quot;</span>,</span>
+<span class="line" id="L393">            .invalid_target =&gt; <span class="tok-str">&quot;invalid target&quot;</span>,</span>
+<span class="line" id="L394">            .bad_target_escape =&gt; <span class="tok-str">&quot;bad target escape&quot;</span>,</span>
+<span class="line" id="L395">            .expected_dollar_sign =&gt; <span class="tok-str">&quot;expecting '$'&quot;</span>,</span>
+<span class="line" id="L396">            .continuation_eol =&gt; <span class="tok-str">&quot;continuation expecting end-of-line&quot;</span>,</span>
+<span class="line" id="L397">            .incomplete_escape =&gt; <span class="tok-str">&quot;incomplete escape&quot;</span>,</span>
+<span class="line" id="L398">        };</span>
+<span class="line" id="L399">    }</span>
+<span class="line" id="L400">};</span>
+<span class="line" id="L401"></span>
+<span class="line" id="L402"><span class="tok-kw">test</span> <span class="tok-str">&quot;empty file&quot;</span> {</span>
+<span class="line" id="L403">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L404">}</span>
+<span class="line" id="L405"></span>
+<span class="line" id="L406"><span class="tok-kw">test</span> <span class="tok-str">&quot;empty whitespace&quot;</span> {</span>
+<span class="line" id="L407">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\n&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L408">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L409">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\n&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L410">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot; &quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L411">}</span>
+<span class="line" id="L412"></span>
+<span class="line" id="L413"><span class="tok-kw">test</span> <span class="tok-str">&quot;empty colon&quot;</span> {</span>
+<span class="line" id="L414">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;:&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L415">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\n:&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L416">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r:&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L417">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\n:&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L418">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot; :&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L419">}</span>
+<span class="line" id="L420"></span>
+<span class="line" id="L421"><span class="tok-kw">test</span> <span class="tok-str">&quot;empty target&quot;</span> {</span>
+<span class="line" id="L422">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o:&quot;</span>, <span class="tok-str">&quot;target = {foo.o}&quot;</span>);</span>
+<span class="line" id="L423">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L424">        <span class="tok-str">\\foo.o:</span></span>
+
+<span class="line" id="L425">        <span class="tok-str">\\bar.o:</span></span>
+
+<span class="line" id="L426">        <span class="tok-str">\\abcd.o:</span></span>
+
+<span class="line" id="L427">    ,</span>
+<span class="line" id="L428">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L429">        <span class="tok-str">\\target = {bar.o}</span></span>
+
+<span class="line" id="L430">        <span class="tok-str">\\target = {abcd.o}</span></span>
+
+<span class="line" id="L431">    );</span>
+<span class="line" id="L432">}</span>
+<span class="line" id="L433"></span>
+<span class="line" id="L434"><span class="tok-kw">test</span> <span class="tok-str">&quot;whitespace empty target&quot;</span> {</span>
+<span class="line" id="L435">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\nfoo.o:&quot;</span>, <span class="tok-str">&quot;target = {foo.o}&quot;</span>);</span>
+<span class="line" id="L436">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\rfoo.o:&quot;</span>, <span class="tok-str">&quot;target = {foo.o}&quot;</span>);</span>
+<span class="line" id="L437">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\nfoo.o:&quot;</span>, <span class="tok-str">&quot;target = {foo.o}&quot;</span>);</span>
+<span class="line" id="L438">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot; foo.o:&quot;</span>, <span class="tok-str">&quot;target = {foo.o}&quot;</span>);</span>
+<span class="line" id="L439">}</span>
+<span class="line" id="L440"></span>
+<span class="line" id="L441"><span class="tok-kw">test</span> <span class="tok-str">&quot;escape empty target&quot;</span> {</span>
+<span class="line" id="L442">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\ foo.o:&quot;</span>, <span class="tok-str">&quot;target = { foo.o}&quot;</span>);</span>
+<span class="line" id="L443">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\#foo.o:&quot;</span>, <span class="tok-str">&quot;target = {#foo.o}&quot;</span>);</span>
+<span class="line" id="L444">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\\\foo.o:&quot;</span>, <span class="tok-str">&quot;target = {\\foo.o}&quot;</span>);</span>
+<span class="line" id="L445">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;$$foo.o:&quot;</span>, <span class="tok-str">&quot;target = {$foo.o}&quot;</span>);</span>
+<span class="line" id="L446">}</span>
+<span class="line" id="L447"></span>
+<span class="line" id="L448"><span class="tok-kw">test</span> <span class="tok-str">&quot;empty target linefeeds&quot;</span> {</span>
+<span class="line" id="L449">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\n&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L450">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\n&quot;</span>, <span class="tok-str">&quot;&quot;</span>);</span>
+<span class="line" id="L451"></span>
+<span class="line" id="L452">    <span class="tok-kw">const</span> expect = <span class="tok-str">&quot;target = {foo.o}&quot;</span>;</span>
+<span class="line" id="L453">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L454">        <span class="tok-str">\\foo.o:</span></span>
+
+<span class="line" id="L455">    , expect);</span>
+<span class="line" id="L456">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L457">        <span class="tok-str">\\foo.o:</span></span>
+
+<span class="line" id="L458">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L459">    , expect);</span>
+<span class="line" id="L460">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L461">        <span class="tok-str">\\foo.o:</span></span>
+
+<span class="line" id="L462">    , expect);</span>
+<span class="line" id="L463">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L464">        <span class="tok-str">\\foo.o:</span></span>
+
+<span class="line" id="L465">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L466">    , expect);</span>
+<span class="line" id="L467">}</span>
+<span class="line" id="L468"></span>
+<span class="line" id="L469"><span class="tok-kw">test</span> <span class="tok-str">&quot;empty target linefeeds + continuations&quot;</span> {</span>
+<span class="line" id="L470">    <span class="tok-kw">const</span> expect = <span class="tok-str">&quot;target = {foo.o}&quot;</span>;</span>
+<span class="line" id="L471">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L472">        <span class="tok-str">\\foo.o:\</span></span>
+
+<span class="line" id="L473">    , expect);</span>
+<span class="line" id="L474">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L475">        <span class="tok-str">\\foo.o:\</span></span>
+
+<span class="line" id="L476">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L477">    , expect);</span>
+<span class="line" id="L478">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L479">        <span class="tok-str">\\foo.o:\</span></span>
+
+<span class="line" id="L480">    , expect);</span>
+<span class="line" id="L481">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L482">        <span class="tok-str">\\foo.o:\</span></span>
+
+<span class="line" id="L483">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L484">    , expect);</span>
+<span class="line" id="L485">}</span>
+<span class="line" id="L486"></span>
+<span class="line" id="L487"><span class="tok-kw">test</span> <span class="tok-str">&quot;empty target linefeeds + hspace + continuations&quot;</span> {</span>
+<span class="line" id="L488">    <span class="tok-kw">const</span> expect = <span class="tok-str">&quot;target = {foo.o}&quot;</span>;</span>
+<span class="line" id="L489">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L490">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L491">    , expect);</span>
+<span class="line" id="L492">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L493">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L494">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L495">    , expect);</span>
+<span class="line" id="L496">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L497">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L498">    , expect);</span>
+<span class="line" id="L499">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L500">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L501">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L502">    , expect);</span>
+<span class="line" id="L503">}</span>
+<span class="line" id="L504"></span>
+<span class="line" id="L505"><span class="tok-kw">test</span> <span class="tok-str">&quot;prereq&quot;</span> {</span>
+<span class="line" id="L506">    <span class="tok-kw">const</span> expect =</span>
+<span class="line" id="L507">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L508">        <span class="tok-str">\\prereq = {foo.c}</span></span>
+
+<span class="line" id="L509">    ;</span>
+<span class="line" id="L510">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o: foo.c&quot;</span>, expect);</span>
+<span class="line" id="L511">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L512">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L513">        <span class="tok-str">\\foo.c</span></span>
+
+<span class="line" id="L514">    , expect);</span>
+<span class="line" id="L515">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L516">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L517">        <span class="tok-str">\\ foo.c</span></span>
+
+<span class="line" id="L518">    , expect);</span>
+<span class="line" id="L519">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L520">        <span class="tok-str">\\foo.o:    \</span></span>
+
+<span class="line" id="L521">        <span class="tok-str">\\    foo.c</span></span>
+
+<span class="line" id="L522">    , expect);</span>
+<span class="line" id="L523">}</span>
+<span class="line" id="L524"></span>
+<span class="line" id="L525"><span class="tok-kw">test</span> <span class="tok-str">&quot;prereq continuation&quot;</span> {</span>
+<span class="line" id="L526">    <span class="tok-kw">const</span> expect =</span>
+<span class="line" id="L527">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L528">        <span class="tok-str">\\prereq = {foo.h}</span></span>
+
+<span class="line" id="L529">        <span class="tok-str">\\prereq = {bar.h}</span></span>
+
+<span class="line" id="L530">    ;</span>
+<span class="line" id="L531">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L532">        <span class="tok-str">\\foo.o: foo.h\</span></span>
+
+<span class="line" id="L533">        <span class="tok-str">\\bar.h</span></span>
+
+<span class="line" id="L534">    , expect);</span>
+<span class="line" id="L535">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L536">        <span class="tok-str">\\foo.o: foo.h\</span></span>
+
+<span class="line" id="L537">        <span class="tok-str">\\bar.h</span></span>
+
+<span class="line" id="L538">    , expect);</span>
+<span class="line" id="L539">}</span>
+<span class="line" id="L540"></span>
+<span class="line" id="L541"><span class="tok-kw">test</span> <span class="tok-str">&quot;multiple prereqs&quot;</span> {</span>
+<span class="line" id="L542">    <span class="tok-kw">const</span> expect =</span>
+<span class="line" id="L543">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L544">        <span class="tok-str">\\prereq = {foo.c}</span></span>
+
+<span class="line" id="L545">        <span class="tok-str">\\prereq = {foo.h}</span></span>
+
+<span class="line" id="L546">        <span class="tok-str">\\prereq = {bar.h}</span></span>
+
+<span class="line" id="L547">    ;</span>
+<span class="line" id="L548">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o: foo.c foo.h bar.h&quot;</span>, expect);</span>
+<span class="line" id="L549">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L550">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L551">        <span class="tok-str">\\foo.c foo.h bar.h</span></span>
+
+<span class="line" id="L552">    , expect);</span>
+<span class="line" id="L553">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L554">        <span class="tok-str">\\foo.o: foo.c foo.h bar.h\</span></span>
+
+<span class="line" id="L555">    , expect);</span>
+<span class="line" id="L556">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L557">        <span class="tok-str">\\foo.o: foo.c foo.h bar.h\</span></span>
+
+<span class="line" id="L558">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L559">    , expect);</span>
+<span class="line" id="L560">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L561">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L562">        <span class="tok-str">\\foo.c       \</span></span>
+
+<span class="line" id="L563">        <span class="tok-str">\\     foo.h\</span></span>
+
+<span class="line" id="L564">        <span class="tok-str">\\bar.h</span></span>
+
+<span class="line" id="L565">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L566">    , expect);</span>
+<span class="line" id="L567">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L568">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L569">        <span class="tok-str">\\foo.c       \</span></span>
+
+<span class="line" id="L570">        <span class="tok-str">\\     foo.h\</span></span>
+
+<span class="line" id="L571">        <span class="tok-str">\\bar.h\</span></span>
+
+<span class="line" id="L572">        <span class="tok-str">\\</span></span>
+
+<span class="line" id="L573">    , expect);</span>
+<span class="line" id="L574">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L575">        <span class="tok-str">\\foo.o: \</span></span>
+
+<span class="line" id="L576">        <span class="tok-str">\\foo.c       \</span></span>
+
+<span class="line" id="L577">        <span class="tok-str">\\     foo.h\</span></span>
+
+<span class="line" id="L578">        <span class="tok-str">\\bar.h\</span></span>
+
+<span class="line" id="L579">    , expect);</span>
+<span class="line" id="L580">}</span>
+<span class="line" id="L581"></span>
+<span class="line" id="L582"><span class="tok-kw">test</span> <span class="tok-str">&quot;multiple targets and prereqs&quot;</span> {</span>
+<span class="line" id="L583">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L584">        <span class="tok-str">\\foo.o: foo.c</span></span>
+
+<span class="line" id="L585">        <span class="tok-str">\\bar.o: bar.c a.h b.h c.h</span></span>
+
+<span class="line" id="L586">        <span class="tok-str">\\abc.o: abc.c \</span></span>
+
+<span class="line" id="L587">        <span class="tok-str">\\  one.h two.h \</span></span>
+
+<span class="line" id="L588">        <span class="tok-str">\\  three.h four.h</span></span>
+
+<span class="line" id="L589">    ,</span>
+<span class="line" id="L590">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L591">        <span class="tok-str">\\prereq = {foo.c}</span></span>
+
+<span class="line" id="L592">        <span class="tok-str">\\target = {bar.o}</span></span>
+
+<span class="line" id="L593">        <span class="tok-str">\\prereq = {bar.c}</span></span>
+
+<span class="line" id="L594">        <span class="tok-str">\\prereq = {a.h}</span></span>
+
+<span class="line" id="L595">        <span class="tok-str">\\prereq = {b.h}</span></span>
+
+<span class="line" id="L596">        <span class="tok-str">\\prereq = {c.h}</span></span>
+
+<span class="line" id="L597">        <span class="tok-str">\\target = {abc.o}</span></span>
+
+<span class="line" id="L598">        <span class="tok-str">\\prereq = {abc.c}</span></span>
+
+<span class="line" id="L599">        <span class="tok-str">\\prereq = {one.h}</span></span>
+
+<span class="line" id="L600">        <span class="tok-str">\\prereq = {two.h}</span></span>
+
+<span class="line" id="L601">        <span class="tok-str">\\prereq = {three.h}</span></span>
+
+<span class="line" id="L602">        <span class="tok-str">\\prereq = {four.h}</span></span>
+
+<span class="line" id="L603">    );</span>
+<span class="line" id="L604">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L605">        <span class="tok-str">\\ascii.o: ascii.c</span></span>
+
+<span class="line" id="L606">        <span class="tok-str">\\base64.o: base64.c stdio.h</span></span>
+
+<span class="line" id="L607">        <span class="tok-str">\\elf.o: elf.c a.h b.h c.h</span></span>
+
+<span class="line" id="L608">        <span class="tok-str">\\macho.o: \</span></span>
+
+<span class="line" id="L609">        <span class="tok-str">\\  macho.c\</span></span>
+
+<span class="line" id="L610">        <span class="tok-str">\\  a.h b.h c.h</span></span>
+
+<span class="line" id="L611">    ,</span>
+<span class="line" id="L612">        <span class="tok-str">\\target = {ascii.o}</span></span>
+
+<span class="line" id="L613">        <span class="tok-str">\\prereq = {ascii.c}</span></span>
+
+<span class="line" id="L614">        <span class="tok-str">\\target = {base64.o}</span></span>
+
+<span class="line" id="L615">        <span class="tok-str">\\prereq = {base64.c}</span></span>
+
+<span class="line" id="L616">        <span class="tok-str">\\prereq = {stdio.h}</span></span>
+
+<span class="line" id="L617">        <span class="tok-str">\\target = {elf.o}</span></span>
+
+<span class="line" id="L618">        <span class="tok-str">\\prereq = {elf.c}</span></span>
+
+<span class="line" id="L619">        <span class="tok-str">\\prereq = {a.h}</span></span>
+
+<span class="line" id="L620">        <span class="tok-str">\\prereq = {b.h}</span></span>
+
+<span class="line" id="L621">        <span class="tok-str">\\prereq = {c.h}</span></span>
+
+<span class="line" id="L622">        <span class="tok-str">\\target = {macho.o}</span></span>
+
+<span class="line" id="L623">        <span class="tok-str">\\prereq = {macho.c}</span></span>
+
+<span class="line" id="L624">        <span class="tok-str">\\prereq = {a.h}</span></span>
+
+<span class="line" id="L625">        <span class="tok-str">\\prereq = {b.h}</span></span>
+
+<span class="line" id="L626">        <span class="tok-str">\\prereq = {c.h}</span></span>
+
+<span class="line" id="L627">    );</span>
+<span class="line" id="L628">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L629">        <span class="tok-str">\\a$$scii.o: ascii.c</span></span>
+
+<span class="line" id="L630">        <span class="tok-str">\\\\base64.o: &quot;\base64.c&quot; &quot;s t#dio.h&quot;</span></span>
+
+<span class="line" id="L631">        <span class="tok-str">\\e\\lf.o: &quot;e\lf.c&quot; &quot;a.h$$&quot; &quot;$$b.h c.h$$&quot;</span></span>
+
+<span class="line" id="L632">        <span class="tok-str">\\macho.o: \</span></span>
+
+<span class="line" id="L633">        <span class="tok-str">\\  &quot;macho!.c&quot; \</span></span>
+
+<span class="line" id="L634">        <span class="tok-str">\\  a.h b.h c.h</span></span>
+
+<span class="line" id="L635">    ,</span>
+<span class="line" id="L636">        <span class="tok-str">\\target = {a$scii.o}</span></span>
+
+<span class="line" id="L637">        <span class="tok-str">\\prereq = {ascii.c}</span></span>
+
+<span class="line" id="L638">        <span class="tok-str">\\target = {\base64.o}</span></span>
+
+<span class="line" id="L639">        <span class="tok-str">\\prereq = {\base64.c}</span></span>
+
+<span class="line" id="L640">        <span class="tok-str">\\prereq = {s t#dio.h}</span></span>
+
+<span class="line" id="L641">        <span class="tok-str">\\target = {e\lf.o}</span></span>
+
+<span class="line" id="L642">        <span class="tok-str">\\prereq = {e\lf.c}</span></span>
+
+<span class="line" id="L643">        <span class="tok-str">\\prereq = {a.h$$}</span></span>
+
+<span class="line" id="L644">        <span class="tok-str">\\prereq = {$$b.h c.h$$}</span></span>
+
+<span class="line" id="L645">        <span class="tok-str">\\target = {macho.o}</span></span>
+
+<span class="line" id="L646">        <span class="tok-str">\\prereq = {macho!.c}</span></span>
+
+<span class="line" id="L647">        <span class="tok-str">\\prereq = {a.h}</span></span>
+
+<span class="line" id="L648">        <span class="tok-str">\\prereq = {b.h}</span></span>
+
+<span class="line" id="L649">        <span class="tok-str">\\prereq = {c.h}</span></span>
+
+<span class="line" id="L650">    );</span>
+<span class="line" id="L651">}</span>
+<span class="line" id="L652"></span>
+<span class="line" id="L653"><span class="tok-kw">test</span> <span class="tok-str">&quot;windows quoted prereqs&quot;</span> {</span>
+<span class="line" id="L654">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L655">        <span class="tok-str">\\c:\foo.o: &quot;C:\Program Files (x86)\Microsoft Visual Studio\foo.c&quot;</span></span>
+
+<span class="line" id="L656">        <span class="tok-str">\\c:\foo2.o: &quot;C:\Program Files (x86)\Microsoft Visual Studio\foo2.c&quot; \</span></span>
+
+<span class="line" id="L657">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Microsoft Visual Studio\foo1.h&quot; \</span></span>
+
+<span class="line" id="L658">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Microsoft Visual Studio\foo2.h&quot;</span></span>
+
+<span class="line" id="L659">    ,</span>
+<span class="line" id="L660">        <span class="tok-str">\\target = {c:\foo.o}</span></span>
+
+<span class="line" id="L661">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\foo.c}</span></span>
+
+<span class="line" id="L662">        <span class="tok-str">\\target = {c:\foo2.o}</span></span>
+
+<span class="line" id="L663">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\foo2.c}</span></span>
+
+<span class="line" id="L664">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\foo1.h}</span></span>
+
+<span class="line" id="L665">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\foo2.h}</span></span>
+
+<span class="line" id="L666">    );</span>
+<span class="line" id="L667">}</span>
+<span class="line" id="L668"></span>
+<span class="line" id="L669"><span class="tok-kw">test</span> <span class="tok-str">&quot;windows mixed prereqs&quot;</span> {</span>
+<span class="line" id="L670">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L671">        <span class="tok-str">\\cimport.o: \</span></span>
+
+<span class="line" id="L672">        <span class="tok-str">\\  C:\msys64\home\anon\project\zig\master\zig-cache\o\qhvhbUo7GU5iKyQ5mpA8TcQpncCYaQu0wwvr3ybiSTj_Dtqi1Nmcb70kfODJ2Qlg\cimport.h \</span></span>
+
+<span class="line" id="L673">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\stdio.h&quot; \</span></span>
+
+<span class="line" id="L674">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt.h&quot; \</span></span>
+
+<span class="line" id="L675">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\vcruntime.h&quot; \</span></span>
+
+<span class="line" id="L676">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\sal.h&quot; \</span></span>
+
+<span class="line" id="L677">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\concurrencysal.h&quot; \</span></span>
+
+<span class="line" id="L678">        <span class="tok-str">\\  C:\msys64\opt\zig\lib\zig\include\vadefs.h \</span></span>
+
+<span class="line" id="L679">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\vadefs.h&quot; \</span></span>
+
+<span class="line" id="L680">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_wstdio.h&quot; \</span></span>
+
+<span class="line" id="L681">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_stdio_config.h&quot; \</span></span>
+
+<span class="line" id="L682">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\string.h&quot; \</span></span>
+
+<span class="line" id="L683">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_memory.h&quot; \</span></span>
+
+<span class="line" id="L684">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_memcpy_s.h&quot; \</span></span>
+
+<span class="line" id="L685">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\errno.h&quot; \</span></span>
+
+<span class="line" id="L686">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\vcruntime_string.h&quot; \</span></span>
+
+<span class="line" id="L687">        <span class="tok-str">\\  &quot;C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_wstring.h&quot;</span></span>
+
+<span class="line" id="L688">    ,</span>
+<span class="line" id="L689">        <span class="tok-str">\\target = {cimport.o}</span></span>
+
+<span class="line" id="L690">        <span class="tok-str">\\prereq = {C:\msys64\home\anon\project\zig\master\zig-cache\o\qhvhbUo7GU5iKyQ5mpA8TcQpncCYaQu0wwvr3ybiSTj_Dtqi1Nmcb70kfODJ2Qlg\cimport.h}</span></span>
+
+<span class="line" id="L691">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\stdio.h}</span></span>
+
+<span class="line" id="L692">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt.h}</span></span>
+
+<span class="line" id="L693">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\vcruntime.h}</span></span>
+
+<span class="line" id="L694">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\sal.h}</span></span>
+
+<span class="line" id="L695">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\concurrencysal.h}</span></span>
+
+<span class="line" id="L696">        <span class="tok-str">\\prereq = {C:\msys64\opt\zig\lib\zig\include\vadefs.h}</span></span>
+
+<span class="line" id="L697">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\vadefs.h}</span></span>
+
+<span class="line" id="L698">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_wstdio.h}</span></span>
+
+<span class="line" id="L699">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_stdio_config.h}</span></span>
+
+<span class="line" id="L700">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\string.h}</span></span>
+
+<span class="line" id="L701">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_memory.h}</span></span>
+
+<span class="line" id="L702">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_memcpy_s.h}</span></span>
+
+<span class="line" id="L703">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\errno.h}</span></span>
+
+<span class="line" id="L704">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.21.27702\lib\x64\\..\..\include\vcruntime_string.h}</span></span>
+
+<span class="line" id="L705">        <span class="tok-str">\\prereq = {C:\Program Files (x86)\Windows Kits\10\\Include\10.0.17763.0\ucrt\corecrt_wstring.h}</span></span>
+
+<span class="line" id="L706">    );</span>
+<span class="line" id="L707">}</span>
+<span class="line" id="L708"></span>
+<span class="line" id="L709"><span class="tok-kw">test</span> <span class="tok-str">&quot;windows funky targets&quot;</span> {</span>
+<span class="line" id="L710">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L711">        <span class="tok-str">\\C:\Users\anon\foo.o:</span></span>
+
+<span class="line" id="L712">        <span class="tok-str">\\C:\Users\anon\foo\ .o:</span></span>
+
+<span class="line" id="L713">        <span class="tok-str">\\C:\Users\anon\foo\#.o:</span></span>
+
+<span class="line" id="L714">        <span class="tok-str">\\C:\Users\anon\foo$$.o:</span></span>
+
+<span class="line" id="L715">        <span class="tok-str">\\C:\Users\anon\\\ foo.o:</span></span>
+
+<span class="line" id="L716">        <span class="tok-str">\\C:\Users\anon\\#foo.o:</span></span>
+
+<span class="line" id="L717">        <span class="tok-str">\\C:\Users\anon\$$foo.o:</span></span>
+
+<span class="line" id="L718">        <span class="tok-str">\\C:\Users\anon\\\ \ \ \ \ foo.o:</span></span>
+
+<span class="line" id="L719">    ,</span>
+<span class="line" id="L720">        <span class="tok-str">\\target = {C:\Users\anon\foo.o}</span></span>
+
+<span class="line" id="L721">        <span class="tok-str">\\target = {C:\Users\anon\foo .o}</span></span>
+
+<span class="line" id="L722">        <span class="tok-str">\\target = {C:\Users\anon\foo#.o}</span></span>
+
+<span class="line" id="L723">        <span class="tok-str">\\target = {C:\Users\anon\foo$.o}</span></span>
+
+<span class="line" id="L724">        <span class="tok-str">\\target = {C:\Users\anon\ foo.o}</span></span>
+
+<span class="line" id="L725">        <span class="tok-str">\\target = {C:\Users\anon\#foo.o}</span></span>
+
+<span class="line" id="L726">        <span class="tok-str">\\target = {C:\Users\anon\$foo.o}</span></span>
+
+<span class="line" id="L727">        <span class="tok-str">\\target = {C:\Users\anon\     foo.o}</span></span>
+
+<span class="line" id="L728">    );</span>
+<span class="line" id="L729">}</span>
+<span class="line" id="L730"></span>
+<span class="line" id="L731"><span class="tok-kw">test</span> <span class="tok-str">&quot;windows drive and forward slashes&quot;</span> {</span>
+<span class="line" id="L732">    <span class="tok-kw">try</span> depTokenizer(</span>
+<span class="line" id="L733">        <span class="tok-str">\\C:/msys64/what/zig-cache\tmp\48ac4d78dd531abd-cxa_thread_atexit.obj: \</span></span>
+
+<span class="line" id="L734">        <span class="tok-str">\\  C:/msys64/opt/zig3/lib/zig/libc/mingw/crt/cxa_thread_atexit.c</span></span>
+
+<span class="line" id="L735">    ,</span>
+<span class="line" id="L736">        <span class="tok-str">\\target = {C:/msys64/what/zig-cache\tmp\48ac4d78dd531abd-cxa_thread_atexit.obj}</span></span>
+
+<span class="line" id="L737">        <span class="tok-str">\\prereq = {C:/msys64/opt/zig3/lib/zig/libc/mingw/crt/cxa_thread_atexit.c}</span></span>
+
+<span class="line" id="L738">    );</span>
+<span class="line" id="L739">}</span>
+<span class="line" id="L740"></span>
+<span class="line" id="L741"><span class="tok-kw">test</span> <span class="tok-str">&quot;error incomplete escape - reverse_solidus&quot;</span> {</span>
+<span class="line" id="L742">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\&quot;</span>,</span>
+<span class="line" id="L743">        <span class="tok-str">\\ERROR: illegal char '\' at position 0: incomplete escape</span></span>
+
+<span class="line" id="L744">    );</span>
+<span class="line" id="L745">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\t\\&quot;</span>,</span>
+<span class="line" id="L746">        <span class="tok-str">\\ERROR: illegal char '\' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L747">    );</span>
+<span class="line" id="L748">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\n\\&quot;</span>,</span>
+<span class="line" id="L749">        <span class="tok-str">\\ERROR: illegal char '\' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L750">    );</span>
+<span class="line" id="L751">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\\&quot;</span>,</span>
+<span class="line" id="L752">        <span class="tok-str">\\ERROR: illegal char '\' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L753">    );</span>
+<span class="line" id="L754">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\n\\&quot;</span>,</span>
+<span class="line" id="L755">        <span class="tok-str">\\ERROR: illegal char '\' at position 2: incomplete escape</span></span>
+
+<span class="line" id="L756">    );</span>
+<span class="line" id="L757">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot; \\&quot;</span>,</span>
+<span class="line" id="L758">        <span class="tok-str">\\ERROR: illegal char '\' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L759">    );</span>
+<span class="line" id="L760">}</span>
+<span class="line" id="L761"></span>
+<span class="line" id="L762"><span class="tok-kw">test</span> <span class="tok-str">&quot;error incomplete escape - dollar_sign&quot;</span> {</span>
+<span class="line" id="L763">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;$&quot;</span>,</span>
+<span class="line" id="L764">        <span class="tok-str">\\ERROR: illegal char '$' at position 0: incomplete escape</span></span>
+
+<span class="line" id="L765">    );</span>
+<span class="line" id="L766">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\t$&quot;</span>,</span>
+<span class="line" id="L767">        <span class="tok-str">\\ERROR: illegal char '$' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L768">    );</span>
+<span class="line" id="L769">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\n$&quot;</span>,</span>
+<span class="line" id="L770">        <span class="tok-str">\\ERROR: illegal char '$' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L771">    );</span>
+<span class="line" id="L772">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r$&quot;</span>,</span>
+<span class="line" id="L773">        <span class="tok-str">\\ERROR: illegal char '$' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L774">    );</span>
+<span class="line" id="L775">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\n$&quot;</span>,</span>
+<span class="line" id="L776">        <span class="tok-str">\\ERROR: illegal char '$' at position 2: incomplete escape</span></span>
+
+<span class="line" id="L777">    );</span>
+<span class="line" id="L778">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot; $&quot;</span>,</span>
+<span class="line" id="L779">        <span class="tok-str">\\ERROR: illegal char '$' at position 1: incomplete escape</span></span>
+
+<span class="line" id="L780">    );</span>
+<span class="line" id="L781">}</span>
+<span class="line" id="L782"></span>
+<span class="line" id="L783"><span class="tok-kw">test</span> <span class="tok-str">&quot;error incomplete target&quot;</span> {</span>
+<span class="line" id="L784">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o&quot;</span>,</span>
+<span class="line" id="L785">        <span class="tok-str">\\ERROR: incomplete target 'foo.o' at position 0</span></span>
+
+<span class="line" id="L786">    );</span>
+<span class="line" id="L787">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\tfoo.o&quot;</span>,</span>
+<span class="line" id="L788">        <span class="tok-str">\\ERROR: incomplete target 'foo.o' at position 1</span></span>
+
+<span class="line" id="L789">    );</span>
+<span class="line" id="L790">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\nfoo.o&quot;</span>,</span>
+<span class="line" id="L791">        <span class="tok-str">\\ERROR: incomplete target 'foo.o' at position 1</span></span>
+
+<span class="line" id="L792">    );</span>
+<span class="line" id="L793">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\rfoo.o&quot;</span>,</span>
+<span class="line" id="L794">        <span class="tok-str">\\ERROR: incomplete target 'foo.o' at position 1</span></span>
+
+<span class="line" id="L795">    );</span>
+<span class="line" id="L796">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\r\nfoo.o&quot;</span>,</span>
+<span class="line" id="L797">        <span class="tok-str">\\ERROR: incomplete target 'foo.o' at position 2</span></span>
+
+<span class="line" id="L798">    );</span>
+<span class="line" id="L799">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot; foo.o&quot;</span>,</span>
+<span class="line" id="L800">        <span class="tok-str">\\ERROR: incomplete target 'foo.o' at position 1</span></span>
+
+<span class="line" id="L801">    );</span>
+<span class="line" id="L802"></span>
+<span class="line" id="L803">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\ foo.o&quot;</span>,</span>
+<span class="line" id="L804">        <span class="tok-str">\\ERROR: incomplete target ' foo.o' at position 0</span></span>
+
+<span class="line" id="L805">    );</span>
+<span class="line" id="L806">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\#foo.o&quot;</span>,</span>
+<span class="line" id="L807">        <span class="tok-str">\\ERROR: incomplete target '#foo.o' at position 0</span></span>
+
+<span class="line" id="L808">    );</span>
+<span class="line" id="L809">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\\\foo.o&quot;</span>,</span>
+<span class="line" id="L810">        <span class="tok-str">\\ERROR: incomplete target '\foo.o' at position 0</span></span>
+
+<span class="line" id="L811">    );</span>
+<span class="line" id="L812">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;$$foo.o&quot;</span>,</span>
+<span class="line" id="L813">        <span class="tok-str">\\ERROR: incomplete target '$foo.o' at position 0</span></span>
+
+<span class="line" id="L814">    );</span>
+<span class="line" id="L815">}</span>
+<span class="line" id="L816"></span>
+<span class="line" id="L817"><span class="tok-kw">test</span> <span class="tok-str">&quot;error illegal char at position - bad target escape&quot;</span> {</span>
+<span class="line" id="L818">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\\t&quot;</span>,</span>
+<span class="line" id="L819">        <span class="tok-str">\\ERROR: illegal char \x09 at position 1: bad target escape</span></span>
+
+<span class="line" id="L820">    );</span>
+<span class="line" id="L821">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\\n&quot;</span>,</span>
+<span class="line" id="L822">        <span class="tok-str">\\ERROR: illegal char \x0A at position 1: bad target escape</span></span>
+
+<span class="line" id="L823">    );</span>
+<span class="line" id="L824">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\\r&quot;</span>,</span>
+<span class="line" id="L825">        <span class="tok-str">\\ERROR: illegal char \x0D at position 1: bad target escape</span></span>
+
+<span class="line" id="L826">    );</span>
+<span class="line" id="L827">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;\\\r\n&quot;</span>,</span>
+<span class="line" id="L828">        <span class="tok-str">\\ERROR: illegal char \x0D at position 1: bad target escape</span></span>
+
+<span class="line" id="L829">    );</span>
+<span class="line" id="L830">}</span>
+<span class="line" id="L831"></span>
+<span class="line" id="L832"><span class="tok-kw">test</span> <span class="tok-str">&quot;error illegal char at position - expecting dollar_sign&quot;</span> {</span>
+<span class="line" id="L833">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;$\t&quot;</span>,</span>
+<span class="line" id="L834">        <span class="tok-str">\\ERROR: illegal char \x09 at position 1: expecting '$'</span></span>
+
+<span class="line" id="L835">    );</span>
+<span class="line" id="L836">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;$\n&quot;</span>,</span>
+<span class="line" id="L837">        <span class="tok-str">\\ERROR: illegal char \x0A at position 1: expecting '$'</span></span>
+
+<span class="line" id="L838">    );</span>
+<span class="line" id="L839">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;$\r&quot;</span>,</span>
+<span class="line" id="L840">        <span class="tok-str">\\ERROR: illegal char \x0D at position 1: expecting '$'</span></span>
+
+<span class="line" id="L841">    );</span>
+<span class="line" id="L842">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;$\r\n&quot;</span>,</span>
+<span class="line" id="L843">        <span class="tok-str">\\ERROR: illegal char \x0D at position 1: expecting '$'</span></span>
+
+<span class="line" id="L844">    );</span>
+<span class="line" id="L845">}</span>
+<span class="line" id="L846"></span>
+<span class="line" id="L847"><span class="tok-kw">test</span> <span class="tok-str">&quot;error illegal char at position - invalid target&quot;</span> {</span>
+<span class="line" id="L848">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo\t.o&quot;</span>,</span>
+<span class="line" id="L849">        <span class="tok-str">\\ERROR: illegal char \x09 at position 3: invalid target</span></span>
+
+<span class="line" id="L850">    );</span>
+<span class="line" id="L851">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo\n.o&quot;</span>,</span>
+<span class="line" id="L852">        <span class="tok-str">\\ERROR: illegal char \x0A at position 3: invalid target</span></span>
+
+<span class="line" id="L853">    );</span>
+<span class="line" id="L854">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo\r.o&quot;</span>,</span>
+<span class="line" id="L855">        <span class="tok-str">\\ERROR: illegal char \x0D at position 3: invalid target</span></span>
+
+<span class="line" id="L856">    );</span>
+<span class="line" id="L857">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo\r\n.o&quot;</span>,</span>
+<span class="line" id="L858">        <span class="tok-str">\\ERROR: illegal char \x0D at position 3: invalid target</span></span>
+
+<span class="line" id="L859">    );</span>
+<span class="line" id="L860">}</span>
+<span class="line" id="L861"></span>
+<span class="line" id="L862"><span class="tok-kw">test</span> <span class="tok-str">&quot;error target - continuation expecting end-of-line&quot;</span> {</span>
+<span class="line" id="L863">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o: \\\t&quot;</span>,</span>
+<span class="line" id="L864">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L865">        <span class="tok-str">\\ERROR: illegal char \x09 at position 8: continuation expecting end-of-line</span></span>
+
+<span class="line" id="L866">    );</span>
+<span class="line" id="L867">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o: \\ &quot;</span>,</span>
+<span class="line" id="L868">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L869">        <span class="tok-str">\\ERROR: illegal char ' ' at position 8: continuation expecting end-of-line</span></span>
+
+<span class="line" id="L870">    );</span>
+<span class="line" id="L871">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o: \\x&quot;</span>,</span>
+<span class="line" id="L872">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L873">        <span class="tok-str">\\ERROR: illegal char 'x' at position 8: continuation expecting end-of-line</span></span>
+
+<span class="line" id="L874">    );</span>
+<span class="line" id="L875">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o: \\\x0dx&quot;</span>,</span>
+<span class="line" id="L876">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L877">        <span class="tok-str">\\ERROR: illegal char 'x' at position 9: continuation expecting end-of-line</span></span>
+
+<span class="line" id="L878">    );</span>
+<span class="line" id="L879">}</span>
+<span class="line" id="L880"></span>
+<span class="line" id="L881"><span class="tok-kw">test</span> <span class="tok-str">&quot;error prereq - continuation expecting end-of-line&quot;</span> {</span>
+<span class="line" id="L882">    <span class="tok-kw">try</span> depTokenizer(<span class="tok-str">&quot;foo.o: foo.h\\\x0dx&quot;</span>,</span>
+<span class="line" id="L883">        <span class="tok-str">\\target = {foo.o}</span></span>
+
+<span class="line" id="L884">        <span class="tok-str">\\ERROR: illegal char 'x' at position 14: continuation expecting end-of-line</span></span>
+
+<span class="line" id="L885">    );</span>
+<span class="line" id="L886">}</span>
+<span class="line" id="L887"></span>
+<span class="line" id="L888"><span class="tok-comment">// - tokenize input, emit textual representation, and compare to expect</span>
+</span>
+<span class="line" id="L889"><span class="tok-kw">fn</span> <span class="tok-fn">depTokenizer</span>(input: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, expect: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L890">    <span class="tok-kw">var</span> arena_allocator = std.heap.ArenaAllocator.init(std.testing.allocator);</span>
+<span class="line" id="L891">    <span class="tok-kw">const</span> arena = arena_allocator.allocator();</span>
+<span class="line" id="L892">    <span class="tok-kw">defer</span> arena_allocator.deinit();</span>
+<span class="line" id="L893"></span>
+<span class="line" id="L894">    <span class="tok-kw">var</span> it: Tokenizer = .{ .bytes = input };</span>
+<span class="line" id="L895">    <span class="tok-kw">var</span> buffer = std.ArrayList(<span class="tok-type">u8</span>).init(arena);</span>
+<span class="line" id="L896">    <span class="tok-kw">var</span> resolve_buf = std.ArrayList(<span class="tok-type">u8</span>).init(arena);</span>
+<span class="line" id="L897">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L898">    <span class="tok-kw">while</span> (it.next()) |token| {</span>
+<span class="line" id="L899">        <span class="tok-kw">if</span> (i != <span class="tok-number">0</span>) <span class="tok-kw">try</span> buffer.appendSlice(<span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L900">        <span class="tok-kw">switch</span> (token) {</span>
+<span class="line" id="L901">            .target, .prereq =&gt; |bytes| {</span>
+<span class="line" id="L902">                <span class="tok-kw">try</span> buffer.appendSlice(<span class="tok-builtin">@tagName</span>(token));</span>
+<span class="line" id="L903">                <span class="tok-kw">try</span> buffer.appendSlice(<span class="tok-str">&quot; = {&quot;</span>);</span>
+<span class="line" id="L904">                <span class="tok-kw">for</span> (bytes) |b| {</span>
+<span class="line" id="L905">                    <span class="tok-kw">try</span> buffer.append(printable_char_tab[b]);</span>
+<span class="line" id="L906">                }</span>
+<span class="line" id="L907">                <span class="tok-kw">try</span> buffer.appendSlice(<span class="tok-str">&quot;}&quot;</span>);</span>
+<span class="line" id="L908">            },</span>
+<span class="line" id="L909">            .target_must_resolve =&gt; {</span>
+<span class="line" id="L910">                <span class="tok-kw">try</span> buffer.appendSlice(<span class="tok-str">&quot;target = {&quot;</span>);</span>
+<span class="line" id="L911">                <span class="tok-kw">try</span> token.resolve(resolve_buf.writer());</span>
+<span class="line" id="L912">                <span class="tok-kw">for</span> (resolve_buf.items) |b| {</span>
+<span class="line" id="L913">                    <span class="tok-kw">try</span> buffer.append(printable_char_tab[b]);</span>
+<span class="line" id="L914">                }</span>
+<span class="line" id="L915">                resolve_buf.items.len = <span class="tok-number">0</span>;</span>
+<span class="line" id="L916">                <span class="tok-kw">try</span> buffer.appendSlice(<span class="tok-str">&quot;}&quot;</span>);</span>
+<span class="line" id="L917">            },</span>
+<span class="line" id="L918">            <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L919">                <span class="tok-kw">try</span> buffer.appendSlice(<span class="tok-str">&quot;ERROR: &quot;</span>);</span>
+<span class="line" id="L920">                <span class="tok-kw">try</span> token.printError(buffer.writer());</span>
+<span class="line" id="L921">                <span class="tok-kw">break</span>;</span>
+<span class="line" id="L922">            },</span>
+<span class="line" id="L923">        }</span>
+<span class="line" id="L924">        i += <span class="tok-number">1</span>;</span>
+<span class="line" id="L925">    }</span>
+<span class="line" id="L926"></span>
+<span class="line" id="L927">    <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, expect, buffer.items)) {</span>
+<span class="line" id="L928">        <span class="tok-kw">try</span> testing.expect(<span class="tok-null">true</span>);</span>
+<span class="line" id="L929">        <span class="tok-kw">return</span>;</span>
+<span class="line" id="L930">    }</span>
+<span class="line" id="L931"></span>
+<span class="line" id="L932">    <span class="tok-kw">const</span> out = std.io.getStdErr().writer();</span>
+<span class="line" id="L933"></span>
+<span class="line" id="L934">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L935">    <span class="tok-kw">try</span> printSection(out, <span class="tok-str">&quot;&lt;&lt;&lt;&lt; input&quot;</span>, input);</span>
+<span class="line" id="L936">    <span class="tok-kw">try</span> printSection(out, <span class="tok-str">&quot;==== expect&quot;</span>, expect);</span>
+<span class="line" id="L937">    <span class="tok-kw">try</span> printSection(out, <span class="tok-str">&quot;&gt;&gt;&gt;&gt; got&quot;</span>, buffer.items);</span>
+<span class="line" id="L938">    <span class="tok-kw">try</span> printRuler(out);</span>
+<span class="line" id="L939"></span>
+<span class="line" id="L940">    <span class="tok-kw">try</span> testing.expect(<span class="tok-null">false</span>);</span>
+<span class="line" id="L941">}</span>
+<span class="line" id="L942"></span>
+<span class="line" id="L943"><span class="tok-kw">fn</span> <span class="tok-fn">printSection</span>(out: <span class="tok-kw">anytype</span>, label: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L944">    <span class="tok-kw">try</span> printLabel(out, label, bytes);</span>
+<span class="line" id="L945">    <span class="tok-kw">try</span> hexDump(out, bytes);</span>
+<span class="line" id="L946">    <span class="tok-kw">try</span> printRuler(out);</span>
+<span class="line" id="L947">    <span class="tok-kw">try</span> out.writeAll(bytes);</span>
+<span class="line" id="L948">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L949">}</span>
+<span class="line" id="L950"></span>
+<span class="line" id="L951"><span class="tok-kw">fn</span> <span class="tok-fn">printLabel</span>(out: <span class="tok-kw">anytype</span>, label: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L952">    <span class="tok-kw">var</span> buf: [<span class="tok-number">80</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L953">    <span class="tok-kw">var</span> text = <span class="tok-kw">try</span> std.fmt.bufPrint(buf[<span class="tok-number">0</span>..], <span class="tok-str">&quot;{s} {d} bytes &quot;</span>, .{ label, bytes.len });</span>
+<span class="line" id="L954">    <span class="tok-kw">try</span> out.writeAll(text);</span>
+<span class="line" id="L955">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = text.len;</span>
+<span class="line" id="L956">    <span class="tok-kw">const</span> end = <span class="tok-number">79</span>;</span>
+<span class="line" id="L957">    <span class="tok-kw">while</span> (i &lt; end) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L958">        <span class="tok-kw">try</span> out.writeAll(&amp;[_]<span class="tok-type">u8</span>{label[<span class="tok-number">0</span>]});</span>
+<span class="line" id="L959">    }</span>
+<span class="line" id="L960">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L961">}</span>
+<span class="line" id="L962"></span>
+<span class="line" id="L963"><span class="tok-kw">fn</span> <span class="tok-fn">printRuler</span>(out: <span class="tok-kw">anytype</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L964">    <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L965">    <span class="tok-kw">const</span> end = <span class="tok-number">79</span>;</span>
+<span class="line" id="L966">    <span class="tok-kw">while</span> (i &lt; end) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L967">        <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;-&quot;</span>);</span>
+<span class="line" id="L968">    }</span>
+<span class="line" id="L969">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L970">}</span>
+<span class="line" id="L971"></span>
+<span class="line" id="L972"><span class="tok-kw">fn</span> <span class="tok-fn">hexDump</span>(out: <span class="tok-kw">anytype</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L973">    <span class="tok-kw">const</span> n16 = bytes.len &gt;&gt; <span class="tok-number">4</span>;</span>
+<span class="line" id="L974">    <span class="tok-kw">var</span> line: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L975">    <span class="tok-kw">var</span> offset: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L976">    <span class="tok-kw">while</span> (line &lt; n16) : (line += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L977">        <span class="tok-kw">try</span> hexDump16(out, offset, bytes[offset..][<span class="tok-number">0</span>..<span class="tok-number">16</span>]);</span>
+<span class="line" id="L978">        offset += <span class="tok-number">16</span>;</span>
+<span class="line" id="L979">    }</span>
+<span class="line" id="L980"></span>
+<span class="line" id="L981">    <span class="tok-kw">const</span> n = bytes.len &amp; <span class="tok-number">0x0f</span>;</span>
+<span class="line" id="L982">    <span class="tok-kw">if</span> (n &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L983">        <span class="tok-kw">try</span> printDecValue(out, offset, <span class="tok-number">8</span>);</span>
+<span class="line" id="L984">        <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;:&quot;</span>);</span>
+<span class="line" id="L985">        <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L986">        <span class="tok-kw">var</span> end1 = <span class="tok-builtin">@min</span>(offset + n, offset + <span class="tok-number">8</span>);</span>
+<span class="line" id="L987">        <span class="tok-kw">for</span> (bytes[offset..end1]) |b| {</span>
+<span class="line" id="L988">            <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L989">            <span class="tok-kw">try</span> printHexValue(out, b, <span class="tok-number">2</span>);</span>
+<span class="line" id="L990">        }</span>
+<span class="line" id="L991">        <span class="tok-kw">var</span> end2 = offset + n;</span>
+<span class="line" id="L992">        <span class="tok-kw">if</span> (end2 &gt; end1) {</span>
+<span class="line" id="L993">            <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L994">            <span class="tok-kw">for</span> (bytes[end1..end2]) |b| {</span>
+<span class="line" id="L995">                <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L996">                <span class="tok-kw">try</span> printHexValue(out, b, <span class="tok-number">2</span>);</span>
+<span class="line" id="L997">            }</span>
+<span class="line" id="L998">        }</span>
+<span class="line" id="L999">        <span class="tok-kw">const</span> short = <span class="tok-number">16</span> - n;</span>
+<span class="line" id="L1000">        <span class="tok-kw">var</span> i: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L1001">        <span class="tok-kw">while</span> (i &lt; short) : (i += <span class="tok-number">1</span>) {</span>
+<span class="line" id="L1002">            <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;   &quot;</span>);</span>
+<span class="line" id="L1003">        }</span>
+<span class="line" id="L1004">        <span class="tok-kw">if</span> (end2 &gt; end1) {</span>
+<span class="line" id="L1005">            <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;  |&quot;</span>);</span>
+<span class="line" id="L1006">        } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1007">            <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;   |&quot;</span>);</span>
+<span class="line" id="L1008">        }</span>
+<span class="line" id="L1009">        <span class="tok-kw">try</span> printCharValues(out, bytes[offset..end2]);</span>
+<span class="line" id="L1010">        <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;|\n&quot;</span>);</span>
+<span class="line" id="L1011">        offset += n;</span>
+<span class="line" id="L1012">    }</span>
+<span class="line" id="L1013"></span>
+<span class="line" id="L1014">    <span class="tok-kw">try</span> printDecValue(out, offset, <span class="tok-number">8</span>);</span>
+<span class="line" id="L1015">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;:&quot;</span>);</span>
+<span class="line" id="L1016">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;\n&quot;</span>);</span>
+<span class="line" id="L1017">}</span>
+<span class="line" id="L1018"></span>
+<span class="line" id="L1019"><span class="tok-kw">fn</span> <span class="tok-fn">hexDump16</span>(out: <span class="tok-kw">anytype</span>, offset: <span class="tok-type">usize</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1020">    <span class="tok-kw">try</span> printDecValue(out, offset, <span class="tok-number">8</span>);</span>
+<span class="line" id="L1021">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;:&quot;</span>);</span>
+<span class="line" id="L1022">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L1023">    <span class="tok-kw">for</span> (bytes[<span class="tok-number">0</span>..<span class="tok-number">8</span>]) |b| {</span>
+<span class="line" id="L1024">        <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L1025">        <span class="tok-kw">try</span> printHexValue(out, b, <span class="tok-number">2</span>);</span>
+<span class="line" id="L1026">    }</span>
+<span class="line" id="L1027">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L1028">    <span class="tok-kw">for</span> (bytes[<span class="tok-number">8</span>..<span class="tok-number">16</span>]) |b| {</span>
+<span class="line" id="L1029">        <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L1030">        <span class="tok-kw">try</span> printHexValue(out, b, <span class="tok-number">2</span>);</span>
+<span class="line" id="L1031">    }</span>
+<span class="line" id="L1032">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;  |&quot;</span>);</span>
+<span class="line" id="L1033">    <span class="tok-kw">try</span> printCharValues(out, bytes);</span>
+<span class="line" id="L1034">    <span class="tok-kw">try</span> out.writeAll(<span class="tok-str">&quot;|\n&quot;</span>);</span>
+<span class="line" id="L1035">}</span>
+<span class="line" id="L1036"></span>
+<span class="line" id="L1037"><span class="tok-kw">fn</span> <span class="tok-fn">printDecValue</span>(out: <span class="tok-kw">anytype</span>, value: <span class="tok-type">u64</span>, width: <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1038">    <span class="tok-kw">var</span> buffer: [<span class="tok-number">20</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1039">    <span class="tok-kw">const</span> len = std.fmt.formatIntBuf(buffer[<span class="tok-number">0</span>..], value, <span class="tok-number">10</span>, .lower, .{ .width = width, .fill = <span class="tok-str">'0'</span> });</span>
+<span class="line" id="L1040">    <span class="tok-kw">try</span> out.writeAll(buffer[<span class="tok-number">0</span>..len]);</span>
+<span class="line" id="L1041">}</span>
+<span class="line" id="L1042"></span>
+<span class="line" id="L1043"><span class="tok-kw">fn</span> <span class="tok-fn">printHexValue</span>(out: <span class="tok-kw">anytype</span>, value: <span class="tok-type">u64</span>, width: <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1044">    <span class="tok-kw">var</span> buffer: [<span class="tok-number">16</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L1045">    <span class="tok-kw">const</span> len = std.fmt.formatIntBuf(buffer[<span class="tok-number">0</span>..], value, <span class="tok-number">16</span>, .lower, .{ .width = width, .fill = <span class="tok-str">'0'</span> });</span>
+<span class="line" id="L1046">    <span class="tok-kw">try</span> out.writeAll(buffer[<span class="tok-number">0</span>..len]);</span>
+<span class="line" id="L1047">}</span>
+<span class="line" id="L1048"></span>
+<span class="line" id="L1049"><span class="tok-kw">fn</span> <span class="tok-fn">printCharValues</span>(out: <span class="tok-kw">anytype</span>, bytes: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1050">    <span class="tok-kw">for</span> (bytes) |b| {</span>
+<span class="line" id="L1051">        <span class="tok-kw">try</span> out.writeAll(&amp;[_]<span class="tok-type">u8</span>{printable_char_tab[b]});</span>
+<span class="line" id="L1052">    }</span>
+<span class="line" id="L1053">}</span>
+<span class="line" id="L1054"></span>
+<span class="line" id="L1055"><span class="tok-kw">fn</span> <span class="tok-fn">printUnderstandableChar</span>(out: <span class="tok-kw">anytype</span>, char: <span class="tok-type">u8</span>) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L1056">    <span class="tok-kw">if</span> (std.ascii.isPrint(char)) {</span>
+<span class="line" id="L1057">        <span class="tok-kw">try</span> out.print(<span class="tok-str">&quot;'{c}'&quot;</span>, .{char});</span>
+<span class="line" id="L1058">    } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L1059">        <span class="tok-kw">try</span> out.print(<span class="tok-str">&quot;\\x{X:0&gt;2}&quot;</span>, .{char});</span>
+<span class="line" id="L1060">    }</span>
+<span class="line" id="L1061">}</span>
+<span class="line" id="L1062"></span>
+<span class="line" id="L1063"><span class="tok-comment">// zig fmt: off</span>
+</span>
+<span class="line" id="L1064"><span class="tok-kw">const</span> printable_char_tab: [<span class="tok-number">256</span>]<span class="tok-type">u8</span> = (</span>
+<span class="line" id="L1065">    <span class="tok-str">&quot;................................ !\&quot;#$%&amp;'()*+,-./0123456789:;&lt;=&gt;?&quot;</span> ++</span>
+<span class="line" id="L1066">    <span class="tok-str">&quot;@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~.&quot;</span> ++</span>
+<span class="line" id="L1067">    <span class="tok-str">&quot;................................................................&quot;</span> ++</span>
+<span class="line" id="L1068">    <span class="tok-str">&quot;................................................................&quot;</span></span>
+<span class="line" id="L1069">).*;</span>
+<span class="line" id="L1070"></span>
+</code></pre></body>
+</html>
