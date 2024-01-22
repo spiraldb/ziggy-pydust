@@ -20,6 +20,7 @@ const pytypes = @import("pytypes.zig");
 const funcs = @import("functions.zig");
 const tramp = @import("trampoline.zig");
 const PyMemAllocator = @import("mem.zig").PyMemAllocator;
+const ffi_PyObject = @import("types/obj.zig").ffi_PyObject;
 
 pub const ModuleDef = struct {
     name: [:0]const u8,
@@ -53,10 +54,10 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
             const pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
             pyModuleDef.* = ffi.PyModuleDef{
                 .m_base = ffi.PyModuleDef_Base{
-                    .ob_base = ffi.PyObject{
+                    .ob_base = @bitCast(ffi_PyObject{
                         .ob_refcnt = 1,
                         .ob_type = null,
-                    },
+                    }),
                     .m_init = null,
                     .m_index = 0,
                     .m_copy = null,
