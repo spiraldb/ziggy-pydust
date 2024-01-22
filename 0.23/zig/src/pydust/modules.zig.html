@@ -177,143 +177,141 @@
 <span class="line" id="L53">        <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">init</span>() !py.PyObject {</span>
 <span class="line" id="L54">            <span class="tok-kw">const</span> pyModuleDef = <span class="tok-kw">try</span> py.allocator.create(ffi.PyModuleDef);</span>
 <span class="line" id="L55">            pyModuleDef.* = ffi.PyModuleDef{</span>
-<span class="line" id="L56">                .m_base = ffi.PyModuleDef_Base{</span>
-<span class="line" id="L57">                    .ob_base = <span class="tok-builtin">@bitCast</span>(CPyObject{</span>
-<span class="line" id="L58">                        .ob_refcnt = <span class="tok-number">1</span>,</span>
-<span class="line" id="L59">                        .ob_type = <span class="tok-null">null</span>,</span>
-<span class="line" id="L60">                    }),</span>
-<span class="line" id="L61">                    .m_init = <span class="tok-null">null</span>,</span>
-<span class="line" id="L62">                    .m_index = <span class="tok-number">0</span>,</span>
-<span class="line" id="L63">                    .m_copy = <span class="tok-null">null</span>,</span>
-<span class="line" id="L64">                },</span>
-<span class="line" id="L65">                .m_name = name.ptr,</span>
-<span class="line" id="L66">                .m_doc = <span class="tok-kw">if</span> (doc) |d| d.ptr <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
-<span class="line" id="L67">                .m_size = <span class="tok-builtin">@sizeOf</span>(definition),</span>
-<span class="line" id="L68">                .m_methods = <span class="tok-builtin">@constCast</span>(&amp;methods.pydefs),</span>
-<span class="line" id="L69">                .m_slots = <span class="tok-builtin">@constCast</span>(slots.slots.ptr),</span>
-<span class="line" id="L70">                .m_traverse = <span class="tok-null">null</span>,</span>
-<span class="line" id="L71">                .m_clear = <span class="tok-null">null</span>,</span>
-<span class="line" id="L72">                .m_free = <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__del__&quot;</span>)) &amp;Fns.free <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
-<span class="line" id="L73">            };</span>
-<span class="line" id="L74">            <span class="tok-kw">return</span> .{ .py = ffi.PyModuleDef_Init(pyModuleDef) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised };</span>
-<span class="line" id="L75">        }</span>
-<span class="line" id="L76">    };</span>
-<span class="line" id="L77">}</span>
-<span class="line" id="L78"></span>
-<span class="line" id="L79"><span class="tok-kw">fn</span> <span class="tok-fn">Slots</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L80">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L81">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
-<span class="line" id="L82"></span>
-<span class="line" id="L83">        <span class="tok-kw">const</span> empty = ffi.PyModuleDef_Slot{ .slot = <span class="tok-number">0</span>, .value = <span class="tok-null">null</span> };</span>
-<span class="line" id="L84">        <span class="tok-kw">const</span> attrs = Attributes(definition);</span>
-<span class="line" id="L85">        <span class="tok-kw">const</span> submodules = Submodules(definition);</span>
+<span class="line" id="L56">                .m_base = std.mem.zeroes(ffi.PyModuleDef_Base),</span>
+<span class="line" id="L57">                .m_name = name.ptr,</span>
+<span class="line" id="L58">                .m_doc = <span class="tok-kw">if</span> (doc) |d| d.ptr <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L59">                .m_size = <span class="tok-builtin">@sizeOf</span>(definition),</span>
+<span class="line" id="L60">                .m_methods = <span class="tok-builtin">@constCast</span>(&amp;methods.pydefs),</span>
+<span class="line" id="L61">                .m_slots = <span class="tok-builtin">@constCast</span>(slots.slots.ptr),</span>
+<span class="line" id="L62">                .m_traverse = <span class="tok-null">null</span>,</span>
+<span class="line" id="L63">                .m_clear = <span class="tok-null">null</span>,</span>
+<span class="line" id="L64">                .m_free = <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__del__&quot;</span>)) &amp;Fns.free <span class="tok-kw">else</span> <span class="tok-null">null</span>,</span>
+<span class="line" id="L65">            };</span>
+<span class="line" id="L66"></span>
+<span class="line" id="L67">            <span class="tok-comment">// Set reference count to 1 so that it is not freed.</span>
+</span>
+<span class="line" id="L68">            <span class="tok-kw">const</span> local_obj: *CPyObject = <span class="tok-builtin">@ptrCast</span>(&amp;pyModuleDef.m_base.ob_base);</span>
+<span class="line" id="L69">            local_obj.ob_refcnt = <span class="tok-number">1</span>;</span>
+<span class="line" id="L70"></span>
+<span class="line" id="L71">            <span class="tok-kw">return</span> .{ .py = ffi.PyModuleDef_Init(pyModuleDef) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised };</span>
+<span class="line" id="L72">        }</span>
+<span class="line" id="L73">    };</span>
+<span class="line" id="L74">}</span>
+<span class="line" id="L75"></span>
+<span class="line" id="L76"><span class="tok-kw">fn</span> <span class="tok-fn">Slots</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L77">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L78">        <span class="tok-kw">const</span> Self = <span class="tok-builtin">@This</span>();</span>
+<span class="line" id="L79"></span>
+<span class="line" id="L80">        <span class="tok-kw">const</span> empty = ffi.PyModuleDef_Slot{ .slot = <span class="tok-number">0</span>, .value = <span class="tok-null">null</span> };</span>
+<span class="line" id="L81">        <span class="tok-kw">const</span> attrs = Attributes(definition);</span>
+<span class="line" id="L82">        <span class="tok-kw">const</span> submodules = Submodules(definition);</span>
+<span class="line" id="L83"></span>
+<span class="line" id="L84">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> slots: [:empty]<span class="tok-kw">const</span> ffi.PyModuleDef_Slot = blk: {</span>
+<span class="line" id="L85">            <span class="tok-kw">var</span> slots_: [:empty]<span class="tok-kw">const</span> ffi.PyModuleDef_Slot = &amp;.{};</span>
 <span class="line" id="L86"></span>
-<span class="line" id="L87">        <span class="tok-kw">pub</span> <span class="tok-kw">const</span> slots: [:empty]<span class="tok-kw">const</span> ffi.PyModuleDef_Slot = blk: {</span>
-<span class="line" id="L88">            <span class="tok-kw">var</span> slots_: [:empty]<span class="tok-kw">const</span> ffi.PyModuleDef_Slot = &amp;.{};</span>
-<span class="line" id="L89"></span>
-<span class="line" id="L90">            slots_ = slots_ ++ .{ffi.PyModuleDef_Slot{</span>
-<span class="line" id="L91">                .slot = ffi.Py_mod_exec,</span>
-<span class="line" id="L92">                .value = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@constCast</span>(&amp;Self.mod_exec)),</span>
-<span class="line" id="L93">            }};</span>
-<span class="line" id="L94"></span>
-<span class="line" id="L95">            <span class="tok-comment">// Allow the user to add extra module initialization logic</span>
+<span class="line" id="L87">            slots_ = slots_ ++ .{ffi.PyModuleDef_Slot{</span>
+<span class="line" id="L88">                .slot = ffi.Py_mod_exec,</span>
+<span class="line" id="L89">                .value = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@constCast</span>(&amp;Self.mod_exec)),</span>
+<span class="line" id="L90">            }};</span>
+<span class="line" id="L91"></span>
+<span class="line" id="L92">            <span class="tok-comment">// Allow the user to add extra module initialization logic</span>
 </span>
-<span class="line" id="L96">            <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__exec__&quot;</span>)) {</span>
-<span class="line" id="L97">                slots_ = slots_ ++ .{ffi.PyModuleDef_Slot{</span>
-<span class="line" id="L98">                    .slot = ffi.Py_mod_exec,</span>
-<span class="line" id="L99">                    .value = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@constCast</span>(&amp;custom_mod_exec)),</span>
-<span class="line" id="L100">                }};</span>
-<span class="line" id="L101">            }</span>
-<span class="line" id="L102"></span>
-<span class="line" id="L103">            slots_ = slots_ ++ .{empty};</span>
+<span class="line" id="L93">            <span class="tok-kw">if</span> (<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__exec__&quot;</span>)) {</span>
+<span class="line" id="L94">                slots_ = slots_ ++ .{ffi.PyModuleDef_Slot{</span>
+<span class="line" id="L95">                    .slot = ffi.Py_mod_exec,</span>
+<span class="line" id="L96">                    .value = <span class="tok-builtin">@ptrCast</span>(<span class="tok-builtin">@constCast</span>(&amp;custom_mod_exec)),</span>
+<span class="line" id="L97">                }};</span>
+<span class="line" id="L98">            }</span>
+<span class="line" id="L99"></span>
+<span class="line" id="L100">            slots_ = slots_ ++ .{empty};</span>
+<span class="line" id="L101"></span>
+<span class="line" id="L102">            <span class="tok-kw">break</span> :blk slots_;</span>
+<span class="line" id="L103">        };</span>
 <span class="line" id="L104"></span>
-<span class="line" id="L105">            <span class="tok-kw">break</span> :blk slots_;</span>
-<span class="line" id="L106">        };</span>
-<span class="line" id="L107"></span>
-<span class="line" id="L108">        <span class="tok-kw">fn</span> <span class="tok-fn">custom_mod_exec</span>(pymodule: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) <span class="tok-type">c_int</span> {</span>
-<span class="line" id="L109">            <span class="tok-kw">const</span> mod: py.PyModule = .{ .obj = .{ .py = pymodule } };</span>
-<span class="line" id="L110">            tramp.coerceError(definition.__exec__(mod)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
-<span class="line" id="L111">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
-<span class="line" id="L112">        }</span>
-<span class="line" id="L113"></span>
-<span class="line" id="L114">        <span class="tok-kw">fn</span> <span class="tok-fn">mod_exec</span>(pymodule: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) <span class="tok-type">c_int</span> {</span>
-<span class="line" id="L115">            tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
-<span class="line" id="L116">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
-<span class="line" id="L117">        }</span>
-<span class="line" id="L118"></span>
-<span class="line" id="L119">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">mod_exec_internal</span>(module: py.PyModule) !<span class="tok-type">void</span> {</span>
-<span class="line" id="L120">            <span class="tok-comment">// First, initialize the module state using an __init__ function</span>
+<span class="line" id="L105">        <span class="tok-kw">fn</span> <span class="tok-fn">custom_mod_exec</span>(pymodule: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) <span class="tok-type">c_int</span> {</span>
+<span class="line" id="L106">            <span class="tok-kw">const</span> mod: py.PyModule = .{ .obj = .{ .py = pymodule } };</span>
+<span class="line" id="L107">            tramp.coerceError(definition.__exec__(mod)) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
+<span class="line" id="L108">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L109">        }</span>
+<span class="line" id="L110"></span>
+<span class="line" id="L111">        <span class="tok-kw">fn</span> <span class="tok-fn">mod_exec</span>(pymodule: *ffi.PyObject) <span class="tok-kw">callconv</span>(.C) <span class="tok-type">c_int</span> {</span>
+<span class="line" id="L112">            tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> -<span class="tok-number">1</span>;</span>
+<span class="line" id="L113">            <span class="tok-kw">return</span> <span class="tok-number">0</span>;</span>
+<span class="line" id="L114">        }</span>
+<span class="line" id="L115"></span>
+<span class="line" id="L116">        <span class="tok-kw">inline</span> <span class="tok-kw">fn</span> <span class="tok-fn">mod_exec_internal</span>(module: py.PyModule) !<span class="tok-type">void</span> {</span>
+<span class="line" id="L117">            <span class="tok-comment">// First, initialize the module state using an __init__ function</span>
 </span>
-<span class="line" id="L121">            <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.fields.len &gt; <span class="tok-number">0</span>) {</span>
-<span class="line" id="L122">                <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__init__&quot;</span>)) {</span>
-<span class="line" id="L123">                    <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Non-empty module must define `fn __init__(*Self) !void` method to initialize its state: &quot;</span> ++ <span class="tok-builtin">@typeName</span>(definition));</span>
-<span class="line" id="L124">                }</span>
-<span class="line" id="L125">                <span class="tok-kw">const</span> state = <span class="tok-kw">try</span> module.getState(definition);</span>
-<span class="line" id="L126">                <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(definition.__init__)).Fn.return_type.?) == .ErrorUnion) {</span>
-<span class="line" id="L127">                    <span class="tok-kw">try</span> state.__init__();</span>
-<span class="line" id="L128">                } <span class="tok-kw">else</span> {</span>
-<span class="line" id="L129">                    state.__init__();</span>
-<span class="line" id="L130">                }</span>
-<span class="line" id="L131">            }</span>
-<span class="line" id="L132"></span>
-<span class="line" id="L133">            <span class="tok-comment">// Add attributes (including class definitions) to the module</span>
+<span class="line" id="L118">            <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(definition).Struct.fields.len &gt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L119">                <span class="tok-kw">if</span> (!<span class="tok-builtin">@hasDecl</span>(definition, <span class="tok-str">&quot;__init__&quot;</span>)) {</span>
+<span class="line" id="L120">                    <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Non-empty module must define `fn __init__(*Self) !void` method to initialize its state: &quot;</span> ++ <span class="tok-builtin">@typeName</span>(definition));</span>
+<span class="line" id="L121">                }</span>
+<span class="line" id="L122">                <span class="tok-kw">const</span> state = <span class="tok-kw">try</span> module.getState(definition);</span>
+<span class="line" id="L123">                <span class="tok-kw">if</span> (<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@typeInfo</span>(<span class="tok-builtin">@TypeOf</span>(definition.__init__)).Fn.return_type.?) == .ErrorUnion) {</span>
+<span class="line" id="L124">                    <span class="tok-kw">try</span> state.__init__();</span>
+<span class="line" id="L125">                } <span class="tok-kw">else</span> {</span>
+<span class="line" id="L126">                    state.__init__();</span>
+<span class="line" id="L127">                }</span>
+<span class="line" id="L128">            }</span>
+<span class="line" id="L129"></span>
+<span class="line" id="L130">            <span class="tok-comment">// Add attributes (including class definitions) to the module</span>
 </span>
-<span class="line" id="L134">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (attrs.attributes) |attr| {</span>
-<span class="line" id="L135">                <span class="tok-kw">const</span> obj = <span class="tok-kw">try</span> attr.ctor(module);</span>
-<span class="line" id="L136">                <span class="tok-kw">try</span> module.addObjectRef(attr.name, obj);</span>
-<span class="line" id="L137">            }</span>
-<span class="line" id="L138"></span>
-<span class="line" id="L139">            <span class="tok-comment">// Add submodules to the module</span>
+<span class="line" id="L131">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (attrs.attributes) |attr| {</span>
+<span class="line" id="L132">                <span class="tok-kw">const</span> obj = <span class="tok-kw">try</span> attr.ctor(module);</span>
+<span class="line" id="L133">                <span class="tok-kw">try</span> module.addObjectRef(attr.name, obj);</span>
+<span class="line" id="L134">            }</span>
+<span class="line" id="L135"></span>
+<span class="line" id="L136">            <span class="tok-comment">// Add submodules to the module</span>
 </span>
-<span class="line" id="L140">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (submodules.submodules) |submodule| {</span>
-<span class="line" id="L141">                <span class="tok-comment">// We use PEP489 multi-phase initialization. For this, we create a ModuleSpec</span>
+<span class="line" id="L137">            <span class="tok-kw">inline</span> <span class="tok-kw">for</span> (submodules.submodules) |submodule| {</span>
+<span class="line" id="L138">                <span class="tok-comment">// We use PEP489 multi-phase initialization. For this, we create a ModuleSpec</span>
 </span>
-<span class="line" id="L142">                <span class="tok-comment">// which is a dumb object containing only a name.</span>
+<span class="line" id="L139">                <span class="tok-comment">// which is a dumb object containing only a name.</span>
 </span>
-<span class="line" id="L143">                <span class="tok-comment">// See https://github.com/python/cpython/blob/042f31da552c19054acd3ef7bb6cfd857bce172b/Python/import.c#L2527-L2539</span>
+<span class="line" id="L140">                <span class="tok-comment">// See https://github.com/python/cpython/blob/042f31da552c19054acd3ef7bb6cfd857bce172b/Python/import.c#L2527-L2539</span>
 </span>
-<span class="line" id="L144"></span>
-<span class="line" id="L145">                <span class="tok-kw">const</span> name = State.getIdentifier(submodule).name;</span>
-<span class="line" id="L146">                <span class="tok-kw">const</span> submodDef = Module(name, submodule);</span>
-<span class="line" id="L147">                <span class="tok-kw">const</span> pySubmodDef: *ffi.PyModuleDef = <span class="tok-builtin">@ptrCast</span>((<span class="tok-kw">try</span> submodDef.init()).py);</span>
-<span class="line" id="L148"></span>
-<span class="line" id="L149">                <span class="tok-comment">// Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace</span>
+<span class="line" id="L141"></span>
+<span class="line" id="L142">                <span class="tok-kw">const</span> name = State.getIdentifier(submodule).name;</span>
+<span class="line" id="L143">                <span class="tok-kw">const</span> submodDef = Module(name, submodule);</span>
+<span class="line" id="L144">                <span class="tok-kw">const</span> pySubmodDef: *ffi.PyModuleDef = <span class="tok-builtin">@ptrCast</span>((<span class="tok-kw">try</span> submodDef.init()).py);</span>
+<span class="line" id="L145"></span>
+<span class="line" id="L146">                <span class="tok-comment">// Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace</span>
 </span>
-<span class="line" id="L150">                <span class="tok-kw">const</span> types = <span class="tok-kw">try</span> py.import(<span class="tok-str">&quot;types&quot;</span>);</span>
-<span class="line" id="L151">                <span class="tok-kw">defer</span> types.decref();</span>
-<span class="line" id="L152">                <span class="tok-kw">const</span> pyname = <span class="tok-kw">try</span> py.PyString.create(name);</span>
-<span class="line" id="L153">                <span class="tok-kw">defer</span> pyname.decref();</span>
-<span class="line" id="L154">                <span class="tok-kw">const</span> spec = <span class="tok-kw">try</span> types.call(py.PyObject, <span class="tok-str">&quot;SimpleNamespace&quot;</span>, .{}, .{ .name = pyname });</span>
-<span class="line" id="L155">                <span class="tok-kw">defer</span> spec.decref();</span>
-<span class="line" id="L156"></span>
-<span class="line" id="L157">                <span class="tok-kw">const</span> submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised };</span>
-<span class="line" id="L158"></span>
-<span class="line" id="L159">                <span class="tok-kw">if</span> (ffi.PyModule_ExecDef(submod.py, pySubmodDef) &lt; <span class="tok-number">0</span>) {</span>
-<span class="line" id="L160">                    <span class="tok-kw">return</span> PyError.PyRaised;</span>
-<span class="line" id="L161">                }</span>
-<span class="line" id="L162"></span>
-<span class="line" id="L163">                <span class="tok-kw">try</span> module.addObjectRef(name, submod);</span>
-<span class="line" id="L164">            }</span>
-<span class="line" id="L165">        }</span>
-<span class="line" id="L166">    };</span>
-<span class="line" id="L167">}</span>
-<span class="line" id="L168"></span>
-<span class="line" id="L169"><span class="tok-kw">fn</span> <span class="tok-fn">Submodules</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
-<span class="line" id="L170">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(definition).Struct;</span>
-<span class="line" id="L171">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
-<span class="line" id="L172">        <span class="tok-kw">const</span> submodules: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = blk: {</span>
-<span class="line" id="L173">            <span class="tok-kw">var</span> mods: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = &amp;.{};</span>
-<span class="line" id="L174">            <span class="tok-kw">for</span> (typeInfo.decls) |decl| {</span>
-<span class="line" id="L175">                <span class="tok-kw">if</span> (State.findDefinition(<span class="tok-builtin">@field</span>(definition, decl.name))) |def| {</span>
-<span class="line" id="L176">                    <span class="tok-kw">if</span> (def.<span class="tok-type">type</span> == .module) {</span>
-<span class="line" id="L177">                        mods = mods ++ .{def.definition};</span>
-<span class="line" id="L178">                    }</span>
-<span class="line" id="L179">                }</span>
-<span class="line" id="L180">            }</span>
-<span class="line" id="L181">            <span class="tok-kw">break</span> :blk mods;</span>
-<span class="line" id="L182">        };</span>
-<span class="line" id="L183">    };</span>
-<span class="line" id="L184">}</span>
-<span class="line" id="L185"></span>
+<span class="line" id="L147">                <span class="tok-kw">const</span> types = <span class="tok-kw">try</span> py.import(<span class="tok-str">&quot;types&quot;</span>);</span>
+<span class="line" id="L148">                <span class="tok-kw">defer</span> types.decref();</span>
+<span class="line" id="L149">                <span class="tok-kw">const</span> pyname = <span class="tok-kw">try</span> py.PyString.create(name);</span>
+<span class="line" id="L150">                <span class="tok-kw">defer</span> pyname.decref();</span>
+<span class="line" id="L151">                <span class="tok-kw">const</span> spec = <span class="tok-kw">try</span> types.call(py.PyObject, <span class="tok-str">&quot;SimpleNamespace&quot;</span>, .{}, .{ .name = pyname });</span>
+<span class="line" id="L152">                <span class="tok-kw">defer</span> spec.decref();</span>
+<span class="line" id="L153"></span>
+<span class="line" id="L154">                <span class="tok-kw">const</span> submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> PyError.PyRaised };</span>
+<span class="line" id="L155"></span>
+<span class="line" id="L156">                <span class="tok-kw">if</span> (ffi.PyModule_ExecDef(submod.py, pySubmodDef) &lt; <span class="tok-number">0</span>) {</span>
+<span class="line" id="L157">                    <span class="tok-kw">return</span> PyError.PyRaised;</span>
+<span class="line" id="L158">                }</span>
+<span class="line" id="L159"></span>
+<span class="line" id="L160">                <span class="tok-kw">try</span> module.addObjectRef(name, submod);</span>
+<span class="line" id="L161">            }</span>
+<span class="line" id="L162">        }</span>
+<span class="line" id="L163">    };</span>
+<span class="line" id="L164">}</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166"><span class="tok-kw">fn</span> <span class="tok-fn">Submodules</span>(<span class="tok-kw">comptime</span> definition: <span class="tok-type">type</span>) <span class="tok-type">type</span> {</span>
+<span class="line" id="L167">    <span class="tok-kw">const</span> typeInfo = <span class="tok-builtin">@typeInfo</span>(definition).Struct;</span>
+<span class="line" id="L168">    <span class="tok-kw">return</span> <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L169">        <span class="tok-kw">const</span> submodules: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = blk: {</span>
+<span class="line" id="L170">            <span class="tok-kw">var</span> mods: []<span class="tok-kw">const</span> <span class="tok-type">type</span> = &amp;.{};</span>
+<span class="line" id="L171">            <span class="tok-kw">for</span> (typeInfo.decls) |decl| {</span>
+<span class="line" id="L172">                <span class="tok-kw">if</span> (State.findDefinition(<span class="tok-builtin">@field</span>(definition, decl.name))) |def| {</span>
+<span class="line" id="L173">                    <span class="tok-kw">if</span> (def.<span class="tok-type">type</span> == .module) {</span>
+<span class="line" id="L174">                        mods = mods ++ .{def.definition};</span>
+<span class="line" id="L175">                    }</span>
+<span class="line" id="L176">                }</span>
+<span class="line" id="L177">            }</span>
+<span class="line" id="L178">            <span class="tok-kw">break</span> :blk mods;</span>
+<span class="line" id="L179">        };</span>
+<span class="line" id="L180">    };</span>
+<span class="line" id="L181">}</span>
+<span class="line" id="L182"></span>
 </code></pre></body>
 </html>
