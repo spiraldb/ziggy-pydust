@@ -59,7 +59,7 @@ def test_variadic():
         functions.variadic()
     assert str(exc_info.value) == "Expected 1 arg"
 
-    assert functions.variadic.__text_signature__ == "(hello, *args, /, **kwargs)"
+    assert functions.variadic.__text_signature__ == "(hello, /, *args, **kwargs)"
     assert inspect.signature(functions.variadic) == inspect.Signature(
         [
             inspect.Parameter("hello", kind=inspect._ParameterKind.POSITIONAL_ONLY),

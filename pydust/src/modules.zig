@@ -53,15 +53,7 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
         pub fn init() !py.PyObject {
             const pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
             pyModuleDef.* = ffi.PyModuleDef{
-                .m_base = ffi.PyModuleDef_Base{
-                    .ob_base = @bitCast(CPyObject{
-                        .ob_refcnt = 1,
-                        .ob_type = null,
-                    }),
-                    .m_init = null,
-                    .m_index = 0,
-                    .m_copy = null,
-                },
+                .m_base = std.mem.zeroes(ffi.PyModuleDef_Base),
                 .m_name = name.ptr,
                 .m_doc = if (doc) |d| d.ptr else null,
                 .m_size = @sizeOf(definition),
@@ -71,6 +63,11 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
                 .m_clear = null,
                 .m_free = if (@hasDecl(definition, "__del__")) &Fns.free else null,
             };
+
+            // Set reference count to 1 so that it is not freed.
+            const local_obj: *CPyObject = @ptrCast(&pyModuleDef.m_base.ob_base);
+            local_obj.ob_refcnt = 1;
+
             return .{ .py = ffi.PyModuleDef_Init(pyModuleDef) orelse return PyError.PyRaised };
         }
     };
