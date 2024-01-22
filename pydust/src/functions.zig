@@ -490,6 +490,7 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
         const fields = @typeInfo(Args).Struct.fields;
 
         var inKwargs = false;
+        var inVarargs = false;
         for (fields) |field| {
             if (field.default_value) |def| {
                 // We have a kwarg
@@ -503,12 +504,19 @@ fn sigArgs(comptime sig: Signature) ![]const []const u8 {
 
                 try sigargs.append(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, def) }));
             } else if (field.type == py.Args) {
+                if (!inVarargs) {
+                    inVarargs = true;
+                    // Marker for end of positional only args
+                    try sigargs.append("/");
+                }
                 try sigargs.append(std.fmt.comptimePrint("*{s}", .{field.name}));
             } else if (field.type == py.Kwargs) {
                 if (!inKwargs) {
                     inKwargs = true;
-                    // Marker for end of positional only args
-                    try sigargs.append("/");
+                    if (!inVarargs) {
+                        // Marker for end of positional only args unless varargs (*args) is present
+                        try sigargs.append("/");
+                    }
                     // Note: we don't mark the start of keyword only args since that's implied by **.
                     // See https://bugs.python.org/issue2613
                 }
