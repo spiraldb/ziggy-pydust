@@ -18,7 +18,7 @@ const PyError = @import("../errors.zig").PyError;
 
 // From 3.12, ob_refcnt is anonymous union in CPython and is not accessible from Zig.
 // When initalizing or accessing PyObject fields, we go through this struct.
-pub const ffi_PyObject = extern struct {
+pub const CPyObject = extern struct {
     ob_refcnt: ffi.Py_ssize_t,
     ob_type: ?*ffi.PyTypeObject
 };
@@ -35,7 +35,7 @@ pub const PyObject = extern struct {
     }
 
     pub fn refcnt(self: PyObject) isize {
-        const local_py: *ffi_PyObject = @ptrCast(self.py);
+        const local_py: *CPyObject = @ptrCast(self.py);
         return local_py.ob_refcnt;
     }
 
