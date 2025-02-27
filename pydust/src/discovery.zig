@@ -32,149 +32,153 @@ const Identifier = struct {
     parent: type,
 };
 
-pub const State = blk: {
-    comptime var privateMethods: [1000]*anyopaque = undefined;
-    comptime var privateMethodsSize: usize = 0;
+const _State = struct {
+    const Self = @This();
 
-    comptime var definitions: [1000]Definition = undefined;
-    comptime var definitionsSize: usize = 0;
+    comptime privateMethods: [1000]*anyopaque = undefined,
+    comptime privateMethodsSize: usize = 0,
 
-    comptime var identifiers: [1000]Identifier = undefined;
-    comptime var identifiersSize: usize = 0;
+    comptime definitions: [1000]Definition = undefined,
+    comptime definitionsSize: usize = 0,
 
-    break :blk struct {
-        pub fn register(
-            comptime definition: type,
-            comptime deftype: DefinitionType,
-        ) void {
-            definitions[definitionsSize] = .{ .definition = definition, .type = deftype };
-            definitionsSize += 1;
-        }
+    comptime identifiers: [1000]Identifier = undefined,
+    comptime identifiersSize: usize = 0,
 
-        pub fn privateMethod(comptime fnPtr: anytype) void {
-            const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
-            privateMethods[privateMethodsSize] = castPtr;
-            privateMethodsSize += 1;
-        }
+    pub fn register(
+        self: *Self,
+        comptime definition: type,
+        comptime deftype: DefinitionType,
+    ) void {
+        self.definitions[self.definitionsSize] = .{ .definition = definition, .type = deftype };
+        self.definitionsSize += 1;
+    }
 
-        pub fn identify(
-            comptime definition: type,
-            comptime name: [:0]const u8,
-            comptime parent: type,
-        ) void {
-            identifiers[identifiersSize] = .{
-                .name = name,
-                .qualifiedName = if (parent == definition) &.{name} else getIdentifier(parent).qualifiedName ++ .{name},
-                .definition = definition,
-                .parent = parent,
-            };
-            identifiersSize += 1;
-        }
+    pub fn privateMethod(self: *Self, comptime fnPtr: anytype) void {
+        const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
+        self.privateMethods[self.privateMethodsSize] = castPtr;
+        self.privateMethodsSize += 1;
+    }
 
-        pub fn isEmpty() bool {
-            return definitionsSize == 0;
-        }
+    pub fn identify(
+        self: *Self,
+        comptime definition: type,
+        comptime name: [:0]const u8,
+        comptime parent: type,
+    ) void {
+        self.identifiers[self.identifiersSize] = .{
+            .name = name,
+            .qualifiedName = if (parent == definition) &.{name} else getIdentifier(parent).qualifiedName ++ .{name},
+            .definition = definition,
+            .parent = parent,
+        };
+        self.identifiersSize += 1;
+    }
 
-        pub fn getDefinitions() []Definition {
-            return definitions[0..definitionsSize];
-        }
+    pub fn isEmpty(self: Self) bool {
+        return self.definitionsSize == 0;
+    }
 
-        pub fn countDeclsWithType(comptime definition: type, deftype: DefinitionType) usize {
-            var cnt = 0;
-            for (@typeInfo(definition).Struct.decls) |decl| {
-                const declType = @TypeOf(@field(definition, decl.name));
-                if (State.hasType(declType, deftype)) {
-                    cnt += 1;
-                }
+    pub fn getDefinitions(self: Self) []Definition {
+        return self.definitions[0..self.definitionsSize];
+    }
+
+    pub fn countDeclsWithType(self: Self, comptime definition: type, deftype: DefinitionType) usize {
+        var cnt = 0;
+        for (@typeInfo(definition).Struct.decls) |decl| {
+            const declType = @TypeOf(@field(definition, decl.name));
+            if (self.hasType(declType, deftype)) {
+                cnt += 1;
             }
-            return cnt;
         }
+        return cnt;
+    }
 
-        pub fn countFieldsWithType(comptime definition: type, deftype: DefinitionType) usize {
-            var cnt = 0;
-            for (@typeInfo(definition).Struct.fields) |field| {
-                if (State.hasType(field.type, deftype)) {
-                    cnt += 1;
-                }
+    pub fn countFieldsWithType(comptime self: Self, comptime definition: type, deftype: DefinitionType) usize {
+        var cnt = 0;
+        for (@typeInfo(definition).Struct.fields) |field| {
+            if (self.hasType(field.type, deftype)) {
+                cnt += 1;
             }
-            return cnt;
         }
+        return cnt;
+    }
 
-        pub fn hasType(comptime definition: type, deftype: DefinitionType) bool {
-            if (findDefinition(definition)) |def| {
-                return def.type == deftype;
-            }
-            return false;
+    pub fn hasType(self: Self, comptime definition: type, deftype: DefinitionType) bool {
+        if (self.findDefinition(definition)) |def| {
+            return def.type == deftype;
         }
+        return false;
+    }
 
-        pub fn isPrivate(fnPtr: anytype) bool {
-            const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
-            for (privateMethods[0..privateMethodsSize]) |methPtr| {
-                if (castPtr == methPtr) {
-                    return true;
-                }
+    pub fn isPrivate(self: Self, fnPtr: anytype) bool {
+        const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
+        for (self.privateMethods[0..self.privateMethodsSize]) |methPtr| {
+            if (castPtr == methPtr) {
+                return true;
             }
-            return false;
         }
+        return false;
+    }
 
-        pub fn getDefinition(comptime definition: type) Definition {
-            return findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
-        }
+    pub fn getDefinition(self: Self, comptime definition: type) Definition {
+        return self.findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
+    }
 
-        pub inline fn findDefinition(comptime definition: anytype) ?Definition {
-            if (@typeInfo(@TypeOf(definition)) != .Type) {
-                return null;
-            }
-            if (@typeInfo(definition) != .Struct) {
-                return null;
-            }
-            for (definitions[0..definitionsSize]) |def| {
-                if (def.definition == definition) {
-                    return def;
-                }
-            }
+    pub inline fn findDefinition(self: Self, comptime definition: anytype) ?Definition {
+        if (@typeInfo(@TypeOf(definition)) != .Type) {
             return null;
         }
-
-        pub fn getIdentifier(comptime definition: type) Identifier {
-            return findIdentifier(definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
-        }
-
-        pub inline fn findIdentifier(comptime definition: type) ?Identifier {
-            if (@typeInfo(definition) != .Struct) {
-                return null;
-            }
-            for (identifiers[0..identifiersSize]) |idef| {
-                if (idef.definition == definition) {
-                    return idef;
-                }
-            }
+        if (@typeInfo(definition) != .Struct) {
             return null;
         }
-
-        pub fn getContaining(comptime definition: type, comptime deftype: DefinitionType) type {
-            return findContaining(definition, deftype) orelse @compileError("Cannot find containing object");
-        }
-
-        /// Find the nearest containing definition with the given deftype.
-        pub fn findContaining(comptime definition: type, comptime deftype: DefinitionType) ?type {
-            const defs = definitions[0..definitionsSize];
-            var idx = defs.len;
-            var foundOriginal = false;
-            while (idx > 0) : (idx -= 1) {
-                const def = defs[idx - 1];
-
-                if (def.definition == definition) {
-                    // Only once we found the original definition, should we check for deftype.
-                    foundOriginal = true;
-                    continue;
-                }
-
-                if (foundOriginal and def.type == deftype) {
-                    return def.definition;
-                }
+        for (self.definitions[0..self.definitionsSize]) |def| {
+            if (def.definition == definition) {
+                return def;
             }
+        }
+        return null;
+    }
+
+    pub fn getIdentifier(comptime definition: type) Identifier {
+        return findIdentifier(definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
+    }
+
+    pub inline fn findIdentifier(self: Self, comptime definition: type) ?Identifier {
+        if (@typeInfo(definition) != .Struct) {
             return null;
         }
-    };
+        for (self.identifiers[0..self.identifiersSize]) |idef| {
+            if (idef.definition == definition) {
+                return idef;
+            }
+        }
+        return null;
+    }
+
+    pub fn getContaining(comptime definition: type, comptime deftype: DefinitionType) type {
+        return findContaining(definition, deftype) orelse @compileError("Cannot find containing object");
+    }
+
+    /// Find the nearest containing definition with the given deftype.
+    pub fn findContaining(self: Self, comptime definition: type, comptime deftype: DefinitionType) ?type {
+        const defs = self.definitions[0..self.definitionsSize];
+        var idx = defs.len;
+        var foundOriginal = false;
+        while (idx > 0) : (idx -= 1) {
+            const def = defs[idx - 1];
+
+            if (def.definition == definition) {
+                // Only once we found the original definition, should we check for deftype.
+                foundOriginal = true;
+                continue;
+            }
+
+            if (foundOriginal and def.type == deftype) {
+                return def.definition;
+            }
+        }
+        return null;
+    }
 };
+
+pub const State = _State{};
