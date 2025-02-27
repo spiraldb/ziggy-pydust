@@ -108,13 +108,13 @@ pub const PydustStep = struct {
         };
         // Eagerly run path discovery to work around ZLS support.
         self.python_include_dir = self.pythonOutput(
-            "import sysconfig; print(sysconfig.get_path('include'), end='')",
+            "import os, sysconfig; print(os.path.relpath(sysconfig.get_path('include')), end='')",
         ) catch @panic("Failed to setup Python");
         self.python_library_dir = self.pythonOutput(
-            "import sysconfig; print(sysconfig.get_config_var('LIBDIR'), end='')",
+            "import os, sysconfig; print(os.path.relpath(sysconfig.get_config_var('LIBDIR')), end='')",
         ) catch @panic("Failed to setup Python");
         self.pydust_source_file = self.pythonOutput(
-            "import pydust; import os; print(os.path.join(os.path.dirname(pydust.__file__), 'src/pydust.zig'), end='')",
+            "import pydust; import os; print(os.path.relpath(os.path.join(os.path.dirname(pydust.__file__), 'src/pydust.zig')), end='')",
         ) catch @panic("Failed to setup Python");
 
         // Option for emitting test binary based on the given root source. This can be helpful for debugging.
