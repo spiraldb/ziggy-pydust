@@ -73,7 +73,7 @@ def generate_build_zig(fileobj: TextIO, conf=None):
     with b.block("pub fn build(b: *std.Build) void"):
         b.write(
             """
-            const target = b.standardTargetOptions(.{});
+            const target = b.standardTargetOptionsQueryOnly(.{});
             const optimize = b.standardOptimizeOption(.{});
 
             const test_step = b.step("test", "Run library tests");
@@ -92,7 +92,7 @@ def generate_build_zig(fileobj: TextIO, conf=None):
                 f"""
                 _ = pydust.addPythonModule(.{{
                     .name = "{ext_module.name}",
-                    .root_source_file = .{{ .path = "{ext_module.root}" }},
+                    .root_source_file = b.path("{ext_module.root}"),
                     .limited_api = {str(ext_module.limited_api).lower()},
                     .target = target,
                     .optimize = optimize,

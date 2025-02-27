@@ -37,8 +37,8 @@ pub const PythonModuleOptions = struct {
 };
 
 pub const PythonModule = struct {
-    library_step: *std.build.CompileStep,
-    test_step: *std.build.CompileStep,
+    library_step: *std.Build.Step.Compile,
+    test_step: *std.Build.Step.Compile,
 };
 
 /// Configure a Pydust step in the build. From this, you can define Python modules.
@@ -130,18 +130,22 @@ pub const PydustStep = struct {
                 pyconf.addOption(bool, "limited_api", false);
                 pyconf.addOption([]const u8, "hexversion", hexversion);
 
-                const testdebug = b.addTest(.{ .root_source_file = .{ .path = root }, .target = .{}, .optimize = .Debug });
-                testdebug.addOptions("pyconf", pyconf);
-                testdebug.addAnonymousModule("pydust", .{
-                    .source_file = .{ .path = self.pydust_source_file },
-                    .dependencies = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
+                const testdebug = b.addTest(.{
+                    .root_source_file = b.path(root),
+                    .target = b.resolveTargetQuery(.{}),
+                    .optimize = .Debug,
                 });
-                testdebug.addIncludePath(.{ .path = self.python_include_dir });
+                testdebug.root_module.addOptions("pyconf", pyconf);
+                testdebug.root_module.addImport("pydust", b.createModule(.{
+                    .root_source_file = b.path(self.pydust_source_file),
+                    .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
+                }));
+                testdebug.addIncludePath(b.path(self.python_include_dir));
                 testdebug.linkLibC();
                 testdebug.linkSystemLibrary(libpython);
-                testdebug.addLibraryPath(.{ .path = self.python_library_dir });
+                testdebug.addLibraryPath(b.path(self.python_library_dir));
                 // Needed to support miniconda statically linking libpython on macos
-                testdebug.addRPath(.{ .path = self.python_library_dir });
+                testdebug.addRPath(b.path(self.python_library_dir));
 
                 const debugBin = b.addInstallBinFile(testdebug.getEmittedBin(), "debug.bin");
                 b.getInstallStep().dependOn(&debugBin.step);
@@ -167,16 +171,16 @@ pub const PydustStep = struct {
         const lib = b.addSharedLibrary(.{
             .name = short_name,
             .root_source_file = options.root_source_file,
-            .target = options.target,
+            .target = b.resolveTargetQuery(options.target),
             .optimize = options.optimize,
-            .main_pkg_path = options.main_pkg_path,
+            //.main_pkg_path = options.main_pkg_path,
         });
-        lib.addOptions("pyconf", pyconf);
-        lib.addAnonymousModule("pydust", .{
-            .source_file = .{ .path = self.pydust_source_file },
-            .dependencies = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
-        });
-        lib.addIncludePath(.{ .path = self.python_include_dir });
+        lib.root_module.addOptions("pyconf", pyconf);
+        lib.root_module.addImport("pydust", b.createModule(.{
+            .root_source_file = b.path(self.pydust_source_file),
+            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
+        }));
+        lib.addIncludePath(b.path(self.python_include_dir));
         lib.linkLibC();
         lib.linker_allow_shlib_undefined = true;
 
@@ -204,21 +208,21 @@ pub const PydustStep = struct {
         // Configure a test runner for the module
         const libtest = b.addTest(.{
             .root_source_file = options.root_source_file,
-            .main_pkg_path = options.main_pkg_path,
-            .target = options.target,
+            // .main_pkg_path = options.main_pkg_path,
+            .target = b.resolveTargetQuery(options.target),
             .optimize = options.optimize,
         });
-        libtest.addOptions("pyconf", pyconf);
-        libtest.addAnonymousModule("pydust", .{
-            .source_file = .{ .path = self.pydust_source_file },
-            .dependencies = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
-        });
-        libtest.addIncludePath(.{ .path = self.python_include_dir });
+        libtest.root_module.addOptions("pyconf", pyconf);
+        libtest.root_module.addImport("pydust", b.createModule(.{
+            .root_source_file = b.path(self.pydust_source_file),
+            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
+        }));
+        libtest.addIncludePath(b.path(self.python_include_dir));
         libtest.linkLibC();
         libtest.linkSystemLibrary(self.libpython);
-        libtest.addLibraryPath(.{ .path = self.python_library_dir });
+        libtest.addLibraryPath(b.path(self.python_library_dir));
         // Needed to support miniconda statically linking libpython on macos
-        libtest.addRPath(.{ .path = self.python_library_dir });
+        libtest.addRPath(b.path(self.python_library_dir));
 
         // Install the test binary
         const install_libtest = b.addInstallBinFile(
