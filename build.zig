@@ -35,11 +35,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    pydust_lib.addIncludePath(.{ .path = pythonInc });
-    pydust_lib.root_module.addImport(
-        "pyconf",
-        b.createModule(.{ .root_source_file = .{ .path = "./pyconf.dummy.zig" } }),
-    );
+    const pydust_lib_mod = b.createModule(.{ .root_source_file = .{ .path = "./pyconf.dummy.zig" } });
+    pydust_lib_mod.addIncludePath(.{ .path = pythonInc });
+    pydust_lib.root_module.addImport("pyconf", pydust_lib_mod);
 
     const pydust_docs = b.addInstallDirectory(.{
         .source_dir = pydust_lib.getEmittedDocs(),
@@ -56,14 +54,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     main_tests.linkLibC();
-    main_tests.addIncludePath(.{ .path = pythonInc });
     main_tests.addLibraryPath(.{ .path = pythonLib });
     main_tests.linkSystemLibrary(pythonLibName);
     main_tests.addRPath(.{ .path = pythonLib });
-    main_tests.root_module.addImport(
-        "pyconf",
-        b.createModule(.{ .root_source_file = .{ .path = "./pyconf.dummy.zig" } }),
-    );
+    const main_tests_mod = b.createModule(.{ .root_source_file = .{ .path = "./pyconf.dummy.zig" } });
+    main_tests_mod.addIncludePath(.{ .path = pythonInc });
+    main_tests.root_module.addImport("pyconf", main_tests_mod);
 
     const run_main_tests = b.addRunArtifact(main_tests);
     test_step.dependOn(&run_main_tests.step);
@@ -77,14 +73,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     example_lib.linkLibC();
-    example_lib.addIncludePath(.{ .path = pythonInc });
     example_lib.addLibraryPath(.{ .path = pythonLib });
     example_lib.linkSystemLibrary(pythonLibName);
     example_lib.addRPath(.{ .path = pythonLib });
-    example_lib.root_module.addImport(
-        "pydust",
-        b.createModule(.{ .root_source_file = .{ .path = "pydust/src/pydust.zig" } }),
-    );
+    const example_lib_mod = b.createModule(.{ .root_source_file = .{ .path = "pydust/src/pydust.zig" } });
+    example_lib_mod.addIncludePath(.{ .path = pythonInc });
+    example_lib.root_module.addImport("pydust", example_lib_mod);
     example_lib.root_module.addImport(
         "pyconf",
         b.createModule(.{ .root_source_file = .{ .path = "./pyconf.dummy.zig" } }),

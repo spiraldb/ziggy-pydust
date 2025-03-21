@@ -56,7 +56,7 @@ pub fn rootmodule(comptime definition: type) State {
     state.identify(definition, name, definition);
     eagerEval(&state, definition);
 
-    const moddef = Module(name, definition);
+    const moddef = Module(state, name, definition);
 
     // For root modules, we export a PyInit__name function per CPython API.
     const Closure = struct {

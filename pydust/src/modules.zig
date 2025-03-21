@@ -29,9 +29,9 @@ pub const ModuleDef = struct {
 };
 
 /// Discover a Pydust module.
-pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
+pub fn Module(comptime state: State, comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
-        const slots = Slots(definition);
+        const slots = Slots(state, definition);
         const methods = funcs.Methods(definition);
 
         const doc: ?[:0]const u8 = blk: {
@@ -44,13 +44,13 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
         const Fns = struct {
             pub fn free(module: ?*anyopaque) callconv(.C) void {
                 const mod: py.PyModule = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
-                const state = mod.getState(definition) catch return;
-                state.__del__();
+                const state_ = mod.getState(definition) catch return;
+                state_.__del__();
             }
         };
 
         /// A function to initialize the Python module from its definition.
-        pub fn init() !py.PyObject {
+        pub fn init() !py.PyObject(state) {
             const pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
             pyModuleDef.* = ffi.PyModuleDef{
                 .m_base = std.mem.zeroes(ffi.PyModuleDef_Base),
@@ -113,7 +113,7 @@ fn Slots(comptime state: State, comptime definition: type) type {
             return 0;
         }
 
-        inline fn mod_exec_internal(module: py.PyModule) !void {
+        inline fn mod_exec_internal(module: py.PyModule(state)) !void {
             // First, initialize the module state using an __init__ function
             if (@typeInfo(definition).Struct.fields.len > 0) {
                 if (!@hasDecl(definition, "__init__")) {

@@ -136,11 +136,12 @@ pub const PydustStep = struct {
                     .optimize = .Debug,
                 });
                 testdebug.root_module.addOptions("pyconf", pyconf);
-                testdebug.root_module.addImport("pydust", b.createModule(.{
+                const testdebug_module = b.createModule(.{
                     .root_source_file = b.path(self.pydust_source_file),
                     .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
-                }));
-                testdebug.addIncludePath(b.path(self.python_include_dir));
+                });
+                testdebug_module.addIncludePath(b.path(self.python_include_dir));
+                testdebug.root_module.addImport("pydust", testdebug_module);
                 testdebug.linkLibC();
                 testdebug.linkSystemLibrary(libpython);
                 testdebug.addLibraryPath(b.path(self.python_library_dir));
@@ -176,11 +177,12 @@ pub const PydustStep = struct {
             //.main_pkg_path = options.main_pkg_path,
         });
         lib.root_module.addOptions("pyconf", pyconf);
-        lib.root_module.addImport("pydust", b.createModule(.{
+        const lib_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
             .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
-        }));
-        lib.addIncludePath(b.path(self.python_include_dir));
+        });
+        lib_module.addIncludePath(b.path(self.python_include_dir));
+        lib.root_module.addImport("pydust", lib_module);
         lib.linkLibC();
         lib.linker_allow_shlib_undefined = true;
 
@@ -213,11 +215,12 @@ pub const PydustStep = struct {
             .optimize = options.optimize,
         });
         libtest.root_module.addOptions("pyconf", pyconf);
-        libtest.root_module.addImport("pydust", b.createModule(.{
+        const libtest_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
             .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
-        }));
-        libtest.addIncludePath(b.path(self.python_include_dir));
+        });
+        libtest_module.addIncludePath(b.path(self.python_include_dir));
+        libtest.root_module.addImport("pydust", libtest_module);
         libtest.linkLibC();
         libtest.linkSystemLibrary(self.libpython);
         libtest.addLibraryPath(b.path(self.python_library_dir));
