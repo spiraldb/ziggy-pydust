@@ -18,7 +18,7 @@ test "pydust pytest" {
     py.initialize();
     defer py.finalize();
 
-    const str = try py.PyString.create("hello");
+    const str = try py.PyString(state).create("hello");
     defer str.decref();
 
     try std.testing.expectEqualStrings("hello", try str.asSlice());
@@ -29,12 +29,10 @@ test "pydust-expected-failure" {
     py.initialize();
     defer py.finalize();
 
-    const str = try py.PyString.create("hello");
+    const str = try py.PyString(state).create("hello");
     defer str.decref();
 
     try std.testing.expectEqualStrings("world", try str.asSlice());
 }
 
-comptime {
-    py.rootmodule(@This());
-}
+const state = py.rootmodule(@This());

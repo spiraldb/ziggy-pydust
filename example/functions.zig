@@ -17,9 +17,7 @@ pub fn double(args: struct { x: i64 }) i64 {
     return args.x * 2;
 }
 
-comptime {
-    py.rootmodule(@This());
-}
+const state = py.rootmodule(@This());
 // --8<-- [end:function]
 
 // --8<-- [start:kwargs]
@@ -30,7 +28,7 @@ pub fn with_kwargs(args: struct { x: f64, y: f64 = 42.0 }) f64 {
 
 // --8<-- [start:varargs]
 pub fn variadic(args: struct { hello: py.PyString, args: py.Args, kwargs: py.Kwargs }) !py.PyString {
-    return py.PyString.createFmt(
+    return py.PyString(state).createFmt(
         "Hello {s} with {} varargs and {} kwargs",
         .{ try args.hello.asSlice(), args.args.len, args.kwargs.count() },
     );

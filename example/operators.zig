@@ -32,7 +32,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __iadd__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num += other.num;
         return self;
     }
@@ -42,7 +42,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __isub__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num -= other.num;
         return self;
     }
@@ -52,7 +52,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __imul__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num *= other.num;
         return self;
     }
@@ -62,7 +62,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __imod__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = try std.math.mod(u64, self.num, other.num);
         return self;
     }
@@ -76,29 +76,29 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __ipow__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = std.math.pow(u64, self.num, other.num);
         return self;
     }
 
     pub fn __lshift__(self: *const Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         return py.init(Self, .{ .num = self.num << @as(u6, @intCast(other.num)) });
     }
 
     pub fn __ilshift__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = self.num << @as(u6, @intCast(other.num));
         return self;
     }
 
     pub fn __rshift__(self: *const Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         return py.init(Self, .{ .num = self.num >> @as(u6, @intCast(other.num)) });
     }
 
     pub fn __irshift__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = self.num >> @as(u6, @intCast(other.num));
         return self;
     }
@@ -108,7 +108,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __iand__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = self.num & other.num;
         return self;
     }
@@ -118,7 +118,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __ixor__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = self.num ^ other.num;
         return self;
     }
@@ -128,7 +128,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __ior__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = self.num | other.num;
         return self;
     }
@@ -138,7 +138,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __itruediv__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = self.num / other.num;
         return self;
     }
@@ -148,7 +148,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __ifloordiv__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num = self.num / other.num;
         return self;
     }
@@ -158,7 +158,7 @@ pub const Ops = py.class(struct {
     }
 
     pub fn __imatmul__(self: *Self, other: *const Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         self.num *= other.num;
         return self;
     }
@@ -183,7 +183,7 @@ pub const UnaryOps = py.class(struct {
     }
 
     pub fn __pos__(self: *Self) !*Self {
-        py.incref(self);
+        py.incref(state, self);
         return self;
     }
 
@@ -324,6 +324,4 @@ pub const LessThan = py.class(struct {
 });
 // --8<-- [end:lessthan]
 
-comptime {
-    py.rootmodule(@This());
-}
+const state = py.rootmodule(@This());

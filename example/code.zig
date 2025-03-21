@@ -17,18 +17,16 @@ pub fn line_number() u32 {
     return py.PyFrame.get().?.lineNumber();
 }
 
-pub fn function_name() !py.PyString {
+pub fn function_name() !py.PyString(state) {
     return py.PyFrame.get().?.code().name();
 }
 
-pub fn file_name() !py.PyString {
-    return py.PyFrame.get().?.code().fileName();
+pub fn file_name() !py.PyString(state) {
+    return py.PyFrame(state).get().?.code().fileName();
 }
 
 pub fn first_line_number() !u32 {
-    return py.PyFrame.get().?.code().firstLineNumber();
+    return py.PyFrame(state).get().?.code().firstLineNumber();
 }
 
-comptime {
-    py.rootmodule(@This());
-}
+const state = py.rootmodule(@This());

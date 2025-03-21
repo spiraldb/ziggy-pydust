@@ -25,6 +25,4 @@ pub fn sleep_release(args: struct { millis: u64 }) void {
 }
 // --8<-- [end:gil]
 
-comptime {
-    py.rootmodule(@This());
-}
+const _ = py.rootmodule(@This());

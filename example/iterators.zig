@@ -49,6 +49,4 @@ pub const RangeIterator = py.class(struct {
     }
 });
 
-comptime {
-    py.rootmodule(@This());
-}
+const _ = py.rootmodule(@This());

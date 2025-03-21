@@ -13,12 +13,12 @@
 const std = @import("std");
 const py = @import("pydust");
 
-pub fn pyobject() !py.PyObject {
-    return (try py.PyString.create("hello")).obj;
+pub fn pyobject() !py.PyObject(state) {
+    return (try py.PyString(state).create("hello")).obj;
 }
 
-pub fn pystring() !py.PyString {
-    return py.PyString.create("hello world");
+pub fn pystring() !py.PyString(state) {
+    return py.PyString(state).create("hello world");
 }
 
 pub fn zigvoid() void {}
@@ -65,10 +65,10 @@ pub fn zigf64() f64 {
     return 2.71 * std.math.pow(f64, 10, 39);
 }
 
-const TupleResult = struct { py.PyObject, u64 };
+const TupleResult = struct { py.PyObject(state), u64 };
 
 pub fn zigtuple() !TupleResult {
-    return .{ py.object(try py.PyString.create("hello")), 128 };
+    return .{ py.object(try py.PyString(state).create("hello")), 128 };
 }
 
 const StructResult = struct { foo: u64, bar: bool };
@@ -77,6 +77,4 @@ pub fn zigstruct() StructResult {
     return .{ .foo = 1234, .bar = true };
 }
 
-comptime {
-    py.rootmodule(@This());
-}
+const state = py.rootmodule(@This());

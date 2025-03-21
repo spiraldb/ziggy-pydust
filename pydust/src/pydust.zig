@@ -42,7 +42,7 @@ pub fn finalize() void {
 }
 
 /// Register the root Pydust module
-pub fn rootmodule(comptime definition: type) void {
+pub fn rootmodule(comptime definition: type) State {
     comptime var state = State{};
 
     if (!state.isEmpty()) {
@@ -52,7 +52,7 @@ pub fn rootmodule(comptime definition: type) void {
     const pyconf = @import("pyconf");
     const name = pyconf.module_name;
 
-    state.register(definition, .module);
+    state.register(module(definition));
     state.identify(definition, name, definition);
     eagerEval(&state, definition);
 
@@ -67,7 +67,8 @@ pub fn rootmodule(comptime definition: type) void {
     };
 
     const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
-    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .Strong });
+    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .strong });
+    return state;
 }
 
 /// Register a Pydust module as a submodule to an existing module.
@@ -115,11 +116,10 @@ pub const CallArgs = struct { args: Args, kwargs: Kwargs };
 /// Using this enables us to breadth-first traverse the object graph, ensuring
 /// objects are registered before they're referenced elsewhere.
 fn eagerEval(comptime state: *State, comptime definition: type) void {
-    const info = @typeInfo(definition);
-    for (std.meta.fields(info)) |f| {
+    for (std.meta.fields(definition)) |f| {
         _ = f.type;
     }
-    for (std.meta.declarations(info)) |d| {
+    for (std.meta.declarations(definition)) |d| {
         const value = @field(definition, d.name);
         @setEvalBranchQuota(10000);
         switch (@TypeOf(value)) {

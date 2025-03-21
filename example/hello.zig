@@ -13,11 +13,9 @@
 // --8<-- [start:ex]
 const py = @import("pydust");
 
-pub fn hello() !py.PyString {
-    return try py.PyString.create("Hello!");
+pub fn hello() !py.PyString(state) {
+    return try py.PyString(state).create("Hello!");
 }
 
-comptime {
-    py.rootmodule(@This());
-}
+const state = py.rootmodule(@This());
 // --8<-- [end:ex]

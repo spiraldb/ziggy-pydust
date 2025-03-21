@@ -35,9 +35,9 @@ pub const ConstructableClass = py.class(struct {
 pub const Animal = py.class(struct {
     const Self = @This();
 
-    species: py.PyString,
+    species: py.PyString(state),
 
-    pub fn species(self: *Self) py.PyString {
+    pub fn species(self: *Self) py.PyString(state) {
         return self.species;
     }
 });
@@ -46,9 +46,9 @@ pub const Dog = py.class(struct {
     const Self = @This();
 
     animal: Animal,
-    breed: py.PyString,
+    breed: py.PyString(state),
 
-    pub fn __init__(self: *Self, args: struct { breed: py.PyString }) !void {
+    pub fn __init__(self: *Self, args: struct { breed: py.PyString(state) }) !void {
         args.breed.incref();
         self.* = .{
             .animal = .{ .species = try py.PyString.create("dog") },
@@ -56,7 +56,7 @@ pub const Dog = py.class(struct {
         };
     }
 
-    pub fn breed(self: *Self) py.PyString {
+    pub fn breed(self: *Self) py.PyString(state) {
         return self.breed;
     }
 });
@@ -67,23 +67,23 @@ pub const Dog = py.class(struct {
 pub const User = py.class(struct {
     const Self = @This();
 
-    pub fn __init__(self: *Self, args: struct { name: py.PyString }) void {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString(state) }) void {
         args.name.incref();
         self.* = .{ .name = args.name, .email = .{} };
     }
 
-    name: py.PyString,
+    name: py.PyString(state),
     email: py.property(struct {
         const Prop = @This();
 
-        e: ?py.PyString = null,
+        e: ?py.PyString(state) = null,
 
-        pub fn get(prop: *const Prop) ?py.PyString {
+        pub fn get(prop: *const Prop) ?py.PyString(state) {
             if (prop.e) |e| e.incref();
             return prop.e;
         }
 
-        pub fn set(prop: *Prop, value: py.PyString) !void {
+        pub fn set(prop: *Prop, value: py.PyString(state)) !void {
             const self: *Self = @fieldParentPtr("email", prop);
             if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
                 return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
@@ -94,7 +94,7 @@ pub const User = py.class(struct {
     }),
 
     greeting: py.property(struct {
-        pub fn get(self: *const Self) !py.PyString {
+        pub fn get(self: *const Self) !py.PyString(state) {
             return py.PyString.createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
     }) = .{},
@@ -186,7 +186,7 @@ pub const GetAttr = py.class(struct {
         _ = self;
     }
 
-    pub fn __getattr__(self: *const Self, attr: py.PyString) !py.PyObject {
+    pub fn __getattr__(self: *const Self, attr: py.PyString(state)) !py.PyObject(state) {
         const name = try attr.asSlice();
         if (std.mem.eql(u8, name, "number")) {
             return py.create(42);
@@ -195,6 +195,4 @@ pub const GetAttr = py.class(struct {
     }
 });
 
-comptime {
-    py.rootmodule(@This());
-}
+const state = py.rootmodule(@This());

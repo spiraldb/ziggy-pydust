@@ -25,10 +25,10 @@ const py = @import("pydust");
 const Self = @This(); // (1)!
 
 count: u32 = 0, // (2)!
-name: py.PyString,
+name: py.PyString(state),
 
 pub fn __init__(self: *Self) !void { // (3)!
-    self.* = .{ .name = try py.PyString.create("Ziggy") };
+    self.* = .{ .name = try py.PyString(state).create("Ziggy") };
 }
 
 pub fn __del__(self: Self) void {
@@ -43,28 +43,26 @@ pub fn count(self: *const Self) u32 {
     return self.count;
 }
 
-pub fn whoami(self: *const Self) py.PyString {
+pub fn whoami(self: *const Self) py.PyString(state) {
     py.incref(self.name);
     return self.name;
 }
 
 pub fn hello(
     self: *const Self,
-    args: struct { name: py.PyString }, // (5)!
-) !py.PyString {
-    return py.PyString.createFmt(
+    args: struct { name: py.PyString(state) }, // (5)!
+) !py.PyString(state) {
+    return py.PyString(state).createFmt(
         "Hello, {s}. It's {s}",
         .{ try args.name.asSlice(), try self.name.asSlice() },
     );
 }
 
 pub const submod = py.module(struct { // (6)!
-    pub fn world() !py.PyString {
-        return try py.PyString.create("Hello, World!");
+    pub fn world() !py.PyString(state) {
+        return try py.PyString(state).create("Hello, World!");
     }
 });
 
-comptime {
-    py.rootmodule(@This()); // (7)!
-}
+const state = py.rootmodule(@This()); // (7)!
 // --8<-- [end:ex]
