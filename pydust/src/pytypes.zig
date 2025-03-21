@@ -34,10 +34,10 @@ pub fn PyTypeStruct(comptime definition: type) type {
 }
 
 /// Discover a Pydust class definition.
-pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
+pub fn Type(comptime state: State, comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
         const qualifiedName: [:0]const u8 = blk: {
-            const moduleName = State.getIdentifier(State.getContaining(definition, .module)).name;
+            const moduleName = state.getIdentifier(state.getContaining(definition, .module)).name;
             break :blk moduleName ++ "." ++ name;
         };
 
@@ -86,13 +86,13 @@ pub fn Type(comptime name: [:0]const u8, comptime definition: type) type {
 
 /// Discover the base classes of the pytype definition.
 /// We look for any struct field that is itself a Pydust class.
-fn Bases(comptime definition: type) type {
+fn Bases(comptime state: State, comptime definition: type) type {
     const typeInfo = @typeInfo(definition).Struct;
     return struct {
         const bases: []const type = blk: {
             var bases_: []const type = &.{};
             for (typeInfo.fields) |field| {
-                if (State.findDefinition(field.type)) |def| {
+                if (state.findDefinition(field.type)) |def| {
                     if (def.type == .class) {
                         bases_ = bases_ ++ .{field.type};
                     }
@@ -103,17 +103,17 @@ fn Bases(comptime definition: type) type {
     };
 }
 
-fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
+fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]const u8) type {
     return struct {
         const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
-        const attrs = Attributes(definition);
+        const attrs = Attributes(state, definition);
         const methods = funcs.Methods(definition);
         const members = Members(definition);
         const properties = Properties(definition);
         const doc = Doc(definition, name);
         const richcmp = RichCompare(definition);
-        const gc = GC(definition);
+        const gc = GC(state, definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -137,7 +137,7 @@ fn Slots(comptime definition: type, comptime name: [:0]const u8) type {
             }
 
             if (@hasDecl(definition, "__new__")) {
-                @compileLog("The behaviour of __new__ is replaced by __init__(*Self). See ", State.getIdentifier(definition).qualifiedName);
+                @compileLog("The behaviour of __new__ is replaced by __init__(*Self). See ", state.getIdentifier(definition).qualifiedName);
             }
 
             if (@hasDecl(definition, "__init__")) {
@@ -474,7 +474,7 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
     };
 }
 
-fn GC(comptime definition: type) type {
+fn GC(comptime state: State, comptime definition: type) type {
     const VisitProc = *const fn (*ffi.PyObject, *anyopaque) callconv(.C) c_int;
 
     return struct {
@@ -493,7 +493,7 @@ fn GC(comptime definition: type) type {
             return switch (@typeInfo(FT)) {
                 .Pointer => |p| @typeInfo(p.child) == .Struct and (p.child == ffi.PyObject or typeNeedsGc(p.child)),
                 .Struct => blk: {
-                    if (State.findDefinition(FT)) |def| {
+                    if (state.findDefinition(FT)) |def| {
                         break :blk switch (def.type) {
                             .attribute => typeNeedsGc(@typeInfo(FT).Struct.fields[0].type),
                             .property => classNeedsGc(FT),
@@ -527,14 +527,14 @@ fn GC(comptime definition: type) type {
                     if (p.child == ffi.PyObject) {
                         pyClear(obj);
                     }
-                    if (State.findDefinition(fieldType)) |def| {
+                    if (state.findDefinition(fieldType)) |def| {
                         if (def.type == .class) {
                             pyClear(py.object(obj).py);
                         }
                     }
                 },
                 .Struct => {
-                    if (State.findDefinition(fieldType)) |def| {
+                    if (state.findDefinition(fieldType)) |def| {
                         switch (def.type) {
                             .attribute => clear(@field(obj, @typeInfo(fieldType).Struct.fields[0].name)),
                             .property => clearFields(obj),
@@ -599,7 +599,7 @@ fn GC(comptime definition: type) type {
                             return ret;
                         }
                     }
-                    if (State.findDefinition(fieldType)) |def| {
+                    if (state.findDefinition(fieldType)) |def| {
                         if (def.type == .class) {
                             if (pyVisit(py.object(obj).py, visit, arg)) |ret| {
                                 return ret;
@@ -607,7 +607,7 @@ fn GC(comptime definition: type) type {
                         }
                     }
                 },
-                .Struct => if (State.findDefinition(fieldType)) |def| {
+                .Struct => if (state.findDefinition(fieldType)) |def| {
                     switch (def.type) {
                         .attribute => if (traverse(@field(obj, @typeInfo(@TypeOf(obj)).Struct.fields[0].name), visit, arg)) |ret| {
                             return ret;
@@ -651,15 +651,15 @@ fn GC(comptime definition: type) type {
     };
 }
 
-fn Members(comptime definition: type) type {
+fn Members(comptime state: State, comptime definition: type) type {
     return struct {
-        const count = State.countFieldsWithType(definition, .attribute);
+        const count = state.countFieldsWithType(definition, .attribute);
 
         const memberdefs: [count + 1]ffi.PyMemberDef = blk: {
             var defs: [count + 1]ffi.PyMemberDef = undefined;
             var idx = 0;
             for (@typeInfo(definition).Struct.fields) |field| {
-                if (!State.hasType(field.type, .attribute)) {
+                if (!state.hasType(field.type, .attribute)) {
                     continue;
                 }
 
@@ -722,15 +722,15 @@ fn Members(comptime definition: type) type {
     };
 }
 
-fn Properties(comptime definition: type) type {
+fn Properties(comptime state: State, comptime definition: type) type {
     return struct {
-        const count = State.countFieldsWithType(definition, .property);
+        const count = state.countFieldsWithType(definition, .property);
 
         const getsetdefs: [count + 1]ffi.PyGetSetDef = blk: {
             var props: [count + 1]ffi.PyGetSetDef = undefined;
             var idx = 0;
             for (@typeInfo(definition).Struct.fields) |field| {
-                if (State.hasType(field.type, .property)) {
+                if (state.hasType(field.type, .property)) {
                     var prop: ffi.PyGetSetDef = .{
                         .name = field.name ++ "",
                         .get = null,

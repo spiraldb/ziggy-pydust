@@ -12,42 +12,47 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+const State = @import("../discovery.zig").State;
 
 const ffi = py.ffi;
 
 /// Wrapper for Python PyFrame.
 /// See: https://docs.python.org/3/c-api/frame.html
-pub const PyFrame = extern struct {
-    obj: py.PyObject,
+pub fn PyFrame(comptime state: State) type {
+    return extern struct {
+        obj: py.PyObject(state),
+        const Self = @This();
 
-    pub fn get() ?PyFrame {
-        const frame = ffi.PyEval_GetFrame();
-        return if (frame) |f| .{ .obj = .{ .py = objPtr(f) } } else null;
-    }
+        pub fn get() ?Self {
+            const frame = ffi.PyEval_GetFrame();
+            return if (frame) |f| .{ .obj = .{ .py = objPtr(f) } } else null;
+        }
 
-    pub fn code(self: PyFrame) py.PyCode {
-        const codeObj = ffi.PyFrame_GetCode(framePtr(self.obj.py));
-        return .{ .obj = .{ .py = @alignCast(@ptrCast(codeObj)) } };
-    }
+        pub fn code(self: Self) py.PyCode(state) {
+            const codeObj = ffi.PyFrame_GetCode(framePtr(self.obj.py));
+            return .{ .obj = .{ .py = @alignCast(@ptrCast(codeObj)) } };
+        }
 
-    pub inline fn lineNumber(self: PyFrame) u32 {
-        return @intCast(ffi.PyFrame_GetLineNumber(framePtr(self.obj.py)));
-    }
+        pub inline fn lineNumber(self: Self) u32 {
+            return @intCast(ffi.PyFrame_GetLineNumber(framePtr(self.obj.py)));
+        }
 
-    inline fn framePtr(obj: *ffi.PyObject) *ffi.PyFrameObject {
-        return @alignCast(@ptrCast(obj));
-    }
+        inline fn framePtr(obj: *ffi.PyObject) *ffi.PyFrameObject {
+            return @alignCast(@ptrCast(obj));
+        }
 
-    inline fn objPtr(obj: *ffi.PyFrameObject) *ffi.PyObject {
-        return @alignCast(@ptrCast(obj));
-    }
-};
+        inline fn objPtr(obj: *ffi.PyFrameObject) *ffi.PyObject {
+            return @alignCast(@ptrCast(obj));
+        }
+    };
+}
 
 test "PyFrame" {
     py.initialize();
     defer py.finalize();
 
-    const pf = PyFrame.get();
-    try std.testing.expectEqual(@as(?PyFrame, null), pf);
+    const state = State{};
+
+    const pf = PyFrame(state).get();
+    try std.testing.expectEqual(@as(?PyFrame(state), null), pf);
 }

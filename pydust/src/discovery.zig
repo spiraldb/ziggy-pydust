@@ -17,7 +17,7 @@ const PyType = @import("./pytypes.zig").PyType;
 const Module = @import("./modules.zig").Module;
 
 /// Captures the type of the Pydust object.
-const Definition = struct {
+pub const Definition = struct {
     definition: type,
     type: DefinitionType,
 };
@@ -32,87 +32,98 @@ const Identifier = struct {
     parent: type,
 };
 
-const _State = struct {
-    const Self = @This();
+pub const State = struct {
+    privateMethods: [1000]*anyopaque = undefined,
+    privateMethodsSize: usize = 0,
 
-    comptime privateMethods: [1000]*anyopaque = undefined,
-    comptime privateMethodsSize: usize = 0,
+    definitions: [1000]Definition = undefined,
+    definitionsSize: usize = 0,
 
-    comptime definitions: [1000]Definition = undefined,
-    comptime definitionsSize: usize = 0,
-
-    comptime identifiers: [1000]Identifier = undefined,
-    comptime identifiersSize: usize = 0,
+    identifiers: [1000]Identifier = undefined,
+    identifiersSize: usize = 0,
 
     pub fn register(
-        self: *Self,
-        comptime definition: type,
-        comptime deftype: DefinitionType,
+        comptime state: *State,
+        comptime definition: Definition,
     ) void {
-        self.definitions[self.definitionsSize] = .{ .definition = definition, .type = deftype };
-        self.definitionsSize += 1;
+        state.definitions[state.definitionsSize] = definition;
+        state.definitionsSize += 1;
     }
 
-    pub fn privateMethod(self: *Self, comptime fnPtr: anytype) void {
-        const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
-        self.privateMethods[self.privateMethodsSize] = castPtr;
-        self.privateMethodsSize += 1;
+    pub fn privateMethod(
+        comptime state: *State,
+        comptime fnPtr: *const anyopaque,
+    ) void {
+        state.privateMethods[state.privateMethodsSize] = fnPtr;
+        state.privateMethodsSize += 1;
     }
 
     pub fn identify(
-        self: *Self,
+        comptime state: *State,
         comptime definition: type,
         comptime name: [:0]const u8,
         comptime parent: type,
     ) void {
-        self.identifiers[self.identifiersSize] = .{
+        state.identifiers[state.identifiersSize] = .{
             .name = name,
             .qualifiedName = if (parent == definition) &.{name} else getIdentifier(parent).qualifiedName ++ .{name},
             .definition = definition,
             .parent = parent,
         };
-        self.identifiersSize += 1;
+        state.identifiersSize += 1;
     }
 
-    pub fn isEmpty(self: Self) bool {
-        return self.definitionsSize == 0;
+    pub fn isEmpty(comptime state: State) bool {
+        return state.definitionsSize == 0;
     }
 
-    pub fn getDefinitions(self: Self) []Definition {
-        return self.definitions[0..self.definitionsSize];
+    pub fn getDefinitions(comptime state: State) []Definition {
+        return state.definitions[0..state.definitionsSize];
     }
 
-    pub fn countDeclsWithType(self: Self, comptime definition: type, deftype: DefinitionType) usize {
+    pub fn countDeclsWithType(
+        comptime state: State,
+        comptime definition: type,
+        deftype: DefinitionType,
+    ) usize {
         var cnt = 0;
         for (@typeInfo(definition).Struct.decls) |decl| {
             const declType = @TypeOf(@field(definition, decl.name));
-            if (self.hasType(declType, deftype)) {
+            if (state.hasType(declType, deftype)) {
                 cnt += 1;
             }
         }
         return cnt;
     }
 
-    pub fn countFieldsWithType(comptime self: Self, comptime definition: type, deftype: DefinitionType) usize {
+    pub fn countFieldsWithType(
+        comptime state: State,
+        comptime definition: type,
+        deftype: DefinitionType,
+    ) usize {
         var cnt = 0;
         for (@typeInfo(definition).Struct.fields) |field| {
-            if (self.hasType(field.type, deftype)) {
+            if (state.hasType(field.type, deftype)) {
                 cnt += 1;
             }
         }
         return cnt;
     }
 
-    pub fn hasType(self: Self, comptime definition: type, deftype: DefinitionType) bool {
-        if (self.findDefinition(definition)) |def| {
+    pub fn hasType(
+        comptime state: State,
+        comptime definition: type,
+        deftype: DefinitionType,
+    ) bool {
+        if (state.findDefinition(definition)) |def| {
             return def.type == deftype;
         }
         return false;
     }
 
-    pub fn isPrivate(self: Self, fnPtr: anytype) bool {
+    pub fn isPrivate(comptime state: State, fnPtr: anytype) bool {
         const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
-        for (self.privateMethods[0..self.privateMethodsSize]) |methPtr| {
+        for (state.privateMethods[0..state.privateMethodsSize]) |methPtr| {
             if (castPtr == methPtr) {
                 return true;
             }
@@ -120,18 +131,24 @@ const _State = struct {
         return false;
     }
 
-    pub fn getDefinition(self: Self, comptime definition: type) Definition {
-        return self.findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
+    pub fn getDefinition(
+        comptime state: State,
+        comptime definition: type,
+    ) Definition {
+        return state.findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
     }
 
-    pub inline fn findDefinition(self: Self, comptime definition: anytype) ?Definition {
+    pub inline fn findDefinition(
+        comptime state: State,
+        comptime definition: anytype,
+    ) ?Definition {
         if (@typeInfo(@TypeOf(definition)) != .Type) {
             return null;
         }
         if (@typeInfo(definition) != .Struct) {
             return null;
         }
-        for (self.definitions[0..self.definitionsSize]) |def| {
+        for (state.definitions[0..state.definitionsSize]) |def| {
             if (def.definition == definition) {
                 return def;
             }
@@ -139,15 +156,21 @@ const _State = struct {
         return null;
     }
 
-    pub fn getIdentifier(comptime definition: type) Identifier {
-        return findIdentifier(definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
+    pub fn getIdentifier(
+        comptime state: State,
+        comptime definition: type,
+    ) Identifier {
+        return state.findIdentifier(definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
     }
 
-    pub inline fn findIdentifier(self: Self, comptime definition: type) ?Identifier {
+    pub inline fn findIdentifier(
+        comptime state: State,
+        comptime definition: type,
+    ) ?Identifier {
         if (@typeInfo(definition) != .Struct) {
             return null;
         }
-        for (self.identifiers[0..self.identifiersSize]) |idef| {
+        for (state.identifiers[0..state.identifiersSize]) |idef| {
             if (idef.definition == definition) {
                 return idef;
             }
@@ -155,13 +178,21 @@ const _State = struct {
         return null;
     }
 
-    pub fn getContaining(comptime definition: type, comptime deftype: DefinitionType) type {
-        return findContaining(definition, deftype) orelse @compileError("Cannot find containing object");
+    pub fn getContaining(
+        comptime state: State,
+        comptime definition: type,
+        comptime deftype: DefinitionType,
+    ) type {
+        return state.findContaining(definition, deftype) orelse @compileError("Cannot find containing object");
     }
 
     /// Find the nearest containing definition with the given deftype.
-    pub fn findContaining(self: Self, comptime definition: type, comptime deftype: DefinitionType) ?type {
-        const defs = self.definitions[0..self.definitionsSize];
+    pub fn findContaining(
+        comptime state: State,
+        comptime definition: type,
+        comptime deftype: DefinitionType,
+    ) ?type {
+        const defs = state.definitions[0..state.definitionsSize];
         var idx = defs.len;
         var foundOriginal = false;
         while (idx > 0) : (idx -= 1) {
@@ -180,5 +211,3 @@ const _State = struct {
         return null;
     }
 };
-
-pub const State = _State{};

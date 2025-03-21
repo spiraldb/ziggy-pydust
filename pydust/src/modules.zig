@@ -73,13 +73,13 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
     };
 }
 
-fn Slots(comptime definition: type) type {
+fn Slots(comptime state: State, comptime definition: type) type {
     return struct {
         const Self = @This();
 
         const empty = ffi.PyModuleDef_Slot{ .slot = 0, .value = null };
-        const attrs = Attributes(definition);
-        const submodules = Submodules(definition);
+        const attrs = Attributes(state, definition);
+        const submodules = Submodules(state, definition);
 
         pub const slots: [:empty]const ffi.PyModuleDef_Slot = blk: {
             var slots_: [:empty]const ffi.PyModuleDef_Slot = &.{};
@@ -119,11 +119,11 @@ fn Slots(comptime definition: type) type {
                 if (!@hasDecl(definition, "__init__")) {
                     @compileError("Non-empty module must define `fn __init__(*Self) !void` method to initialize its state: " ++ @typeName(definition));
                 }
-                const state = try module.getState(definition);
+                const state_ = try module.getState(definition);
                 if (@typeInfo(@typeInfo(@TypeOf(definition.__init__)).Fn.return_type.?) == .ErrorUnion) {
-                    try state.__init__();
+                    try state_.__init__();
                 } else {
-                    state.__init__();
+                    state_.__init__();
                 }
             }
 
@@ -139,7 +139,7 @@ fn Slots(comptime definition: type) type {
                 // which is a dumb object containing only a name.
                 // See https://github.com/python/cpython/blob/042f31da552c19054acd3ef7bb6cfd857bce172b/Python/import.c#L2527-L2539
 
-                const name = State.getIdentifier(submodule).name;
+                const name = state.getIdentifier(submodule).name;
                 const submodDef = Module(name, submodule);
                 const pySubmodDef: *ffi.PyModuleDef = @ptrCast((try submodDef.init()).py);
 
@@ -163,13 +163,13 @@ fn Slots(comptime definition: type) type {
     };
 }
 
-fn Submodules(comptime definition: type) type {
+fn Submodules(comptime state: State, comptime definition: type) type {
     const typeInfo = @typeInfo(definition).Struct;
     return struct {
         const submodules: []const type = blk: {
             var mods: []const type = &.{};
             for (typeInfo.decls) |decl| {
-                if (State.findDefinition(@field(definition, decl.name))) |def| {
+                if (state.findDefinition(@field(definition, decl.name))) |def| {
                     if (def.type == .module) {
                         mods = mods ++ .{def.definition};
                     }

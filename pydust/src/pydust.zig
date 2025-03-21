@@ -12,7 +12,9 @@
 
 const std = @import("std");
 const mem = @import("mem.zig");
-const State = @import("discovery.zig").State;
+const discovery = @import("discovery.zig");
+const Definition = discovery.Definition;
+const State = discovery.State;
 const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
@@ -41,16 +43,18 @@ pub fn finalize() void {
 
 /// Register the root Pydust module
 pub fn rootmodule(comptime definition: type) void {
-    if (!State.isEmpty()) {
+    comptime var state = State{};
+
+    if (!state.isEmpty()) {
         @compileError("Root module can only be registered in a root-level comptime block");
     }
 
     const pyconf = @import("pyconf");
     const name = pyconf.module_name;
 
-    State.register(definition, .module);
-    State.identify(definition, name, definition);
-    eagerEval(definition);
+    state.register(definition, .module);
+    state.identify(definition, name, definition);
+    eagerEval(&state, definition);
 
     const moddef = Module(name, definition);
 
@@ -67,29 +71,26 @@ pub fn rootmodule(comptime definition: type) void {
 }
 
 /// Register a Pydust module as a submodule to an existing module.
-pub fn module(comptime definition: type) @TypeOf(definition) {
-    State.register(definition, .module);
-    return definition;
+pub fn module(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .module };
 }
 
 /// Register a struct as a Python class definition.
-pub fn class(comptime definition: type) @TypeOf(definition) {
-    State.register(definition, .class);
-    return definition;
+pub fn class(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .class };
 }
 
-pub fn zig(comptime definition: type) @TypeOf(definition) {
-    for (@typeInfo(definition).Struct.decls) |decl| {
-        State.privateMethod(&@field(definition, decl.name));
-    }
-    return definition;
+pub fn zig(comptime definition: type) [std.meta.declarations(definition).len]*const anyopaque {
+    const decls = std.meta.declarations(definition);
+    var methods: [decls.len]*const anyopaque = undefined;
+    for (decls, 0..) |decl, i|
+        methods[i] = @constCast(@ptrCast(&@field(definition, decl.name)));
+    return methods;
 }
 
 /// Register a struct field as a Python read-only attribute.
-pub fn attribute(comptime T: type) @TypeOf(Attribute(T)) {
-    const definition = Attribute(T);
-    State.register(definition, .attribute);
-    return definition;
+pub fn attribute(comptime T: type) Definition {
+    return .{ .definition = Attribute(T), .type = .attribute };
 }
 
 fn Attribute(comptime T: type) type {
@@ -97,9 +98,8 @@ fn Attribute(comptime T: type) type {
 }
 
 /// Register a property as a field on a Pydust class.
-pub fn property(comptime definition: type) @TypeOf(definition) {
-    State.register(definition, .property);
-    return definition;
+pub fn property(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .property };
 }
 
 /// Zig type representing variadic arguments to a Python function.
@@ -114,16 +114,27 @@ pub const CallArgs = struct { args: Args, kwargs: Kwargs };
 /// Force the evaluation of Pydust registration methods.
 /// Using this enables us to breadth-first traverse the object graph, ensuring
 /// objects are registered before they're referenced elsewhere.
-fn eagerEval(comptime definition: type) void {
-    for (@typeInfo(definition).Struct.fields) |f| {
+fn eagerEval(comptime state: *State, comptime definition: type) void {
+    const info = @typeInfo(definition);
+    for (std.meta.fields(info)) |f| {
         _ = f.type;
     }
-    for (@typeInfo(definition).Struct.decls) |d| {
+    for (std.meta.declarations(info)) |d| {
         const value = @field(definition, d.name);
         @setEvalBranchQuota(10000);
-        if (State.findDefinition(value)) |_| {
-            // If it's a Pydust definition, then we identify it.
-            State.identify(value, d.name ++ "", definition);
+        switch (@TypeOf(value)) {
+            Definition => |def| {
+                // If it's a Pydust definition, then we identify it.
+                state.register(def);
+                state.identify(value, d.name ++ "", def.definition);
+                eagerEval(state, def.definition);
+            },
+            *const anyopaque => |ptr| {
+                // If it's a function pointer, then we register it.
+                state.privateMethod(ptr);
+                state.identify(value, d.name ++ "", ptr);
+            },
+            else => {},
         }
     }
 }
