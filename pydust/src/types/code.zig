@@ -25,17 +25,17 @@ pub fn PyCode(comptime state: State) type {
         const Self = @This();
 
         pub inline fn firstLineNumber(self: *const Self) !u32 {
-            const lineNo = try self.obj.getAs(py.PyLong, "co_firstlineno");
+            const lineNo = try self.obj.getAs(py.PyLong(state), "co_firstlineno");
             defer lineNo.decref();
             return lineNo.as(u32);
         }
 
         pub inline fn fileName(self: *const Self) !py.PyString(state) {
-            return self.obj.getAs(py.PyString, "co_filename");
+            return self.obj.getAs(py.PyString(state), "co_filename");
         }
 
         pub inline fn name(self: *const Self) !py.PyString(state) {
-            return self.obj.getAs(py.PyString, "co_name");
+            return self.obj.getAs(py.PyString(state), "co_name");
         }
     };
 }

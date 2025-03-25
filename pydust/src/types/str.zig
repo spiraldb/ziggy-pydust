@@ -70,7 +70,7 @@ pub fn PyString(comptime state: State) type {
         /// Concat other to self. Returns a new reference.
         pub fn concat(self: Self, other: Self) !Self {
             const result = ffi.PyUnicode_Concat(self.obj.py, other.obj.py) orelse return PyError.PyRaised;
-            return PyString.unchecked(.{ .py = result });
+            return Self.unchecked(.{ .py = result });
         }
 
         /// Concat other to self. Returns a new reference.

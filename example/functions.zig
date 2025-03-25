@@ -13,11 +13,15 @@
 // --8<-- [start:function]
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 pub fn double(args: struct { x: i64 }) i64 {
     return args.x * 2;
 }
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}
 // --8<-- [end:function]
 
 // --8<-- [start:kwargs]
@@ -27,7 +31,7 @@ pub fn with_kwargs(args: struct { x: f64, y: f64 = 42.0 }) f64 {
 // --8<-- [end:kwargs]
 
 // --8<-- [start:varargs]
-pub fn variadic(args: struct { hello: py.PyString, args: py.Args, kwargs: py.Kwargs }) !py.PyString {
+pub fn variadic(args: struct { hello: py.PyString(state), args: py.Args(state), kwargs: py.Kwargs(state) }) !py.PyString(state) {
     return py.PyString(state).createFmt(
         "Hello {s} with {} varargs and {} kwargs",
         .{ try args.hello.asSlice(), args.args.len, args.kwargs.count() },

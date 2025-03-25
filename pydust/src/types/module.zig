@@ -33,12 +33,12 @@ pub fn PyModule(comptime state: State) type {
             return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.PyRaised } };
         }
 
-        pub fn getState(self: PyModule, comptime ModState: type) !*ModState {
+        pub fn getState(self: Self, comptime ModState: type) !*ModState {
             const statePtr = ffi.PyModule_GetState(self.obj.py) orelse return PyError.PyRaised;
             return @ptrCast(@alignCast(statePtr));
         }
 
-        pub fn addObjectRef(self: PyModule, name: [:0]const u8, obj: anytype) !void {
+        pub fn addObjectRef(self: Self, name: [:0]const u8, obj: anytype) !void {
             const pyobject = py.object(obj);
             if (ffi.PyModule_AddObjectRef(self.obj.py, name.ptr, pyobject.py) < 0) {
                 return PyError.PyRaised;
@@ -47,7 +47,7 @@ pub fn PyModule(comptime state: State) type {
 
         /// Initialize a class that is defined within this module.
         /// Most useful during module.__exec__ initialization.
-        pub fn init(self: PyModule, class_name: [:0]const u8, class_state: anytype) !*const @TypeOf(class_state) {
+        pub fn init(self: Self, class_name: [:0]const u8, class_state: anytype) !*const @TypeOf(class_state) {
             const pytype = try self.obj.get(class_name);
             defer pytype.decref();
 

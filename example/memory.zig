@@ -12,6 +12,8 @@
 
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 // --8<-- [start:append]
 pub fn append(args: struct { left: py.PyString(state) }) !py.PyString(state) {
     // Since we create right, we must also decref it.
@@ -31,4 +33,6 @@ pub fn concat(args: struct { left: py.PyString(state) }) !py.PyString(state) {
 }
 // --8<-- [end:concat]
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}

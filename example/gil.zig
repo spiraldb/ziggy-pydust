@@ -13,6 +13,8 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 // --8<-- [start:gil]
 pub fn sleep(args: struct { millis: u64 }) void {
     std.time.sleep(args.millis * 1_000_000);
@@ -25,4 +27,6 @@ pub fn sleep_release(args: struct { millis: u64 }) void {
 }
 // --8<-- [end:gil]
 
-const _ = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}

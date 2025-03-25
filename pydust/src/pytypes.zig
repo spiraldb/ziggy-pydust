@@ -108,11 +108,11 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
         const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
         const attrs = Attributes(state, definition);
-        const methods = funcs.Methods(definition);
+        const methods = funcs.Methods(state, definition);
         const members = Members(definition);
         const properties = Properties(definition);
         const doc = Doc(definition, name);
-        const richcmp = RichCompare(definition);
+        const richcmp = RichCompare(state, definition);
         const gc = GC(state, definition);
 
         /// Slots populated in the PyType
@@ -250,7 +250,7 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
 
             for (funcs.BinaryOperators.kvs) |kv| {
                 if (@hasDecl(definition, kv.key)) {
-                    const op = BinaryOperator(definition, kv.key);
+                    const op = BinaryOperator(state, definition, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
                         .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
@@ -260,7 +260,7 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
 
             for (funcs.UnaryOperators.kvs) |kv| {
                 if (@hasDecl(definition, kv.key)) {
-                    const op = UnaryOperator(definition, kv.key);
+                    const op = UnaryOperator(state, definition, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
                         .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
@@ -310,9 +310,9 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
                 const init_args = tramp.Trampoline(Args).unwrapCallArgs(args, kwargs) catch return -1;
                 defer init_args.deinit();
 
-                tramp.coerceError(definition.__init__(self, init_args.argsStruct)) catch return -1;
+                tramp.coerceError(state, definition.__init__(self, init_args.argsStruct)) catch return -1;
             } else if (sig.selfParam) |_| {
-                tramp.coerceError(definition.__init__(self)) catch return -1;
+                tramp.coerceError(state, definition.__init__(self)) catch return -1;
             } else {
                 // The function is just a marker to say that the type can be instantiated from Python
             }
@@ -344,7 +344,7 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
             view.obj = null;
 
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            tramp.coerceError(definition.__buffer__(&self.state, @ptrCast(view), flags)) catch return -1;
+            tramp.coerceError(state, definition.__buffer__(&self.state, @ptrCast(view), flags)) catch return -1;
             return 0;
         }
 
@@ -361,13 +361,13 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
 
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const iterator = tramp.coerceError(definition.__iter__(&self.state)) catch return null;
+            const iterator = tramp.coerceError(state, definition.__iter__(&self.state)) catch return null;
             return (py.createOwned(iterator) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const optionalNext = tramp.coerceError(definition.__next__(&self.state)) catch return null;
+            const optionalNext = tramp.coerceError(state, definition.__next__(&self.state)) catch return null;
             if (optionalNext) |next| {
                 return (py.createOwned(next) catch return null).py;
             }
@@ -376,19 +376,19 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
 
         fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(definition.__str__(&self.state)) catch return null;
+            const result = tramp.coerceError(state, definition.__str__(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
 
         fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(definition.__repr__(&self.state)) catch return null;
+            const result = tramp.coerceError(state, definition.__repr__(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
 
         fn tp_hash(pyself: *ffi.PyObject) callconv(.C) ffi.Py_hash_t {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(definition.__hash__(&self.state)) catch return -1;
+            const result = tramp.coerceError(state, definition.__hash__(&self.state)) catch return -1;
             return @as(isize, @bitCast(result));
         }
 
@@ -402,13 +402,13 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
             const call_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;
             defer call_args.deinit();
 
-            const result = tramp.coerceError(definition.__call__(self, call_args.argsStruct)) catch return null;
+            const result = tramp.coerceError(state, definition.__call__(self, call_args.argsStruct)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
 
         fn nb_bool(pyself: *ffi.PyObject) callconv(.C) c_int {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(definition.__bool__(&self.state)) catch return -1;
+            const result = tramp.coerceError(state, definition.__bool__(&self.state)) catch return -1;
             return @intCast(@intFromBool(result));
         }
     };
@@ -753,7 +753,7 @@ fn Properties(comptime state: State, comptime definition: type) type {
                                     else => @compileError("Unsupported self parameter " ++ @typeName(SelfParam) ++ ". Expected " ++ @typeName(*const definition) ++ " or " ++ @typeName(*const field.type)),
                                 };
 
-                                const result = tramp.coerceError(field.type.get(propself)) catch return null;
+                                const result = tramp.coerceError(state, field.type.get(propself)) catch return null;
                                 const resultObj = py.createOwned(result) catch return null;
                                 return resultObj.py;
                             }
@@ -771,7 +771,7 @@ fn Properties(comptime state: State, comptime definition: type) type {
                                 const ValueArg = @typeInfo(@TypeOf(field.type.set)).Fn.params[1].type.?;
                                 const value = tramp.Trampoline(ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
 
-                                tramp.coerceError(field.type.set(propself, value)) catch return -1;
+                                tramp.coerceError(state, field.type.set(propself, value)) catch return -1;
                                 return 0;
                             }
                         };
@@ -792,6 +792,7 @@ fn Properties(comptime state: State, comptime definition: type) type {
 }
 
 fn BinaryOperator(
+    comptime state: State,
     comptime definition: type,
     comptime op: []const u8,
 ) type {
@@ -806,13 +807,14 @@ fn BinaryOperator(
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const other = tramp.Trampoline(typeInfo.params[1].type.?).unwrap(.{ .py = pyother }) catch return null;
 
-            const result = tramp.coerceError(func(&self.state, other)) catch return null;
+            const result = tramp.coerceError(state, func(&self.state, other)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };
 }
 
 fn UnaryOperator(
+    comptime state: State,
     comptime definition: type,
     comptime op: []const u8,
 ) type {
@@ -826,13 +828,14 @@ fn UnaryOperator(
             // TODO(ngates): do we want to trampoline the self argument?
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
 
-            const result = tramp.coerceError(func(&self.state)) catch return null;
+            const result = tramp.coerceError(state, func(&self.state)) catch return null;
             return (py.createOwned(result) catch return null).py;
         }
     };
 }
 
 fn EqualsOperator(
+    comptime state: State,
     comptime definition: type,
     comptime op: []const u8,
 ) type {
@@ -859,15 +862,15 @@ fn EqualsOperator(
             }
 
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const other = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) catch return null;
+            const other = tramp.Trampoline(state, Other).unwrap(.{ .py = pyother }) catch return null;
 
-            const result = tramp.coerceError(func(&self.state, other)) catch return null;
-            return (py.createOwned(result) catch return null).py;
+            const result = tramp.coerceError(state, func(&self.state, other)) catch return null;
+            return (py.createOwned(state, result) catch return null).py;
         }
     };
 }
 
-fn RichCompare(comptime definition: type) type {
+fn RichCompare(comptime state: State, comptime definition: type) type {
     const BinaryFunc = *const fn (*ffi.PyObject, *ffi.PyObject) callconv(.C) ?*ffi.PyObject;
     const errorMsg =
         \\Class cannot define both __richcompare__ and
@@ -906,11 +909,11 @@ fn RichCompare(comptime definition: type) type {
             if (CompareOpArg != py.CompareOp) @compileError("Third parameter of __richcompare__ must be a py.CompareOp");
 
             const self = py.unchecked(Self, .{ .py = pyself });
-            const otherArg = tramp.Trampoline(Other).unwrap(.{ .py = pyother }) catch return null;
+            const otherArg = tramp.Trampoline(state, Other).unwrap(.{ .py = pyother }) catch return null;
             const opEnum: py.CompareOp = @enumFromInt(op);
 
-            const result = tramp.coerceError(func(self, otherArg, opEnum)) catch return null;
-            return (py.createOwned(result) catch return null).py;
+            const result = tramp.coerceError(state, func(self, otherArg, opEnum)) catch return null;
+            return (py.createOwned(state, result) catch return null).py;
         }
 
         fn builtCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
@@ -924,9 +927,9 @@ fn RichCompare(comptime definition: type) type {
                     defer py.decref(is_eq);
 
                     if (py.not_(is_eq) catch return null) {
-                        return py.True().obj.py;
+                        return py.True(state).obj.py;
                     } else {
-                        return py.False().obj.py;
+                        return py.False(state).obj.py;
                     }
                 }
             }
@@ -938,9 +941,9 @@ fn RichCompare(comptime definition: type) type {
             for (&funcs_, funcs.compareFuncs) |*func, funcName| {
                 if (@hasDecl(definition, funcName)) {
                     if (std.mem.eql(u8, funcName, "__eq__") or std.mem.eql(u8, funcName, "__ne__")) {
-                        func.* = &EqualsOperator(definition, funcName).call;
+                        func.* = &EqualsOperator(state, definition, funcName).call;
                     } else {
-                        func.* = &BinaryOperator(definition, funcName).call;
+                        func.* = &BinaryOperator(state, definition, funcName).call;
                     }
                 }
             }

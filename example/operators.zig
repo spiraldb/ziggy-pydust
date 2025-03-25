@@ -13,6 +13,8 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 // --8<-- [start:all]
 pub const Ops = py.class(struct {
     const Self = @This();
@@ -67,7 +69,7 @@ pub const Ops = py.class(struct {
         return self;
     }
 
-    pub fn __divmod__(self: *const Self, other: *const Self) !py.PyTuple {
+    pub fn __divmod__(self: *const Self, other: *const Self) !py.PyTuple(state) {
         return py.PyTuple.create(.{ self.num / other.num, std.math.mod(u64, self.num, other.num) });
     }
 
@@ -178,8 +180,8 @@ pub const UnaryOps = py.class(struct {
         return self.num;
     }
 
-    pub fn __neg__(self: *Self) !py.PyLong {
-        return py.PyLong.create(-self.num);
+    pub fn __neg__(self: *Self) !py.PyLong(state) {
+        return py.PyLong(state).create(-self.num);
     }
 
     pub fn __pos__(self: *Self) !*Self {
@@ -195,16 +197,16 @@ pub const UnaryOps = py.class(struct {
         return py.init(Self, .{ .num = ~self.num });
     }
 
-    pub fn __int__(self: *Self) !py.PyLong {
-        return py.PyLong.create(self.num);
+    pub fn __int__(self: *Self) !py.PyLong(state) {
+        return py.PyLong(state).create(self.num);
     }
 
-    pub fn __float__(self: *Self) !py.PyFloat {
-        return py.PyFloat.create(@as(f64, @floatFromInt(self.num)));
+    pub fn __float__(self: *Self) !py.PyFloat(state) {
+        return py.PyFloat(state).create(@as(f64, @floatFromInt(self.num)));
     }
 
-    pub fn __index__(self: *Self) !py.PyLong {
-        return py.PyLong.create(self.num);
+    pub fn __index__(self: *Self) !py.PyLong(state) {
+        return py.PyLong(state).create(self.num);
     }
 
     pub fn __bool__(self: *Self) !bool {
@@ -226,20 +228,20 @@ pub const Operator = py.class(struct {
         return self.num;
     }
 
-    pub fn __truediv__(self: *const Self, other: py.PyObject) !py.PyObject {
+    pub fn __truediv__(self: *const Self, other: py.PyObject(state)) !py.PyObject(state) {
         const selfCls = try py.self(Self);
         defer selfCls.decref();
 
-        if (try py.PyFloat.check(other)) {
+        if (try py.PyFloat(state).check(other)) {
             const numF: f64 = @floatFromInt(self.num);
             return py.create(numF / try py.as(f64, other));
-        } else if (try py.PyLong.check(other)) {
+        } else if (try py.PyLong(state).check(other)) {
             return py.create(self.num / try py.as(u64, other));
         } else if (try py.isinstance(other, selfCls)) { // TODO(ngates): #193
             const otherO: *Self = try py.as(*Self, other);
             return py.object(try py.init(Self, .{ .num = self.num / otherO.num }));
         } else {
-            return py.TypeError.raise("Unsupported number type for Operator division");
+            return py.TypeError(state).raise("Unsupported number type for Operator division");
         }
     }
 });
@@ -288,9 +290,9 @@ pub const Equals = py.class(struct {
 pub const LessThan = py.class(struct {
     const Self = @This();
 
-    name: py.PyString,
+    name: py.PyString(state),
 
-    pub fn __init__(self: *Self, args: struct { name: py.PyString }) void {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString(state) }) void {
         args.name.incref();
         self.name = args.name;
     }
@@ -324,4 +326,6 @@ pub const LessThan = py.class(struct {
 });
 // --8<-- [end:lessthan]
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}

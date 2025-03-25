@@ -13,12 +13,14 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 pub fn line_number() u32 {
-    return py.PyFrame.get().?.lineNumber();
+    return py.PyFrame(state).get().?.lineNumber();
 }
 
 pub fn function_name() !py.PyString(state) {
-    return py.PyFrame.get().?.code().name();
+    return py.PyFrame(state).get().?.code().name();
 }
 
 pub fn file_name() !py.PyString(state) {
@@ -29,4 +31,6 @@ pub fn first_line_number() !u32 {
     return py.PyFrame(state).get().?.code().firstLineNumber();
 }
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}

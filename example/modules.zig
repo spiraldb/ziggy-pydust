@@ -22,6 +22,8 @@ pub const __doc__ =
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 const Self = @This(); // (1)!
 
 count: u32 = 0, // (2)!
@@ -44,7 +46,7 @@ pub fn count(self: *const Self) u32 {
 }
 
 pub fn whoami(self: *const Self) py.PyString(state) {
-    py.incref(self.name);
+    py.incref(state, self.name);
     return self.name;
 }
 
@@ -64,5 +66,7 @@ pub const submod = py.module(struct { // (6)!
     }
 });
 
-const state = py.rootmodule(@This()); // (7)!
+comptime {
+    py.rootmodule(@This());
+} // (7)!
 // --8<-- [end:ex]

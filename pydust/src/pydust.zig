@@ -14,7 +14,7 @@ const std = @import("std");
 const mem = @import("mem.zig");
 const discovery = @import("discovery.zig");
 const Definition = discovery.Definition;
-const State = discovery.State;
+pub const State = discovery.State;
 const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
@@ -42,9 +42,8 @@ pub fn finalize() void {
 }
 
 /// Register the root Pydust module
-pub fn rootmodule(comptime definition: type) State {
-    comptime var state = State{};
-
+pub fn rootmodule(comptime definition: type) void {
+    comptime var state = State.instance(definition);
     if (!state.isEmpty()) {
         @compileError("Root module can only be registered in a root-level comptime block");
     }
@@ -68,7 +67,6 @@ pub fn rootmodule(comptime definition: type) State {
 
     const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
     @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .strong });
-    return state;
 }
 
 /// Register a Pydust module as a submodule to an existing module.
@@ -104,35 +102,41 @@ pub fn property(comptime definition: type) Definition {
 }
 
 /// Zig type representing variadic arguments to a Python function.
-pub const Args = []types.PyObject;
+pub fn Args(comptime state: State) type {
+    return []types.PyObject(state);
+}
 
 /// Zig type representing variadic keyword arguments to a Python function.
-pub const Kwargs = std.StringHashMap(types.PyObject);
+pub fn Kwargs(comptime state: State) type {
+    return std.StringHashMap(types.PyObject(state));
+}
 
 /// Zig type representing `(*args, **kwargs)`
-pub const CallArgs = struct { args: Args, kwargs: Kwargs };
+pub fn CallArgs(comptime state: State) type {
+    return struct { args: Args(state), kwargs: Kwargs(state) };
+}
 
 /// Force the evaluation of Pydust registration methods.
 /// Using this enables us to breadth-first traverse the object graph, ensuring
 /// objects are registered before they're referenced elsewhere.
 fn eagerEval(comptime state: *State, comptime definition: type) void {
-    for (std.meta.fields(definition)) |f| {
+    for (@typeInfo(definition).Struct.fields) |f| {
         _ = f.type;
     }
-    for (std.meta.declarations(definition)) |d| {
+    for (@typeInfo(definition).Struct.decls) |d| {
         const value = @field(definition, d.name);
         @setEvalBranchQuota(10000);
         switch (@TypeOf(value)) {
-            Definition => |def| {
+            Definition => {
                 // If it's a Pydust definition, then we identify it.
-                state.register(def);
-                state.identify(value, d.name ++ "", def.definition);
-                eagerEval(state, def.definition);
+                state.register(value);
+                state.identify(value.definition, d.name ++ "", definition);
+                eagerEval(state, value.definition);
             },
-            *const anyopaque => |ptr| {
+            *const anyopaque => {
                 // If it's a function pointer, then we register it.
-                state.privateMethod(ptr);
-                state.identify(value, d.name ++ "", ptr);
+                state.privateMethod(value);
+                state.identify(value, d.name ++ "", definition);
             },
             else => {},
         }

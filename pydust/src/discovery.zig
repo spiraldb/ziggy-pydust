@@ -42,6 +42,11 @@ pub const State = struct {
     identifiers: [1000]Identifier = undefined,
     identifiersSize: usize = 0,
 
+    pub fn instance(comptime definition: type) State {
+        _ = definition;
+        return .{};
+    }
+
     pub fn register(
         comptime state: *State,
         comptime definition: Definition,
@@ -66,7 +71,7 @@ pub const State = struct {
     ) void {
         state.identifiers[state.identifiersSize] = .{
             .name = name,
-            .qualifiedName = if (parent == definition) &.{name} else getIdentifier(parent).qualifiedName ++ .{name},
+            .qualifiedName = if (parent == definition) &.{name} else state.getIdentifier(parent).qualifiedName ++ .{name},
             .definition = definition,
             .parent = parent,
         };

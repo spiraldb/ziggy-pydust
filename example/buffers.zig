@@ -13,6 +13,8 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 // --8<-- [start:protocol]
 pub const ConstantBuffer = py.class(struct {
     pub const __doc__ = "A class implementing a buffer protocol";
@@ -37,9 +39,9 @@ pub const ConstantBuffer = py.class(struct {
         py.allocator.free(self.shape);
     }
 
-    pub fn __buffer__(self: *const Self, view: *py.PyBuffer, flags: c_int) !void {
+    pub fn __buffer__(self: *const Self, view: *py.PyBuffer(state), flags: c_int) !void {
         // For more details on request types, see https://docs.python.org/3/c-api/buffer.html#buffer-request-types
-        if (flags & py.PyBuffer.Flags.WRITABLE != 0) {
+        if (flags & py.PyBuffer(state).Flags.WRITABLE != 0) {
             return py.BufferError(state).raise("request for writable buffer is rejected");
         }
         view.initFromSlice(i64, self.values, self.shape, self);
@@ -49,7 +51,7 @@ pub const ConstantBuffer = py.class(struct {
 
 // --8<-- [start:sum]
 pub fn sum(args: struct { buf: py.PyObject(state) }) !i64 {
-    const view = try args.buf.getBuffer(py.PyBuffer.Flags.ND);
+    const view = try args.buf.getBuffer(py.PyBuffer(state).Flags.ND);
     defer view.release();
 
     var bufferSum: i64 = 0;
@@ -57,5 +59,7 @@ pub fn sum(args: struct { buf: py.PyObject(state) }) !i64 {
     return bufferSum;
 }
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}
 // --8<-- [end:sum]

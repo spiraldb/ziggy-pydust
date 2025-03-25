@@ -13,6 +13,8 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 // --8<-- [start:example]
 test "pydust pytest" {
     py.initialize();
@@ -35,4 +37,6 @@ test "pydust-expected-failure" {
     try std.testing.expectEqualStrings("world", try str.asSlice());
 }
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}

@@ -13,8 +13,10 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 // --8<-- [start:valueerror]
-pub fn raise_value_error(args: struct { message: py.PyString }) !void {
+pub fn raise_value_error(args: struct { message: py.PyString(state) }) !void {
     return py.ValueError(state).raise(try args.message.asSlice());
 }
 // --8<-- [end:valueerror]
@@ -25,4 +27,6 @@ pub fn raise_custom_error() !void {
     return CustomError.Oops;
 }
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}

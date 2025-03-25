@@ -13,6 +13,8 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const state = py.State.instance(@This());
+
 // --8<-- [start:defining]
 pub const SomeClass = py.class(struct {
     pub const __doc__ = "Some class defined in Zig accessible from Python";
@@ -45,7 +47,7 @@ pub const Animal = py.class(struct {
 pub const Dog = py.class(struct {
     const Self = @This();
 
-    animal: Animal,
+    animal: Animal.definition,
     breed: py.PyString(state),
 
     pub fn __init__(self: *Self, args: struct { breed: py.PyString(state) }) !void {
@@ -73,7 +75,10 @@ pub const User = py.class(struct {
     }
 
     name: py.PyString(state),
-    email: py.property(struct {
+    email: Email.definition,
+    greeting: Greeting.definition = .{},
+
+    const Email = py.property(struct {
         const Prop = @This();
 
         e: ?py.PyString(state) = null,
@@ -91,13 +96,13 @@ pub const User = py.class(struct {
             value.incref();
             prop.e = value;
         }
-    }),
+    });
 
-    greeting: py.property(struct {
+    const Greeting = py.property(struct {
         pub fn get(self: *const Self) !py.PyString(state) {
-            return py.PyString.createFmt("Hello, {s}!", .{try self.name.asSlice()});
+            return py.PyString(state).createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
-    }) = .{},
+    });
 
     pub fn __del__(self: *Self) void {
         self.name.decref();
@@ -110,7 +115,8 @@ pub const User = py.class(struct {
 pub const Counter = py.class(struct {
     const Self = @This();
 
-    count: py.attribute(usize) = .{ .value = 0 },
+    count: Count.definition = .{ .value = 0 },
+    const Count = py.attribute(usize);
 
     pub fn __init__(self: *Self) void {
         _ = self;
@@ -195,4 +201,6 @@ pub const GetAttr = py.class(struct {
     }
 });
 
-const state = py.rootmodule(@This());
+comptime {
+    py.rootmodule(@This());
+}

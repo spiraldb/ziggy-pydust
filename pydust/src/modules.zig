@@ -32,7 +32,7 @@ pub const ModuleDef = struct {
 pub fn Module(comptime state: State, comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
         const slots = Slots(state, definition);
-        const methods = funcs.Methods(definition);
+        const methods = funcs.Methods(state, definition);
 
         const doc: ?[:0]const u8 = blk: {
             if (@hasDecl(definition, "__doc__")) {
@@ -43,7 +43,7 @@ pub fn Module(comptime state: State, comptime name: [:0]const u8, comptime defin
 
         const Fns = struct {
             pub fn free(module: ?*anyopaque) callconv(.C) void {
-                const mod: py.PyModule = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
+                const mod: py.PyModule(state) = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
                 const state_ = mod.getState(definition) catch return;
                 state_.__del__();
             }
@@ -104,12 +104,12 @@ fn Slots(comptime state: State, comptime definition: type) type {
 
         fn custom_mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
             const mod: py.PyModule = .{ .obj = .{ .py = pymodule } };
-            tramp.coerceError(definition.__exec__(mod)) catch return -1;
+            tramp.coerceError(state, definition.__exec__(mod)) catch return -1;
             return 0;
         }
 
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
-            tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
+            tramp.coerceError(state, mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
             return 0;
         }
 

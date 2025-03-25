@@ -104,7 +104,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
                         return true;
                     }
 
-                    if (state.findDefinition(p.child)) |_| {
+                    if (comptime state.findDefinition(p.child)) |_| {
                         return true;
                     }
                 },
@@ -128,7 +128,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
         /// The result should be treated like a new reference.
         pub inline fn wrap(obj: T) PyError!py.PyObject(state) {
             // Check the user is not accidentally returning a Pydust class or Module without a pointer
-            if (state.findDefinition(T) != null) {
+            if (comptime state.findDefinition(T) != null) {
                 @compileError("Pydust objects can only be returned as pointers");
             }
 
@@ -136,14 +136,14 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
-                const value = coerceError(obj) catch |err| return err;
-                return Trampoline(typeInfo.ErrorUnion.payload).wrap(value);
+                const value = coerceError(state, obj) catch |err| return err;
+                return Trampoline(state, typeInfo.ErrorUnion.payload).wrap(value);
             }
 
             // Early return to handle optionals
             if (typeInfo == .Optional) {
-                const value = obj orelse return py.None();
-                return Trampoline(typeInfo.Optional.child).wrap(value);
+                const value = obj orelse return py.None(state);
+                return Trampoline(state, typeInfo.Optional.child).wrap(value);
             }
 
             // Shortcut for object types
@@ -179,7 +179,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
                     // Otherwise, return a Python dictionary
                     return (try py.PyDict(state).create(obj)).obj;
                 },
-                .Void => return py.None(),
+                .Void => return py.None(state),
                 else => {},
             }
 
@@ -194,7 +194,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
 
             // Early return to handle errors
             if (typeInfo == .ErrorUnion) {
-                const value = coerceError(object) catch |err| return err;
+                const value = coerceError(state, object) catch |err| return err;
                 return @as(T, Trampoline(state, typeInfo.ErrorUnion.payload).unwrap(value));
             }
 
@@ -215,7 +215,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
                 .Int => return try (try py.PyLong(state).checked(obj)).as(T),
                 .Optional => @compileError("Optional already handled"),
                 .Pointer => |p| {
-                    if (state.findDefinition(p.child)) |def| {
+                    if (comptime state.findDefinition(p.child)) |def| {
                         // If the pointer is for a Pydust module
                         if (def.type == .module) {
                             const mod = try py.PyModule.checked(obj);
@@ -317,7 +317,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
                         py.allocator.free(@field(self.argsStruct, field.name));
                     }
                     if (field.type == py.Kwargs) {
-                        var kwargs: py.Kwargs = @field(self.argsStruct, field.name);
+                        var kwargs: py.Kwargs(state) = @field(self.argsStruct, field.name);
                         kwargs.deinit();
                     }
                 }
@@ -327,13 +327,13 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
 }
 
 /// Takes a value that optionally errors and coerces it always into a PyError.
-pub fn coerceError(result: anytype) coerceErrorType(@TypeOf(result)) {
+pub fn coerceError(comptime state: State, result: anytype) coerceErrorType(@TypeOf(result)) {
     const typeInfo = @typeInfo(@TypeOf(result));
     if (typeInfo == .ErrorUnion) {
         return result catch |err| {
             if (err == PyError.PyRaised) return PyError.PyRaised;
             if (err == PyError.OutOfMemory) return PyError.OutOfMemory;
-            return py.RuntimeError.raise(@errorName(err));
+            return py.RuntimeError(state).raise(@errorName(err));
         };
     } else {
         return result;
