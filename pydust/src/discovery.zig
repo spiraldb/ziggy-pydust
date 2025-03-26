@@ -42,16 +42,12 @@ pub const State = struct {
     identifiers: [1000]Identifier = undefined,
     identifiersSize: usize = 0,
 
-    pub fn instance(comptime definition: type) State {
-        _ = definition;
-        return .{};
-    }
-
     pub fn register(
         comptime state: *State,
-        comptime definition: Definition,
+        comptime definition: type,
+        comptime deftype: DefinitionType,
     ) void {
-        state.definitions[state.definitionsSize] = definition;
+        state.definitions[state.definitionsSize] = .{ .definition = definition, .type = deftype };
         state.definitionsSize += 1;
     }
 
@@ -214,5 +210,41 @@ pub const State = struct {
             }
         }
         return null;
+    }
+
+    /// Register a Pydust module as a submodule to an existing module.
+    pub fn module(comptime state: *State, comptime definition: type) @TypeOf(definition) {
+        state.register(definition, .module);
+        return definition;
+    }
+
+    /// Register a struct as a Python class definition.
+    pub fn class(comptime state: *State, comptime definition: type) @TypeOf(definition) {
+        state.register(definition, .class);
+        return definition;
+    }
+
+    pub fn zig(comptime state: *State, comptime definition: type) @TypeOf(definition) {
+        for (@typeInfo(definition).Struct.decls) |decl| {
+            state.privateMethod(&@field(definition, decl.name));
+        }
+        return definition;
+    }
+
+    /// Register a struct field as a Python read-only attribute.
+    pub fn attribute(comptime state: *State, comptime T: type) @TypeOf(Attribute(T)) {
+        const definition = Attribute(T);
+        state.register(definition, .attribute);
+        return definition;
+    }
+
+    fn Attribute(comptime T: type) type {
+        return struct { value: T };
+    }
+
+    /// Register a property as a field on a Pydust class.
+    pub fn property(comptime state: *State, comptime definition: type) @TypeOf(definition) {
+        state.register(definition, .property);
+        return definition;
     }
 };

@@ -236,7 +236,6 @@ fn checkArgsParam(comptime Args: type) void {
 }
 
 pub fn wrap(comptime state: State, comptime definition: type, comptime func: anytype, comptime sig: Signature(state), comptime flags: c_int) type {
-    const def = state.getDefinition(definition);
     return struct {
         const doc = textSignature(state, sig);
 
@@ -249,7 +248,7 @@ pub fn wrap(comptime state: State, comptime definition: type, comptime func: any
                     var ml_flags: c_int = ffi.METH_FASTCALL | flags;
 
                     // We can only set METH_STATIC and METH_CLASS on class methods, not module methods.
-                    if (def.type == .class and sig.selfParam == null) {
+                    if (state.getDefinition(definition).type == .class and sig.selfParam == null) {
                         ml_flags |= ffi.METH_STATIC;
                     }
                     // TODO(ngates): check for METH_CLASS

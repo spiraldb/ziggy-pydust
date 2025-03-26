@@ -42,16 +42,13 @@ pub fn finalize() void {
 }
 
 /// Register the root Pydust module
-pub fn rootmodule(comptime definition: type) void {
-    comptime var state = State.instance(definition);
-    if (!state.isEmpty()) {
-        @compileError("Root module can only be registered in a root-level comptime block");
-    }
+pub fn rootmodule(comptime spec: fn () struct { State, type }) void {
+    comptime var state, const definition = spec();
 
     const pyconf = @import("pyconf");
     const name = pyconf.module_name;
 
-    state.register(module(definition));
+    state.register(definition, .module);
     state.identify(definition, name, definition);
     eagerEval(&state, definition);
 
@@ -67,38 +64,6 @@ pub fn rootmodule(comptime definition: type) void {
 
     const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
     @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .strong });
-}
-
-/// Register a Pydust module as a submodule to an existing module.
-pub fn module(comptime definition: type) Definition {
-    return .{ .definition = definition, .type = .module };
-}
-
-/// Register a struct as a Python class definition.
-pub fn class(comptime definition: type) Definition {
-    return .{ .definition = definition, .type = .class };
-}
-
-pub fn zig(comptime definition: type) [std.meta.declarations(definition).len]*const anyopaque {
-    const decls = std.meta.declarations(definition);
-    var methods: [decls.len]*const anyopaque = undefined;
-    for (decls, 0..) |decl, i|
-        methods[i] = @constCast(@ptrCast(&@field(definition, decl.name)));
-    return methods;
-}
-
-/// Register a struct field as a Python read-only attribute.
-pub fn attribute(comptime T: type) Definition {
-    return .{ .definition = Attribute(T), .type = .attribute };
-}
-
-fn Attribute(comptime T: type) type {
-    return struct { value: T };
-}
-
-/// Register a property as a field on a Pydust class.
-pub fn property(comptime definition: type) Definition {
-    return .{ .definition = definition, .type = .property };
 }
 
 /// Zig type representing variadic arguments to a Python function.
@@ -126,19 +91,9 @@ fn eagerEval(comptime state: *State, comptime definition: type) void {
     for (@typeInfo(definition).Struct.decls) |d| {
         const value = @field(definition, d.name);
         @setEvalBranchQuota(10000);
-        switch (@TypeOf(value)) {
-            Definition => {
-                // If it's a Pydust definition, then we identify it.
-                state.register(value);
-                state.identify(value.definition, d.name ++ "", definition);
-                eagerEval(state, value.definition);
-            },
-            *const anyopaque => {
-                // If it's a function pointer, then we register it.
-                state.privateMethod(value);
-                state.identify(value, d.name ++ "", definition);
-            },
-            else => {},
+        if (state.findDefinition(value)) |_| {
+            // If it's a Pydust definition, then we identify it.
+            state.identify(value, d.name ++ "", definition);
         }
     }
 }
