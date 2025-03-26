@@ -42,15 +42,15 @@ pub fn finalize() void {
 }
 
 /// Register the root Pydust module
-pub fn rootmodule(comptime spec: fn () struct { State, type }) void {
-    comptime var state, const definition = spec();
+pub fn rootmodule(comptime spec: fn () struct { *State, type }) void {
+    const state, const definition = spec();
 
     const pyconf = @import("pyconf");
     const name = pyconf.module_name;
 
     state.register(definition, .module);
     state.identify(definition, name, definition);
-    eagerEval(&state, definition);
+    eagerEval(state, definition);
 
     const moddef = Module(state, name, definition);
 

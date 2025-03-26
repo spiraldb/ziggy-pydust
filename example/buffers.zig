@@ -13,53 +13,57 @@
 const std = @import("std");
 const py = @import("pydust");
 
-const state = py.State.instance(@This());
+fn root() struct { *py.State, type } {
+    comptime var state = py.State{};
+    const spec = struct {
+        // --8<-- [start:protocol]
+        pub const ConstantBuffer = state.class(struct {
+            pub const __doc__ = "A class implementing a buffer protocol";
+            const Self = @This();
 
-// --8<-- [start:protocol]
-pub const ConstantBuffer = py.class(struct {
-    pub const __doc__ = "A class implementing a buffer protocol";
-    const Self = @This();
+            values: []i64,
+            shape: []const isize, // isize to be compatible with Python API
+            format: [:0]const u8 = "l", // i64
 
-    values: []i64,
-    shape: []const isize, // isize to be compatible with Python API
-    format: [:0]const u8 = "l", // i64
+            pub fn __init__(self: *Self, args: struct { elem: i64, length: u32 }) !void {
+                const values = try py.allocator.alloc(i64, args.length);
+                @memset(values, args.elem);
 
-    pub fn __init__(self: *Self, args: struct { elem: i64, length: u32 }) !void {
-        const values = try py.allocator.alloc(i64, args.length);
-        @memset(values, args.elem);
+                const shape = try py.allocator.alloc(isize, 1);
+                shape[0] = @intCast(args.length);
 
-        const shape = try py.allocator.alloc(isize, 1);
-        shape[0] = @intCast(args.length);
+                self.* = .{ .values = values, .shape = shape };
+            }
 
-        self.* = .{ .values = values, .shape = shape };
-    }
+            pub fn __del__(self: *Self) void {
+                py.allocator.free(self.values);
+                py.allocator.free(self.shape);
+            }
 
-    pub fn __del__(self: *Self) void {
-        py.allocator.free(self.values);
-        py.allocator.free(self.shape);
-    }
+            pub fn __buffer__(self: *const Self, view: *py.PyBuffer(state), flags: c_int) !void {
+                // For more details on request types, see https://docs.python.org/3/c-api/buffer.html#buffer-request-types
+                if (flags & py.PyBuffer(state).Flags.WRITABLE != 0) {
+                    return py.BufferError.raise("request for writable buffer is rejected");
+                }
+                view.initFromSlice(i64, self.values, self.shape, self);
+            }
+        });
+        // --8<-- [end:protocol]
 
-    pub fn __buffer__(self: *const Self, view: *py.PyBuffer(state), flags: c_int) !void {
-        // For more details on request types, see https://docs.python.org/3/c-api/buffer.html#buffer-request-types
-        if (flags & py.PyBuffer(state).Flags.WRITABLE != 0) {
-            return py.BufferError(state).raise("request for writable buffer is rejected");
+        // --8<-- [start:sum]
+        pub fn sum(args: struct { buf: py.PyObject(state) }) !i64 {
+            const view = try args.buf.getBuffer(py.PyBuffer(state).Flags.ND);
+            defer view.release();
+
+            var bufferSum: i64 = 0;
+            for (view.asSlice(i64)) |value| bufferSum += value;
+            return bufferSum;
         }
-        view.initFromSlice(i64, self.values, self.shape, self);
-    }
-});
-// --8<-- [end:protocol]
-
-// --8<-- [start:sum]
-pub fn sum(args: struct { buf: py.PyObject(state) }) !i64 {
-    const view = try args.buf.getBuffer(py.PyBuffer(state).Flags.ND);
-    defer view.release();
-
-    var bufferSum: i64 = 0;
-    for (view.asSlice(i64)) |value| bufferSum += value;
-    return bufferSum;
+    };
+    return .{ &state, spec };
 }
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }
 // --8<-- [end:sum]

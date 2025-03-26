@@ -218,7 +218,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
                     if (comptime state.findDefinition(p.child)) |def| {
                         // If the pointer is for a Pydust module
                         if (def.type == .module) {
-                            const mod = try py.PyModule.checked(obj);
+                            const mod = try py.PyModule(state).checked(obj);
                             return try mod.getState(p.child);
                         }
 
@@ -277,28 +277,28 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
         // Unwrap the call args into a Pydust argument struct, borrowing references to the Python objects
         // but instantiating the args slice and kwargs map containers.
         // The caller is responsible for invoking deinit on the returned struct.
-        pub inline fn unwrapCallArgs(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!ZigCallArgs {
+        pub inline fn unwrapCallArgs(pyargs: ?py.PyTuple(state), pykwargs: ?py.PyDict(state)) PyError!ZigCallArgs {
             return ZigCallArgs.unwrap(pyargs, pykwargs);
         }
 
         const ZigCallArgs = struct {
             argsStruct: T,
-            allPosArgs: []py.PyObject,
+            allPosArgs: []py.PyObject(state),
 
-            pub fn unwrap(pyargs: ?py.PyTuple, pykwargs: ?py.PyDict) PyError!@This() {
+            pub fn unwrap(pyargs: ?py.PyTuple(state), pykwargs: ?py.PyDict(state)) PyError!@This() {
                 var kwargs = py.Kwargs.init(py.allocator);
                 if (pykwargs) |kw| {
                     var iter = kw.itemsIterator();
                     while (iter.next()) |item| {
-                        const key: []const u8 = try (try py.PyString.checked(item.k)).asSlice();
+                        const key: []const u8 = try (try py.PyString(state).checked(item.k)).asSlice();
                         try kwargs.put(key, item.v);
                     }
                 }
 
-                const args = try py.allocator.alloc(py.PyObject, if (pyargs) |a| a.length() else 0);
+                const args = try py.allocator.alloc(py.PyObject(state), if (pyargs) |a| a.length() else 0);
                 if (pyargs) |a| {
                     for (0..a.length()) |i| {
-                        args[i] = try a.getItem(py.PyObject, i);
+                        args[i] = try a.getItem(py.PyObject(state), i);
                     }
                 }
 
@@ -313,7 +313,7 @@ pub fn Trampoline(comptime state: State, comptime T: type) type {
                 }
 
                 inline for (@typeInfo(T).Struct.fields) |field| {
-                    if (field.type == py.Args) {
+                    if (field.type == py.Args(state)) {
                         py.allocator.free(@field(self.argsStruct, field.name));
                     }
                     if (field.type == py.Kwargs) {

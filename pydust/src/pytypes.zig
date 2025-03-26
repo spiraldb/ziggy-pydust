@@ -56,7 +56,7 @@ pub fn Type(comptime state: State, comptime name: [:0]const u8, comptime definit
         pub fn init(module: py.PyModule) PyError!py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;
             if (bases.bases.len > 0) {
-                const basesTuple = try py.PyTuple.new(bases.bases.len);
+                const basesTuple = try py.PyTuple(state).new(bases.bases.len);
                 inline for (bases.bases, 0..) |base, i| {
                     try basesTuple.setOwnedItem(i, try py.self(base));
                 }
@@ -304,8 +304,8 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
             const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
 
             if (sig.argsParam) |Args| {
-                const args = if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null;
-                const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
+                const args = if (pyargs) |pa| py.PyTuple(state).unchecked(.{ .py = pa }) else null;
+                const kwargs = if (pykwargs) |pk| py.PyDict(state).unchecked(.{ .py = pk }) else null;
 
                 const init_args = tramp.Trampoline(Args).unwrapCallArgs(args, kwargs) catch return -1;
                 defer init_args.deinit();
@@ -395,8 +395,8 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
         fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const sig = funcs.parseSignature("__call__", @typeInfo(@TypeOf(definition.__call__)).Fn, &.{ *definition, *const definition, py.PyObject });
 
-            const args = if (pyargs) |pa| py.PyTuple.unchecked(.{ .py = pa }) else null;
-            const kwargs = if (pykwargs) |pk| py.PyDict.unchecked(.{ .py = pk }) else null;
+            const args = if (pyargs) |pa| py.PyTuple(state).unchecked(.{ .py = pa }) else null;
+            const kwargs = if (pykwargs) |pk| py.PyDict(state).unchecked(.{ .py = pk }) else null;
 
             const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return null;
             const call_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;

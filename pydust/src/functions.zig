@@ -307,7 +307,7 @@ pub fn wrap(comptime state: State, comptime definition: type, comptime func: any
                 const names = py.PyTuple(state).unchecked(.{ .py = rawnames });
                 std.debug.assert(names.length() == kwargs.len);
                 for (0..names.length(), kwargs) |i, v| {
-                    const k = names.getItem(py.PyString, i) catch return null;
+                    const k = names.getItem(py.PyString(state), i) catch return null;
                     kwargsMap.put(k.asSlice() catch return null, v) catch return null;
                 }
             }

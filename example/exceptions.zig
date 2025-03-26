@@ -13,20 +13,24 @@
 const std = @import("std");
 const py = @import("pydust");
 
-const state = py.State.instance(@This());
+fn root() struct { *py.State, type } {
+    comptime var state = py.State{};
+    const spec = struct {
+        // --8<-- [start:valueerror]
+        pub fn raise_value_error(args: struct { message: py.PyString(&state) }) !void {
+            return py.ValueError.raise(try args.message.asSlice());
+        }
+        // --8<-- [end:valueerror]
 
-// --8<-- [start:valueerror]
-pub fn raise_value_error(args: struct { message: py.PyString(state) }) !void {
-    return py.ValueError(state).raise(try args.message.asSlice());
-}
-// --8<-- [end:valueerror]
+        pub const CustomError = error{Oops};
 
-pub const CustomError = error{Oops};
-
-pub fn raise_custom_error() !void {
-    return CustomError.Oops;
+        pub fn raise_custom_error() !void {
+            return CustomError.Oops;
+        }
+    };
+    return .{ &state, spec };
 }
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }

@@ -13,194 +13,198 @@
 const std = @import("std");
 const py = @import("pydust");
 
-const state = py.State.instance(@This());
+fn root() struct { *py.State, type } {
+    comptime var state = py.State{};
+    const spec = struct {
+        // --8<-- [start:defining]
+        pub const SomeClass = state.class(struct {
+            pub const __doc__ = "Some class defined in Zig accessible from Python";
 
-// --8<-- [start:defining]
-pub const SomeClass = py.class(struct {
-    pub const __doc__ = "Some class defined in Zig accessible from Python";
+            count: u32 = 0,
+        });
+        // --8<-- [end:defining]
 
-    count: u32 = 0,
-});
-// --8<-- [end:defining]
+        // --8<-- [start:constructor]
+        pub const ConstructableClass = state.class(struct {
+            count: u32 = 0,
 
-// --8<-- [start:constructor]
-pub const ConstructableClass = py.class(struct {
-    count: u32 = 0,
-
-    pub fn __init__(self: *@This(), args: struct { count: u32 }) void {
-        self.count = args.count;
-    }
-});
-// --8<-- [end:constructor]
-
-// --8<-- [start:subclass]
-pub const Animal = py.class(struct {
-    const Self = @This();
-
-    species: py.PyString(state),
-
-    pub fn species(self: *Self) py.PyString(state) {
-        return self.species;
-    }
-});
-
-pub const Dog = py.class(struct {
-    const Self = @This();
-
-    animal: Animal.definition,
-    breed: py.PyString(state),
-
-    pub fn __init__(self: *Self, args: struct { breed: py.PyString(state) }) !void {
-        args.breed.incref();
-        self.* = .{
-            .animal = .{ .species = try py.PyString.create("dog") },
-            .breed = args.breed,
-        };
-    }
-
-    pub fn breed(self: *Self) py.PyString(state) {
-        return self.breed;
-    }
-});
-
-// --8<-- [end:subclass]
-
-// --8<-- [start:properties]
-pub const User = py.class(struct {
-    const Self = @This();
-
-    pub fn __init__(self: *Self, args: struct { name: py.PyString(state) }) void {
-        args.name.incref();
-        self.* = .{ .name = args.name, .email = .{} };
-    }
-
-    name: py.PyString(state),
-    email: Email.definition,
-    greeting: Greeting.definition = .{},
-
-    const Email = py.property(struct {
-        const Prop = @This();
-
-        e: ?py.PyString(state) = null,
-
-        pub fn get(prop: *const Prop) ?py.PyString(state) {
-            if (prop.e) |e| e.incref();
-            return prop.e;
-        }
-
-        pub fn set(prop: *Prop, value: py.PyString(state)) !void {
-            const self: *Self = @fieldParentPtr("email", prop);
-            if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
-                return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
+            pub fn __init__(self: *@This(), args: struct { count: u32 }) void {
+                self.count = args.count;
             }
-            value.incref();
-            prop.e = value;
-        }
-    });
+        });
+        // --8<-- [end:constructor]
 
-    const Greeting = py.property(struct {
-        pub fn get(self: *const Self) !py.PyString(state) {
-            return py.PyString(state).createFmt("Hello, {s}!", .{try self.name.asSlice()});
-        }
-    });
+        // --8<-- [start:subclass]
+        pub const Animal = state.class(struct {
+            const Self = @This();
 
-    pub fn __del__(self: *Self) void {
-        self.name.decref();
-        if (self.email.e) |e| e.decref();
-    }
-});
-// --8<-- [end:properties]
+            species: py.PyString(state),
 
-// --8<-- [start:attributes]
-pub const Counter = py.class(struct {
-    const Self = @This();
+            pub fn species(self: *Self) py.PyString(state) {
+                return self.species;
+            }
+        });
 
-    count: Count.definition = .{ .value = 0 },
-    const Count = py.attribute(usize);
+        pub const Dog = state.class(struct {
+            const Self = @This();
 
-    pub fn __init__(self: *Self) void {
-        _ = self;
-    }
+            animal: Animal,
+            breed: py.PyString(state),
 
-    pub fn increment(self: *Self) void {
-        self.count.value += 1;
-    }
-});
-// --8<-- [end:attributes]
+            pub fn __init__(self: *Self, args: struct { breed: py.PyString(state) }) !void {
+                args.breed.incref();
+                self.* = .{
+                    .animal = .{ .species = try py.PyString(state).create("dog") },
+                    .breed = args.breed,
+                };
+            }
 
-// --8<-- [start:staticmethods]
-pub const Math = py.class(struct {
-    pub fn add(args: struct { x: i32, y: i32 }) i32 {
-        return args.x + args.y;
-    }
-});
-// --8<-- [end:staticmethods]
+            pub fn breed(self: *Self) py.PyString(state) {
+                return self.breed;
+            }
+        });
 
-// --8<-- [start:zigonly]
-pub const ZigOnlyMethod = py.class(struct {
-    const Self = @This();
-    number: i32,
+        // --8<-- [end:subclass]
 
-    pub fn __init__(self: *Self, args: struct { x: i32 }) void {
-        self.number = args.x;
-    }
+        // --8<-- [start:properties]
+        pub const User = state.class(struct {
+            const Self = @This();
 
-    pub usingnamespace py.zig(struct {
-        pub fn get_number(self: *const Self) i32 {
-            return self.number;
-        }
-    });
+            pub fn __init__(self: *Self, args: struct { name: py.PyString(state) }) void {
+                args.name.incref();
+                self.* = .{ .name = args.name, .email = .{} };
+            }
 
-    pub fn reexposed(self: *const Self) i32 {
-        return self.get_number();
-    }
-});
-// --8<-- [end:zigonly]
+            name: py.PyString(state),
+            email: Email.definition,
+            greeting: Greeting.definition = .{},
 
-pub const Hash = py.class(struct {
-    const Self = @This();
-    number: u32,
+            const Email = py.property(struct {
+                const Prop = @This();
 
-    pub fn __init__(self: *Self, args: struct { x: u32 }) void {
-        self.number = args.x;
-    }
+                e: ?py.PyString(state) = null,
 
-    pub fn __hash__(self: *const Self) usize {
-        var hasher = std.hash.Wyhash.init(0);
-        std.hash.autoHashStrat(&hasher, self, .DeepRecursive);
-        return hasher.final();
-    }
-});
+                pub fn get(prop: *const Prop) ?py.PyString(state) {
+                    if (prop.e) |e| e.incref();
+                    return prop.e;
+                }
 
-pub const Callable = py.class(struct {
-    const Self = @This();
+                pub fn set(prop: *Prop, value: py.PyString(state)) !void {
+                    const self: *Self = @fieldParentPtr("email", prop);
+                    if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
+                        return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
+                    }
+                    value.incref();
+                    prop.e = value;
+                }
+            });
 
-    pub fn __init__(self: *Self) void {
-        _ = self;
-    }
+            const Greeting = py.property(struct {
+                pub fn get(self: *const Self) !py.PyString(state) {
+                    return py.PyString(state).createFmt("Hello, {s}!", .{try self.name.asSlice()});
+                }
+            });
 
-    pub fn __call__(self: *const Self, args: struct { i: u32 }) u32 {
-        _ = self;
-        return args.i;
-    }
-});
+            pub fn __del__(self: *Self) void {
+                self.name.decref();
+                if (self.email.e) |e| e.decref();
+            }
+        });
+        // --8<-- [end:properties]
 
-pub const GetAttr = py.class(struct {
-    const Self = @This();
+        // --8<-- [start:attributes]
+        pub const Counter = state.class(struct {
+            const Self = @This();
 
-    pub fn __init__(self: *Self) void {
-        _ = self;
-    }
+            count: Count.definition = .{ .value = 0 },
+            const Count = py.attribute(usize);
 
-    pub fn __getattr__(self: *const Self, attr: py.PyString(state)) !py.PyObject(state) {
-        const name = try attr.asSlice();
-        if (std.mem.eql(u8, name, "number")) {
-            return py.create(42);
-        }
-        return py.object(self).getAttribute(name);
-    }
-});
+            pub fn __init__(self: *Self) void {
+                _ = self;
+            }
+
+            pub fn increment(self: *Self) void {
+                self.count.value += 1;
+            }
+        });
+        // --8<-- [end:attributes]
+
+        // --8<-- [start:staticmethods]
+        pub const Math = state.class(struct {
+            pub fn add(args: struct { x: i32, y: i32 }) i32 {
+                return args.x + args.y;
+            }
+        });
+        // --8<-- [end:staticmethods]
+
+        // --8<-- [start:zigonly]
+        pub const ZigOnlyMethod = state.class(struct {
+            const Self = @This();
+            number: i32,
+
+            pub fn __init__(self: *Self, args: struct { x: i32 }) void {
+                self.number = args.x;
+            }
+
+            pub usingnamespace py.zig(struct {
+                pub fn get_number(self: *const Self) i32 {
+                    return self.number;
+                }
+            });
+
+            pub fn reexposed(self: *const Self) i32 {
+                return self.get_number();
+            }
+        });
+        // --8<-- [end:zigonly]
+
+        pub const Hash = state.class(struct {
+            const Self = @This();
+            number: u32,
+
+            pub fn __init__(self: *Self, args: struct { x: u32 }) void {
+                self.number = args.x;
+            }
+
+            pub fn __hash__(self: *const Self) usize {
+                var hasher = std.hash.Wyhash.init(0);
+                std.hash.autoHashStrat(&hasher, self, .DeepRecursive);
+                return hasher.final();
+            }
+        });
+
+        pub const Callable = state.class(struct {
+            const Self = @This();
+
+            pub fn __init__(self: *Self) void {
+                _ = self;
+            }
+
+            pub fn __call__(self: *const Self, args: struct { i: u32 }) u32 {
+                _ = self;
+                return args.i;
+            }
+        });
+
+        pub const GetAttr = state.class(struct {
+            const Self = @This();
+
+            pub fn __init__(self: *Self) void {
+                _ = self;
+            }
+
+            pub fn __getattr__(self: *const Self, attr: py.PyString(state)) !py.PyObject {
+                const name = try attr.asSlice();
+                if (std.mem.eql(u8, name, "number")) {
+                    return py.create(42);
+                }
+                return py.object(self).getAttribute(name);
+            }
+        });
+    };
+    return .{ &state, spec };
+}
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }

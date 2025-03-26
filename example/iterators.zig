@@ -13,44 +13,48 @@
 const std = @import("std");
 const py = @import("pydust");
 
-const state = py.State.instance(@This());
+fn root() struct { *py.State, type } {
+    comptime var state = py.State{};
+    const spec = struct {
+        pub const Range = state.class(struct {
+            pub const __doc__ = "An example of iterable class";
 
-pub const Range = py.class(struct {
-    pub const __doc__ = "An example of iterable class";
+            const Self = @This();
 
-    const Self = @This();
+            lower: i64,
+            upper: i64,
+            step: i64,
 
-    lower: i64,
-    upper: i64,
-    step: i64,
+            pub fn __init__(self: *Self, args: struct { lower: i64, upper: i64, step: i64 }) void {
+                self.* = .{ .lower = args.lower, .upper = args.upper, .step = args.step };
+            }
 
-    pub fn __init__(self: *Self, args: struct { lower: i64, upper: i64, step: i64 }) void {
-        self.* = .{ .lower = args.lower, .upper = args.upper, .step = args.step };
-    }
+            pub fn __iter__(self: *const Self) !*RangeIterator.definition {
+                return try py.init(RangeIterator, .{ .next = self.lower, .stop = self.upper, .step = self.step });
+            }
+        });
 
-    pub fn __iter__(self: *const Self) !*RangeIterator.definition {
-        return try py.init(RangeIterator, .{ .next = self.lower, .stop = self.upper, .step = self.step });
-    }
-});
+        pub const RangeIterator = state.class(struct {
+            pub const __doc__ = "Range iterator";
 
-pub const RangeIterator = py.class(struct {
-    pub const __doc__ = "Range iterator";
+            const Self = @This();
 
-    const Self = @This();
+            next: i64,
+            stop: i64,
+            step: i64,
 
-    next: i64,
-    stop: i64,
-    step: i64,
-
-    pub fn __next__(self: *Self) ?i64 {
-        if (self.next >= self.stop) {
-            return null;
-        }
-        defer self.next += self.step;
-        return self.next;
-    }
-});
+            pub fn __next__(self: *Self) ?i64 {
+                if (self.next >= self.stop) {
+                    return null;
+                }
+                defer self.next += self.step;
+                return self.next;
+            }
+        });
+    };
+    return .{ &state, spec };
+}
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }

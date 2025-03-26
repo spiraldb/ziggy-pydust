@@ -12,27 +12,31 @@
 
 const py = @import("pydust");
 
-const state = py.State.instance(@This());
+fn root() struct { *py.State, type } {
+    comptime var state = py.State{};
+    const spec = struct {
+        // --8<-- [start:append]
+        pub fn append(args: struct { left: py.PyString(&state) }) !py.PyString(&state) {
+            // Since we create right, we must also decref it.
+            const right = try py.PyString(&state).create("right");
+            defer right.decref();
 
-// --8<-- [start:append]
-pub fn append(args: struct { left: py.PyString(state) }) !py.PyString(state) {
-    // Since we create right, we must also decref it.
-    const right = try py.PyString(state).create("right");
-    defer right.decref();
+            // Left is given to us as a borrowed reference from the caller.
+            // Since append steals the left-hand-side, we must incref first.
+            args.left.incref();
+            return args.left.append(right);
+        }
+        // --8<-- [end:append]
 
-    // Left is given to us as a borrowed reference from the caller.
-    // Since append steals the left-hand-side, we must incref first.
-    args.left.incref();
-    return args.left.append(right);
+        // --8<-- [start:concat]
+        pub fn concat(args: struct { left: py.PyString(&state) }) !py.PyString(&state) {
+            return args.left.concatSlice("right");
+        }
+        // --8<-- [end:concat]
+    };
+    return .{ &state, spec };
 }
-// --8<-- [end:append]
-
-// --8<-- [start:concat]
-pub fn concat(args: struct { left: py.PyString(state) }) !py.PyString(state) {
-    return args.left.concatSlice("right");
-}
-// --8<-- [end:concat]
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }

@@ -146,7 +146,7 @@ fn Slots(comptime state: State, comptime definition: type) type {
                 // Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace
                 const types = try py.import("types");
                 defer types.decref();
-                const pyname = try py.PyString.create(name);
+                const pyname = try py.PyString(state).create(name);
                 defer pyname.decref();
                 const spec = try types.call(py.PyObject, "SimpleNamespace", .{}, .{ .name = pyname });
                 defer spec.decref();

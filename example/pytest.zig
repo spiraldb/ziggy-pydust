@@ -13,30 +13,34 @@
 const std = @import("std");
 const py = @import("pydust");
 
-const state = py.State.instance(@This());
+fn root() struct { *py.State, type } {
+    comptime var state = py.State{};
+    const spec = struct {
+        // --8<-- [start:example]
+        test "pydust pytest" {
+            py.initialize();
+            defer py.finalize();
 
-// --8<-- [start:example]
-test "pydust pytest" {
-    py.initialize();
-    defer py.finalize();
+            const str = try py.PyString(&state).create("hello");
+            defer str.decref();
 
-    const str = try py.PyString(state).create("hello");
-    defer str.decref();
+            try std.testing.expectEqualStrings("hello", try str.asSlice());
+        }
+        // --8<-- [end:example]
 
-    try std.testing.expectEqualStrings("hello", try str.asSlice());
-}
-// --8<-- [end:example]
+        test "pydust-expected-failure" {
+            py.initialize();
+            defer py.finalize();
 
-test "pydust-expected-failure" {
-    py.initialize();
-    defer py.finalize();
+            const str = try py.PyString(&state).create("hello");
+            defer str.decref();
 
-    const str = try py.PyString(state).create("hello");
-    defer str.decref();
-
-    try std.testing.expectEqualStrings("world", try str.asSlice());
+            try std.testing.expectEqualStrings("world", try str.asSlice());
+        }
+    };
+    return .{ &state, spec };
 }
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }

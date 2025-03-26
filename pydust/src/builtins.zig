@@ -120,11 +120,11 @@ pub fn call(comptime state: State, comptime ReturnType: type, object: anytype, a
 }
 
 /// Convert an object into a dictionary. Equivalent of Python dict(o).
-pub fn dict(comptime state: State, object: anytype) !py.PyDict {
+pub fn dict(comptime state: State, object: anytype) !py.PyDict(state) {
     const Dict: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PyDict_Type)) };
     const pyobj = try py.create(state, object);
     defer pyobj.decref();
-    return Dict.call(py.PyDict, .{pyobj}, .{});
+    return Dict.call(py.PyDict(state), .{pyobj}, .{});
 }
 
 pub const PyGIL = struct {
@@ -278,9 +278,9 @@ pub fn super(comptime state: State, comptime Super: type, selfInstance: anytype)
     return superBuiltin.call(.{ superPyType, py.object(state, selfInstance) }, .{});
 }
 
-pub fn tuple(comptime state: State, object: anytype) !py.PyTuple {
+pub fn tuple(comptime state: State, object: anytype) !py.PyTuple(state) {
     const pytuple = ffi.PySequence_Tuple(py.object(state, object).py) orelse return PyError.PyRaised;
-    return py.PyTuple.unchecked(.{ .py = pytuple });
+    return py.PyTuple(state).unchecked(.{ .py = pytuple });
 }
 
 /// Return the PyType object for a given Python object.

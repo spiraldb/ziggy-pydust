@@ -13,13 +13,17 @@
 // --8<-- [start:ex]
 const py = @import("pydust");
 
-const state = py.State.instance(@This());
-
-pub fn hello() !py.PyString(state) {
-    return try py.PyString(state).create("Hello!");
+fn root() struct { *py.State, type } {
+    comptime var state = py.State{};
+    const spec = struct {
+        pub fn hello() !py.PyString(state) {
+            return try py.PyString(state).create("Hello!");
+        }
+    };
+    return .{ &state, spec };
 }
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }
 // --8<-- [end:ex]
