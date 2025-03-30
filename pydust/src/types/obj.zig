@@ -132,7 +132,7 @@ pub fn PyObjectMixin(comptime root: type, comptime name: []const u8, comptime pr
 
     return struct {
         /// Check whether the given object is of this type.
-        pub fn check(obj: py.PyObject) !bool {
+        pub fn check(obj: py.PyObject(root)) !bool {
             return PyCheck(obj.py) == 1;
         }
 

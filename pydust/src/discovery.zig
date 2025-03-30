@@ -41,7 +41,7 @@ fn countDefinitions(comptime definition: type) usize {
             for (info.fields) |f| {
                 count += countDefinitions(f.type);
             }
-            for (info.fields) |d| {
+            for (info.decls) |d| {
                 const field = @field(definition, d.name);
                 if (@TypeOf(field) == type)
                     count += countDefinitions(field);

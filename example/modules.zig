@@ -45,7 +45,7 @@ pub fn count(self: *const Self) u32 {
 }
 
 pub fn whoami(self: *const Self) py.PyString(root) {
-    py.incref(self.name);
+    py.incref(root, self.name);
     return self.name;
 }
 
