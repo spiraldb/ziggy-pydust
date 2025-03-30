@@ -18,7 +18,7 @@ const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python Py_buffer.
 /// See: https://docs.python.org/3/c-api/buffer.html
-pub fn PyBuffer(comptime state: State) type {
+pub fn PyBuffer(comptime root: type) type {
     return extern struct {
         const Self = @This();
 
@@ -84,7 +84,7 @@ pub fn PyBuffer(comptime state: State) type {
 
         pub fn initFromSlice(self: *Self, comptime T: type, values: []T, shape: []const isize, owner: anytype) void {
             // We need to incref the owner object because it's being used by the view.
-            const ownerObj = py.object(state, owner);
+            const ownerObj = py.object(root, owner);
             ownerObj.incref();
 
             self.* = .{

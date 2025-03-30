@@ -17,216 +17,216 @@ const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 
-pub fn ArithmeticError(comptime state: State) type {
-    return PyExc(state, "ArithmeticError");
+pub fn ArithmeticError(comptime root: type) type {
+    return PyExc(root, "ArithmeticError");
 }
-pub fn AssertionError(comptime state: State) type {
-    return PyExc(state, "AssertionError");
+pub fn AssertionError(comptime root: type) type {
+    return PyExc(root, "AssertionError");
 }
-pub fn AttributeError(comptime state: State) type {
-    return PyExc(state, "AttributeError");
+pub fn AttributeError(comptime root: type) type {
+    return PyExc(root, "AttributeError");
 }
-pub fn BaseException(comptime state: State) type {
-    return PyExc(state, "BaseException");
+pub fn BaseException(comptime root: type) type {
+    return PyExc(root, "BaseException");
 }
-pub fn BaseExceptionGroup(comptime state: State) type {
-    return PyExc(state, "BaseExceptionGroup");
+pub fn BaseExceptionGroup(comptime root: type) type {
+    return PyExc(root, "BaseExceptionGroup");
 }
-pub fn BlockingIOError(comptime state: State) type {
-    return PyExc(state, "BlockingIOError");
+pub fn BlockingIOError(comptime root: type) type {
+    return PyExc(root, "BlockingIOError");
 }
-pub fn BrokenPipeError(comptime state: State) type {
-    return PyExc(state, "BrokenPipeError");
+pub fn BrokenPipeError(comptime root: type) type {
+    return PyExc(root, "BrokenPipeError");
 }
-pub fn BufferError(comptime state: State) type {
-    return PyExc(state, "BufferError");
+pub fn BufferError(comptime root: type) type {
+    return PyExc(root, "BufferError");
 }
-pub fn BytesWarning(comptime state: State) type {
-    return PyExc(state, "BytesWarning");
+pub fn BytesWarning(comptime root: type) type {
+    return PyExc(root, "BytesWarning");
 }
-pub fn ChildProcessError(comptime state: State) type {
-    return PyExc(state, "ChildProcessError");
+pub fn ChildProcessError(comptime root: type) type {
+    return PyExc(root, "ChildProcessError");
 }
-pub fn ConnectionAbortedError(comptime state: State) type {
-    return PyExc(state, "ConnectionAbortedError");
+pub fn ConnectionAbortedError(comptime root: type) type {
+    return PyExc(root, "ConnectionAbortedError");
 }
-pub fn ConnectionError(comptime state: State) type {
-    return PyExc(state, "ConnectionError");
+pub fn ConnectionError(comptime root: type) type {
+    return PyExc(root, "ConnectionError");
 }
-pub fn ConnectionRefusedError(comptime state: State) type {
-    return PyExc(state, "ConnectionRefusedError");
+pub fn ConnectionRefusedError(comptime root: type) type {
+    return PyExc(root, "ConnectionRefusedError");
 }
-pub fn ConnectionResetError(comptime state: State) type {
-    return PyExc(state, "ConnectionResetError");
+pub fn ConnectionResetError(comptime root: type) type {
+    return PyExc(root, "ConnectionResetError");
 }
-pub fn DeprecationWarning(comptime state: State) type {
-    return PyExc(state, "DeprecationWarning");
+pub fn DeprecationWarning(comptime root: type) type {
+    return PyExc(root, "DeprecationWarning");
 }
-pub fn EOFError(comptime state: State) type {
-    return PyExc(state, "EOFError");
+pub fn EOFError(comptime root: type) type {
+    return PyExc(root, "EOFError");
 }
-pub fn EncodingWarning(comptime state: State) type {
-    return PyExc(state, "EncodingWarning");
+pub fn EncodingWarning(comptime root: type) type {
+    return PyExc(root, "EncodingWarning");
 }
-pub fn EnvironmentError(comptime state: State) type {
-    return PyExc(state, "EnvironmentError");
+pub fn EnvironmentError(comptime root: type) type {
+    return PyExc(root, "EnvironmentError");
 }
-pub fn Exception(comptime state: State) type {
-    return PyExc(state, "Exception");
+pub fn Exception(comptime root: type) type {
+    return PyExc(root, "Exception");
 }
-pub fn FileExistsError(comptime state: State) type {
-    return PyExc(state, "FileExistsError");
+pub fn FileExistsError(comptime root: type) type {
+    return PyExc(root, "FileExistsError");
 }
-pub fn FileNotFoundError(comptime state: State) type {
-    return PyExc(state, "FileNotFoundError");
+pub fn FileNotFoundError(comptime root: type) type {
+    return PyExc(root, "FileNotFoundError");
 }
-pub fn FloatingPointError(comptime state: State) type {
-    return PyExc(state, "FloatingPointError");
+pub fn FloatingPointError(comptime root: type) type {
+    return PyExc(root, "FloatingPointError");
 }
-pub fn FutureWarning(comptime state: State) type {
-    return PyExc(state, "FutureWarning");
+pub fn FutureWarning(comptime root: type) type {
+    return PyExc(root, "FutureWarning");
 }
-pub fn GeneratorExit(comptime state: State) type {
-    return PyExc(state, "GeneratorExit");
+pub fn GeneratorExit(comptime root: type) type {
+    return PyExc(root, "GeneratorExit");
 }
-pub fn IOError(comptime state: State) type {
-    return PyExc(state, "IOError");
+pub fn IOError(comptime root: type) type {
+    return PyExc(root, "IOError");
 }
-pub fn ImportError(comptime state: State) type {
-    return PyExc(state, "ImportError");
+pub fn ImportError(comptime root: type) type {
+    return PyExc(root, "ImportError");
 }
-pub fn ImportWarning(comptime state: State) type {
-    return PyExc(state, "ImportWarning");
+pub fn ImportWarning(comptime root: type) type {
+    return PyExc(root, "ImportWarning");
 }
-pub fn IndentationError(comptime state: State) type {
-    return PyExc(state, "IndentationError");
+pub fn IndentationError(comptime root: type) type {
+    return PyExc(root, "IndentationError");
 }
-pub fn IndexError(comptime state: State) type {
-    return PyExc(state, "IndexError");
+pub fn IndexError(comptime root: type) type {
+    return PyExc(root, "IndexError");
 }
-pub fn InterruptedError(comptime state: State) type {
-    return PyExc(state, "InterruptedError");
+pub fn InterruptedError(comptime root: type) type {
+    return PyExc(root, "InterruptedError");
 }
-pub fn IsADirectoryError(comptime state: State) type {
-    return PyExc(state, "IsADirectoryError");
+pub fn IsADirectoryError(comptime root: type) type {
+    return PyExc(root, "IsADirectoryError");
 }
-pub fn KeyError(comptime state: State) type {
-    return PyExc(state, "KeyError");
+pub fn KeyError(comptime root: type) type {
+    return PyExc(root, "KeyError");
 }
-pub fn KeyboardInterrupt(comptime state: State) type {
-    return PyExc(state, "KeyboardInterrupt");
+pub fn KeyboardInterrupt(comptime root: type) type {
+    return PyExc(root, "KeyboardInterrupt");
 }
-pub fn LookupError(comptime state: State) type {
-    return PyExc(state, "LookupError");
+pub fn LookupError(comptime root: type) type {
+    return PyExc(root, "LookupError");
 }
-pub fn MemoryError(comptime state: State) type {
-    return PyExc(state, "MemoryError");
+pub fn MemoryError(comptime root: type) type {
+    return PyExc(root, "MemoryError");
 }
-pub fn ModuleNotFoundError(comptime state: State) type {
-    return PyExc(state, "ModuleNotFoundError");
+pub fn ModuleNotFoundError(comptime root: type) type {
+    return PyExc(root, "ModuleNotFoundError");
 }
-pub fn NameError(comptime state: State) type {
-    return PyExc(state, "NameError");
+pub fn NameError(comptime root: type) type {
+    return PyExc(root, "NameError");
 }
-pub fn NotADirectoryError(comptime state: State) type {
-    return PyExc(state, "NotADirectoryError");
+pub fn NotADirectoryError(comptime root: type) type {
+    return PyExc(root, "NotADirectoryError");
 }
-pub fn NotImplementedError(comptime state: State) type {
-    return PyExc(state, "NotImplementedError");
+pub fn NotImplementedError(comptime root: type) type {
+    return PyExc(root, "NotImplementedError");
 }
-pub fn OSError(comptime state: State) type {
-    return PyExc(state, "OSError");
+pub fn OSError(comptime root: type) type {
+    return PyExc(root, "OSError");
 }
-pub fn OverflowError(comptime state: State) type {
-    return PyExc(state, "OverflowError");
+pub fn OverflowError(comptime root: type) type {
+    return PyExc(root, "OverflowError");
 }
-pub fn PendingDeprecationWarning(comptime state: State) type {
-    return PyExc(state, "PendingDeprecationWarning");
+pub fn PendingDeprecationWarning(comptime root: type) type {
+    return PyExc(root, "PendingDeprecationWarning");
 }
-pub fn PermissionError(comptime state: State) type {
-    return PyExc(state, "PermissionError");
+pub fn PermissionError(comptime root: type) type {
+    return PyExc(root, "PermissionError");
 }
-pub fn ProcessLookupError(comptime state: State) type {
-    return PyExc(state, "ProcessLookupError");
+pub fn ProcessLookupError(comptime root: type) type {
+    return PyExc(root, "ProcessLookupError");
 }
-pub fn RecursionError(comptime state: State) type {
-    return PyExc(state, "RecursionError");
+pub fn RecursionError(comptime root: type) type {
+    return PyExc(root, "RecursionError");
 }
-pub fn ReferenceError(comptime state: State) type {
-    return PyExc(state, "ReferenceError");
+pub fn ReferenceError(comptime root: type) type {
+    return PyExc(root, "ReferenceError");
 }
-pub fn ResourceWarning(comptime state: State) type {
-    return PyExc(state, "ResourceWarning");
+pub fn ResourceWarning(comptime root: type) type {
+    return PyExc(root, "ResourceWarning");
 }
-pub fn RuntimeError(comptime state: State) type {
-    return PyExc(state, "RuntimeError");
+pub fn RuntimeError(comptime root: type) type {
+    return PyExc(root, "RuntimeError");
 }
-pub fn RuntimeWarning(comptime state: State) type {
-    return PyExc(state, "RuntimeWarning");
+pub fn RuntimeWarning(comptime root: type) type {
+    return PyExc(root, "RuntimeWarning");
 }
-pub fn StopAsyncIteration(comptime state: State) type {
-    return PyExc(state, "StopAsyncIteration");
+pub fn StopAsyncIteration(comptime root: type) type {
+    return PyExc(root, "StopAsyncIteration");
 }
-pub fn StopIteration(comptime state: State) type {
-    return PyExc(state, "StopIteration");
+pub fn StopIteration(comptime root: type) type {
+    return PyExc(root, "StopIteration");
 }
-pub fn SyntaxError(comptime state: State) type {
-    return PyExc(state, "SyntaxError");
+pub fn SyntaxError(comptime root: type) type {
+    return PyExc(root, "SyntaxError");
 }
-pub fn SyntaxWarning(comptime state: State) type {
-    return PyExc(state, "SyntaxWarning");
+pub fn SyntaxWarning(comptime root: type) type {
+    return PyExc(root, "SyntaxWarning");
 }
-pub fn SystemError(comptime state: State) type {
-    return PyExc(state, "SystemError");
+pub fn SystemError(comptime root: type) type {
+    return PyExc(root, "SystemError");
 }
-pub fn SystemExit(comptime state: State) type {
-    return PyExc(state, "SystemExit");
+pub fn SystemExit(comptime root: type) type {
+    return PyExc(root, "SystemExit");
 }
-pub fn TabError(comptime state: State) type {
-    return PyExc(state, "TabError");
+pub fn TabError(comptime root: type) type {
+    return PyExc(root, "TabError");
 }
-pub fn TimeoutError(comptime state: State) type {
-    return PyExc(state, "TimeoutError");
+pub fn TimeoutError(comptime root: type) type {
+    return PyExc(root, "TimeoutError");
 }
-pub fn TypeError(comptime state: State) type {
-    return PyExc(state, "TypeError");
+pub fn TypeError(comptime root: type) type {
+    return PyExc(root, "TypeError");
 }
-pub fn UnboundLocalError(comptime state: State) type {
-    return PyExc(state, "UnboundLocalError");
+pub fn UnboundLocalError(comptime root: type) type {
+    return PyExc(root, "UnboundLocalError");
 }
-pub fn UnicodeDecodeError(comptime state: State) type {
-    return PyExc(state, "UnicodeDecodeError");
+pub fn UnicodeDecodeError(comptime root: type) type {
+    return PyExc(root, "UnicodeDecodeError");
 }
-pub fn UnicodeEncodeError(comptime state: State) type {
-    return PyExc(state, "UnicodeEncodeError");
+pub fn UnicodeEncodeError(comptime root: type) type {
+    return PyExc(root, "UnicodeEncodeError");
 }
-pub fn UnicodeError(comptime state: State) type {
-    return PyExc(state, "UnicodeError");
+pub fn UnicodeError(comptime root: type) type {
+    return PyExc(root, "UnicodeError");
 }
-pub fn UnicodeTranslateError(comptime state: State) type {
-    return PyExc(state, "UnicodeTranslateError");
+pub fn UnicodeTranslateError(comptime root: type) type {
+    return PyExc(root, "UnicodeTranslateError");
 }
-pub fn UnicodeWarning(comptime state: State) type {
-    return PyExc(state, "UnicodeWarning");
+pub fn UnicodeWarning(comptime root: type) type {
+    return PyExc(root, "UnicodeWarning");
 }
-pub fn UserWarning(comptime state: State) type {
-    return PyExc(state, "UserWarning");
+pub fn UserWarning(comptime root: type) type {
+    return PyExc(root, "UserWarning");
 }
-pub fn ValueError(comptime state: State) type {
-    return PyExc(state, "ValueError");
+pub fn ValueError(comptime root: type) type {
+    return PyExc(root, "ValueError");
 }
-pub fn Warning(comptime state: State) type {
-    return PyExc(state, "Warning");
+pub fn Warning(comptime root: type) type {
+    return PyExc(root, "Warning");
 }
-pub fn WindowsError(comptime state: State) type {
-    return PyExc(state, "WindowsError");
+pub fn WindowsError(comptime root: type) type {
+    return PyExc(root, "WindowsError");
 }
-pub fn ZeroDivisionError(comptime state: State) type {
-    return PyExc(state, "ZeroDivisionError");
+pub fn ZeroDivisionError(comptime root: type) type {
+    return PyExc(root, "ZeroDivisionError");
 }
 
 /// Struct providing comptime logic for raising Python exceptions.
-fn PyExc(comptime state: State, comptime name: [:0]const u8) type {
+fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
     return struct {
         const Self = @This();
 
@@ -247,7 +247,7 @@ fn PyExc(comptime state: State, comptime name: [:0]const u8) type {
             return raise(message);
         }
 
-        inline fn asPyObject() py.PyObject(state) {
+        inline fn asPyObject() py.PyObject(root) {
             return .{ .py = @field(ffi, "PyExc_" ++ name) };
         }
 
@@ -305,7 +305,7 @@ fn PyExc(comptime state: State, comptime name: [:0]const u8) type {
                     defer py.allocator.free(code);
 
                     // Import the compiled code as a module and invoke the failing function
-                    const fake_module = try py.PyModule(state).fromCode(code, line_info.file_name, symbol_info.compile_unit_name);
+                    const fake_module = try py.PyModule(root).fromCode(code, line_info.file_name, symbol_info.compile_unit_name);
                     defer fake_module.decref();
 
                     _ = fake_module.obj.call(void, symbol_info.symbol_name, .{}, .{}) catch null;
@@ -316,12 +316,12 @@ fn PyExc(comptime state: State, comptime name: [:0]const u8) type {
                     var qvalue: ?*ffi.PyObject = undefined;
                     var qtraceback: ?*ffi.PyObject = undefined;
                     ffi.PyErr_Fetch(&qtype, &qvalue, &qtraceback);
-                    if (qtype) |q| py.decref(state, q);
-                    if (qvalue) |q| py.decref(state, q);
+                    if (qtype) |q| py.decref(root, q);
+                    if (qvalue) |q| py.decref(root, q);
                     std.debug.assert(qtraceback != null);
 
                     // Extract the traceback frame by calling into Python (Pytraceback isn't part of the Stable API)
-                    const pytb = py.PyObject(state){ .py = qtraceback.? };
+                    const pytb = py.PyObject(root){ .py = qtraceback.? };
                     const frame = (try pytb.get("tb_frame")).py;
 
                     // Restore the original exception, augment it with the new frame, then fetch the new exception.

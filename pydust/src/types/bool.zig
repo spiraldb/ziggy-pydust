@@ -22,12 +22,12 @@ const State = @import("../discovery.zig").State;
 /// See: https://docs.python.org/3/c-api/bool.html
 ///
 /// Note: refcounting semantics apply, even for bools!
-pub fn PyBool(comptime state: State) type {
+pub fn PyBool(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "bool", "PyBool", Self);
+        pub usingnamespace PyObjectMixin(root, "bool", "PyBool", Self);
 
         pub fn create(value: bool) !Self {
             return if (value) true_() else false_();
@@ -56,12 +56,12 @@ test "PyBool" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
-    const pytrue = PyBool(state).true_();
+    const pytrue = PyBool(root).true_();
     defer pytrue.decref();
 
-    const pyfalse = PyBool(state).false_();
+    const pyfalse = PyBool(root).false_();
     defer pyfalse.decref();
 
     try std.testing.expect(pytrue.asbool());

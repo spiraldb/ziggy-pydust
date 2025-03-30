@@ -42,17 +42,11 @@ pub fn finalize() void {
 }
 
 /// Register the root Pydust module
-pub fn rootmodule(comptime spec: fn () struct { *State, type }) void {
-    const state, const definition = spec();
-
+pub fn rootmodule(comptime definition: type) void {
     const pyconf = @import("pyconf");
     const name = pyconf.module_name;
 
-    state.register(definition, .module);
-    state.identify(definition, name, definition);
-    eagerEval(state, definition);
-
-    const moddef = Module(state, name, definition);
+    const moddef = Module(definition, name, definition);
 
     // For root modules, we export a PyInit__name function per CPython API.
     const Closure = struct {
@@ -66,34 +60,43 @@ pub fn rootmodule(comptime spec: fn () struct { *State, type }) void {
     @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .strong });
 }
 
+/// Register a Pydust module as a submodule to an existing module.
+pub fn module(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .module };
+}
+
+/// Register a struct as a Python class definition.
+pub fn class(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .class };
+}
+
+// pub fn zig(comptime definition: type) @TypeOf(definition) {
+//     for (@typeInfo(definition).Struct.decls) |decl| {
+//         State.privateMethod(&@field(definition, decl.name));
+//     }
+//     return definition;
+// }
+
+/// Register a struct field as a Python read-only attribute.
+pub fn attribute(comptime T: type) Definition {
+    return .{ .defininition = Attribute(T), .type = .attribute };
+}
+
+fn Attribute(comptime T: type) type {
+    return struct { value: T };
+}
+
 /// Zig type representing variadic arguments to a Python function.
-pub fn Args(comptime state: State) type {
-    return []types.PyObject(state);
+pub fn Args(comptime root: type) type {
+    return []types.PyObject(root);
 }
 
 /// Zig type representing variadic keyword arguments to a Python function.
-pub fn Kwargs(comptime state: State) type {
-    return std.StringHashMap(types.PyObject(state));
+pub fn Kwargs(comptime root: type) type {
+    return std.StringHashMap(types.PyObject(root));
 }
 
 /// Zig type representing `(*args, **kwargs)`
-pub fn CallArgs(comptime state: State) type {
-    return struct { args: Args(state), kwargs: Kwargs(state) };
-}
-
-/// Force the evaluation of Pydust registration methods.
-/// Using this enables us to breadth-first traverse the object graph, ensuring
-/// objects are registered before they're referenced elsewhere.
-fn eagerEval(comptime state: *State, comptime definition: type) void {
-    for (@typeInfo(definition).Struct.fields) |f| {
-        _ = f.type;
-    }
-    for (@typeInfo(definition).Struct.decls) |d| {
-        const value = @field(definition, d.name);
-        @setEvalBranchQuota(10000);
-        if (state.findDefinition(value)) |_| {
-            // If it's a Pydust definition, then we identify it.
-            state.identify(value, d.name ++ "", definition);
-        }
-    }
+pub fn CallArgs(comptime root: type) type {
+    return struct { args: Args(root), kwargs: Kwargs(root) };
 }

@@ -18,9 +18,9 @@ const ffi = py.ffi;
 
 /// Wrapper for Python PyFrame.
 /// See: https://docs.python.org/3/c-api/frame.html
-pub fn PyFrame(comptime state: State) type {
+pub fn PyFrame(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
         const Self = @This();
 
         pub fn get() ?Self {
@@ -28,7 +28,7 @@ pub fn PyFrame(comptime state: State) type {
             return if (frame) |f| .{ .obj = .{ .py = objPtr(f) } } else null;
         }
 
-        pub fn code(self: Self) py.PyCode(state) {
+        pub fn code(self: Self) py.PyCode(root) {
             const codeObj = ffi.PyFrame_GetCode(framePtr(self.obj.py));
             return .{ .obj = .{ .py = @alignCast(@ptrCast(codeObj)) } };
         }
@@ -51,8 +51,8 @@ test "PyFrame" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
-    const pf = PyFrame(state).get();
-    try std.testing.expectEqual(@as(?PyFrame(state), null), pf);
+    const pf = PyFrame(root).get();
+    try std.testing.expectEqual(@as(?PyFrame(root), null), pf);
 }

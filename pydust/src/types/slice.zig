@@ -18,21 +18,21 @@ const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PySlice.
-pub fn PySlice(comptime state: State) type {
+pub fn PySlice(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "slice", "PySlice", Self);
+        pub usingnamespace PyObjectMixin(root, "slice", "PySlice", Self);
 
         pub fn create(start: anytype, stop: anytype, step: anytype) !Self {
             // TODO(ngates): think about how to improve comptime optional handling?
-            const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(state, start)).py;
-            defer if (@typeInfo(@TypeOf(start)) != .Null) py.decref(state, pystart);
-            const pystop = if (@typeInfo(@TypeOf(stop)) == .Null) null else (try py.create(state, stop)).py;
-            defer if (@typeInfo(@TypeOf(stop)) != .Null) py.decref(state, pystop);
-            const pystep = if (@typeInfo(@TypeOf(step)) == .Null) null else (try py.create(state, step)).py;
-            defer if (@typeInfo(@TypeOf(step)) != .Null) py.decref(state, pystep);
+            const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(root, start)).py;
+            defer if (@typeInfo(@TypeOf(start)) != .Null) py.decref(root, pystart);
+            const pystop = if (@typeInfo(@TypeOf(stop)) == .Null) null else (try py.create(root, stop)).py;
+            defer if (@typeInfo(@TypeOf(stop)) != .Null) py.decref(root, pystop);
+            const pystep = if (@typeInfo(@TypeOf(step)) == .Null) null else (try py.create(root, step)).py;
+            defer if (@typeInfo(@TypeOf(step)) != .Null) py.decref(root, pystep);
 
             const pyslice = ffi.PySlice_New(pystart, pystop, pystep) orelse return PyError.PyRaised;
             return .{ .obj = .{ .py = pyslice } };
@@ -56,9 +56,9 @@ test "PySlice" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
-    const range = try PySlice(state).create(0, 100, null);
+    const range = try PySlice(root).create(0, 100, null);
     defer range.decref();
 
     try std.testing.expectEqual(@as(u64, 0), try range.getStart(u64));

@@ -13,23 +13,19 @@
 const std = @import("std");
 const py = @import("pydust");
 
-fn root() struct { *py.State, type } {
-    comptime var state = py.State{};
-    const spec = struct {
-        // --8<-- [start:gil]
-        pub fn sleep(args: struct { millis: u64 }) void {
-            std.time.sleep(args.millis * 1_000_000);
-        }
+const root = @This();
 
-        pub fn sleep_release(args: struct { millis: u64 }) void {
-            const nogil = py.nogil();
-            defer nogil.acquire();
-            std.time.sleep(args.millis * 1_000_000);
-        }
-        // --8<-- [end:gil]
-    };
-    return .{ &state, spec };
+// --8<-- [start:gil]
+pub fn sleep(args: struct { millis: u64 }) void {
+    std.time.sleep(args.millis * 1_000_000);
 }
+
+pub fn sleep_release(args: struct { millis: u64 }) void {
+    const nogil = py.nogil();
+    defer nogil.acquire();
+    std.time.sleep(args.millis * 1_000_000);
+}
+// --8<-- [end:gil]
 
 comptime {
     py.rootmodule(root);

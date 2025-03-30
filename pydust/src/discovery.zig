@@ -32,65 +32,97 @@ const Identifier = struct {
     parent: type,
 };
 
-pub const State = struct {
-    privateMethods: [1000]*anyopaque = undefined,
-    privateMethodsSize: usize = 0,
-
-    definitions: [1000]Definition = undefined,
-    definitionsSize: usize = 0,
-
-    identifiers: [1000]Identifier = undefined,
-    identifiersSize: usize = 0,
-
-    pub fn register(
-        comptime state: *State,
-        comptime definition: type,
-        comptime deftype: DefinitionType,
-    ) void {
-        state.definitions[state.definitionsSize] = .{ .definition = definition, .type = deftype };
-        state.definitionsSize += 1;
+fn countDefinitions(comptime definition: type) usize {
+    if (Definition == @TypeOf(definition))
+        return 1 + countDefinitions(definition.definition);
+    comptime var count = 0;
+    switch (@typeInfo(definition)) {
+        .Struct => |info| {
+            for (info.fields) |f| {
+                count += countDefinitions(f.type);
+            }
+            for (info.fields) |d| {
+                const field = @field(definition, d.name);
+                if (@TypeOf(field) == type)
+                    count += countDefinitions(field);
+            }
+        },
+        else => {},
     }
+    return count;
+}
 
-    pub fn privateMethod(
-        comptime state: *State,
-        comptime fnPtr: *const anyopaque,
-    ) void {
-        state.privateMethods[state.privateMethodsSize] = fnPtr;
-        state.privateMethodsSize += 1;
+fn getDefinitions(comptime definition: type) [countDefinitions(definition)]Definition {
+    if (Definition == @TypeOf(definition))
+        return .{definition} ++ getDefinitions(definition.definition);
+    comptime var definitions: [countDefinitions(definition)]Definition = undefined;
+    comptime var count = 0;
+    switch (@typeInfo(definition)) {
+        .Struct => |info| {
+            for (info.fields) |f| {
+                for (getDefinitions(f.type)) |subDef| {
+                    // Append the sub-definition to the list.
+                    definitions[count] = subDef;
+                    count += 1;
+                }
+            }
+            for (info.decls) |d| {
+                const field = @field(definition, d.name);
+                if (@TypeOf(field) == type) {
+                    for (getDefinitions(@field(definition, d.name))) |subDef| {
+                        // Append the sub-definition to the list.
+                        definitions[count] = subDef;
+                        count += 1;
+                    }
+                }
+            }
+        },
+        else => {},
     }
+    return definitions;
+}
 
-    pub fn identify(
-        comptime state: *State,
-        comptime definition: type,
-        comptime name: [:0]const u8,
-        comptime parent: type,
-    ) void {
-        state.identifiers[state.identifiersSize] = .{
-            .name = name,
-            .qualifiedName = if (parent == definition) &.{name} else state.getIdentifier(parent).qualifiedName ++ .{name},
+fn getIdentifiers(
+    comptime definition: type,
+    comptime qualifiedName: [:0]const u8,
+    comptime parent: type,
+) [countDefinitions(definition)]Identifier {
+    if (Definition == @TypeOf(definition))
+        return .{.{
+            .name = qualifiedName[qualifiedName.len - 1],
+            .qualifiedName = qualifiedName,
             .definition = definition,
             .parent = parent,
-        };
-        state.identifiersSize += 1;
+        }} ++ getIdentifiers(definition.definition);
+    comptime var identifiers: [countDefinitions(definition)]Definition = undefined;
+    comptime var count = 0;
+    for (std.meta.fields(definition)) |f| {
+        for (getIdentifiers(@field(definition, f.name), qualifiedName ++ .{f.name}, definition)) |identifier| {
+            // Append the sub-definition to the list.
+            identifiers[count] = identifier;
+            count += 1;
+        }
     }
-
-    pub fn isEmpty(comptime state: State) bool {
-        return state.definitionsSize == 0;
+    for (std.meta.declarations(definition)) |d| {
+        for (getIdentifiers(@field(definition, d.name), qualifiedName ++ .{d.name}, definition)) |identifier| {
+            // Append the sub-definition to the list.
+            identifiers[count] = identifier;
+            count += 1;
+        }
     }
+    return count;
+}
 
-    pub fn getDefinitions(comptime state: State) []Definition {
-        return state.definitions[0..state.definitionsSize];
-    }
-
+pub const State = struct {
     pub fn countDeclsWithType(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
         deftype: DefinitionType,
     ) usize {
         var cnt = 0;
         for (@typeInfo(definition).Struct.decls) |decl| {
             const declType = @TypeOf(@field(definition, decl.name));
-            if (state.hasType(declType, deftype)) {
+            if (hasType(root, declType, deftype)) {
                 cnt += 1;
             }
         }
@@ -98,13 +130,13 @@ pub const State = struct {
     }
 
     pub fn countFieldsWithType(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
         deftype: DefinitionType,
     ) usize {
         var cnt = 0;
-        for (@typeInfo(definition).Struct.fields) |field| {
-            if (state.hasType(field.type, deftype)) {
+        for (std.meta.fields(definition)) |field| {
+            if (hasType(root, field.type, deftype)) {
                 cnt += 1;
             }
         }
@@ -112,35 +144,25 @@ pub const State = struct {
     }
 
     pub fn hasType(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
         deftype: DefinitionType,
     ) bool {
-        if (state.findDefinition(definition)) |def| {
+        if (findDefinition(root, definition)) |def| {
             return def.type == deftype;
         }
         return false;
     }
 
-    pub fn isPrivate(comptime state: State, fnPtr: anytype) bool {
-        const castPtr: *anyopaque = @constCast(@ptrCast(fnPtr));
-        for (state.privateMethods[0..state.privateMethodsSize]) |methPtr| {
-            if (castPtr == methPtr) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     pub fn getDefinition(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
     ) Definition {
-        return state.findDefinition(definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
+        return findDefinition(root, definition) orelse @compileError("Unable to find definition " ++ @typeName(definition));
     }
 
     pub inline fn findDefinition(
-        comptime state: State,
+        comptime root: type,
         comptime definition: anytype,
     ) ?Definition {
         if (@typeInfo(@TypeOf(definition)) != .Type) {
@@ -149,7 +171,7 @@ pub const State = struct {
         if (@typeInfo(definition) != .Struct) {
             return null;
         }
-        for (state.definitions[0..state.definitionsSize]) |def| {
+        for ([_]Definition{.{ .definition = root, .type = .module }} ++ getDefinitions(root)) |def| {
             if (def.definition == definition) {
                 return def;
             }
@@ -158,20 +180,20 @@ pub const State = struct {
     }
 
     pub fn getIdentifier(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
     ) Identifier {
-        return state.findIdentifier(definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
+        return findIdentifier(root, definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
     }
 
     pub inline fn findIdentifier(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
     ) ?Identifier {
         if (@typeInfo(definition) != .Struct) {
             return null;
         }
-        for (state.identifiers[0..state.identifiersSize]) |idef| {
+        for (getIdentifiers(root)) |idef| {
             if (idef.definition == definition) {
                 return idef;
             }
@@ -180,20 +202,20 @@ pub const State = struct {
     }
 
     pub fn getContaining(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
         comptime deftype: DefinitionType,
     ) type {
-        return state.findContaining(definition, deftype) orelse @compileError("Cannot find containing object");
+        return findContaining(root, definition, deftype) orelse @compileError("Cannot find containing object");
     }
 
     /// Find the nearest containing definition with the given deftype.
     pub fn findContaining(
-        comptime state: State,
+        comptime root: type,
         comptime definition: type,
         comptime deftype: DefinitionType,
     ) ?type {
-        const defs = state.definitions[0..state.definitionsSize];
+        const defs = [_]Definition{.{ .definition = root, .type = .module }} ++ getDefinitions(root);
         var idx = defs.len;
         var foundOriginal = false;
         while (idx > 0) : (idx -= 1) {
@@ -210,41 +232,5 @@ pub const State = struct {
             }
         }
         return null;
-    }
-
-    /// Register a Pydust module as a submodule to an existing module.
-    pub fn module(comptime state: *State, comptime definition: type) @TypeOf(definition) {
-        state.register(definition, .module);
-        return definition;
-    }
-
-    /// Register a struct as a Python class definition.
-    pub fn class(comptime state: *State, comptime definition: type) @TypeOf(definition) {
-        state.register(definition, .class);
-        return definition;
-    }
-
-    pub fn zig(comptime state: *State, comptime definition: type) @TypeOf(definition) {
-        for (@typeInfo(definition).Struct.decls) |decl| {
-            state.privateMethod(&@field(definition, decl.name));
-        }
-        return definition;
-    }
-
-    /// Register a struct field as a Python read-only attribute.
-    pub fn attribute(comptime state: *State, comptime T: type) @TypeOf(Attribute(T)) {
-        const definition = Attribute(T);
-        state.register(definition, .attribute);
-        return definition;
-    }
-
-    fn Attribute(comptime T: type) type {
-        return struct { value: T };
-    }
-
-    /// Register a property as a field on a Pydust class.
-    pub fn property(comptime state: *State, comptime definition: type) @TypeOf(definition) {
-        state.register(definition, .property);
-        return definition;
     }
 };

@@ -19,16 +19,16 @@ const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PyIter.
 /// Constructed using py.iter(...)
-pub fn PyIter(comptime state: State) type {
+pub fn PyIter(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "iterator", "PyIter", Self);
+        pub usingnamespace PyObjectMixin(root, "iterator", "PyIter", Self);
 
         pub fn next(self: Self, comptime T: type) !?T {
             if (ffi.PyIter_Next(self.obj.py)) |result| {
-                return try py.as(state, T, result);
+                return try py.as(root, T, result);
             }
 
             // If no exception, then the item is missing.
@@ -47,12 +47,12 @@ test "PyIter" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
-    const tuple = try py.PyTuple(state).create(.{ 1, 2, 3 });
+    const tuple = try py.PyTuple(root).create(.{ 1, 2, 3 });
     defer tuple.decref();
 
-    const iterator = try py.iter(state, tuple);
+    const iterator = try py.iter(root, tuple);
     var previous: u64 = 0;
     while (try iterator.next(u64)) |v| {
         try std.testing.expect(v > previous);

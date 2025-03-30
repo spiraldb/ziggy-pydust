@@ -19,12 +19,12 @@ const PyObject = @import("obj.zig").PyObject;
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 
-pub fn PyString(comptime state: State) type {
+pub fn PyString(comptime root: type) type {
     return extern struct {
-        obj: PyObject(state),
+        obj: PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "str", "PyUnicode", Self);
+        pub usingnamespace PyObjectMixin(root, "str", "PyUnicode", Self);
 
         pub fn create(value: []const u8) !Self {
             const unicode = ffi.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
@@ -53,7 +53,7 @@ pub fn PyString(comptime state: State) type {
             return self.appendObj(other.obj);
         }
 
-        fn appendObj(self: Self, other: PyObject(state)) !Self {
+        fn appendObj(self: Self, other: PyObject(root)) !Self {
             // This function effectively decref's the left-hand side.
             // The semantics therefore sort of imply mutation, and so we expose the same in our API.
             // FIXME(ngates): this comment
@@ -101,11 +101,11 @@ test "PyString" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
     const a = "Hello";
     const b = ", world!";
 
-    var ps = try PyString(state).create(a);
+    var ps = try PyString(root).create(a);
     // defer ps.decref();  <-- We don't need to decref here since append steals the reference to self.
     ps = try ps.appendSlice(b);
     defer ps.decref();
@@ -124,8 +124,8 @@ test "PyString createFmt" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
-    const a = try PyString(state).createFmt("Hello, {s}!", .{"foo"});
+    const root = @This();
+    const a = try PyString(root).createFmt("Hello, {s}!", .{"foo"});
     defer a.decref();
 
     try testing.expectEqualStrings("Hello, foo!", try a.asSlice());

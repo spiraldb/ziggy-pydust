@@ -13,14 +13,10 @@
 // --8<-- [start:ex]
 const py = @import("pydust");
 
-fn root() struct { *py.State, type } {
-    comptime var state = py.State{};
-    const spec = struct {
-        pub fn hello() !py.PyString(state) {
-            return try py.PyString(state).create("Hello!");
-        }
-    };
-    return .{ &state, spec };
+const root = @This();
+
+pub fn hello() !py.PyString(root) {
+    return try py.PyString(root).create("Hello!");
 }
 
 comptime {

@@ -34,10 +34,10 @@ pub fn PyTypeStruct(comptime definition: type) type {
 }
 
 /// Discover a Pydust class definition.
-pub fn Type(comptime state: State, comptime name: [:0]const u8, comptime definition: type) type {
+pub fn Type(comptime root: type, comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
         const qualifiedName: [:0]const u8 = blk: {
-            const moduleName = state.getIdentifier(state.getContaining(definition, .module)).name;
+            const moduleName = State.getIdentifier(root, State.getContaining(root, definition, .module)).name;
             break :blk moduleName ++ "." ++ name;
         };
 
@@ -56,7 +56,7 @@ pub fn Type(comptime state: State, comptime name: [:0]const u8, comptime definit
         pub fn init(module: py.PyModule) PyError!py.PyObject {
             var basesPtr: ?*ffi.PyObject = null;
             if (bases.bases.len > 0) {
-                const basesTuple = try py.PyTuple(state).new(bases.bases.len);
+                const basesTuple = try py.PyTuple(root).new(bases.bases.len);
                 inline for (bases.bases, 0..) |base, i| {
                     try basesTuple.setOwnedItem(i, try py.self(base));
                 }
@@ -86,13 +86,13 @@ pub fn Type(comptime state: State, comptime name: [:0]const u8, comptime definit
 
 /// Discover the base classes of the pytype definition.
 /// We look for any struct field that is itself a Pydust class.
-fn Bases(comptime state: State, comptime definition: type) type {
+fn Bases(comptime root: type, comptime definition: type) type {
     const typeInfo = @typeInfo(definition).Struct;
     return struct {
         const bases: []const type = blk: {
             var bases_: []const type = &.{};
             for (typeInfo.fields) |field| {
-                if (state.findDefinition(field.type)) |def| {
+                if (State.findDefinition(root, field.type)) |def| {
                     if (def.type == .class) {
                         bases_ = bases_ ++ .{field.type};
                     }
@@ -103,17 +103,17 @@ fn Bases(comptime state: State, comptime definition: type) type {
     };
 }
 
-fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]const u8) type {
+fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]const u8) type {
     return struct {
         const empty = ffi.PyType_Slot{ .slot = 0, .pfunc = null };
 
-        const attrs = Attributes(state, definition);
-        const methods = funcs.Methods(state, definition);
+        const attrs = Attributes(root, definition);
+        const methods = funcs.Methods(root, definition);
         const members = Members(definition);
         const properties = Properties(definition);
         const doc = Doc(definition, name);
-        const richcmp = RichCompare(state, definition);
-        const gc = GC(state, definition);
+        const richcmp = RichCompare(root, definition);
+        const gc = GC(root, definition);
 
         /// Slots populated in the PyType
         pub const slots: [:empty]const ffi.PyType_Slot = blk: {
@@ -137,7 +137,7 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
             }
 
             if (@hasDecl(definition, "__new__")) {
-                @compileLog("The behaviour of __new__ is replaced by __init__(*Self). See ", state.getIdentifier(definition).qualifiedName);
+                @compileLog("The behaviour of __new__ is replaced by __init__(*Self). See ", State.getIdentifier(root, definition).qualifiedName);
             }
 
             if (@hasDecl(definition, "__init__")) {
@@ -250,7 +250,7 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
 
             for (funcs.BinaryOperators.kvs) |kv| {
                 if (@hasDecl(definition, kv.key)) {
-                    const op = BinaryOperator(state, definition, kv.key);
+                    const op = BinaryOperator(root, definition, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
                         .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
@@ -260,7 +260,7 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
 
             for (funcs.UnaryOperators.kvs) |kv| {
                 if (@hasDecl(definition, kv.key)) {
-                    const op = UnaryOperator(state, definition, kv.key);
+                    const op = UnaryOperator(root, definition, kv.key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
                         .slot = kv.value,
                         .pfunc = @ptrCast(@constCast(&op.call)),
@@ -304,15 +304,15 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
             const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
 
             if (sig.argsParam) |Args| {
-                const args = if (pyargs) |pa| py.PyTuple(state).unchecked(.{ .py = pa }) else null;
-                const kwargs = if (pykwargs) |pk| py.PyDict(state).unchecked(.{ .py = pk }) else null;
+                const args = if (pyargs) |pa| py.PyTuple(root).unchecked(.{ .py = pa }) else null;
+                const kwargs = if (pykwargs) |pk| py.PyDict(root).unchecked(.{ .py = pk }) else null;
 
                 const init_args = tramp.Trampoline(Args).unwrapCallArgs(args, kwargs) catch return -1;
                 defer init_args.deinit();
 
-                tramp.coerceError(state, definition.__init__(self, init_args.argsStruct)) catch return -1;
+                tramp.coerceError(root, definition.__init__(self, init_args.argsStruct)) catch return -1;
             } else if (sig.selfParam) |_| {
-                tramp.coerceError(state, definition.__init__(self)) catch return -1;
+                tramp.coerceError(root, definition.__init__(self)) catch return -1;
             } else {
                 // The function is just a marker to say that the type can be instantiated from Python
             }
@@ -344,7 +344,7 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
             view.obj = null;
 
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            tramp.coerceError(state, definition.__buffer__(&self.state, @ptrCast(view), flags)) catch return -1;
+            tramp.coerceError(root, definition.__buffer__(&self.state, @ptrCast(view), flags)) catch return -1;
             return 0;
         }
 
@@ -361,54 +361,54 @@ fn Slots(comptime state: State, comptime definition: type, comptime name: [:0]co
 
         fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const iterator = tramp.coerceError(state, definition.__iter__(&self.state)) catch return null;
-            return (py.createOwned(iterator) catch return null).py;
+            const iterator = tramp.coerceError(root, definition.__iter__(&self.state)) catch return null;
+            return (py.createOwned(root, iterator) catch return null).py;
         }
 
         fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const optionalNext = tramp.coerceError(state, definition.__next__(&self.state)) catch return null;
+            const optionalNext = tramp.coerceError(root, definition.__next__(&self.state)) catch return null;
             if (optionalNext) |next| {
-                return (py.createOwned(next) catch return null).py;
+                return (py.createOwned(root, next) catch return null).py;
             }
             return null;
         }
 
         fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(state, definition.__str__(&self.state)) catch return null;
-            return (py.createOwned(result) catch return null).py;
+            const result = tramp.coerceError(root, definition.__str__(&self.state)) catch return null;
+            return (py.createOwned(root, result) catch return null).py;
         }
 
         fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(state, definition.__repr__(&self.state)) catch return null;
-            return (py.createOwned(result) catch return null).py;
+            const result = tramp.coerceError(root, definition.__repr__(&self.state)) catch return null;
+            return (py.createOwned(root, result) catch return null).py;
         }
 
         fn tp_hash(pyself: *ffi.PyObject) callconv(.C) ffi.Py_hash_t {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(state, definition.__hash__(&self.state)) catch return -1;
+            const result = tramp.coerceError(root, definition.__hash__(&self.state)) catch return -1;
             return @as(isize, @bitCast(result));
         }
 
         fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const sig = funcs.parseSignature("__call__", @typeInfo(@TypeOf(definition.__call__)).Fn, &.{ *definition, *const definition, py.PyObject });
 
-            const args = if (pyargs) |pa| py.PyTuple(state).unchecked(.{ .py = pa }) else null;
-            const kwargs = if (pykwargs) |pk| py.PyDict(state).unchecked(.{ .py = pk }) else null;
+            const args = if (pyargs) |pa| py.PyTuple(root).unchecked(.{ .py = pa }) else null;
+            const kwargs = if (pykwargs) |pk| py.PyDict(root).unchecked(.{ .py = pk }) else null;
 
             const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return null;
             const call_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;
             defer call_args.deinit();
 
-            const result = tramp.coerceError(state, definition.__call__(self, call_args.argsStruct)) catch return null;
-            return (py.createOwned(result) catch return null).py;
+            const result = tramp.coerceError(root, definition.__call__(self, call_args.argsStruct)) catch return null;
+            return (py.createOwned(root, result) catch return null).py;
         }
 
         fn nb_bool(pyself: *ffi.PyObject) callconv(.C) c_int {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const result = tramp.coerceError(state, definition.__bool__(&self.state)) catch return -1;
+            const result = tramp.coerceError(root, definition.__bool__(&self.state)) catch return -1;
             return @intCast(@intFromBool(result));
         }
     };
@@ -474,7 +474,7 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
     };
 }
 
-fn GC(comptime state: State, comptime definition: type) type {
+fn GC(comptime root: type, comptime definition: type) type {
     const VisitProc = *const fn (*ffi.PyObject, *anyopaque) callconv(.C) c_int;
 
     return struct {
@@ -493,7 +493,7 @@ fn GC(comptime state: State, comptime definition: type) type {
             return switch (@typeInfo(FT)) {
                 .Pointer => |p| @typeInfo(p.child) == .Struct and (p.child == ffi.PyObject or typeNeedsGc(p.child)),
                 .Struct => blk: {
-                    if (state.findDefinition(FT)) |def| {
+                    if (State.findDefinition(root, FT)) |def| {
                         break :blk switch (def.type) {
                             .attribute => typeNeedsGc(@typeInfo(FT).Struct.fields[0].type),
                             .property => classNeedsGc(FT),
@@ -527,14 +527,14 @@ fn GC(comptime state: State, comptime definition: type) type {
                     if (p.child == ffi.PyObject) {
                         pyClear(obj);
                     }
-                    if (state.findDefinition(fieldType)) |def| {
+                    if (State.findDefinition(root, fieldType)) |def| {
                         if (def.type == .class) {
                             pyClear(py.object(obj).py);
                         }
                     }
                 },
                 .Struct => {
-                    if (state.findDefinition(fieldType)) |def| {
+                    if (State.findDefinition(root, fieldType)) |def| {
                         switch (def.type) {
                             .attribute => clear(@field(obj, @typeInfo(fieldType).Struct.fields[0].name)),
                             .property => clearFields(obj),
@@ -599,7 +599,7 @@ fn GC(comptime state: State, comptime definition: type) type {
                             return ret;
                         }
                     }
-                    if (state.findDefinition(fieldType)) |def| {
+                    if (State.findDefinition(root, fieldType)) |def| {
                         if (def.type == .class) {
                             if (pyVisit(py.object(obj).py, visit, arg)) |ret| {
                                 return ret;
@@ -607,7 +607,7 @@ fn GC(comptime state: State, comptime definition: type) type {
                         }
                     }
                 },
-                .Struct => if (state.findDefinition(fieldType)) |def| {
+                .Struct => if (State.findDefinition(root, fieldType)) |def| {
                     switch (def.type) {
                         .attribute => if (traverse(@field(obj, @typeInfo(@TypeOf(obj)).Struct.fields[0].name), visit, arg)) |ret| {
                             return ret;
@@ -651,15 +651,15 @@ fn GC(comptime state: State, comptime definition: type) type {
     };
 }
 
-fn Members(comptime state: State, comptime definition: type) type {
+fn Members(comptime root: type, comptime definition: type) type {
     return struct {
-        const count = state.countFieldsWithType(definition, .attribute);
+        const count = State.countFieldsWithType(root, definition, .attribute);
 
         const memberdefs: [count + 1]ffi.PyMemberDef = blk: {
             var defs: [count + 1]ffi.PyMemberDef = undefined;
             var idx = 0;
             for (@typeInfo(definition).Struct.fields) |field| {
-                if (!state.hasType(field.type, .attribute)) {
+                if (!State.hasType(root, field.type, .attribute)) {
                     continue;
                 }
 
@@ -722,15 +722,15 @@ fn Members(comptime state: State, comptime definition: type) type {
     };
 }
 
-fn Properties(comptime state: State, comptime definition: type) type {
+fn Properties(comptime root: type, comptime definition: type) type {
     return struct {
-        const count = state.countFieldsWithType(definition, .property);
+        const count = State.countFieldsWithType(root, definition, .property);
 
         const getsetdefs: [count + 1]ffi.PyGetSetDef = blk: {
             var props: [count + 1]ffi.PyGetSetDef = undefined;
             var idx = 0;
             for (@typeInfo(definition).Struct.fields) |field| {
-                if (state.hasType(field.type, .property)) {
+                if (State.hasType(root, field.type, .property)) {
                     var prop: ffi.PyGetSetDef = .{
                         .name = field.name ++ "",
                         .get = null,
@@ -753,8 +753,8 @@ fn Properties(comptime state: State, comptime definition: type) type {
                                     else => @compileError("Unsupported self parameter " ++ @typeName(SelfParam) ++ ". Expected " ++ @typeName(*const definition) ++ " or " ++ @typeName(*const field.type)),
                                 };
 
-                                const result = tramp.coerceError(state, field.type.get(propself)) catch return null;
-                                const resultObj = py.createOwned(result) catch return null;
+                                const result = tramp.coerceError(root, field.type.get(propself)) catch return null;
+                                const resultObj = py.createOwned(root, result) catch return null;
                                 return resultObj.py;
                             }
                         };
@@ -771,7 +771,7 @@ fn Properties(comptime state: State, comptime definition: type) type {
                                 const ValueArg = @typeInfo(@TypeOf(field.type.set)).Fn.params[1].type.?;
                                 const value = tramp.Trampoline(ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
 
-                                tramp.coerceError(state, field.type.set(propself, value)) catch return -1;
+                                tramp.coerceError(root, field.type.set(propself, value)) catch return -1;
                                 return 0;
                             }
                         };
@@ -792,7 +792,7 @@ fn Properties(comptime state: State, comptime definition: type) type {
 }
 
 fn BinaryOperator(
-    comptime state: State,
+    comptime root: type,
     comptime definition: type,
     comptime op: []const u8,
 ) type {
@@ -807,14 +807,14 @@ fn BinaryOperator(
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const other = tramp.Trampoline(typeInfo.params[1].type.?).unwrap(.{ .py = pyother }) catch return null;
 
-            const result = tramp.coerceError(state, func(&self.state, other)) catch return null;
-            return (py.createOwned(result) catch return null).py;
+            const result = tramp.coerceError(root, func(&self.state, other)) catch return null;
+            return (py.createOwned(root, result) catch return null).py;
         }
     };
 }
 
 fn UnaryOperator(
-    comptime state: State,
+    comptime root: type,
     comptime definition: type,
     comptime op: []const u8,
 ) type {
@@ -828,14 +828,14 @@ fn UnaryOperator(
             // TODO(ngates): do we want to trampoline the self argument?
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
 
-            const result = tramp.coerceError(state, func(&self.state)) catch return null;
-            return (py.createOwned(result) catch return null).py;
+            const result = tramp.coerceError(root, func(&self.state)) catch return null;
+            return (py.createOwned(root, result) catch return null).py;
         }
     };
 }
 
 fn EqualsOperator(
-    comptime state: State,
+    comptime root: type,
     comptime definition: type,
     comptime op: []const u8,
 ) type {
@@ -862,15 +862,15 @@ fn EqualsOperator(
             }
 
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const other = tramp.Trampoline(state, Other).unwrap(.{ .py = pyother }) catch return null;
+            const other = tramp.Trampoline(root, Other).unwrap(.{ .py = pyother }) catch return null;
 
-            const result = tramp.coerceError(state, func(&self.state, other)) catch return null;
-            return (py.createOwned(state, result) catch return null).py;
+            const result = tramp.coerceError(root, func(&self.state, other)) catch return null;
+            return (py.createOwned(root, result) catch return null).py;
         }
     };
 }
 
-fn RichCompare(comptime state: State, comptime definition: type) type {
+fn RichCompare(comptime root: type, comptime definition: type) type {
     const BinaryFunc = *const fn (*ffi.PyObject, *ffi.PyObject) callconv(.C) ?*ffi.PyObject;
     const errorMsg =
         \\Class cannot define both __richcompare__ and
@@ -909,11 +909,11 @@ fn RichCompare(comptime state: State, comptime definition: type) type {
             if (CompareOpArg != py.CompareOp) @compileError("Third parameter of __richcompare__ must be a py.CompareOp");
 
             const self = py.unchecked(Self, .{ .py = pyself });
-            const otherArg = tramp.Trampoline(state, Other).unwrap(.{ .py = pyother }) catch return null;
+            const otherArg = tramp.Trampoline(root, Other).unwrap(.{ .py = pyother }) catch return null;
             const opEnum: py.CompareOp = @enumFromInt(op);
 
-            const result = tramp.coerceError(state, func(self, otherArg, opEnum)) catch return null;
-            return (py.createOwned(state, result) catch return null).py;
+            const result = tramp.coerceError(root, func(self, otherArg, opEnum)) catch return null;
+            return (py.createOwned(root, result) catch return null).py;
         }
 
         fn builtCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
@@ -927,9 +927,9 @@ fn RichCompare(comptime state: State, comptime definition: type) type {
                     defer py.decref(is_eq);
 
                     if (py.not_(is_eq) catch return null) {
-                        return py.True(state).obj.py;
+                        return py.True(root).obj.py;
                     } else {
-                        return py.False(state).obj.py;
+                        return py.False(root).obj.py;
                     }
                 }
             }
@@ -941,9 +941,9 @@ fn RichCompare(comptime state: State, comptime definition: type) type {
             for (&funcs_, funcs.compareFuncs) |*func, funcName| {
                 if (@hasDecl(definition, funcName)) {
                     if (std.mem.eql(u8, funcName, "__eq__") or std.mem.eql(u8, funcName, "__ne__")) {
-                        func.* = &EqualsOperator(state, definition, funcName).call;
+                        func.* = &EqualsOperator(root, definition, funcName).call;
                     } else {
-                        func.* = &BinaryOperator(state, definition, funcName).call;
+                        func.* = &BinaryOperator(root, definition, funcName).call;
                     }
                 }
             }

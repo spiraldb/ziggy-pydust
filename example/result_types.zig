@@ -13,74 +13,70 @@
 const std = @import("std");
 const py = @import("pydust");
 
-pub fn root() struct { *py.State, type } {
-    comptime var state = py.State{};
-    const spec = struct {
-        pub fn pyobject() !py.PyObject(state) {
-            return (try py.PyString(state).create("hello")).obj;
-        }
+const root = @This();
 
-        pub fn pystring() !py.PyString(state) {
-            return py.PyString(state).create("hello world");
-        }
+pub fn pyobject() !py.PyObject(root) {
+    return (try py.PyString(root).create("hello")).obj;
+}
 
-        pub fn zigvoid() void {}
+pub fn pystring() !py.PyString(root) {
+    return py.PyString(root).create("hello world");
+}
 
-        pub fn zigbool() bool {
-            return true;
-        }
+pub fn zigvoid() void {}
 
-        pub fn zigu32() u32 {
-            return 32;
-        }
+pub fn zigbool() bool {
+    return true;
+}
 
-        pub fn zigu64() u64 {
-            return 8589934592;
-        }
+pub fn zigu32() u32 {
+    return 32;
+}
 
-        // TODO: support numbers bigger than long
-        // pub fn zigu128() u128 {
-        //     return 9223372036854775809;
-        // }
+pub fn zigu64() u64 {
+    return 8589934592;
+}
 
-        pub fn zigi32() i32 {
-            return -32;
-        }
+// TODO: support numbers bigger than long
+// pub fn zigu128() u128 {
+//     return 9223372036854775809;
+// }
 
-        pub fn zigi64() i64 {
-            return -8589934592;
-        }
+pub fn zigi32() i32 {
+    return -32;
+}
 
-        // TODO: support numbers bigger than long
-        // pub fn zigi128() i128 {
-        //     return -9223372036854775809;
-        // }
+pub fn zigi64() i64 {
+    return -8589934592;
+}
 
-        pub fn zigf16() f16 {
-            return 32720.0;
-        }
+// TODO: support numbers bigger than long
+// pub fn zigi128() i128 {
+//     return -9223372036854775809;
+// }
 
-        pub fn zigf32() f32 {
-            return 2.71 * std.math.pow(f32, 10, 38);
-        }
+pub fn zigf16() f16 {
+    return 32720.0;
+}
 
-        pub fn zigf64() f64 {
-            return 2.71 * std.math.pow(f64, 10, 39);
-        }
+pub fn zigf32() f32 {
+    return 2.71 * std.math.pow(f32, 10, 38);
+}
 
-        const TupleResult = struct { py.PyObject(state), u64 };
+pub fn zigf64() f64 {
+    return 2.71 * std.math.pow(f64, 10, 39);
+}
 
-        pub fn zigtuple() !TupleResult {
-            return .{ py.object(try py.PyString(state).create("hello")), 128 };
-        }
+const TupleResult = struct { py.PyObject(root), u64 };
 
-        const StructResult = struct { foo: u64, bar: bool };
+pub fn zigtuple() !TupleResult {
+    return .{ py.object(root, try py.PyString(root).create("hello")), 128 };
+}
 
-        pub fn zigstruct() StructResult {
-            return .{ .foo = 1234, .bar = true };
-        }
-    };
-    return .{ &state, spec };
+const StructResult = struct { foo: u64, bar: bool };
+
+pub fn zigstruct() StructResult {
+    return .{ .foo = 1234, .bar = true };
 }
 
 comptime {

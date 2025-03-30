@@ -17,9 +17,9 @@ const PyError = @import("../errors.zig").PyError;
 const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const State = @import("../discovery.zig").State;
 
-pub fn PyMemoryView(comptime state: State) type {
+pub fn PyMemoryView(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         pub const Flags = struct {
             const PyBUF_READ: c_int = 0x100;
@@ -27,7 +27,7 @@ pub fn PyMemoryView(comptime state: State) type {
         };
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "memoryview", "PyMemoryView", Self);
+        pub usingnamespace PyObjectMixin(root, "memoryview", "PyMemoryView", Self);
 
         pub fn fromSlice(slice: anytype) !Self {
             const sliceType = Slice(@TypeOf(slice));
@@ -70,13 +70,13 @@ test "from array" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
     const array = "static string";
-    const mv = try PyMemoryView(state).fromSlice(array);
+    const mv = try PyMemoryView(root).fromSlice(array);
     defer mv.decref();
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer(state).Flags.ANY_CONTIGUOUS);
+    var buf = try mv.obj.getBuffer(py.PyBuffer(root).Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(buf.readonly);
 }
@@ -85,15 +85,15 @@ test "from slice" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
     const array = "This is a static string";
     const slice: []const u8 = try std.testing.allocator.dupe(u8, array);
     defer std.testing.allocator.free(slice);
-    const mv = try PyMemoryView(state).fromSlice(slice);
+    const mv = try PyMemoryView(root).fromSlice(slice);
     defer mv.decref();
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer(state).Flags.ANY_CONTIGUOUS);
+    var buf = try mv.obj.getBuffer(py.PyBuffer(root).Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(buf.readonly);
 }
@@ -102,16 +102,16 @@ test "from mutable slice" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
     const array = "This is a static string";
     const slice = try std.testing.allocator.alloc(u8, array.len);
     defer std.testing.allocator.free(slice);
-    const mv = try PyMemoryView(state).fromSlice(slice);
+    const mv = try PyMemoryView(root).fromSlice(slice);
     defer mv.decref();
     @memcpy(slice, array);
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer(state).Flags.ANY_CONTIGUOUS);
+    var buf = try mv.obj.getBuffer(py.PyBuffer(root).Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(!buf.readonly);
 }

@@ -13,32 +13,28 @@
 const std = @import("std");
 const py = @import("pydust");
 
-fn root() struct { *py.State, type } {
-    comptime var state = py.State{};
-    const spec = struct {
-        // --8<-- [start:example]
-        test "pydust pytest" {
-            py.initialize();
-            defer py.finalize();
+const root = @This();
 
-            const str = try py.PyString(&state).create("hello");
-            defer str.decref();
+// --8<-- [start:example]
+test "pydust pytest" {
+    py.initialize();
+    defer py.finalize();
 
-            try std.testing.expectEqualStrings("hello", try str.asSlice());
-        }
-        // --8<-- [end:example]
+    const str = try py.PyString(root).create("hello");
+    defer str.decref();
 
-        test "pydust-expected-failure" {
-            py.initialize();
-            defer py.finalize();
+    try std.testing.expectEqualStrings("hello", try str.asSlice());
+}
+// --8<-- [end:example]
 
-            const str = try py.PyString(&state).create("hello");
-            defer str.decref();
+test "pydust-expected-failure" {
+    py.initialize();
+    defer py.finalize();
 
-            try std.testing.expectEqualStrings("world", try str.asSlice());
-        }
-    };
-    return .{ &state, spec };
+    const str = try py.PyString(root).create("hello");
+    defer str.decref();
+
+    try std.testing.expectEqualStrings("world", try str.asSlice());
 }
 
 comptime {

@@ -22,53 +22,48 @@ pub const __doc__ =
 const std = @import("std");
 const py = @import("pydust");
 
-fn root() struct { *py.State, type } {
-    comptime var state = py.State{};
-    const spec = struct {
-        const Self = @This(); // (1)!
+const root = @This();
+const Self = root; // (1)!
 
-        count: u32 = 0, // (2)!
-        name: py.PyString(&state),
+count: u32 = 0, // (2)!
+name: py.PyString(root),
 
-        pub fn __init__(self: *Self) !void { // (3)!
-            self.* = .{ .name = try py.PyString(&state).create("Ziggy") };
-        }
-
-        pub fn __del__(self: Self) void {
-            self.name.decref();
-        }
-
-        pub fn increment(self: *Self) void { // (4)!
-            self.count += 1;
-        }
-
-        pub fn count(self: *const Self) u32 {
-            return self.count;
-        }
-
-        pub fn whoami(self: *const Self) py.PyString(&state) {
-            py.incref(self.name);
-            return self.name;
-        }
-
-        pub fn hello(
-            self: *const Self,
-            args: struct { name: py.PyString(&state) }, // (5)!
-        ) !py.PyString(&state) {
-            return py.PyString(&state).createFmt(
-                "Hello, {s}. It's {s}",
-                .{ try args.name.asSlice(), try self.name.asSlice() },
-            );
-        }
-
-        pub const submod = state.module(struct { // (6)!
-            pub fn world() !py.PyString(&state) {
-                return try py.PyString(&state).create("Hello, World!");
-            }
-        });
-    };
-    return .{ &state, spec };
+pub fn __init__(self: *Self) !void { // (3)!
+    self.* = .{ .name = try py.PyString(root).create("Ziggy") };
 }
+
+pub fn __del__(self: Self) void {
+    self.name.decref();
+}
+
+pub fn increment(self: *Self) void { // (4)!
+    self.count += 1;
+}
+
+pub fn count(self: *const Self) u32 {
+    return self.count;
+}
+
+pub fn whoami(self: *const Self) py.PyString(root) {
+    py.incref(self.name);
+    return self.name;
+}
+
+pub fn hello(
+    self: *const Self,
+    args: struct { name: py.PyString(root) }, // (5)!
+) !py.PyString(root) {
+    return py.PyString(root).createFmt(
+        "Hello, {s}. It's {s}",
+        .{ try args.name.asSlice(), try self.name.asSlice() },
+    );
+}
+
+pub const submod = py.module(struct { // (6)!
+    pub fn world() !py.PyString(root) {
+        return try py.PyString(root).create("Hello, World!");
+    }
+});
 
 comptime {
     py.rootmodule(root);

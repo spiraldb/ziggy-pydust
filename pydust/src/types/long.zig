@@ -19,12 +19,12 @@ const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PyLong.
 /// See: https://docs.python.org/3/c-api/long.html#c.PyLongObject
-pub fn PyLong(comptime state: State) type {
+pub fn PyLong(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "int", "PyLong", Self);
+        pub usingnamespace PyObjectMixin(root, "int", "PyLong", Self);
 
         pub fn create(value: anytype) !Self {
             if (@TypeOf(value) == comptime_int) {
@@ -64,15 +64,15 @@ test "PyLong" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
-    const pl = try PyLong(state).create(100);
+    const pl = try PyLong(root).create(100);
     defer pl.decref();
 
     try std.testing.expectEqual(@as(c_long, 100), try pl.as(c_long));
     try std.testing.expectEqual(@as(c_ulong, 100), try pl.as(c_ulong));
 
-    const neg_pl = try PyLong(state).create(@as(c_long, -100));
+    const neg_pl = try PyLong(root).create(@as(c_long, -100));
     defer neg_pl.decref();
 
     try std.testing.expectError(

@@ -20,21 +20,21 @@ const State = @import("../discovery.zig").State;
 /// Wrapper for Python PyType.
 /// Since PyTypeObject is opaque in the Python API, we cannot use the PyObject mixin.
 /// Instead, we re-implement the mixin functions and insert @ptrCast where necessary.
-pub fn PyType(comptime state: State) type {
+pub fn PyType(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "type", "PyType", Self);
+        pub usingnamespace PyObjectMixin(root, "type", "PyType", Self);
 
-        pub fn name(self: Self) !py.PyString(state) {
-            return py.PyString(state).unchecked(.{
+        pub fn name(self: Self) !py.PyString(root) {
+            return py.PyString(root).unchecked(.{
                 .py = ffi.PyType_GetName(typePtr(self)) orelse return PyError.PyRaised,
             });
         }
 
-        pub fn qualifiedName(self: Self) !py.PyString(state) {
-            return py.PyString(state).unchecked(.{
+        pub fn qualifiedName(self: Self) !py.PyString(root) {
+            return py.PyString(root).unchecked(.{
                 .py = ffi.PyType_GetQualName(typePtr(self)) orelse return PyError.PyRaised,
             });
         }
@@ -61,15 +61,15 @@ test "PyType" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
-    const io = try py.import(state, "io");
+    const root = @This();
+    const io = try py.import(root, "io");
     defer io.decref();
 
-    const StringIO = try io.getAs(py.PyType(state), "StringIO");
+    const StringIO = try io.getAs(py.PyType(root), "StringIO");
     try std.testing.expectEqualSlices(u8, "StringIO", try (try StringIO.name()).asSlice());
 
-    const sio = try py.call0(state, py.PyObject(state), StringIO);
+    const sio = try py.call0(root, py.PyObject(root), StringIO);
     defer sio.decref();
-    const sioType = py.type_(state, sio);
+    const sioType = py.type_(root, sio);
     try std.testing.expectEqualSlices(u8, "StringIO", try (try sioType.name()).asSlice());
 }

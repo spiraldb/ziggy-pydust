@@ -21,13 +21,13 @@ const PyError = @import("../errors.zig").PyError;
 const seq = @import("./sequence.zig");
 const State = @import("../discovery.zig").State;
 
-pub fn PyTuple(comptime state: State) type {
+pub fn PyTuple(comptime root: type) type {
     return extern struct {
-        obj: PyObject(state),
+        obj: PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "tuple", "PyTuple", Self);
-        pub usingnamespace seq.SequenceMixin(state, Self);
+        pub usingnamespace PyObjectMixin(root, "tuple", "PyTuple", Self);
+        pub usingnamespace seq.SequenceMixin(root, Self);
 
         /// Construct a PyTuple from the given Zig tuple.
         pub fn create(values: anytype) !Self {
@@ -39,7 +39,7 @@ pub fn PyTuple(comptime state: State) type {
             const tuple = try new(s.fields.len);
             inline for (s.fields, 0..) |field, i| {
                 // Recursively unwrap the field value
-                try tuple.setOwnedItem(@intCast(i), try py.create(state, @field(values, field.name)));
+                try tuple.setOwnedItem(@intCast(i), try py.create(root, @field(values, field.name)));
             }
             return tuple;
         }
@@ -76,7 +76,7 @@ pub fn PyTuple(comptime state: State) type {
 
         pub fn getItemZ(self: *const Self, comptime T: type, idx: isize) !T {
             if (ffi.PyTuple_GetItem(self.obj.py, idx)) |item| {
-                return py.as(state, T, py.PyObject(state){ .py = item });
+                return py.as(root, T, py.PyObject(root){ .py = item });
             } else {
                 return PyError.PyRaised;
             }
@@ -86,7 +86,7 @@ pub fn PyTuple(comptime state: State) type {
         ///
         /// Warning: steals a reference to value.
         pub fn setOwnedItem(self: *const Self, pos: usize, value: anytype) !void {
-            if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), py.object(state, value).py) < 0) {
+            if (ffi.PyTuple_SetItem(self.obj.py, @intCast(pos), py.object(root, value).py) < 0) {
                 return PyError.PyRaised;
             }
         }
@@ -107,13 +107,13 @@ test "PyTuple" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
-    const first = try PyLong(state).create(1);
+    const root = @This();
+    const first = try PyLong(root).create(1);
     defer first.decref();
-    const second = try PyFloat(state).create(1.0);
+    const second = try PyFloat(root).create(1.0);
     defer second.decref();
 
-    var tuple = try PyTuple(state).create(.{ first.obj, second.obj });
+    var tuple = try PyTuple(root).create(.{ first.obj, second.obj });
     defer tuple.decref();
 
     try std.testing.expectEqual(@as(usize, 2), tuple.length());
@@ -129,13 +129,13 @@ test "PyTuple setOwnedItem" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
-    var tuple = try PyTuple(state).new(2);
+    const root = @This();
+    var tuple = try PyTuple(root).new(2);
     defer tuple.decref();
-    const py1 = try py.create(state, 1);
+    const py1 = try py.create(root, 1);
     defer py1.decref();
     try tuple.setOwnedItem(0, py1);
-    const py2 = try py.create(state, 2);
+    const py2 = try py.create(root, 2);
     defer py2.decref();
     try tuple.setOwnedItem(1, py2);
 

@@ -17,12 +17,12 @@ const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 
-pub fn PyBytes(comptime state: State) type {
+pub fn PyBytes(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "bytes", "PyBytes", Self);
+        pub usingnamespace PyObjectMixin(root, "bytes", "PyBytes", Self);
 
         pub fn create(value: []const u8) !Self {
             const bytes = ffi.PyBytes_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
@@ -59,10 +59,10 @@ test "PyBytes" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
     const a = "Hello";
 
-    var ps = try PyBytes(state).create(a);
+    var ps = try PyBytes(root).create(a);
     defer ps.decref();
 
     const ps_slice = try ps.asSlice();

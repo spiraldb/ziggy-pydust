@@ -19,7 +19,7 @@ pub const Attribute = struct {
 };
 
 /// Finds the attributes on a module or class definition.
-pub fn Attributes(comptime state: State, comptime definition: type) type {
+pub fn Attributes(comptime root: type, comptime definition: type) type {
     return struct {
         const attr_count = blk: {
             var cnt = 0;
@@ -29,7 +29,7 @@ pub fn Attributes(comptime state: State, comptime definition: type) type {
                     continue;
                 }
 
-                if (state.findDefinition(value)) |def| {
+                if (State.findDefinition(root, value)) |def| {
                     if (def.type == .class) {
                         cnt += 1;
                     }
@@ -44,7 +44,7 @@ pub fn Attributes(comptime state: State, comptime definition: type) type {
             for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
 
-                if (state.findDefinition(value)) |def| {
+                if (State.findDefinition(root, value)) |def| {
                     if (def.type == .class) {
                         const Closure = struct {
                             pub fn init(module: py.PyModule) !py.PyObject {

@@ -13,26 +13,22 @@
 const std = @import("std");
 const py = @import("pydust");
 
-fn root() struct { *py.State, type } {
-    comptime var state = py.State{};
-    const spec = struct {
-        pub fn line_number() u32 {
-            return py.PyFrame(state).get().?.lineNumber();
-        }
+const root = @This();
 
-        pub fn function_name() !py.PyString(&state) {
-            return py.PyFrame(state).get().?.code().name();
-        }
+pub fn line_number() u32 {
+    return py.PyFrame(root).get().?.lineNumber();
+}
 
-        pub fn file_name() !py.PyString(&state) {
-            return py.PyFrame(state).get().?.code().fileName();
-        }
+pub fn function_name() !py.PyString(root) {
+    return py.PyFrame(root).get().?.code().name();
+}
 
-        pub fn first_line_number() !u32 {
-            return py.PyFrame(state).get().?.code().firstLineNumber();
-        }
-    };
-    return .{ &state, spec };
+pub fn file_name() !py.PyString(root) {
+    return py.PyFrame(root).get().?.code().fileName();
+}
+
+pub fn first_line_number() !u32 {
+    return py.PyFrame(root).get().?.code().firstLineNumber();
 }
 
 comptime {

@@ -22,12 +22,12 @@ const State = @import("../discovery.zig").State;
 
 const PyError = @import("../errors.zig").PyError;
 
-pub fn PyModule(comptime state: State) type {
+pub fn PyModule(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "module", "PyModule", Self);
+        pub usingnamespace PyObjectMixin(root, "module", "PyModule", Self);
 
         pub fn import(name: [:0]const u8) !Self {
             return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.PyRaised } };
@@ -53,7 +53,7 @@ pub fn PyModule(comptime state: State) type {
 
             const Cls = @TypeOf(class_state);
 
-            if (State.getDefinition(Cls).type != .class) {
+            if (State.getDefinition(root, Cls).type != .class) {
                 @compileError("Can only init class objects");
             }
 
@@ -63,8 +63,8 @@ pub fn PyModule(comptime state: State) type {
 
             // Alloc the class
             const pyobj: *pytypes.PyTypeStruct(Cls) = @alignCast(@ptrCast(ffi.PyType_GenericAlloc(@ptrCast(pytype.py), 0) orelse return PyError.PyRaised));
-            pyobj.state = class_state;
-            return &pyobj.state;
+            pyobj.root = class_state;
+            return &pyobj.root;
         }
 
         /// Create and insantiate a PyModule object from a Python code string.

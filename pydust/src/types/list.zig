@@ -22,12 +22,12 @@ const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PyList.
 /// See: https://docs.python.org/3/c-api/list.html
-pub fn PyList(comptime state: State) type {
+pub fn PyList(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(state),
+        obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(state, "list", "PyList", Self);
+        pub usingnamespace PyObjectMixin(root, "list", "PyList", Self);
 
         pub fn new(size: usize) !Self {
             const list = ffi.PyList_New(@intCast(size)) orelse return PyError.PyRaised;
@@ -41,7 +41,7 @@ pub fn PyList(comptime state: State) type {
         // Returns borrowed reference.
         pub fn getItem(self: Self, comptime T: type, idx: isize) !T {
             if (ffi.PyList_GetItem(self.obj.py, idx)) |item| {
-                return py.as(state, T, py.PyObject(state){ .py = item });
+                return py.as(root, T, py.PyObject(root){ .py = item });
             } else {
                 return PyError.PyRaised;
             }
@@ -59,20 +59,20 @@ pub fn PyList(comptime state: State) type {
         /// This function “steals” a reference to item and discards a reference to an item already in the list at the affected position.
         pub fn setOwnedItem(self: Self, pos: usize, value: anytype) !void {
             // Since this function steals the reference, it can only accept object-like values.
-            if (ffi.PyList_SetItem(self.obj.py, @intCast(pos), py.object(state, value).py) < 0) {
+            if (ffi.PyList_SetItem(self.obj.py, @intCast(pos), py.object(root, value).py) < 0) {
                 return PyError.PyRaised;
             }
         }
 
         /// Set the item at the given position.
         pub fn setItem(self: Self, pos: usize, value: anytype) !void {
-            const valueObj = try py.create(state, value);
+            const valueObj = try py.create(root, value);
             return self.setOwnedItem(pos, valueObj);
         }
 
         // Insert the item item into list list in front of index idx.
         pub fn insert(self: Self, idx: isize, value: anytype) !void {
-            const valueObj = try py.create(state, value);
+            const valueObj = try py.create(root, value);
             defer valueObj.decref();
             if (ffi.PyList_Insert(self.obj.py, idx, valueObj.py) < 0) {
                 return PyError.PyRaised;
@@ -81,7 +81,7 @@ pub fn PyList(comptime state: State) type {
 
         // Append the object item at the end of list list.
         pub fn append(self: Self, value: anytype) !void {
-            const valueObj = try py.create(state, value);
+            const valueObj = try py.create(root, value);
             defer valueObj.decref();
 
             if (ffi.PyList_Append(self.obj.py, valueObj.py) < 0) {
@@ -103,9 +103,9 @@ pub fn PyList(comptime state: State) type {
             }
         }
 
-        pub fn toTuple(self: Self) !py.PyTuple(state) {
+        pub fn toTuple(self: Self) !py.PyTuple(root) {
             const pytuple = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.PyRaised;
-            return py.PyTuple(state).unchecked(.{ .py = pytuple });
+            return py.PyTuple(root).unchecked(.{ .py = pytuple });
         }
     };
 }
@@ -116,9 +116,9 @@ test "PyList" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
-    var list = try PyList(state).new(2);
+    var list = try PyList(root).new(2);
     defer list.decref();
     try list.setItem(0, 1);
     try list.setItem(1, 2.0);
@@ -149,14 +149,14 @@ test "PyList setOwnedItem" {
     py.initialize();
     defer py.finalize();
 
-    const state = State{};
+    const root = @This();
 
-    var list = try PyList(state).new(2);
+    var list = try PyList(root).new(2);
     defer list.decref();
-    const py1 = try py.create(state, 1);
+    const py1 = try py.create(root, 1);
     defer py1.decref();
     try list.setOwnedItem(0, py1);
-    const py2 = try py.create(state, 2);
+    const py2 = try py.create(root, 2);
     defer py2.decref();
     try list.setOwnedItem(1, py2);
 
