@@ -10,11 +10,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 const std = @import("std");
-const py = @import("pydust.zig");
-const ffi = py.ffi;
-
-const PyType = @import("./pytypes.zig").PyType;
-const Module = @import("./modules.zig").Module;
 
 /// Captures the type of the Pydust object.
 pub const Definition = struct {
