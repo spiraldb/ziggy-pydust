@@ -105,13 +105,12 @@ class ZigFile(pytest.File):
         # Wrap the buffer so we can consume from it nicely in a loop
         fileobj = io.BytesIO(buffer)
         names = [struct.unpack("<I", fileobj.read(4))[0] for _ in range(tests_len)]
-        async_frame_sizes = [struct.unpack("<I", fileobj.read(4))[0] for _ in range(tests_len)]
         expected_panic_msgs = [struct.unpack("<I", fileobj.read(4))[0] for _ in range(tests_len)]
 
         # We use the original buffer to extract string data since it's easier to find the next null terminator
         data = buffer[-string_bytes_len:]
         tests = []
-        for i, (name, afs, ep) in enumerate(zip(names, async_frame_sizes, expected_panic_msgs)):
+        for i, (name, ep) in enumerate(zip(names, expected_panic_msgs)):
             test_name = data[name : data.index(b"\0", name)].decode("utf-8")
             if test_name.startswith("test."):
                 test_name = test_name[len("test.") :]
@@ -119,7 +118,6 @@ class ZigFile(pytest.File):
                 {
                     "idx": i,
                     "name": test_name,
-                    "async_frame_size": data[afs : data.index(b"\0", afs)].decode("utf-8") if afs else None,
                     "expected_panics": data[ep : data.index(b"\0", ep)].decode("utf-8") if ep else None,
                 }
             )
