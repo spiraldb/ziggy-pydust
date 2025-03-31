@@ -28,8 +28,6 @@ const Identifier = struct {
 };
 
 fn countDefinitions(comptime definition: type) usize {
-    if (Definition == @TypeOf(definition))
-        return 1 + countDefinitions(definition.definition);
     comptime var count = 0;
     switch (@typeInfo(definition)) {
         .Struct => |info| {
@@ -38,8 +36,11 @@ fn countDefinitions(comptime definition: type) usize {
             }
             for (info.decls) |d| {
                 const field = @field(definition, d.name);
-                if (@TypeOf(field) == type)
-                    count += countDefinitions(field);
+                count += switch (@TypeOf(field)) {
+                    Definition => 1 + countDefinitions(field.definition),
+                    type => countDefinitions(field),
+                    else => 0,
+                };
             }
         },
         else => {},
@@ -48,8 +49,6 @@ fn countDefinitions(comptime definition: type) usize {
 }
 
 fn getDefinitions(comptime definition: type) [countDefinitions(definition)]Definition {
-    if (Definition == @TypeOf(definition))
-        return .{definition} ++ getDefinitions(definition.definition);
     comptime var definitions: [countDefinitions(definition)]Definition = undefined;
     comptime var count = 0;
     switch (@typeInfo(definition)) {
@@ -63,12 +62,14 @@ fn getDefinitions(comptime definition: type) [countDefinitions(definition)]Defin
             }
             for (info.decls) |d| {
                 const field = @field(definition, d.name);
-                if (@TypeOf(field) == type) {
-                    for (getDefinitions(@field(definition, d.name))) |subDef| {
-                        // Append the sub-definition to the list.
-                        definitions[count] = subDef;
-                        count += 1;
-                    }
+                for (switch (@TypeOf(field)) {
+                    Definition => .{field} ++ getDefinitions(field.definition),
+                    type => getDefinitions(field), // Handle other types
+                    else => .{},
+                }) |subDef| {
+                    // Append the sub-definition to the list.
+                    definitions[count] = subDef;
+                    count += 1;
                 }
             }
         },
@@ -79,51 +80,47 @@ fn getDefinitions(comptime definition: type) [countDefinitions(definition)]Defin
 
 fn getIdentifiers(
     comptime definition: type,
-    comptime qualifiedName: [:0]const u8,
+    comptime qualifiedName: []const [:0]const u8,
     comptime parent: type,
 ) [countDefinitions(definition)]Identifier {
-    if (Definition == @TypeOf(definition))
-        return .{.{
-            .name = qualifiedName[qualifiedName.len - 1],
-            .qualifiedName = qualifiedName,
-            .definition = definition,
-            .parent = parent,
-        }} ++ getIdentifiers(definition.definition);
-    comptime var identifiers: [countDefinitions(definition)]Definition = undefined;
+    comptime var identifiers: [countDefinitions(definition)]Identifier = undefined;
     comptime var count = 0;
-    for (std.meta.fields(definition)) |f| {
-        for (getIdentifiers(@field(definition, f.name), qualifiedName ++ .{f.name}, definition)) |identifier| {
-            // Append the sub-definition to the list.
-            identifiers[count] = identifier;
-            count += 1;
-        }
+    switch (@typeInfo(definition)) {
+        .Struct => |info| {
+            // Iterate over the fields of the struct
+            for (info.fields) |f| {
+                for (getIdentifiers(f.type, qualifiedName ++ .{f.name}, definition)) |identifier| {
+                    // Append the sub-definition to the list.
+                    identifiers[count] = identifier;
+                    count += 1;
+                }
+            }
+            for (info.decls) |d| {
+                const field = @field(definition, d.name);
+                const name = qualifiedName ++ .{d.name};
+                // Handle the field based on its type
+                for (switch (@TypeOf(field)) {
+                    Definition => .{.{
+                        .name = d.name,
+                        .qualifiedName = name,
+                        .definition = field,
+                        .parent = parent,
+                    }} ++ getIdentifiers(field.definition, name, definition),
+                    type => getIdentifiers(field, name, definition),
+                    else => .{},
+                }) |identifier| {
+                    // Append the sub-definition to the list.
+                    identifiers[count] = identifier;
+                    count += 1;
+                }
+            }
+        },
+        else => {},
     }
-    for (std.meta.declarations(definition)) |d| {
-        for (getIdentifiers(@field(definition, d.name), qualifiedName ++ .{d.name}, definition)) |identifier| {
-            // Append the sub-definition to the list.
-            identifiers[count] = identifier;
-            count += 1;
-        }
-    }
-    return count;
+    return identifiers;
 }
 
 pub const State = struct {
-    pub fn countDeclsWithType(
-        comptime root: type,
-        comptime definition: type,
-        deftype: DefinitionType,
-    ) usize {
-        var cnt = 0;
-        for (@typeInfo(definition).Struct.decls) |decl| {
-            const declType = @TypeOf(@field(definition, decl.name));
-            if (hasType(root, declType, deftype)) {
-                cnt += 1;
-            }
-        }
-        return cnt;
-    }
-
     pub fn countFieldsWithType(
         comptime root: type,
         comptime definition: type,
@@ -181,14 +178,20 @@ pub const State = struct {
         return findIdentifier(root, definition) orelse @compileError("Definition not yet identified " ++ @typeName(definition));
     }
 
-    pub inline fn findIdentifier(
+    inline fn findIdentifier(
         comptime root: type,
         comptime definition: type,
     ) ?Identifier {
+        const qualifiedName = &.{@import("pyconf").module_name};
         if (@typeInfo(definition) != .Struct) {
             return null;
         }
-        for (getIdentifiers(root)) |idef| {
+        for ([_]Identifier{.{
+            .name = qualifiedName[0],
+            .qualifiedName = qualifiedName,
+            .definition = root,
+            .parent = root,
+        }} ++ getIdentifiers(root, qualifiedName, root)) |idef| {
             if (idef.definition == definition) {
                 return idef;
             }
@@ -205,7 +208,7 @@ pub const State = struct {
     }
 
     /// Find the nearest containing definition with the given deftype.
-    pub fn findContaining(
+    fn findContaining(
         comptime root: type,
         comptime definition: type,
         comptime deftype: DefinitionType,

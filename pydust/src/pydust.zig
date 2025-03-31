@@ -43,8 +43,7 @@ pub fn finalize() void {
 
 /// Register the root Pydust module
 pub fn rootmodule(comptime definition: type) void {
-    const pyconf = @import("pyconf");
-    const name = pyconf.module_name;
+    const name = @import("pyconf").module_name;
 
     const moddef = Module(definition, name, definition);
 
