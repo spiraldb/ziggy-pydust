@@ -228,12 +228,10 @@ class TestProtocol:
         zig_version = 0
         # Body is an ErrorBundle.
         error_bundle = 1
-        # Body is a UTF-8 string.
-        progress = 2
-        # Body is a EmitBinPath.
-        emit_bin_path = 3
+        # Body is a EmitDigest.
+        emit_digest = 2
         # Body is a TestMetadata
-        test_metadata = 4
+        test_metadata = 3
         # Body is a TestResults
         test_results = 5
 
