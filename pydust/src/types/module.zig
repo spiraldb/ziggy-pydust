@@ -39,7 +39,7 @@ pub fn PyModule(comptime root: type) type {
         }
 
         pub fn addObjectRef(self: Self, name: [:0]const u8, obj: anytype) !void {
-            const pyobject = py.object(obj);
+            const pyobject = py.object(root, obj);
             if (ffi.PyModule_AddObjectRef(self.obj.py, name.ptr, pyobject.py) < 0) {
                 return PyError.PyRaised;
             }

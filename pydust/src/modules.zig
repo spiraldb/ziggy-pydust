@@ -140,18 +140,18 @@ fn Slots(comptime root: type, comptime definition: type) type {
                 // See https://github.com/python/cpython/blob/042f31da552c19054acd3ef7bb6cfd857bce172b/Python/import.c#L2527-L2539
 
                 const name = State.getIdentifier(root, submodule).name;
-                const submodDef = Module(name, submodule);
+                const submodDef = Module(root, name, submodule);
                 const pySubmodDef: *ffi.PyModuleDef = @ptrCast((try submodDef.init()).py);
 
                 // Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace
-                const types = try py.import("types");
+                const types = try py.import(root, "types");
                 defer types.decref();
                 const pyname = try py.PyString(root).create(name);
                 defer pyname.decref();
-                const spec = try types.call(py.PyObject, "SimpleNamespace", .{}, .{ .name = pyname });
+                const spec = try types.call(py.PyObject(root), "SimpleNamespace", .{}, .{ .name = pyname });
                 defer spec.decref();
 
-                const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
+                const submod: py.PyObject(root) = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
 
                 if (ffi.PyModule_ExecDef(submod.py, pySubmodDef) < 0) {
                     return PyError.PyRaised;

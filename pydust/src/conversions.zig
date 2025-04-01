@@ -54,7 +54,7 @@ pub inline fn checked(comptime root: type, comptime T: type, obj: py.PyObject) p
 }
 
 /// Python -> Pydust. Perform an unchecked cast from a PyObject to a given PyDust class type.
-pub inline fn unchecked(comptime root: type, comptime T: type, obj: py.PyObject) T {
+pub inline fn unchecked(comptime root: type, comptime T: type, obj: py.PyObject(root)) T {
     const Definition = @typeInfo(T).Pointer.child;
     const definition = State.getDefinition(root, Definition);
     if (definition.type != .class) {

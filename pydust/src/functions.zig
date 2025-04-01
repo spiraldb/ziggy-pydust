@@ -332,7 +332,7 @@ pub fn wrap(comptime root: type, comptime definition: type, comptime func: anyty
                 const mod = py.PyModule(root){ .obj = pyself };
                 return try mod.getState(@typeInfo(Self).Pointer.child);
             } else {
-                return py.unchecked(Self, pyself);
+                return py.unchecked(root, Self, pyself);
             }
         }
     };

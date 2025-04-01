@@ -78,11 +78,16 @@ pub fn class(comptime definition: type) Definition {
 
 /// Register a struct field as a Python read-only attribute.
 pub fn attribute(comptime T: type) Definition {
-    return .{ .defininition = Attribute(T), .type = .attribute };
+    return .{ .definition = Attribute(T), .type = .attribute };
 }
 
 fn Attribute(comptime T: type) type {
     return struct { value: T };
+}
+
+/// Register a property as a field on a Pydust class.
+pub fn property(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .property };
 }
 
 /// Zig type representing variadic arguments to a Python function.

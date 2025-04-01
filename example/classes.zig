@@ -48,7 +48,7 @@ pub const Animal = py.class(struct {
 pub const Dog = py.class(struct {
     const Self = @This();
 
-    animal: Animal,
+    animal: Animal.definition,
     breed: py.PyString(root),
 
     pub fn __init__(self: *Self, args: struct { breed: py.PyString(root) }) !void {
@@ -194,12 +194,12 @@ pub const GetAttr = py.class(struct {
         _ = self;
     }
 
-    pub fn __getattr__(self: *const Self, attr: py.PyString(root)) !py.PyObject {
+    pub fn __getattr__(self: *const Self, attr: py.PyString(root)) !py.PyObject(root) {
         const name = try attr.asSlice();
         if (std.mem.eql(u8, name, "number")) {
-            return py.create(42);
+            return py.create(root, 42);
         }
-        return py.object(self).getAttribute(name);
+        return py.object(root, self).getAttribute(name);
     }
 });
 

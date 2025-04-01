@@ -100,10 +100,10 @@ fn getIdentifiers(
                 const name = qualifiedName ++ .{d.name};
                 // Handle the field based on its type
                 for (switch (@TypeOf(field)) {
-                    Definition => .{.{
+                    Definition => [_]Identifier{.{
                         .name = d.name,
                         .qualifiedName = name,
-                        .definition = field,
+                        .definition = field.definition,
                         .parent = parent,
                     }} ++ getIdentifiers(field.definition, name, definition),
                     type => getIdentifiers(field, name, definition),
@@ -157,18 +157,20 @@ pub const State = struct {
         comptime root: type,
         comptime definition: anytype,
     ) ?Definition {
-        if (@typeInfo(@TypeOf(definition)) != .Type) {
-            return null;
-        }
-        if (@typeInfo(definition) != .Struct) {
-            return null;
-        }
-        for ([_]Definition{.{ .definition = root, .type = .module }} ++ getDefinitions(root)) |def| {
-            if (def.definition == definition) {
-                return def;
-            }
-        }
-        return null;
+        return switch (@TypeOf(definition)) {
+            Definition => definition,
+            type => switch (@typeInfo(definition)) {
+                .Struct => blk: {
+                    for ([_]Definition{.{ .definition = root, .type = .module }} ++ getDefinitions(root)) |def| {
+                        if (def.definition == definition)
+                            break :blk def;
+                    }
+                    break :blk null;
+                },
+                else => null,
+            },
+            else => null,
+        };
     }
 
     pub fn getIdentifier(

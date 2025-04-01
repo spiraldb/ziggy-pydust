@@ -29,7 +29,7 @@ pub const Range = py.class(struct {
     }
 
     pub fn __iter__(self: *const Self) !*RangeIterator.definition {
-        return try py.init(RangeIterator, .{ .next = self.lower, .stop = self.upper, .step = self.step });
+        return try py.init(root, RangeIterator.definition, .{ .next = self.lower, .stop = self.upper, .step = self.step });
     }
 });
 

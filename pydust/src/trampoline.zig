@@ -67,11 +67,11 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                         return .{ .py = obj };
                     }
 
-                    if (State.findDefinition(root, p.child)) |def| {
+                    if (comptime State.findDefinition(root, p.child)) |def| {
                         // If the pointer is for a Pydust class
                         if (def.type == .class) {
                             const PyType = pytypes.PyTypeStruct(p.child);
-                            const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@as(*const PyType, @fieldParentPtr("state", obj))));
+                            const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@as(*const PyType, @alignCast(@fieldParentPtr("state", obj)))));
                             return .{ .py = ffiObject };
                         }
 
@@ -225,10 +225,10 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                         // If the pointer is for a Pydust class
                         if (def.type == .class) {
                             // TODO(ngates): #193
-                            const Cls = try py.self(p.child);
+                            const Cls = try py.self(root, p.child);
                             defer Cls.decref();
 
-                            if (!try py.isinstance(obj, Cls)) {
+                            if (!try py.isinstance(root, obj, Cls)) {
                                 const clsName = State.getIdentifier(root, p.child).name;
                                 const mod = State.getContaining(root, p.child, .module);
                                 const modName = State.getIdentifier(root, mod).name;
@@ -286,7 +286,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
             allPosArgs: []py.PyObject(root),
 
             pub fn unwrap(pyargs: ?py.PyTuple(root), pykwargs: ?py.PyDict(root)) PyError!@This() {
-                var kwargs = py.Kwargs.init(py.allocator);
+                var kwargs = py.Kwargs(root).init(py.allocator);
                 if (pykwargs) |kw| {
                     var iter = kw.itemsIterator();
                     while (iter.next()) |item| {
@@ -302,11 +302,11 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                     }
                 }
 
-                return .{ .argsStruct = try funcs.unwrapArgs(T, args, kwargs), .allPosArgs = args };
+                return .{ .argsStruct = try funcs.unwrapArgs(root, T, args, kwargs), .allPosArgs = args };
             }
 
             pub fn deinit(self: @This()) void {
-                if (comptime funcs.varArgsIdx(T)) |idx| {
+                if (comptime funcs.varArgsIdx(root, T)) |idx| {
                     py.allocator.free(self.allPosArgs[0..idx]);
                 } else {
                     py.allocator.free(self.allPosArgs);
@@ -316,7 +316,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                     if (field.type == py.Args(root)) {
                         py.allocator.free(@field(self.argsStruct, field.name));
                     }
-                    if (field.type == py.Kwargs) {
+                    if (field.type == py.Kwargs(root)) {
                         var kwargs: py.Kwargs(root) = @field(self.argsStruct, field.name);
                         kwargs.deinit();
                     }

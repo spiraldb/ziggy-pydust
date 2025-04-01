@@ -33,9 +33,9 @@ pub const CompareOp = enum {
 };
 
 /// Returns a new reference to Py_NotImplemented.
-pub fn NotImplemented() py.PyObject {
+pub fn NotImplemented(comptime root: type) py.PyObject(root) {
     // It's important that we incref the Py_NotImplemented singleton
-    const notImplemented = py.PyObject{ .py = ffi.Py_NotImplemented() };
+    const notImplemented = py.PyObject(root){ .py = ffi.Py_NotImplemented() };
     notImplemented.incref();
     return notImplemented;
 }
@@ -184,8 +184,8 @@ pub fn alloc(comptime root: type, comptime Cls: type) PyError!*Cls {
 }
 
 /// Allocate and instantiate a class defined in Pydust.
-pub inline fn init(comptime Cls: type, state: Cls) PyError!*Cls {
-    const cls: *Cls = try alloc(Cls);
+pub inline fn init(comptime root: type, comptime Cls: type, state: Cls) PyError!*Cls {
+    const cls: *Cls = try alloc(root, Cls);
     cls.* = state;
     return cls;
 }
@@ -232,8 +232,8 @@ pub fn next(comptime T: type, iterator: anytype) !?T {
 }
 
 /// Return "false" if the object is considered to be truthy, and true otherwise.
-pub fn not_(object: anytype) !bool {
-    const result = ffi.PyObject_Not(py.object(object).py);
+pub fn not_(comptime root: type, object: anytype) !bool {
+    const result = ffi.PyObject_Not(py.object(root, object).py);
     if (result < 0) return PyError.PyRaised;
     return result == 1;
 }
@@ -252,7 +252,7 @@ pub fn str(comptime root: type, object: anytype) !py.PyString(root) {
 
 /// Compute a string representation of object - using repr(o).
 pub fn repr(comptime root: type, object: anytype) !py.PyString(root) {
-    const pyobj = py.object(object);
+    const pyobj = py.object(root, object);
     return py.PyString(root).unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.PyRaised });
 }
 
@@ -261,14 +261,14 @@ pub fn self(comptime root: type, comptime Class: type) !py.PyType(root) {
     if (State.getDefinition(root, Class).type != .class) {
         @compileError("Not a class definition: " ++ Class);
     }
-    return py.PyType.unchecked(try lift(root, Class));
+    return py.PyType(root).unchecked(try lift(root, Class));
 }
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.
 pub fn super(comptime root: type, comptime Super: type, selfInstance: anytype) !py.PyObject(root) {
     const mod = State.getContaining(root, Super, .module);
 
-    const imported = try import(State.getIdentifier(root, mod).name);
+    const imported = try import(root, State.getIdentifier(root, mod).name);
     defer imported.decref();
 
     const superPyType = try imported.get(State.getIdentifier(root, Super).name);
@@ -330,7 +330,7 @@ fn lift(comptime root: type, comptime PydustStruct: type) !py.PyObject(root) {
     // Grab the qualified name, importing the root module first.
     comptime var qualName = State.getIdentifier(root, PydustStruct).qualifiedName;
 
-    var mod = try import(qualName[0]);
+    var mod = try import(root, qualName[0]);
 
     // Recursively resolve submodules / nested classes
     if (comptime qualName.len > 1) {

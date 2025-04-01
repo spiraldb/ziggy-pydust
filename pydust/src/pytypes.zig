@@ -41,8 +41,8 @@ pub fn Type(comptime root: type, comptime name: [:0]const u8, comptime definitio
             break :blk moduleName ++ "." ++ name;
         };
 
-        const bases = Bases(definition);
-        const slots = Slots(definition, name);
+        const bases = Bases(root, definition);
+        const slots = Slots(root, definition, name);
 
         const flags = blk: {
             var flags_: usize = ffi.Py_TPFLAGS_DEFAULT | ffi.Py_TPFLAGS_BASETYPE;
@@ -53,12 +53,12 @@ pub fn Type(comptime root: type, comptime name: [:0]const u8, comptime definitio
             break :blk flags_;
         };
 
-        pub fn init(module: py.PyModule) PyError!py.PyObject {
+        pub fn init(module: py.PyModule(root)) PyError!py.PyObject(root) {
             var basesPtr: ?*ffi.PyObject = null;
             if (bases.bases.len > 0) {
                 const basesTuple = try py.PyTuple(root).new(bases.bases.len);
                 inline for (bases.bases, 0..) |base, i| {
-                    try basesTuple.setOwnedItem(i, try py.self(base));
+                    try basesTuple.setOwnedItem(i, try py.self(root, base));
                 }
                 basesPtr = basesTuple.obj.py;
             }
@@ -109,9 +109,9 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
 
         const attrs = Attributes(root, definition);
         const methods = funcs.Methods(root, definition);
-        const members = Members(definition);
-        const properties = Properties(definition);
-        const doc = Doc(definition, name);
+        const members = Members(root, definition);
+        const properties = Properties(root, definition);
+        const doc = Doc(root, definition, name);
         const richcmp = RichCompare(root, definition);
         const gc = GC(root, definition);
 
@@ -248,21 +248,21 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
                 }};
             }
 
-            for (funcs.BinaryOperators.kvs) |kv| {
-                if (@hasDecl(definition, kv.key)) {
-                    const op = BinaryOperator(root, definition, kv.key);
+            for (funcs.BinaryOperators.keys()) |key| {
+                if (@hasDecl(definition, key)) {
+                    const op = BinaryOperator(root, definition, key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
-                        .slot = kv.value,
+                        .slot = funcs.BinaryOperators.get(key).?,
                         .pfunc = @ptrCast(@constCast(&op.call)),
                     }};
                 }
             }
 
-            for (funcs.UnaryOperators.kvs) |kv| {
-                if (@hasDecl(definition, kv.key)) {
-                    const op = UnaryOperator(root, definition, kv.key);
+            for (funcs.UnaryOperators.keys()) |key| {
+                if (@hasDecl(definition, key)) {
+                    const op = UnaryOperator(root, definition, key);
                     slots_ = slots_ ++ .{ffi.PyType_Slot{
-                        .slot = kv.value,
+                        .slot = funcs.UnaryOperators.get(key).?,
                         .pfunc = @ptrCast(@constCast(&op.call)),
                     }};
                 }
@@ -292,22 +292,22 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
             _ = pycls;
             _ = pykwargs;
             _ = pyargs;
-            py.TypeError.raise("Native type cannot be instantiated from Python") catch return null;
+            py.TypeError(root).raise("Native type cannot be instantiated from Python") catch return null;
         }
 
         fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
-            const sig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ *definition, *const definition, py.PyObject });
+            const sig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ *definition, *const definition, py.PyObject(root) });
 
             if (sig.selfParam == null and @typeInfo(definition).fields.len > 0) {
                 @compileError("__init__ must take both a self argument");
             }
-            const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return -1;
+            const self = tramp.Trampoline(root, sig.selfParam.?).unwrap(py.PyObject(root){ .py = pyself }) catch return -1;
 
             if (sig.argsParam) |Args| {
                 const args = if (pyargs) |pa| py.PyTuple(root).unchecked(.{ .py = pa }) else null;
                 const kwargs = if (pykwargs) |pk| py.PyDict(root).unchecked(.{ .py = pk }) else null;
 
-                const init_args = tramp.Trampoline(Args).unwrapCallArgs(args, kwargs) catch return -1;
+                const init_args = tramp.Trampoline(root, Args).unwrapCallArgs(args, kwargs) catch return -1;
                 defer init_args.deinit();
 
                 tramp.coerceError(root, definition.__init__(self, init_args.argsStruct)) catch return -1;
@@ -393,13 +393,13 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
         }
 
         fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const sig = funcs.parseSignature("__call__", @typeInfo(@TypeOf(definition.__call__)).Fn, &.{ *definition, *const definition, py.PyObject });
+            const sig = funcs.parseSignature(root, "__call__", @typeInfo(@TypeOf(definition.__call__)).Fn, &.{ *definition, *const definition, py.PyObject(root) });
 
             const args = if (pyargs) |pa| py.PyTuple(root).unchecked(.{ .py = pa }) else null;
             const kwargs = if (pykwargs) |pk| py.PyDict(root).unchecked(.{ .py = pk }) else null;
 
-            const self = tramp.Trampoline(sig.selfParam.?).unwrap(py.PyObject{ .py = pyself }) catch return null;
-            const call_args = tramp.Trampoline(sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;
+            const self = tramp.Trampoline(root, sig.selfParam.?).unwrap(py.PyObject(root){ .py = pyself }) catch return null;
+            const call_args = tramp.Trampoline(root, sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;
             defer call_args.deinit();
 
             const result = tramp.coerceError(root, definition.__call__(self, call_args.argsStruct)) catch return null;
@@ -414,17 +414,17 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
     };
 }
 
-fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
+fn Doc(comptime root: type, comptime definition: type, comptime name: [:0]const u8) type {
     return struct {
         const docLen = blk: {
             var size: usize = 0;
-            var maybeSig: ?funcs.Signature = null;
+            var maybeSig: ?funcs.Signature(root) = null;
             if (@hasDecl(definition, "__init__")) {
-                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject, *definition, *const definition });
+                maybeSig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject(root), *definition, *const definition });
             }
 
             if (maybeSig) |sig| {
-                const classSig: funcs.Signature = .{
+                const classSig: funcs.Signature(root) = .{
                     .name = name,
                     .selfParam = sig.selfParam,
                     .argsParam = sig.argsParam,
@@ -432,7 +432,7 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
                     .nargs = sig.nargs,
                     .nkwargs = sig.nkwargs,
                 };
-                size += funcs.textSignature(classSig).len;
+                size += funcs.textSignature(root, classSig).len;
             }
 
             if (@hasDecl(definition, "__doc__")) {
@@ -444,13 +444,13 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
         const doc: [docLen:0]u8 = blk: {
             var userDoc: [docLen:0]u8 = undefined;
             var docOffset = 0;
-            var maybeSig: ?funcs.Signature = null;
+            var maybeSig: ?funcs.Signature(root) = null;
             if (@hasDecl(definition, "__init__")) {
-                maybeSig = funcs.parseSignature("__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject, *definition, *const definition });
+                maybeSig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject(root), *definition, *const definition });
             }
 
             if (maybeSig) |sig| {
-                const classSig: funcs.Signature = .{
+                const classSig: funcs.Signature(root) = .{
                     .name = name,
                     .selfParam = sig.selfParam,
                     .argsParam = sig.argsParam,
@@ -458,7 +458,7 @@ fn Doc(comptime definition: type, comptime name: [:0]const u8) type {
                     .nargs = sig.nargs,
                     .nkwargs = sig.nkwargs,
                 };
-                const sigText = funcs.textSignature(classSig);
+                const sigText = funcs.textSignature(root, classSig);
                 @memcpy(userDoc[0..sigText.len], &sigText);
                 docOffset += sigText.len;
             }
@@ -500,7 +500,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                             .class, .module => false,
                         };
                     } else {
-                        break :blk @hasField(FT, "obj") and @hasField(std.meta.fieldInfo(FT, .obj).type, "py") or FT == py.PyObject;
+                        break :blk @hasField(FT, "obj") and @hasField(std.meta.fieldInfo(FT, .obj).type, "py") or FT == py.PyObject(root);
                     }
                 },
                 .Optional => |o| (@typeInfo(o.child) == .Struct or @typeInfo(o.child) == .Pointer) and typeNeedsGc(o.child),
@@ -529,12 +529,12 @@ fn GC(comptime root: type, comptime definition: type) type {
                     }
                     if (State.findDefinition(root, fieldType)) |def| {
                         if (def.type == .class) {
-                            pyClear(py.object(obj).py);
+                            pyClear(py.object(root, obj).py);
                         }
                     }
                 },
                 .Struct => {
-                    if (State.findDefinition(root, fieldType)) |def| {
+                    if (comptime State.findDefinition(root, fieldType)) |def| {
                         switch (def.type) {
                             .attribute => clear(@field(obj, @typeInfo(fieldType).Struct.fields[0].name)),
                             .property => clearFields(obj),
@@ -545,7 +545,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                             pyClear(obj.obj.py);
                         }
 
-                        if (fieldType == py.PyObject) {
+                        if (fieldType == py.PyObject(root)) {
                             pyClear(obj.py);
                         }
                     }
@@ -565,12 +565,12 @@ fn GC(comptime root: type, comptime definition: type) type {
             const objRef = @constCast(&obj);
             const objOld = objRef.*;
             objRef.* = undefined;
-            py.decref(objOld);
+            py.decref(root, objOld);
         }
 
         /// Visit all members of pyself. We visit all PyObjects that this object references
         fn tp_traverse(pyself: *ffi.PyObject, visit: VisitProc, arg: *anyopaque) callconv(.C) c_int {
-            if (pyVisit(py.type_(pyself).obj.py, visit, arg)) |ret| {
+            if (pyVisit(py.type_(root, pyself).obj.py, visit, arg)) |ret| {
                 return ret;
             }
 
@@ -607,7 +607,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                         }
                     }
                 },
-                .Struct => if (State.findDefinition(root, fieldType)) |def| {
+                .Struct => if (comptime State.findDefinition(root, fieldType)) |def| {
                     switch (def.type) {
                         .attribute => if (traverse(@field(obj, @typeInfo(@TypeOf(obj)).Struct.fields[0].name), visit, arg)) |ret| {
                             return ret;
@@ -624,7 +624,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                         }
                     }
 
-                    if (fieldType == py.PyObject) {
+                    if (fieldType == py.PyObject(root)) {
                         if (pyVisit(obj.py, visit, arg)) |ret| {
                             return ret;
                         }
@@ -689,7 +689,7 @@ fn Members(comptime root: type, comptime definition: type) type {
         // This allows us to support native Zig types like u32 and not require the user
         // to specify c_int.
         fn getMemberType(comptime T: type) c_int {
-            if (T == py.PyObject) {
+            if (T == py.PyObject(root)) {
                 return ffi.T_OBJECT_EX;
             }
 
@@ -769,7 +769,7 @@ fn Properties(comptime root: type, comptime definition: type) type {
                                 const propself = &@field(self.state, field.name);
 
                                 const ValueArg = @typeInfo(@TypeOf(field.type.set)).Fn.params[1].type.?;
-                                const value = tramp.Trampoline(ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
+                                const value = tramp.Trampoline(root, ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
 
                                 tramp.coerceError(root, field.type.set(propself, value)) catch return -1;
                                 return 0;
@@ -805,7 +805,7 @@ fn BinaryOperator(
 
             // TODO(ngates): do we want to trampoline the self argument?
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
-            const other = tramp.Trampoline(typeInfo.params[1].type.?).unwrap(.{ .py = pyother }) catch return null;
+            const other = tramp.Trampoline(root, typeInfo.params[1].type.?).unwrap(.{ .py = pyother }) catch return null;
 
             const result = tramp.coerceError(root, func(&self.state, other)) catch return null;
             return (py.createOwned(root, result) catch return null).py;
@@ -852,12 +852,12 @@ fn EqualsOperator(
             // then we can short-cut and return not-equal.
             if (Other == *const definition) {
                 // TODO(ngates): #193
-                const selfType = py.self(definition) catch return null;
+                const selfType = py.self(root, definition) catch return null;
                 defer selfType.decref();
 
-                const isSubclass = py.isinstance(pyother, selfType) catch return null;
+                const isSubclass = py.isinstance(root, pyother, selfType) catch return null;
                 if (!isSubclass) {
-                    return if (equals) py.False().obj.py else py.True().obj.py;
+                    return if (equals) py.False(root).obj.py else py.True(root).obj.py;
                 }
             }
 
@@ -908,7 +908,7 @@ fn RichCompare(comptime root: type, comptime definition: type) type {
             const CompareOpArg = typeInfo.params[2].type.?;
             if (CompareOpArg != py.CompareOp) @compileError("Third parameter of __richcompare__ must be a py.CompareOp");
 
-            const self = py.unchecked(Self, .{ .py = pyself });
+            const self = py.unchecked(root, Self, .{ .py = pyself });
             const otherArg = tramp.Trampoline(root, Other).unwrap(.{ .py = pyother }) catch return null;
             const opEnum: py.CompareOp = @enumFromInt(op);
 
@@ -924,16 +924,16 @@ fn RichCompare(comptime root: type, comptime definition: type) type {
                 // Use the negation of __eq__ if it is implemented and __ne__ is not.
                 if (compareFuncs[@intFromEnum(py.CompareOp.EQ)]) |eq_func| {
                     const is_eq = eq_func(pyself, pyother) orelse return null;
-                    defer py.decref(is_eq);
+                    defer py.decref(root, is_eq);
 
-                    if (py.not_(is_eq) catch return null) {
+                    if (py.not_(root, is_eq) catch return null) {
                         return py.True(root).obj.py;
                     } else {
                         return py.False(root).obj.py;
                     }
                 }
             }
-            return py.NotImplemented().py;
+            return py.NotImplemented(root).py;
         }
 
         const compareFuncs = blk: {
