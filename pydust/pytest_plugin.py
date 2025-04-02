@@ -146,7 +146,6 @@ class ZigItem(pytest.Item):
             h = TestProtocol.Header.unpack(proc.stdout)
             assert h.tag == TestProtocol.ResponseTag.zig_version.value
             _zig_version = proc.stdout.read(h.bytes_len).decode("utf-8")
-
             # Then we can request the test to run
             proc.stdin.write(TestProtocol.Header(tag=TestProtocol.RequestTag.run_test.value, bytes_len=4).pack())
             proc.stdin.write(struct.pack("<I", self.test_meta["idx"]))
@@ -231,7 +230,7 @@ class TestProtocol:
         # Body is a TestMetadata
         test_metadata = 3
         # Body is a TestResults
-        test_results = 5
+        test_results = 4
 
     class Header(BaseModel):
         tag: int
