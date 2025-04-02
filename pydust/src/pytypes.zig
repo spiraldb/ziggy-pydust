@@ -673,7 +673,7 @@ fn Members(comptime root: type, comptime definition: type) type {
                     .name = field.name ++ "",
                     .type = getMemberType(T),
                     .offset = @intCast(offset),
-                    .flags = ffi.READONLY,
+                    .flags = ffi.Py_READONLY,
                     .doc = null,
                 };
                 idx += 1;
@@ -690,28 +690,28 @@ fn Members(comptime root: type, comptime definition: type) type {
         // to specify c_int.
         fn getMemberType(comptime T: type) c_int {
             if (T == py.PyObject(root)) {
-                return ffi.T_OBJECT_EX;
+                return ffi.Py_T_OBJECT_EX;
             }
 
             if (T == [*:0]const u8) {
-                return ffi.T_STRING;
+                return ffi.Py_T_STRING;
             }
 
             switch (@typeInfo(T)) {
                 .Int => |i| switch (i.signedness) {
                     .signed => switch (i.bits) {
-                        @bitSizeOf(i8) => return ffi.T_BYTE,
-                        @bitSizeOf(c_short) => return ffi.T_SHORT,
-                        @bitSizeOf(c_int) => return ffi.T_INT,
-                        @bitSizeOf(c_long) => return ffi.T_LONG,
-                        @bitSizeOf(isize) => return ffi.T_PYSSIZET,
+                        @bitSizeOf(i8) => return ffi.Py_T_BYTE,
+                        @bitSizeOf(c_short) => return ffi.Py_T_SHORT,
+                        @bitSizeOf(c_int) => return ffi.Py_T_INT,
+                        @bitSizeOf(c_long) => return ffi.Py_T_LONG,
+                        @bitSizeOf(isize) => return ffi.Py_T_PYSSIZET,
                         else => {},
                     },
                     .unsigned => switch (i.bits) {
-                        @bitSizeOf(u8) => return ffi.T_UBYTE,
-                        @bitSizeOf(c_ushort) => return ffi.T_USHORT,
-                        @bitSizeOf(c_uint) => return ffi.T_UINT,
-                        @bitSizeOf(c_ulong) => return ffi.T_ULONG,
+                        @bitSizeOf(u8) => return ffi.Py_T_UBYTE,
+                        @bitSizeOf(c_ushort) => return ffi.Py_T_USHORT,
+                        @bitSizeOf(c_uint) => return ffi.Py_T_UINT,
+                        @bitSizeOf(c_ulong) => return ffi.Py_T_ULONG,
                         else => {},
                     },
                 },

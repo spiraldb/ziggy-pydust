@@ -14,7 +14,6 @@ const std = @import("std");
 const mem = @import("mem.zig");
 const discovery = @import("discovery.zig");
 const Definition = discovery.Definition;
-pub const State = discovery.State;
 const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");

@@ -79,7 +79,7 @@ pub const User = py.class(struct {
     email: Email.definition,
     greeting: Greeting.definition = .{},
 
-    const Email = py.property(struct {
+    pub const Email = py.property(struct {
         const Prop = @This();
 
         e: ?py.PyString(root) = null,
@@ -99,7 +99,7 @@ pub const User = py.class(struct {
         }
     });
 
-    const Greeting = py.property(struct {
+    pub const Greeting = py.property(struct {
         pub fn get(self: *const Self) !py.PyString(root) {
             return py.PyString(root).createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
@@ -117,7 +117,7 @@ pub const Counter = py.class(struct {
     const Self = @This();
 
     count: Count.definition = .{ .value = 0 },
-    const Count = py.attribute(usize);
+    pub const Count = py.attribute(usize);
 
     pub fn __init__(self: *Self) void {
         _ = self;
