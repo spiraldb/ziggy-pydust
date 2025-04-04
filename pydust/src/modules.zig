@@ -44,8 +44,8 @@ pub fn Module(comptime root: type, comptime name: [:0]const u8, comptime definit
         const Fns = struct {
             pub fn free(module: ?*anyopaque) callconv(.C) void {
                 const mod: py.PyModule(root) = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
-                const state_ = mod.getState(definition) catch return;
-                state_.__del__();
+                const state = mod.getState(definition) catch return;
+                state.__del__();
             }
         };
 
@@ -114,16 +114,16 @@ fn Slots(comptime root: type, comptime definition: type) type {
         }
 
         inline fn mod_exec_internal(module: py.PyModule(root)) !void {
-            // First, initialize the module root using an __init__ function
+            // First, initialize the module state using an __init__ function
             if (@typeInfo(definition).Struct.fields.len > 0) {
                 if (!@hasDecl(definition, "__init__")) {
-                    @compileError("Non-empty module must define `fn __init__(*Self) !void` method to initialize its root: " ++ @typeName(definition));
+                    @compileError("Non-empty module must define `fn __init__(*Self) !void` method to initialize its state: " ++ @typeName(definition));
                 }
-                const state_ = try module.getState(definition);
+                const state = try module.getState(definition);
                 if (@typeInfo(@typeInfo(@TypeOf(definition.__init__)).Fn.return_type.?) == .ErrorUnion) {
-                    try state_.__init__();
+                    try state.__init__();
                 } else {
-                    state_.__init__();
+                    state.__init__();
                 }
             }
 

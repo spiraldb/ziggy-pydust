@@ -393,14 +393,14 @@ pub fn Methods(comptime root: type, comptime definition: type) type {
     return struct {
         const methodCount = b: {
             var mc: u32 = 0;
-            for (@typeInfo(definition).Struct.decls) |_| {
+            for (@typeInfo(definition).Struct.decls) |decl| {
                 // TODO: FIXME
-                // const value = @field(definition, decl.name);
-                // const typeInfo = @typeInfo(@TypeOf(value));
+                const value = @field(definition, decl.name);
+                const typeInfo = @typeInfo(@TypeOf(value));
 
-                // if (typeInfo != .Fn or isReserved(decl.name) or State.isPrivate(root, &value)) {
-                //     continue;
-                // }
+                if (typeInfo != .Fn or isReserved(decl.name)) { // or State.isPrivate(root, &value)) {
+                    continue;
+                }
                 mc += 1;
             }
             break :b mc;
