@@ -31,7 +31,6 @@ pub fn build(b: *std.Build) void {
     const pydust_lib = b.addSharedLibrary(.{
         .name = "pydust",
         .root_source_file = .{ .path = "pydust/src/pydust.zig" },
-        // .main_pkg_path = .{ .path = "pydust/src" },
         .target = target,
         .optimize = optimize,
     });
@@ -49,7 +48,6 @@ pub fn build(b: *std.Build) void {
 
     const main_tests = b.addTest(.{
         .root_source_file = .{ .path = "pydust/src/pydust.zig" },
-        // .main_pkg_path = .{ .path = "pydust/src" },
         .target = target,
         .optimize = optimize,
     });
@@ -68,7 +66,6 @@ pub fn build(b: *std.Build) void {
     const example_lib = b.addSharedLibrary(.{
         .name = "example",
         .root_source_file = .{ .path = "example/hello.zig" },
-        // .main_pkg_path = .{ .path = "example" },
         .target = target,
         .optimize = optimize,
     });
