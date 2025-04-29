@@ -11,10 +11,10 @@
 // limitations under the License.
 
 const std = @import("std");
-const ffi = @import("../ffi.zig");
-// const str = @import("str.zig");
 const py = @import("../pydust.zig");
-const PyError = @import("../errors.zig").PyError;
+
+const ffi = py.ffi;
+const PyError = py.PyError;
 
 // NOTE: Use only when accessing ob_refcnt.
 // From 3.12, ob_refcnt is anonymous union in CPython and is not accessible from Zig.

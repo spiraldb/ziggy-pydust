@@ -12,9 +12,10 @@
 
 const builtin = @import("builtin");
 const std = @import("std");
-const ffi = @import("../ffi.zig");
 const py = @import("../pydust.zig");
-const PyError = @import("../errors.zig").PyError;
+
+const ffi = py.ffi;
+const PyError = py.PyError;
 
 pub const ArithmeticError = PyExc{ .name = "ArithmeticError" };
 pub const AssertionError = PyExc{ .name = "AssertionError" };

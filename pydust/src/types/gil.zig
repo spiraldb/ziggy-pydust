@@ -12,10 +12,10 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+const PyObjectMixin = py.PyObjectMixin;
 
 const ffi = py.ffi;
-const PyError = @import("../errors.zig").PyError;
+const PyError = py.PyError;
 
 pub const PyGIL = extern struct {
     state: ffi.PyGILState_STATE,
