@@ -30,5 +30,5 @@ def pytest_collection_modifyitems(session, config, items):
     Therefore we mark it here is "xfail" to test that it actually does so.
     """
     for item in items:
-        if item.nodeid == "example/pytest.zig::pydust-expected-failure":
+        if item.nodeid == "example/pytest.zig::pytest.test.pydust-expected-failure":
             item.add_marker(pytest.mark.xfail(strict=True))
