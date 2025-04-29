@@ -28,7 +28,7 @@ pub const PyLong = extern struct {
             return create(@as(i64, @intCast(value)));
         }
 
-        const typeInfo = @typeInfo(@TypeOf(value)).Int;
+        const typeInfo = @typeInfo(@TypeOf(value)).int;
 
         const pylong = switch (typeInfo.signedness) {
             .signed => ffi.PyLong_FromLongLong(@intCast(value)),
@@ -40,7 +40,7 @@ pub const PyLong = extern struct {
 
     pub fn as(self: PyLong, comptime T: type) !T {
         // TODO(ngates): support non-int conversions
-        const typeInfo = @typeInfo(T).Int;
+        const typeInfo = @typeInfo(T).int;
         return switch (typeInfo.signedness) {
             .signed => {
                 const ll = ffi.PyLong_AsLongLong(self.obj.py);

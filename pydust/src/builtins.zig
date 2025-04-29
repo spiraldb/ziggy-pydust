@@ -35,7 +35,7 @@ pub const CompareOp = enum {
 /// Returns a new reference to Py_NotImplemented.
 pub fn NotImplemented() py.PyObject {
     // It's important that we incref the Py_NotImplemented singleton
-    const notImplemented = py.PyObject{ .py = ffi.Py_NotImplemented };
+    const notImplemented = py.PyObject{ .py = ffi.Py_NotImplemented() };
     notImplemented.incref();
     return notImplemented;
 }
@@ -43,7 +43,7 @@ pub fn NotImplemented() py.PyObject {
 /// Returns a new reference to Py_None.
 pub fn None() py.PyObject {
     // It's important that we incref the Py_None singleton
-    const none = py.PyObject{ .py = ffi.Py_None };
+    const none = py.PyObject{ .py = ffi.Py_None() };
     none.incref();
     return none;
 }
@@ -91,7 +91,7 @@ pub fn call(comptime ReturnType: type, object: anytype, args: anytype, kwargs: a
     const pyobj = py.object(object);
 
     var argsPy: py.PyTuple = undefined;
-    if (@typeInfo(@TypeOf(args)) == .Optional and args == null) {
+    if (@typeInfo(@TypeOf(args)) == .optional and args == null) {
         argsPy = try py.PyTuple.new(0);
     } else {
         argsPy = try py.PyTuple.checked(try py.create(args));
@@ -104,7 +104,7 @@ pub fn call(comptime ReturnType: type, object: anytype, args: anytype, kwargs: a
             kwpy.decref();
         }
     }
-    if (!(@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null)) {
+    if (!(@typeInfo(@TypeOf(kwargs)) == .optional and kwargs == null)) {
         // Annoyingly our trampoline turns an empty kwargs struct into a PyTuple.
         // This will be fixed by #94
         const kwobj = try py.create(kwargs);
