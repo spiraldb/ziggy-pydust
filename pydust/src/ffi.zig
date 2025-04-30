@@ -11,6 +11,7 @@
 // limitations under the License.
 
 // Export the Limited Python C API for use within PyDust.
+const std = @import("std");
 const pyconf = @import("pyconf");
 
 pub usingnamespace @cImport({
@@ -19,4 +20,10 @@ pub usingnamespace @cImport({
     }
     @cDefine("PY_SSIZE_T_CLEAN", {});
     @cInclude("Python.h");
+
+    // From 3.12 onwards, structmember.h is fixed to be including in Python.h
+    // See https://github.com/python/cpython/pull/99014
+    if (std.fmt.parseInt(u32, pyconf.hexversion, 10) catch 0 < 0x030C0000) {
+        @cInclude("structmember.h");
+    }
 });
