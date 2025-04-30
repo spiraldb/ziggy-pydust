@@ -12,11 +12,11 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 
-const PyObjectMixin = py.PyObjectMixin;
 const ffi = py.ffi;
-const PyObject = py.PyObject;
-const PyError = py.PyError;
+const PyObject = @import("obj.zig").PyObject;
+const PyError = @import("../errors.zig").PyError;
 
 pub const PyString = extern struct {
     obj: PyObject,

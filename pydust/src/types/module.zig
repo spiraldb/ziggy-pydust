@@ -12,16 +12,15 @@
 
 const std = @import("std");
 const Allocator = @import("std").mem.Allocator;
+const mem = @import("../mem.zig");
+const ffi = @import("../ffi.zig");
 const py = @import("../pydust.zig");
-
-const mem = py.mem;
-const ffi = py.ffi;
-const PyObjectMixin = py.PyObjectMixin;
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const pytypes = @import("../pytypes.zig");
 const tramp = @import("../trampoline.zig");
 const State = @import("../discovery.zig").State;
 
-const PyError = py.PyError;
+const PyError = @import("../errors.zig").PyError;
 
 pub const PyModule = extern struct {
     obj: py.PyObject,

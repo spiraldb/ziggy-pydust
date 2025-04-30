@@ -12,17 +12,15 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+const ffi = py.ffi;
+const PyLong = @import("long.zig").PyLong;
+const PyFloat = @import("float.zig").PyFloat;
+const PyError = @import("../errors.zig").PyError;
 const seq = @import("./sequence.zig");
 
-const PyObjectMixin = py.PyObjectMixin;
-const ffi = py.ffi;
-const PyLong = py.PyLong;
-const PyFloat = py.PyFloat;
-const PyObject = py.PyObject;
-const PyError = py.PyError;
-
 pub const PyTuple = extern struct {
-    obj: PyObject,
+    obj: py.PyObject,
 
     pub usingnamespace PyObjectMixin("tuple", "PyTuple", @This());
     pub usingnamespace seq.SequenceMixin(@This());
@@ -74,7 +72,7 @@ pub const PyTuple = extern struct {
 
     pub fn getItemZ(self: *const PyTuple, comptime T: type, idx: isize) !T {
         if (ffi.PyTuple_GetItem(self.obj.py, idx)) |item| {
-            return py.as(T, PyObject{ .py = item });
+            return py.as(T, py.PyObject{ .py = item });
         } else {
             return PyError.PyRaised;
         }

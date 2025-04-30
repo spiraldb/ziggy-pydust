@@ -12,12 +12,12 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = py.PyObjectMixin;
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 
 const ffi = py.ffi;
 const PyObject = py.PyObject;
 const PyLong = py.PyLong;
-const PyError = py.PyError;
+const PyError = @import("../errors.zig").PyError;
 
 /// Wrapper for Python PyList.
 /// See: https://docs.python.org/3/c-api/list.html

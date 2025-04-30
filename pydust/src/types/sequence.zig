@@ -11,9 +11,8 @@
 // limitations under the License.
 
 const py = @import("../pydust.zig");
-
-const ffi = py.ffi;
-const PyError = py.PyError;
+const ffi = @import("../ffi.zig");
+const PyError = @import("../errors.zig").PyError;
 
 /// Mixin of PySequence functions.
 pub fn SequenceMixin(comptime Self: type) type {
