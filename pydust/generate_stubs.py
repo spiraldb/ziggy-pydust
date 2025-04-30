@@ -125,7 +125,7 @@ def pyi_file(obj, name: str, indent="") -> str:
 
         if obj.__text_signature__:
             class_body += f"{indent}def __init__{inspect.signature(obj)}:\n"
-            class_body += f"{indent+INDENT}pass\n"
+            class_body += f"{indent + INDENT}pass\n"
             class_body += "\n"
 
         members = [

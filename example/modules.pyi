@@ -5,6 +5,7 @@ Zig multi-line strings make it easy to define a docstring...
 
 P.S. I'm sure one day we'll hook into Zig's AST and read the Zig doc comments ;)
 """
+
 from __future__ import annotations
 
 def count(): ...
