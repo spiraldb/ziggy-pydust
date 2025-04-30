@@ -12,7 +12,8 @@
 
 const std = @import("std");
 const mem = @import("mem.zig");
-const State = @import("discovery.zig").State;
+const discovery = @import("discovery.zig");
+const Definition = discovery.Definition;
 const Module = @import("modules.zig").Module;
 const types = @import("types.zig");
 const pytypes = @import("pytypes.zig");
@@ -41,18 +42,9 @@ pub fn finalize() void {
 
 /// Register the root Pydust module
 pub fn rootmodule(comptime definition: type) void {
-    if (!State.isEmpty()) {
-        @compileError("Root module can only be registered in a root-level comptime block");
-    }
+    const name = @import("pyconf").module_name;
 
-    const pyconf = @import("pyconf");
-    const name = pyconf.module_name;
-
-    State.register(definition, .module);
-    State.identify(definition, name, definition);
-    eagerEval(definition);
-
-    const moddef = Module(name, definition);
+    const moddef = Module(definition, name, definition);
 
     // For root modules, we export a PyInit__name function per CPython API.
     const Closure = struct {
@@ -63,33 +55,29 @@ pub fn rootmodule(comptime definition: type) void {
     };
 
     const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
-    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .Strong });
+    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .strong });
 }
 
 /// Register a Pydust module as a submodule to an existing module.
-pub fn module(comptime definition: type) @TypeOf(definition) {
-    State.register(definition, .module);
-    return definition;
+pub fn module(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .module };
 }
 
 /// Register a struct as a Python class definition.
-pub fn class(comptime definition: type) @TypeOf(definition) {
-    State.register(definition, .class);
-    return definition;
+pub fn class(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .class };
 }
 
-pub fn zig(comptime definition: type) @TypeOf(definition) {
-    for (@typeInfo(definition).Struct.decls) |decl| {
-        State.privateMethod(&@field(definition, decl.name));
-    }
-    return definition;
-}
+// pub fn zig(comptime definition: type) @TypeOf(definition) {
+//     for (@typeInfo(definition).Struct.decls) |decl| {
+//         State.privateMethod(&@field(definition, decl.name));
+//     }
+//     return definition;
+// }
 
 /// Register a struct field as a Python read-only attribute.
-pub fn attribute(comptime T: type) @TypeOf(Attribute(T)) {
-    const definition = Attribute(T);
-    State.register(definition, .attribute);
-    return definition;
+pub fn attribute(comptime T: type) Definition {
+    return .{ .definition = Attribute(T), .type = .attribute };
 }
 
 fn Attribute(comptime T: type) type {
@@ -97,33 +85,21 @@ fn Attribute(comptime T: type) type {
 }
 
 /// Register a property as a field on a Pydust class.
-pub fn property(comptime definition: type) @TypeOf(definition) {
-    State.register(definition, .property);
-    return definition;
+pub fn property(comptime definition: type) Definition {
+    return .{ .definition = definition, .type = .property };
 }
 
 /// Zig type representing variadic arguments to a Python function.
-pub const Args = []types.PyObject;
+pub fn Args(comptime root: type) type {
+    return []types.PyObject(root);
+}
 
 /// Zig type representing variadic keyword arguments to a Python function.
-pub const Kwargs = std.StringHashMap(types.PyObject);
+pub fn Kwargs(comptime root: type) type {
+    return std.StringHashMap(types.PyObject(root));
+}
 
 /// Zig type representing `(*args, **kwargs)`
-pub const CallArgs = struct { args: Args, kwargs: Kwargs };
-
-/// Force the evaluation of Pydust registration methods.
-/// Using this enables us to breadth-first traverse the object graph, ensuring
-/// objects are registered before they're referenced elsewhere.
-fn eagerEval(comptime definition: type) void {
-    for (@typeInfo(definition).Struct.fields) |f| {
-        _ = f.type;
-    }
-    for (@typeInfo(definition).Struct.decls) |d| {
-        const value = @field(definition, d.name);
-        @setEvalBranchQuota(10000);
-        if (State.findDefinition(value)) |_| {
-            // If it's a Pydust definition, then we identify it.
-            State.identify(value, d.name ++ "", definition);
-        }
-    }
+pub fn CallArgs(comptime root: type) type {
+    return struct { args: Args(root), kwargs: Kwargs(root) };
 }

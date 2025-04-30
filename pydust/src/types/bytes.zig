@@ -15,39 +15,43 @@ const py = @import("../pydust.zig");
 const ffi = py.ffi;
 const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const PyError = @import("../errors.zig").PyError;
+const State = @import("../discovery.zig").State;
 
-pub const PyBytes = extern struct {
-    obj: py.PyObject,
+pub fn PyBytes(comptime root: type) type {
+    return extern struct {
+        obj: py.PyObject(root),
 
-    pub usingnamespace PyObjectMixin("bytes", "PyBytes", @This());
+        const Self = @This();
+        pub usingnamespace PyObjectMixin(root, "bytes", "PyBytes", Self);
 
-    pub fn create(value: []const u8) !PyBytes {
-        const bytes = ffi.PyBytes_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
-        return .{ .obj = .{ .py = bytes } };
-    }
-
-    /// Return the bytes representation of object obj that implements the buffer protocol.
-    pub fn fromObject(obj: anytype) !PyBytes {
-        const pyobj = py.object(obj);
-        const bytes = ffi.PyBytes_FromObject(pyobj.py) orelse return PyError.PyRaised;
-        return .{ .obj = .{ .py = bytes } };
-    }
-
-    /// Return the length of the bytes object.
-    pub fn length(self: PyBytes) !usize {
-        return @intCast(ffi.PyBytes_Size(self.obj.py));
-    }
-
-    /// Returns a view over the PyBytes bytes.
-    pub fn asSlice(self: PyBytes) ![:0]const u8 {
-        var buffer: [*]u8 = undefined;
-        var size: i64 = 0;
-        if (ffi.PyBytes_AsStringAndSize(self.obj.py, @ptrCast(&buffer), &size) < 0) {
-            return PyError.PyRaised;
+        pub fn create(value: []const u8) !Self {
+            const bytes = ffi.PyBytes_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
+            return .{ .obj = .{ .py = bytes } };
         }
-        return buffer[0..@as(usize, @intCast(size)) :0];
-    }
-};
+
+        /// Return the bytes representation of object obj that implements the buffer protocol.
+        pub fn fromObject(obj: anytype) !Self {
+            const pyobj = py.object(obj);
+            const bytes = ffi.PyBytes_FromObject(pyobj.py) orelse return PyError.PyRaised;
+            return .{ .obj = .{ .py = bytes } };
+        }
+
+        /// Return the length of the bytes object.
+        pub fn length(self: Self) !usize {
+            return @intCast(ffi.PyBytes_Size(self.obj.py));
+        }
+
+        /// Returns a view over the PyBytes bytes.
+        pub fn asSlice(self: Self) ![:0]const u8 {
+            var buffer: [*]u8 = undefined;
+            var size: i64 = 0;
+            if (ffi.PyBytes_AsStringAndSize(self.obj.py, @ptrCast(&buffer), &size) < 0) {
+                return PyError.PyRaised;
+            }
+            return buffer[0..@as(usize, @intCast(size)) :0];
+        }
+    };
+}
 
 const testing = std.testing;
 
@@ -55,9 +59,10 @@ test "PyBytes" {
     py.initialize();
     defer py.finalize();
 
+    const root = @This();
     const a = "Hello";
 
-    var ps = try PyBytes.create(a);
+    var ps = try PyBytes(root).create(a);
     defer ps.decref();
 
     const ps_slice = try ps.asSlice();

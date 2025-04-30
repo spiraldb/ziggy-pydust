@@ -12,34 +12,40 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
+const State = @import("../discovery.zig").State;
 
 const ffi = py.ffi;
 
 /// Wrapper for Python PyCode.
 /// See: https://docs.python.org/3/c-api/code.html
-pub const PyCode = extern struct {
-    obj: py.PyObject,
+pub fn PyCode(comptime root: type) type {
+    return extern struct {
+        obj: py.PyObject(root),
 
-    pub inline fn firstLineNumber(self: *const PyCode) !u32 {
-        const lineNo = try self.obj.getAs(py.PyLong, "co_firstlineno");
-        defer lineNo.decref();
-        return lineNo.as(u32);
-    }
+        const Self = @This();
 
-    pub inline fn fileName(self: *const PyCode) !py.PyString {
-        return self.obj.getAs(py.PyString, "co_filename");
-    }
+        pub inline fn firstLineNumber(self: *const Self) !u32 {
+            const lineNo = try self.obj.getAs(py.PyLong(root), "co_firstlineno");
+            defer lineNo.decref();
+            return lineNo.as(u32);
+        }
 
-    pub inline fn name(self: *const PyCode) !py.PyString {
-        return self.obj.getAs(py.PyString, "co_name");
-    }
-};
+        pub inline fn fileName(self: *const Self) !py.PyString(root) {
+            return self.obj.getAs(py.PyString(root), "co_filename");
+        }
+
+        pub inline fn name(self: *const Self) !py.PyString(root) {
+            return self.obj.getAs(py.PyString(root), "co_name");
+        }
+    };
+}
 
 test "PyCode" {
     py.initialize();
     defer py.finalize();
 
-    const pf = py.PyFrame.get();
-    try std.testing.expectEqual(@as(?py.PyFrame, null), pf);
+    const root = @This();
+
+    const pf = py.PyFrame(root).get();
+    try std.testing.expectEqual(@as(?py.PyFrame(root), null), pf);
 }

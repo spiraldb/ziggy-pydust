@@ -13,6 +13,9 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const root = @This();
+// --8<-- [start:gil]
+
 // --8<-- [start:defining]
 pub const SomeClass = py.class(struct {
     pub const __doc__ = "Some class defined in Zig accessible from Python";
@@ -35,9 +38,9 @@ pub const ConstructableClass = py.class(struct {
 pub const Animal = py.class(struct {
     const Self = @This();
 
-    species: py.PyString,
+    species: py.PyString(root),
 
-    pub fn species(self: *Self) py.PyString {
+    pub fn species(self: *Self) py.PyString(root) {
         return self.species;
     }
 });
@@ -45,18 +48,18 @@ pub const Animal = py.class(struct {
 pub const Dog = py.class(struct {
     const Self = @This();
 
-    animal: Animal,
-    breed: py.PyString,
+    animal: Animal.definition,
+    breed: py.PyString(root),
 
-    pub fn __init__(self: *Self, args: struct { breed: py.PyString }) !void {
+    pub fn __init__(self: *Self, args: struct { breed: py.PyString(root) }) !void {
         args.breed.incref();
         self.* = .{
-            .animal = .{ .species = try py.PyString.create("dog") },
+            .animal = .{ .species = try py.PyString(root).create("dog") },
             .breed = args.breed,
         };
     }
 
-    pub fn breed(self: *Self) py.PyString {
+    pub fn breed(self: *Self) py.PyString(root) {
         return self.breed;
     }
 });
@@ -67,37 +70,40 @@ pub const Dog = py.class(struct {
 pub const User = py.class(struct {
     const Self = @This();
 
-    pub fn __init__(self: *Self, args: struct { name: py.PyString }) void {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString(root) }) void {
         args.name.incref();
         self.* = .{ .name = args.name, .email = .{} };
     }
 
-    name: py.PyString,
-    email: py.property(struct {
+    name: py.PyString(root),
+    email: Email.definition,
+    greeting: Greeting.definition = .{},
+
+    pub const Email = py.property(struct {
         const Prop = @This();
 
-        e: ?py.PyString = null,
+        e: ?py.PyString(root) = null,
 
-        pub fn get(prop: *const Prop) ?py.PyString {
+        pub fn get(prop: *const Prop) ?py.PyString(root) {
             if (prop.e) |e| e.incref();
             return prop.e;
         }
 
-        pub fn set(prop: *Prop, value: py.PyString) !void {
-            const self: *Self = @fieldParentPtr(Self, "email", prop);
+        pub fn set(prop: *Prop, value: py.PyString(root)) !void {
+            const self: *Self = @fieldParentPtr("email", prop);
             if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
-                return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
+                return py.ValueError(root).raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
             }
             value.incref();
             prop.e = value;
         }
-    }),
+    });
 
-    greeting: py.property(struct {
-        pub fn get(self: *const Self) !py.PyString {
-            return py.PyString.createFmt("Hello, {s}!", .{try self.name.asSlice()});
+    pub const Greeting = py.property(struct {
+        pub fn get(self: *const Self) !py.PyString(root) {
+            return py.PyString(root).createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
-    }) = .{},
+    });
 
     pub fn __del__(self: *Self) void {
         self.name.decref();
@@ -110,7 +116,8 @@ pub const User = py.class(struct {
 pub const Counter = py.class(struct {
     const Self = @This();
 
-    count: py.attribute(usize) = .{ .value = 0 },
+    count: Count.definition = .{ .value = 0 },
+    pub const Count = py.attribute(usize);
 
     pub fn __init__(self: *Self) void {
         _ = self;
@@ -139,14 +146,15 @@ pub const ZigOnlyMethod = py.class(struct {
         self.number = args.x;
     }
 
-    pub usingnamespace py.zig(struct {
-        pub fn get_number(self: *const Self) i32 {
-            return self.number;
-        }
-    });
+    // pub usingnamespace py.zig(struct {
+    //     pub fn get_number(self: *const Self) i32 {
+    //         return self.number;
+    //     }
+    // });
 
     pub fn reexposed(self: *const Self) i32 {
-        return self.get_number();
+        // return self.get_number();
+        return self.number;
     }
 });
 // --8<-- [end:zigonly]
@@ -186,15 +194,15 @@ pub const GetAttr = py.class(struct {
         _ = self;
     }
 
-    pub fn __getattr__(self: *const Self, attr: py.PyString) !py.PyObject {
+    pub fn __getattr__(self: *const Self, attr: py.PyString(root)) !py.PyObject(root) {
         const name = try attr.asSlice();
         if (std.mem.eql(u8, name, "number")) {
-            return py.create(42);
+            return py.create(root, 42);
         }
-        return py.object(self).getAttribute(name);
+        return py.object(root, self).getAttribute(name);
     }
 });
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }

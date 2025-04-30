@@ -13,18 +13,19 @@
 const py = @import("../pydust.zig");
 const ffi = @import("../ffi.zig");
 const PyError = @import("../errors.zig").PyError;
+const State = @import("../discovery.zig").State;
 
 /// Mixin of PySequence functions.
-pub fn SequenceMixin(comptime Self: type) type {
+pub fn SequenceMixin(comptime root: type, comptime Self: type) type {
     return struct {
         pub fn contains(self: Self, value: anytype) !bool {
-            const result = ffi.PySequence_Contains(self.obj.py, py.object(value).py);
+            const result = ffi.PySequence_Contains(self.obj.py, py.object(root, value).py);
             if (result < 0) return PyError.PyRaised;
             return result == 1;
         }
 
         pub fn index(self: Self, value: anytype) !usize {
-            const idx = ffi.PySequence_Index(self.obj.py, py.object(value).py);
+            const idx = ffi.PySequence_Index(self.obj.py, py.object(root, value).py);
             if (idx < 0) return PyError.PyRaised;
             return @intCast(idx);
         }

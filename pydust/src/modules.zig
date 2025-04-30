@@ -29,10 +29,10 @@ pub const ModuleDef = struct {
 };
 
 /// Discover a Pydust module.
-pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
+pub fn Module(comptime root: type, comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
-        const slots = Slots(definition);
-        const methods = funcs.Methods(definition);
+        const slots = Slots(root, definition);
+        const methods = funcs.Methods(root, definition);
 
         const doc: ?[:0]const u8 = blk: {
             if (@hasDecl(definition, "__doc__")) {
@@ -43,14 +43,14 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
 
         const Fns = struct {
             pub fn free(module: ?*anyopaque) callconv(.C) void {
-                const mod: py.PyModule = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
+                const mod: py.PyModule(root) = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
                 const state = mod.getState(definition) catch return;
                 state.__del__();
             }
         };
 
         /// A function to initialize the Python module from its definition.
-        pub fn init() !py.PyObject {
+        pub fn init() !py.PyObject(root) {
             const pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
             pyModuleDef.* = ffi.PyModuleDef{
                 .m_base = std.mem.zeroes(ffi.PyModuleDef_Base),
@@ -73,13 +73,13 @@ pub fn Module(comptime name: [:0]const u8, comptime definition: type) type {
     };
 }
 
-fn Slots(comptime definition: type) type {
+fn Slots(comptime root: type, comptime definition: type) type {
     return struct {
         const Self = @This();
 
         const empty = ffi.PyModuleDef_Slot{ .slot = 0, .value = null };
-        const attrs = Attributes(definition);
-        const submodules = Submodules(definition);
+        const attrs = Attributes(root, definition);
+        const submodules = Submodules(root, definition);
 
         pub const slots: [:empty]const ffi.PyModuleDef_Slot = blk: {
             var slots_: [:empty]const ffi.PyModuleDef_Slot = &.{};
@@ -104,16 +104,16 @@ fn Slots(comptime definition: type) type {
 
         fn custom_mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
             const mod: py.PyModule = .{ .obj = .{ .py = pymodule } };
-            tramp.coerceError(definition.__exec__(mod)) catch return -1;
+            tramp.coerceError(root, definition.__exec__(mod)) catch return -1;
             return 0;
         }
 
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
-            tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
+            tramp.coerceError(root, mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
             return 0;
         }
 
-        inline fn mod_exec_internal(module: py.PyModule) !void {
+        inline fn mod_exec_internal(module: py.PyModule(root)) !void {
             // First, initialize the module state using an __init__ function
             if (@typeInfo(definition).Struct.fields.len > 0) {
                 if (!@hasDecl(definition, "__init__")) {
@@ -139,19 +139,19 @@ fn Slots(comptime definition: type) type {
                 // which is a dumb object containing only a name.
                 // See https://github.com/python/cpython/blob/042f31da552c19054acd3ef7bb6cfd857bce172b/Python/import.c#L2527-L2539
 
-                const name = State.getIdentifier(submodule).name;
-                const submodDef = Module(name, submodule);
+                const name = State.getIdentifier(root, submodule).name;
+                const submodDef = Module(root, name, submodule);
                 const pySubmodDef: *ffi.PyModuleDef = @ptrCast((try submodDef.init()).py);
 
                 // Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace
-                const types = try py.import("types");
+                const types = try py.import(root, "types");
                 defer types.decref();
-                const pyname = try py.PyString.create(name);
+                const pyname = try py.PyString(root).create(name);
                 defer pyname.decref();
-                const spec = try types.call(py.PyObject, "SimpleNamespace", .{}, .{ .name = pyname });
+                const spec = try types.call(py.PyObject(root), "SimpleNamespace", .{}, .{ .name = pyname });
                 defer spec.decref();
 
-                const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
+                const submod: py.PyObject(root) = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
 
                 if (ffi.PyModule_ExecDef(submod.py, pySubmodDef) < 0) {
                     return PyError.PyRaised;
@@ -163,13 +163,13 @@ fn Slots(comptime definition: type) type {
     };
 }
 
-fn Submodules(comptime definition: type) type {
+fn Submodules(comptime root: type, comptime definition: type) type {
     const typeInfo = @typeInfo(definition).Struct;
     return struct {
         const submodules: []const type = blk: {
             var mods: []const type = &.{};
             for (typeInfo.decls) |decl| {
-                if (State.findDefinition(@field(definition, decl.name))) |def| {
+                if (State.findDefinition(root, @field(definition, decl.name))) |def| {
                     if (def.type == .module) {
                         mods = mods ++ .{def.definition};
                     }

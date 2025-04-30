@@ -13,6 +13,8 @@
 const std = @import("std");
 const py = @import("pydust");
 
+const root = @This();
+
 pub const Range = py.class(struct {
     pub const __doc__ = "An example of iterable class";
 
@@ -26,8 +28,8 @@ pub const Range = py.class(struct {
         self.* = .{ .lower = args.lower, .upper = args.upper, .step = args.step };
     }
 
-    pub fn __iter__(self: *const Self) !*RangeIterator {
-        return try py.init(RangeIterator, .{ .next = self.lower, .stop = self.upper, .step = self.step });
+    pub fn __iter__(self: *const Self) !*RangeIterator.definition {
+        return try py.init(root, RangeIterator.definition, .{ .next = self.lower, .stop = self.upper, .step = self.step });
     }
 });
 
@@ -50,5 +52,5 @@ pub const RangeIterator = py.class(struct {
 });
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }

@@ -105,13 +105,12 @@ class ZigFile(pytest.File):
         # Wrap the buffer so we can consume from it nicely in a loop
         fileobj = io.BytesIO(buffer)
         names = [struct.unpack("<I", fileobj.read(4))[0] for _ in range(tests_len)]
-        async_frame_sizes = [struct.unpack("<I", fileobj.read(4))[0] for _ in range(tests_len)]
         expected_panic_msgs = [struct.unpack("<I", fileobj.read(4))[0] for _ in range(tests_len)]
 
         # We use the original buffer to extract string data since it's easier to find the next null terminator
         data = buffer[-string_bytes_len:]
         tests = []
-        for i, (name, afs, ep) in enumerate(zip(names, async_frame_sizes, expected_panic_msgs)):
+        for i, (name, ep) in enumerate(zip(names, expected_panic_msgs)):
             test_name = data[name : data.index(b"\0", name)].decode("utf-8")
             if test_name.startswith("test."):
                 test_name = test_name[len("test.") :]
@@ -119,7 +118,6 @@ class ZigFile(pytest.File):
                 {
                     "idx": i,
                     "name": test_name,
-                    "async_frame_size": data[afs : data.index(b"\0", afs)].decode("utf-8") if afs else None,
                     "expected_panics": data[ep : data.index(b"\0", ep)].decode("utf-8") if ep else None,
                 }
             )
@@ -148,7 +146,6 @@ class ZigItem(pytest.Item):
             h = TestProtocol.Header.unpack(proc.stdout)
             assert h.tag == TestProtocol.ResponseTag.zig_version.value
             _zig_version = proc.stdout.read(h.bytes_len).decode("utf-8")
-
             # Then we can request the test to run
             proc.stdin.write(TestProtocol.Header(tag=TestProtocol.RequestTag.run_test.value, bytes_len=4).pack())
             proc.stdin.write(struct.pack("<I", self.test_meta["idx"]))
@@ -228,14 +225,12 @@ class TestProtocol:
         zig_version = 0
         # Body is an ErrorBundle.
         error_bundle = 1
-        # Body is a UTF-8 string.
-        progress = 2
-        # Body is a EmitBinPath.
-        emit_bin_path = 3
+        # Body is a EmitDigest.
+        emit_digest = 2
         # Body is a TestMetadata
-        test_metadata = 4
+        test_metadata = 3
         # Body is a TestResults
-        test_results = 5
+        test_results = 4
 
     class Header(BaseModel):
         tag: int

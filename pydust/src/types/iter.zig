@@ -15,38 +15,44 @@ const py = @import("../pydust.zig");
 const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
+const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PyIter.
 /// Constructed using py.iter(...)
-pub const PyIter = extern struct {
-    obj: py.PyObject,
+pub fn PyIter(comptime root: type) type {
+    return extern struct {
+        obj: py.PyObject(root),
 
-    pub usingnamespace PyObjectMixin("iterator", "PyIter", @This());
+        const Self = @This();
+        pub usingnamespace PyObjectMixin(root, "iterator", "PyIter", Self);
 
-    pub fn next(self: PyIter, comptime T: type) !?T {
-        if (ffi.PyIter_Next(self.obj.py)) |result| {
-            return try py.as(T, result);
+        pub fn next(self: Self, comptime T: type) !?T {
+            if (ffi.PyIter_Next(self.obj.py)) |result| {
+                return try py.as(root, T, result);
+            }
+
+            // If no exception, then the item is missing.
+            if (ffi.PyErr_Occurred() == null) {
+                return null;
+            }
+
+            return PyError.PyRaised;
         }
 
-        // If no exception, then the item is missing.
-        if (ffi.PyErr_Occurred() == null) {
-            return null;
-        }
-
-        return PyError.PyRaised;
-    }
-
-    // TODO(ngates): implement PyIter_Send when required
-};
+        // TODO(ngates): implement PyIter_Send when required
+    };
+}
 
 test "PyIter" {
     py.initialize();
     defer py.finalize();
 
-    const tuple = try py.PyTuple.create(.{ 1, 2, 3 });
+    const root = @This();
+
+    const tuple = try py.PyTuple(root).create(.{ 1, 2, 3 });
     defer tuple.decref();
 
-    const iterator = try py.iter(tuple);
+    const iterator = try py.iter(root, tuple);
     var previous: u64 = 0;
     while (try iterator.next(u64)) |v| {
         try std.testing.expect(v > previous);

@@ -15,44 +15,50 @@ const py = @import("../pydust.zig");
 const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
+const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PySlice.
-pub const PySlice = extern struct {
-    obj: py.PyObject,
+pub fn PySlice(comptime root: type) type {
+    return extern struct {
+        obj: py.PyObject(root),
 
-    pub usingnamespace PyObjectMixin("slice", "PySlice", @This());
+        const Self = @This();
+        pub usingnamespace PyObjectMixin(root, "slice", "PySlice", Self);
 
-    pub fn create(start: anytype, stop: anytype, step: anytype) !PySlice {
-        // TODO(ngates): think about how to improve comptime optional handling?
-        const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(start)).py;
-        defer if (@typeInfo(@TypeOf(start)) != .Null) py.decref(pystart);
-        const pystop = if (@typeInfo(@TypeOf(stop)) == .Null) null else (try py.create(stop)).py;
-        defer if (@typeInfo(@TypeOf(stop)) != .Null) py.decref(pystop);
-        const pystep = if (@typeInfo(@TypeOf(step)) == .Null) null else (try py.create(step)).py;
-        defer if (@typeInfo(@TypeOf(step)) != .Null) py.decref(pystep);
+        pub fn create(start: anytype, stop: anytype, step: anytype) !Self {
+            // TODO(ngates): think about how to improve comptime optional handling?
+            const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(root, start)).py;
+            defer if (@typeInfo(@TypeOf(start)) != .Null) py.decref(root, pystart);
+            const pystop = if (@typeInfo(@TypeOf(stop)) == .Null) null else (try py.create(root, stop)).py;
+            defer if (@typeInfo(@TypeOf(stop)) != .Null) py.decref(root, pystop);
+            const pystep = if (@typeInfo(@TypeOf(step)) == .Null) null else (try py.create(root, step)).py;
+            defer if (@typeInfo(@TypeOf(step)) != .Null) py.decref(root, pystep);
 
-        const pyslice = ffi.PySlice_New(pystart, pystop, pystep) orelse return PyError.PyRaised;
-        return .{ .obj = .{ .py = pyslice } };
-    }
+            const pyslice = ffi.PySlice_New(pystart, pystop, pystep) orelse return PyError.PyRaised;
+            return .{ .obj = .{ .py = pyslice } };
+        }
 
-    pub fn getStart(self: PySlice, comptime T: type) !T {
-        return try self.obj.getAs(T, "start");
-    }
+        pub fn getStart(self: Self, comptime T: type) !T {
+            return try self.obj.getAs(T, "start");
+        }
 
-    pub fn getStop(self: PySlice, comptime T: type) !T {
-        return try self.obj.getAs(T, "stop");
-    }
+        pub fn getStop(self: Self, comptime T: type) !T {
+            return try self.obj.getAs(T, "stop");
+        }
 
-    pub fn getStep(self: PySlice, comptime T: type) !T {
-        return try self.obj.getAs(T, "step");
-    }
-};
+        pub fn getStep(self: Self, comptime T: type) !T {
+            return try self.obj.getAs(T, "step");
+        }
+    };
+}
 
 test "PySlice" {
     py.initialize();
     defer py.finalize();
 
-    const range = try PySlice.create(0, 100, null);
+    const root = @This();
+
+    const range = try PySlice(root).create(0, 100, null);
     defer range.decref();
 
     try std.testing.expectEqual(@as(u64, 0), try range.getStart(u64));

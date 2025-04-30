@@ -15,47 +15,53 @@ const py = @import("../pydust.zig");
 const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
+const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PyBool.
 ///
 /// See: https://docs.python.org/3/c-api/bool.html
 ///
 /// Note: refcounting semantics apply, even for bools!
-pub const PyBool = extern struct {
-    obj: py.PyObject,
+pub fn PyBool(comptime root: type) type {
+    return extern struct {
+        obj: py.PyObject(root),
 
-    pub usingnamespace PyObjectMixin("bool", "PyBool", @This());
+        const Self = @This();
+        pub usingnamespace PyObjectMixin(root, "bool", "PyBool", Self);
 
-    pub fn create(value: bool) !PyBool {
-        return if (value) true_() else false_();
-    }
+        pub fn create(value: bool) !Self {
+            return if (value) true_() else false_();
+        }
 
-    pub fn asbool(self: PyBool) bool {
-        return ffi.Py_IsTrue(self.obj.py) == 1;
-    }
+        pub fn asbool(self: Self) bool {
+            return ffi.Py_IsTrue(self.obj.py) == 1;
+        }
 
-    pub fn intobool(self: PyBool) bool {
-        self.decref();
-        return self.asbool();
-    }
+        pub fn intobool(self: Self) bool {
+            self.decref();
+            return self.asbool();
+        }
 
-    pub fn true_() PyBool {
-        return .{ .obj = .{ .py = ffi.PyBool_FromLong(1) } };
-    }
+        pub fn true_() Self {
+            return .{ .obj = .{ .py = ffi.PyBool_FromLong(1) } };
+        }
 
-    pub fn false_() PyBool {
-        return .{ .obj = .{ .py = ffi.PyBool_FromLong(0) } };
-    }
-};
+        pub fn false_() Self {
+            return .{ .obj = .{ .py = ffi.PyBool_FromLong(0) } };
+        }
+    };
+}
 
 test "PyBool" {
     py.initialize();
     defer py.finalize();
 
-    const pytrue = PyBool.true_();
+    const root = @This();
+
+    const pytrue = PyBool(root).true_();
     defer pytrue.decref();
 
-    const pyfalse = PyBool.false_();
+    const pyfalse = PyBool(root).false_();
     defer pyfalse.decref();
 
     try std.testing.expect(pytrue.asbool());

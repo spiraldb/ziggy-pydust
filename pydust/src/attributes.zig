@@ -13,23 +13,22 @@ const py = @import("pydust.zig");
 const Type = @import("pytypes.zig").Type;
 const State = @import("discovery.zig").State;
 
-pub const Attribute = struct {
-    name: [:0]const u8,
-    ctor: fn (module: py.PyModule) py.PyError!py.PyObject,
-};
+pub fn Attribute(comptime root: type) type {
+    return struct {
+        name: [:0]const u8,
+        ctor: fn (module: py.PyModule(root)) py.PyError!py.PyObject(root),
+    };
+}
 
 /// Finds the attributes on a module or class definition.
-pub fn Attributes(comptime definition: type) type {
+pub fn Attributes(comptime root: type, comptime definition: type) type {
     return struct {
         const attr_count = blk: {
             var cnt = 0;
             for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
-                if (@typeInfo(@TypeOf(value)) != .Type) {
-                    continue;
-                }
 
-                if (State.findDefinition(value)) |def| {
+                if (State.findDefinition(root, value)) |def| {
                     if (def.type == .class) {
                         cnt += 1;
                     }
@@ -38,17 +37,17 @@ pub fn Attributes(comptime definition: type) type {
             break :blk cnt;
         };
 
-        pub const attributes: [attr_count]Attribute = blk: {
-            var attrs: [attr_count]Attribute = undefined;
+        pub const attributes: [attr_count]Attribute(root) = blk: {
+            var attrs: [attr_count]Attribute(root) = undefined;
             var idx = 0;
             for (@typeInfo(definition).Struct.decls) |decl| {
                 const value = @field(definition, decl.name);
 
-                if (State.findDefinition(value)) |def| {
+                if (State.findDefinition(root, value)) |def| {
                     if (def.type == .class) {
                         const Closure = struct {
-                            pub fn init(module: py.PyModule) !py.PyObject {
-                                const typedef = Type(decl.name ++ "", def.definition);
+                            pub fn init(module: py.PyModule(root)) !py.PyObject(root) {
+                                const typedef = Type(root, decl.name ++ "", def.definition);
                                 return try typedef.init(module);
                             }
                         };

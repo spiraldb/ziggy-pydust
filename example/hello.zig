@@ -13,11 +13,13 @@
 // --8<-- [start:ex]
 const py = @import("pydust");
 
-pub fn hello() !py.PyString {
-    return try py.PyString.create("Hello!");
+const root = @This();
+
+pub fn hello() !py.PyString(root) {
+    return try py.PyString(root).create("Hello!");
 }
 
 comptime {
-    py.rootmodule(@This());
+    py.rootmodule(root);
 }
 // --8<-- [end:ex]

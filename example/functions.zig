@@ -10,15 +10,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// --8<-- [start:function]
 const py = @import("pydust");
 
+const root = @This();
+
+// --8<-- [start:function]
 pub fn double(args: struct { x: i64 }) i64 {
     return args.x * 2;
-}
-
-comptime {
-    py.rootmodule(@This());
 }
 // --8<-- [end:function]
 
@@ -29,10 +27,14 @@ pub fn with_kwargs(args: struct { x: f64, y: f64 = 42.0 }) f64 {
 // --8<-- [end:kwargs]
 
 // --8<-- [start:varargs]
-pub fn variadic(args: struct { hello: py.PyString, args: py.Args, kwargs: py.Kwargs }) !py.PyString {
-    return py.PyString.createFmt(
+pub fn variadic(args: struct { hello: py.PyString(root), args: py.Args(root), kwargs: py.Kwargs(root) }) !py.PyString(root) {
+    return py.PyString(root).createFmt(
         "Hello {s} with {} varargs and {} kwargs",
         .{ try args.hello.asSlice(), args.args.len, args.kwargs.count() },
     );
 }
 // --8<-- [end:varargs]
+
+comptime {
+    py.rootmodule(root);
+}
