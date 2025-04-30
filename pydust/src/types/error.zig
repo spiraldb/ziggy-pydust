@@ -140,8 +140,9 @@ const PyExc = struct {
 
                 // If we can't find info for the stack frame, then we skip this frame..
                 const module = debugInfo.getModuleForAddress(address) catch continue;
-                const symbol_info: std.debug.Symbol = module.getSymbolAtAddress(debugInfo.allocator, address) catch continue;
-                const line_info = symbol_info.source_location orelse continue;
+                const symbol_info: std.debug.SymbolInfo = module.getSymbolAtAddress(debugInfo.allocator, address) catch continue;
+                defer symbol_info.deinit(debugInfo.allocator);
+                const line_info = symbol_info.line_info orelse continue;
 
                 // We also want to skip any Pydust internal frames, e.g. the function trampoline and also this current function!
                 if (std.mem.indexOf(u8, line_info.file_name, "/pydust/src/")) |_| {
@@ -161,7 +162,7 @@ const PyExc = struct {
                 const code = try std.fmt.allocPrintZ(
                     py.allocator,
                     "{s}def {s}():\n    1/0\n",
-                    .{ newlines, symbol_info.name },
+                    .{ newlines, symbol_info.symbol_name },
                 );
                 defer py.allocator.free(code);
 
@@ -169,7 +170,7 @@ const PyExc = struct {
                 const fake_module = try py.PyModule.fromCode(code, line_info.file_name, symbol_info.compile_unit_name);
                 defer fake_module.decref();
 
-                _ = fake_module.obj.call(void, symbol_info.name, .{}, .{}) catch null;
+                _ = fake_module.obj.call(void, symbol_info.symbol_name, .{}, .{}) catch null;
 
                 // Grab our forced exception info.
                 // We can ignore qtype and qvalue, we just want to get the traceback object.

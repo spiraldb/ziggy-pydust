@@ -16,18 +16,19 @@ const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyLong = @import("long.zig").PyLong;
 const PyFloat = @import("float.zig").PyFloat;
+const PyObject = @import("obj.zig").PyObject;
 const PyError = @import("../errors.zig").PyError;
 const seq = @import("./sequence.zig");
 
 pub const PyTuple = extern struct {
-    obj: py.PyObject,
+    obj: PyObject,
 
     pub usingnamespace PyObjectMixin("tuple", "PyTuple", @This());
     pub usingnamespace seq.SequenceMixin(@This());
 
     /// Construct a PyTuple from the given Zig tuple.
     pub fn create(values: anytype) !PyTuple {
-        const s = @typeInfo(@TypeOf(values)).@"struct";
+        const s = @typeInfo(@TypeOf(values)).Struct;
         if (!s.is_tuple and s.fields.len > 0) {
             @compileError("Expected a struct tuple " ++ @typeName(@TypeOf(values)));
         }

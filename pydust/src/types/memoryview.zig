@@ -30,32 +30,32 @@ pub const PyMemoryView = extern struct {
         const sliceType = Slice(@TypeOf(slice));
         const sliceTpInfo = @typeInfo(sliceType);
 
-        const flag = if (sliceTpInfo == .pointer and sliceTpInfo.pointer.is_const) PyMemoryView.Flags.PyBUF_READ else PyMemoryView.Flags.PyBUF_WRITE;
+        const flag = if (sliceTpInfo == .Pointer and sliceTpInfo.Pointer.is_const) PyMemoryView.Flags.PyBUF_READ else PyMemoryView.Flags.PyBUF_WRITE;
         return .{ .obj = .{
-            .py = ffi.PyMemoryView_FromMemory(@constCast(slice.ptr), @intCast(slice.len), flag) orelse return PyError.PyRaised,
+            .py = py.ffi.PyMemoryView_FromMemory(@constCast(slice.ptr), @intCast(slice.len), flag) orelse return py.PyError.PyRaised,
         } };
     }
 
     pub fn fromObject(obj: py.PyObject) !PyMemoryView {
         return .{ .obj = .{
-            .py = ffi.PyMemoryView_FromObject(obj.py) orelse return PyError.PyRaised,
+            .py = py.ffi.PyMemoryView_FromObject(obj.py) orelse return py.PyError.PyRaised,
         } };
     }
 
     fn Slice(comptime T: type) type {
         switch (@typeInfo(T)) {
-            .pointer => |ptr_info| {
+            .Pointer => |ptr_info| {
                 var new_ptr_info = ptr_info;
                 switch (ptr_info.size) {
-                    .slice => {},
-                    .one => switch (@typeInfo(ptr_info.child)) {
-                        .array => |info| new_ptr_info.child = info.child,
+                    .Slice => {},
+                    .One => switch (@typeInfo(ptr_info.child)) {
+                        .Array => |info| new_ptr_info.child = info.child,
                         else => @compileError("invalid type given to PyMemoryview"),
                     },
                     else => @compileError("invalid type given to PyMemoryview"),
                 }
-                new_ptr_info.size = .slice;
-                return @Type(.{ .pointer = new_ptr_info });
+                new_ptr_info.size = .Slice;
+                return @Type(.{ .Pointer = new_ptr_info });
             },
             else => @compileError("invalid type given to PyMemoryview"),
         }

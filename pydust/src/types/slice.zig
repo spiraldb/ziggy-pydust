@@ -24,12 +24,12 @@ pub const PySlice = extern struct {
 
     pub fn create(start: anytype, stop: anytype, step: anytype) !PySlice {
         // TODO(ngates): think about how to improve comptime optional handling?
-        const pystart = if (@typeInfo(@TypeOf(start)) == .null) null else (try py.create(start)).py;
-        defer if (@typeInfo(@TypeOf(start)) != .null) py.decref(pystart);
-        const pystop = if (@typeInfo(@TypeOf(stop)) == .null) null else (try py.create(stop)).py;
-        defer if (@typeInfo(@TypeOf(stop)) != .null) py.decref(pystop);
-        const pystep = if (@typeInfo(@TypeOf(step)) == .null) null else (try py.create(step)).py;
-        defer if (@typeInfo(@TypeOf(step)) != .null) py.decref(pystep);
+        const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(start)).py;
+        defer if (@typeInfo(@TypeOf(start)) != .Null) py.decref(pystart);
+        const pystop = if (@typeInfo(@TypeOf(stop)) == .Null) null else (try py.create(stop)).py;
+        defer if (@typeInfo(@TypeOf(stop)) != .Null) py.decref(pystop);
+        const pystep = if (@typeInfo(@TypeOf(step)) == .Null) null else (try py.create(step)).py;
+        defer if (@typeInfo(@TypeOf(step)) != .Null) py.decref(pystep);
 
         const pyslice = ffi.PySlice_New(pystart, pystop, pystep) orelse return PyError.PyRaised;
         return .{ .obj = .{ .py = pyslice } };

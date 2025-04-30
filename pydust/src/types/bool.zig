@@ -47,3 +47,17 @@ pub const PyBool = extern struct {
         return .{ .obj = .{ .py = ffi.PyBool_FromLong(0) } };
     }
 };
+
+test "PyBool" {
+    py.initialize();
+    defer py.finalize();
+
+    const pytrue = PyBool.true_();
+    defer pytrue.decref();
+
+    const pyfalse = PyBool.false_();
+    defer pyfalse.decref();
+
+    try std.testing.expect(pytrue.asbool());
+    try std.testing.expect(!pyfalse.asbool());
+}

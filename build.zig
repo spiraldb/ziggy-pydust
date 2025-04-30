@@ -30,13 +30,13 @@ pub fn build(b: *std.Build) void {
     // We never build this lib, but we use it to generate docs.
     const pydust_lib = b.addSharedLibrary(.{
         .name = "pydust",
-        .root_source_file = b.path("pydust/src/pydust.zig"),
-        // .main_pkg_path = .{ .path = "pydust/src" },
+        .root_source_file = .{ .path = "pydust/src/pydust.zig" },
+        .main_pkg_path = .{ .path = "pydust/src" },
         .target = target,
         .optimize = optimize,
     });
-    pydust_lib.addIncludePath(.{ .cwd_relative = pythonInc });
-    pydust_lib.root_module.addAnonymousImport("pyconf", .{ .root_source_file = b.path("./pyconf.dummy.zig") });
+    pydust_lib.addIncludePath(.{ .path = pythonInc });
+    pydust_lib.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     const pydust_docs = b.addInstallDirectory(.{
         .source_dir = pydust_lib.getEmittedDocs(),
@@ -47,17 +47,17 @@ pub fn build(b: *std.Build) void {
     docs_step.dependOn(&pydust_docs.step);
 
     const main_tests = b.addTest(.{
-        .root_source_file = b.path("pydust/src/pydust.zig"),
-        .link_libc = true,
-        // .main_pkg_path = .{ .path = "pydust/src" },
+        .root_source_file = .{ .path = "pydust/src/pydust.zig" },
+        .main_pkg_path = .{ .path = "pydust/src" },
         .target = target,
         .optimize = optimize,
     });
-    main_tests.addIncludePath(.{ .cwd_relative = pythonInc });
-    main_tests.addLibraryPath(.{ .cwd_relative = pythonLib });
+    main_tests.linkLibC();
+    main_tests.addIncludePath(.{ .path = pythonInc });
+    main_tests.addLibraryPath(.{ .path = pythonLib });
     main_tests.linkSystemLibrary(pythonLibName);
-    main_tests.addRPath(.{ .cwd_relative = pythonLib });
-    main_tests.root_module.addAnonymousImport("pyconf", .{ .root_source_file = b.path("./pyconf.dummy.zig") });
+    main_tests.addRPath(.{ .path = pythonLib });
+    main_tests.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     const run_main_tests = b.addRunArtifact(main_tests);
     test_step.dependOn(&run_main_tests.step);
@@ -65,24 +65,24 @@ pub fn build(b: *std.Build) void {
     // Setup a library target to trick the Zig Language Server into providing completions for @import("pydust")
     const example_lib = b.addSharedLibrary(.{
         .name = "example",
-        .root_source_file = b.path("example/hello.zig"),
-        .link_libc = true,
-        // .main_pkg_path = .{ .path = "example" },
+        .root_source_file = .{ .path = "example/hello.zig" },
+        .main_pkg_path = .{ .path = "example" },
         .target = target,
         .optimize = optimize,
     });
-    example_lib.addIncludePath(.{ .cwd_relative = pythonInc });
-    example_lib.addLibraryPath(.{ .cwd_relative = pythonLib });
+    example_lib.linkLibC();
+    example_lib.addIncludePath(.{ .path = pythonInc });
+    example_lib.addLibraryPath(.{ .path = pythonLib });
     example_lib.linkSystemLibrary(pythonLibName);
-    example_lib.addRPath(.{ .cwd_relative = pythonLib });
-    example_lib.root_module.addAnonymousImport("pydust", .{ .root_source_file = b.path("pydust/src/pydust.zig") });
-    example_lib.root_module.addAnonymousImport("pyconf", .{ .root_source_file = b.path("./pyconf.dummy.zig") });
+    example_lib.addRPath(.{ .path = pythonLib });
+    example_lib.addAnonymousModule("pydust", .{ .source_file = .{ .path = "pydust/src/pydust.zig" } });
+    example_lib.addAnonymousModule("pyconf", .{ .source_file = .{ .path = "./pyconf.dummy.zig" } });
 
     // Option for emitting test binary based on the given root source.
     // This is used for debugging as in .vscode/tasks.json
     const test_debug_root = b.option([]const u8, "test-debug-root", "The root path of a file emitted as a binary for use with the debugger");
     if (test_debug_root) |root| {
-        main_tests.root_module.root_source_file = b.path(root);
+        main_tests.root_src = .{ .path = root };
         const test_bin_install = b.addInstallBinFile(main_tests.getEmittedBin(), "test.bin");
         b.getInstallStep().dependOn(&test_bin_install.step);
     }

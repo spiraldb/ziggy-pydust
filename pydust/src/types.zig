@@ -29,21 +29,3 @@ pub usingnamespace @import("types/slice.zig");
 pub usingnamespace @import("types/str.zig");
 pub usingnamespace @import("types/tuple.zig");
 pub usingnamespace @import("types/type.zig");
-
-const std = @import("std");
-const py = @import("pydust.zig");
-const Self = @This();
-
-test "PyBool" {
-    py.initialize();
-    defer py.finalize();
-
-    const pytrue = Self.PyBool.true_();
-    defer pytrue.decref();
-
-    const pyfalse = Self.PyBool.false_();
-    defer pyfalse.decref();
-
-    try std.testing.expect(pytrue.asbool());
-    try std.testing.expect(!pyfalse.asbool());
-}

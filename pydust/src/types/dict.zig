@@ -24,7 +24,7 @@ pub const PyDict = extern struct {
 
     /// Create a dictionary from a Zig object
     pub fn create(value: anytype) !PyDict {
-        const s = @typeInfo(@TypeOf(value)).@"struct";
+        const s = @typeInfo(@TypeOf(value)).Struct;
 
         const dict = try new();
         inline for (s.fields) |field| {

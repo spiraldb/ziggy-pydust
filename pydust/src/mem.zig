@@ -11,8 +11,7 @@
 // limitations under the License.
 
 const std = @import("std");
-const mem = std.mem;
-const Allocator = mem.Allocator;
+const Allocator = std.mem.Allocator;
 const ffi = @import("ffi.zig");
 const py = @import("./pydust.zig");
 
@@ -25,13 +24,12 @@ pub const PyMemAllocator = struct {
             .vtable = &.{
                 .alloc = alloc,
                 .resize = resize,
-                .remap = remap,
                 .free = free,
             },
         };
     }
 
-    fn alloc(ctx: *anyopaque, len: usize, ptr_align: mem.Alignment, ret_addr: usize) ?[*]u8 {
+    fn alloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
         // As per this issue, we will hack an aligned allocator.
         // https://bugs.python.org/msg232221
         _ = ret_addr;
@@ -44,7 +42,7 @@ pub const PyMemAllocator = struct {
 
         // Zig gives us ptr_align as power of 2
         // This may not always fit into a byte, we should figure out a better way to store the shift value.
-        const alignment: u8 = @intCast(@as(u8, 1) << @intCast(ptr_align.toByteUnits()));
+        const alignment: u8 = @intCast(@as(u8, 1) << @intCast(ptr_align));
 
         // By default, ptr_align == 1 which gives us our 1 byte header to store the alignment shift
         const raw_ptr: usize = @intFromPtr(ffi.PyMem_Malloc(len + alignment) orelse return null);
@@ -61,7 +59,7 @@ pub const PyMemAllocator = struct {
         return @ptrFromInt(aligned_ptr);
     }
 
-    fn resize(ctx: *anyopaque, buf: []u8, buf_align: mem.Alignment, new_len: usize, ret_addr: usize) bool {
+    fn resize(ctx: *anyopaque, buf: []u8, buf_align: u8, new_len: usize, ret_addr: usize) bool {
         _ = ret_addr;
         _ = new_len;
         _ = buf_align;
@@ -86,43 +84,7 @@ pub const PyMemAllocator = struct {
         return false;
     }
 
-    pub fn remap(
-        ctx: *anyopaque,
-        buf: []u8,
-        ptr_align: mem.Alignment,
-        new_len: usize,
-        ret_addr: usize,
-    ) ?[*]u8 {
-        // As per this issue, we will hack an aligned allocator.
-        // https://bugs.python.org/msg232221
-        _ = ret_addr;
-        _ = ctx;
-
-        // FIXME(ngates): we should have a separate allocator for re-entrant cases like this
-        // that require the GIL, without always paying the cost of acquiring it.
-        const gil = py.gil();
-        defer gil.release();
-
-        // Zig gives us ptr_align as power of 2
-        // This may not always fit into a byte, we should figure out a better way to store the shift value.
-        const alignment: u8 = @intCast(@as(u8, 1) << @intCast(ptr_align.toByteUnits()));
-
-        // By default, ptr_align == 1 which gives us our 1 byte header to store the alignment shift
-        const raw_ptr: usize = @intFromPtr(ffi.PyMem_Realloc(@ptrCast(buf.ptr), new_len + alignment) orelse return null);
-
-        const shift: u8 = @intCast(alignment - (raw_ptr % alignment));
-        std.debug.assert(0 < shift and shift <= alignment);
-
-        const aligned_ptr: usize = raw_ptr + shift;
-
-        // Store the shift in the first byte before the aligned ptr
-        // We know from above that we are guaranteed to own that byte.
-        @as(*u8, @ptrFromInt(aligned_ptr - 1)).* = shift;
-
-        return @ptrFromInt(aligned_ptr);
-    }
-
-    fn free(ctx: *anyopaque, buf: []u8, buf_align: mem.Alignment, ret_addr: usize) void {
+    fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
         _ = buf_align;
         _ = ctx;
         _ = ret_addr;

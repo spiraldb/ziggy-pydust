@@ -38,19 +38,19 @@ pub fn Trampoline(comptime T: type) type {
                 return;
             }
             switch (@typeInfo(T)) {
-                .error_union => |e| {
+                .ErrorUnion => |e| {
                     Trampoline(e.payload).decref_objectlike(obj catch return);
                 },
-                .optional => |o| {
+                .Optional => |o| {
                     if (obj) |object| Trampoline(o.child).decref_objectlike(object);
                 },
-                .@"struct" => |s| {
+                .Struct => |s| {
                     inline for (s.fields) |f| {
                         Trampoline(f.type).decref_objectlike(@field(obj, f.name));
                     }
                 },
                 // Explicit compile-error for other "container" types just to force us to handle them in the future.
-                .pointer, .array, .@"union" => {
+                .Pointer, .Array, .Union => {
                     @compileError("Object decref not supported for type: " ++ @typeName(T));
                 },
                 else => {},
@@ -61,7 +61,7 @@ pub fn Trampoline(comptime T: type) type {
         /// In other words, Zig primitive types are not supported.
         pub inline fn asObject(obj: T) py.PyObject {
             switch (@typeInfo(T)) {
-                .pointer => |p| {
+                .Pointer => |p| {
                     // The object is an ffi.PyObject
                     if (p.child == ffi.PyObject) {
                         return .{ .py = obj };
@@ -71,7 +71,7 @@ pub fn Trampoline(comptime T: type) type {
                         // If the pointer is for a Pydust class
                         if (def.type == .class) {
                             const PyType = pytypes.PyTypeStruct(p.child);
-                            const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@as(PyType, @fieldParentPtr("state", obj))));
+                            const ffiObject: *ffi.PyObject = @constCast(@ptrCast(@fieldParentPtr(PyType, "state", obj)));
                             return .{ .py = ffiObject };
                         }
 
@@ -81,7 +81,7 @@ pub fn Trampoline(comptime T: type) type {
                         }
                     }
                 },
-                .@"struct" => {
+                .Struct => {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
                     if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
                         return obj.obj;
@@ -90,7 +90,7 @@ pub fn Trampoline(comptime T: type) type {
                         return obj;
                     }
                 },
-                .optional => |o| return if (obj) |objP| Trampoline(o.child).asObject(objP) else std.debug.panic("Can't convert null to an object", .{}),
+                .Optional => |o| return if (obj) |objP| Trampoline(o.child).asObject(objP) else std.debug.panic("Can't convert null to an object", .{}),
                 inline else => {},
             }
             @compileError("Cannot convert into PyObject: " ++ @typeName(T));
@@ -98,7 +98,7 @@ pub fn Trampoline(comptime T: type) type {
 
         inline fn isObjectLike() bool {
             switch (@typeInfo(T)) {
-                .pointer => |p| {
+                .Pointer => |p| {
                     // The object is an ffi.PyObject
                     if (p.child == ffi.PyObject) {
                         return true;
@@ -108,7 +108,7 @@ pub fn Trampoline(comptime T: type) type {
                         return true;
                     }
                 },
-                .@"struct" => {
+                .Struct => {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
                     if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
                         return true;
@@ -135,15 +135,15 @@ pub fn Trampoline(comptime T: type) type {
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
-            if (typeInfo == .error_union) {
+            if (typeInfo == .ErrorUnion) {
                 const value = coerceError(obj) catch |err| return err;
-                return Trampoline(typeInfo.error_union.payload).wrap(value);
+                return Trampoline(typeInfo.ErrorUnion.payload).wrap(value);
             }
 
             // Early return to handle optionals
-            if (typeInfo == .optional) {
+            if (typeInfo == .Optional) {
                 const value = obj orelse return py.None();
-                return Trampoline(typeInfo.optional.child).wrap(value);
+                return Trampoline(typeInfo.Optional.child).wrap(value);
             }
 
             // Shortcut for object types
@@ -154,23 +154,23 @@ pub fn Trampoline(comptime T: type) type {
             }
 
             switch (@typeInfo(T)) {
-                .bool => return if (obj) py.True().obj else py.False().obj,
-                .error_union => @compileError("error_union already handled"),
-                .float => return (try py.PyFloat.create(obj)).obj,
-                .int => return (try py.PyLong.create(obj)).obj,
-                .pointer => |p| {
+                .Bool => return if (obj) py.True().obj else py.False().obj,
+                .ErrorUnion => @compileError("ErrorUnion already handled"),
+                .Float => return (try py.PyFloat.create(obj)).obj,
+                .Int => return (try py.PyLong.create(obj)).obj,
+                .Pointer => |p| {
                     // We make the assumption that []const u8 is converted to a PyUnicode.
-                    if (p.child == u8 and p.size == .slice and p.is_const) {
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
                         return (try py.PyString.create(obj)).obj;
                     }
 
                     // Also pointers to u8 arrays *[_]u8
                     const childInfo = @typeInfo(p.child);
-                    if (childInfo == .array and childInfo.array.child == u8) {
+                    if (childInfo == .Array and childInfo.Array.child == u8) {
                         return (try py.PyString.create(obj)).obj;
                     }
                 },
-                .@"struct" => |s| {
+                .Struct => |s| {
                     // If the struct is a tuple, convert into a Python tuple
                     if (s.is_tuple) {
                         return (try py.PyTuple.create(obj)).obj;
@@ -179,7 +179,7 @@ pub fn Trampoline(comptime T: type) type {
                     // Otherwise, return a Python dictionary
                     return (try py.PyDict.create(obj)).obj;
                 },
-                .void => return py.None(),
+                .Void => return py.None(),
                 else => {},
             }
 
@@ -193,28 +193,28 @@ pub fn Trampoline(comptime T: type) type {
             const typeInfo = @typeInfo(T);
 
             // Early return to handle errors
-            if (typeInfo == .error_union) {
+            if (typeInfo == .ErrorUnion) {
                 const value = coerceError(object) catch |err| return err;
-                return @as(T, Trampoline(typeInfo.error_union.payload).unwrap(value));
+                return @as(T, Trampoline(typeInfo.ErrorUnion.payload).unwrap(value));
             }
 
             // Early return to handle optionals
-            if (typeInfo == .optional) {
+            if (typeInfo == .Optional) {
                 const value = object orelse return null;
                 if (py.is_none(value)) return null;
-                return @as(T, try Trampoline(typeInfo.optional.child).unwrap(value));
+                return @as(T, try Trampoline(typeInfo.Optional.child).unwrap(value));
             }
 
             // Otherwise we can unwrap the object.
             var obj = object orelse @panic("Unexpected null");
 
             switch (@typeInfo(T)) {
-                .bool => return (try py.PyBool.checked(obj)).asbool(),
-                .error_union => @compileError("error_union already handled"),
-                .float => return try (try py.PyFloat.checked(obj)).as(T),
-                .int => return try (try py.PyLong.checked(obj)).as(T),
-                .optional => @compileError("optional already handled"),
-                .pointer => |p| {
+                .Bool => return (try py.PyBool.checked(obj)).asbool(),
+                .ErrorUnion => @compileError("ErrorUnion already handled"),
+                .Float => return try (try py.PyFloat.checked(obj)).as(T),
+                .Int => return try (try py.PyLong.checked(obj)).as(T),
+                .Optional => @compileError("Optional already handled"),
+                .Pointer => |p| {
                     if (State.findDefinition(p.child)) |def| {
                         // If the pointer is for a Pydust module
                         if (def.type == .module) {
@@ -245,13 +245,13 @@ pub fn Trampoline(comptime T: type) type {
                     }
 
                     // We make the assumption that []const u8 is converted from a PyString
-                    if (p.child == u8 and p.size == .slice and p.is_const) {
+                    if (p.child == u8 and p.size == .Slice and p.is_const) {
                         return (try py.PyString.checked(obj)).asSlice();
                     }
 
                     @compileError("Unsupported pointer type " ++ @typeName(p.child));
                 },
-                .@"struct" => |s| {
+                .Struct => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
                     if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
                         return try @field(T, "checked")(obj);
@@ -267,7 +267,7 @@ pub fn Trampoline(comptime T: type) type {
                     // Otherwise, extract from a Python dictionary
                     return (try py.PyDict.checked(obj)).as(T);
                 },
-                .void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
+                .Void => if (py.is_none(obj)) return else return py.TypeError.raise("expected None"),
                 else => {},
             }
 
@@ -312,7 +312,7 @@ pub fn Trampoline(comptime T: type) type {
                     py.allocator.free(self.allPosArgs);
                 }
 
-                inline for (@typeInfo(T).@"struct".fields) |field| {
+                inline for (@typeInfo(T).Struct.fields) |field| {
                     if (field.type == py.Args) {
                         py.allocator.free(@field(self.argsStruct, field.name));
                     }
@@ -329,7 +329,7 @@ pub fn Trampoline(comptime T: type) type {
 /// Takes a value that optionally errors and coerces it always into a PyError.
 pub fn coerceError(result: anytype) coerceErrorType(@TypeOf(result)) {
     const typeInfo = @typeInfo(@TypeOf(result));
-    if (typeInfo == .error_union) {
+    if (typeInfo == .ErrorUnion) {
         return result catch |err| {
             if (err == PyError.PyRaised) return PyError.PyRaised;
             if (err == PyError.OutOfMemory) return PyError.OutOfMemory;
@@ -342,9 +342,9 @@ pub fn coerceError(result: anytype) coerceErrorType(@TypeOf(result)) {
 
 fn coerceErrorType(comptime Result: type) type {
     const typeInfo = @typeInfo(Result);
-    if (typeInfo == .error_union) {
+    if (typeInfo == .ErrorUnion) {
         // Unwrap the error to ensure it's a PyError
-        return PyError!typeInfo.error_union.payload;
+        return PyError!typeInfo.ErrorUnion.payload;
     } else {
         // Always return a PyError union so the caller can always "try".
         return PyError!Result;
