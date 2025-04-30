@@ -107,7 +107,7 @@ pub fn PyBuffer(comptime root: type) type {
         pub fn getFormat(comptime value_type: type) [:0]const u8 {
             // TODO(ngates): support more complex composite types.
             switch (@typeInfo(value_type)) {
-                .Int => |i| {
+                .int => |i| {
                     switch (i.signedness) {
                         .unsigned => switch (i.bits) {
                             8 => return "B",
@@ -125,7 +125,7 @@ pub fn PyBuffer(comptime root: type) type {
                         },
                     }
                 },
-                .Float => |f| {
+                .float => |f| {
                     switch (f.bits) {
                         16 => return "e",
                         32 => return "f",

@@ -37,7 +37,7 @@ pub fn Signature(comptime root: type) type {
 
         pub fn isModuleMethod(comptime self: @This()) bool {
             if (self.selfParam) |Self| {
-                return State.getDefinition(root, @typeInfo(Self).Pointer.child).type == .module;
+                return State.getDefinition(root, @typeInfo(Self).pointer.child).type == .module;
             }
             return false;
         }
@@ -158,8 +158,8 @@ pub fn parseSignature(comptime root: type, comptime name: []const u8, comptime f
 
 pub fn argCount(comptime root: type, comptime ArgsParam: type) usize {
     var n: usize = 0;
-    inline for (@typeInfo(ArgsParam).Struct.fields) |field| {
-        if (field.type != py.Args(root) and field.type != py.Kwargs(root) and field.default_value == null) {
+    inline for (@typeInfo(ArgsParam).@"struct".fields) |field| {
+        if (field.type != py.Args(root) and field.type != py.Kwargs(root) and field.defaultValue() == null) {
             n += 1;
         }
     }
@@ -168,8 +168,8 @@ pub fn argCount(comptime root: type, comptime ArgsParam: type) usize {
 
 pub fn kwargCount(comptime root: type, comptime ArgsParam: type) usize {
     var n: usize = 0;
-    inline for (@typeInfo(ArgsParam).Struct.fields) |field| {
-        if (field.type != py.Args(root) and field.type != py.Kwargs(root) and field.default_value != null) {
+    inline for (@typeInfo(ArgsParam).@"struct".fields) |field| {
+        if (field.type != py.Args(root) and field.type != py.Kwargs(root) and field.defaultValue() != null) {
             n += 1;
         }
     }
@@ -177,7 +177,7 @@ pub fn kwargCount(comptime root: type, comptime ArgsParam: type) usize {
 }
 
 pub fn varArgsIdx(comptime root: type, comptime ArgsParam: type) ?usize {
-    const info = @typeInfo(ArgsParam).Struct;
+    const info = @typeInfo(ArgsParam).@"struct";
     for (info.fields, 0..) |field, i| {
         if (field.type == py.Args(root)) {
             return i;
@@ -187,7 +187,7 @@ pub fn varArgsIdx(comptime root: type, comptime ArgsParam: type) ?usize {
 }
 
 pub fn varKwargsIdx(comptime root: type, comptime ArgsParam: type) ?usize {
-    const info = @typeInfo(ArgsParam).Struct;
+    const info = @typeInfo(ArgsParam).@"struct";
     for (info.fields, 0..) |field, i| {
         if (field.type == py.Kwargs(root)) {
             return i;
@@ -218,14 +218,14 @@ fn isSelfArg(comptime param: Type.Fn.Param, comptime SelfTypes: []const type) bo
 
 fn checkArgsParam(comptime Args: type) void {
     const typeInfo = @typeInfo(Args);
-    if (typeInfo != .Struct) {
+    if (typeInfo != .@"struct") {
         @compileError("Pydust args must be defined as a struct");
     }
 
-    const fields = typeInfo.Struct.fields;
+    const fields = typeInfo.@"struct".fields;
     var kwargs = false;
     for (fields) |field| {
-        if (field.default_value != null) {
+        if (field.defaultValue() != null) {
             kwargs = true;
         } else {
             if (kwargs) {
@@ -330,7 +330,7 @@ pub fn wrap(comptime root: type, comptime definition: type, comptime func: anyty
         inline fn castSelf(comptime Self: type, pyself: py.PyObject(root)) !Self {
             if (comptime sig.isModuleMethod()) {
                 const mod = py.PyModule(root){ .obj = pyself };
-                return try mod.getState(@typeInfo(Self).Pointer.child);
+                return try mod.getState(@typeInfo(Self).pointer.child);
             } else {
                 return py.unchecked(root, Self, pyself);
             }
@@ -343,17 +343,16 @@ pub fn unwrapArgs(comptime root: type, comptime Args: type, pyargs: py.Args(root
     var kwargs = pykwargs;
     var args: Args = undefined;
 
-    const s = @typeInfo(Args).Struct;
+    const s = @typeInfo(Args).@"struct";
     var argIdx: usize = 0;
     inline for (s.fields) |field| {
-        if (field.default_value) |def_value| {
+        if (field.defaultValue()) |def_value| {
             // We have a kwarg.
             if (kwargs.fetchRemove(field.name)) |entry| {
                 @field(args, field.name) = try py.as(root, field.type, entry.value);
             } else {
                 // Use the default value
-                const defaultValue: *field.type = @alignCast(@ptrCast(@constCast(def_value)));
-                @field(args, field.name) = defaultValue.*;
+                @field(args, field.name) = def_value;
             }
         } else if (field.type != py.Args(root) and field.type != py.Kwargs(root)) {
             // Otherwise, we have a regular argument.
@@ -393,12 +392,12 @@ pub fn Methods(comptime root: type, comptime definition: type) type {
     return struct {
         const methodCount = b: {
             var mc: u32 = 0;
-            for (@typeInfo(definition).Struct.decls) |decl| {
+            for (@typeInfo(definition).@"struct".decls) |decl| {
                 // TODO: FIXME
                 const value = @field(definition, decl.name);
                 const typeInfo = @typeInfo(@TypeOf(value));
 
-                if (typeInfo != .Fn or isReserved(decl.name)) { // or State.isPrivate(root, &value)) {
+                if (typeInfo != .@"fn" or isReserved(decl.name)) { // or State.isPrivate(root, &value)) {
                     continue;
                 }
                 mc += 1;
@@ -406,25 +405,26 @@ pub fn Methods(comptime root: type, comptime definition: type) type {
             break :b mc;
         };
 
-        pub const pydefs: [methodCount:empty]ffi.PyMethodDef = blk: {
-            var defs: [methodCount:empty]ffi.PyMethodDef = undefined;
+        pub const pydefs: [methodCount + 1]ffi.PyMethodDef = blk: {
+            var defs: [methodCount + 1]ffi.PyMethodDef = undefined;
 
             var idx: u32 = 0;
             @setEvalBranchQuota(10000);
-            for (@typeInfo(definition).Struct.decls) |decl| {
+            for (@typeInfo(definition).@"struct".decls) |decl| {
                 const value = @field(definition, decl.name);
                 const typeInfo = @typeInfo(@TypeOf(value));
 
                 // For now, we skip non-function declarations.
                 // TODO: FIXME
-                if (typeInfo != .Fn or isReserved(decl.name)) { // or State.isPrivate(root, &value)) {
+                if (typeInfo != .@"fn" or isReserved(decl.name)) { // or State.isPrivate(root, &value)) {
                     continue;
                 }
 
-                const sig = parseSignature(root, decl.name, typeInfo.Fn, &.{ py.PyObject(root), *definition, *const definition });
+                const sig = parseSignature(root, decl.name, typeInfo.@"fn", &.{ py.PyObject(root), *definition, *const definition });
                 defs[idx] = wrap(root, definition, value, sig, 0).aspy();
                 idx += 1;
             }
+            defs[methodCount] = empty;
 
             break :blk defs;
         };
@@ -490,12 +490,12 @@ fn sigArgs(comptime root: type, comptime sig: Signature(root)) ![]const []const 
     }
 
     if (sig.argsParam) |Args| {
-        const fields = @typeInfo(Args).Struct.fields;
+        const fields = @typeInfo(Args).@"struct".fields;
 
         var inKwargs = false;
         var inVarargs = false;
         for (fields) |field| {
-            if (field.default_value) |def| {
+            if (field.defaultValue()) |def| {
                 // We have a kwarg
                 if (!inKwargs) {
                     inKwargs = true;
@@ -505,7 +505,7 @@ fn sigArgs(comptime root: type, comptime sig: Signature(root)) ![]const []const 
                     try sigargs.append("*");
                 }
 
-                try sigargs.append(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, def) }));
+                try sigargs.append(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, &def) }));
             } else if (field.type == py.Args(root)) {
                 if (!inVarargs) {
                     inVarargs = true;
@@ -541,15 +541,15 @@ fn sigArgs(comptime root: type, comptime sig: Signature(root)) ![]const []const 
 
 fn valueToStr(comptime T: type, value: *const anyopaque) []const u8 {
     return switch (@typeInfo(T)) {
-        inline .Pointer => |p| p: {
+        inline .pointer => |p| p: {
             break :p switch (p.child) {
                 inline u8 => std.fmt.comptimePrint("\"{s}\"", .{@as(*const T, @alignCast(@ptrCast(value))).*}),
                 inline else => "...",
             };
         },
-        inline .Bool => if (@as(*const bool, @ptrCast(value)).*) "True" else "False",
-        inline .Struct => "...",
-        inline .Optional => |o| if (@as(*const ?o.child, @alignCast(@ptrCast(value))).* == null) "None" else "...",
+        inline .bool => if (@as(*const bool, @ptrCast(value)).*) "True" else "False",
+        inline .@"struct" => "...",
+        inline .optional => |o| if (@as(*const ?o.child, @alignCast(@ptrCast(value))).* == null) "None" else "...",
         inline else => std.fmt.comptimePrint("{any}", .{@as(*const T, @alignCast(@ptrCast(value))).*}),
     };
 }

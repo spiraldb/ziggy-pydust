@@ -31,7 +31,7 @@ pub fn PyTuple(comptime root: type) type {
 
         /// Construct a PyTuple from the given Zig tuple.
         pub fn create(values: anytype) !Self {
-            const s = @typeInfo(@TypeOf(values)).Struct;
+            const s = @typeInfo(@TypeOf(values)).@"struct";
             if (!s.is_tuple and s.fields.len > 0) {
                 @compileError("Expected a struct tuple " ++ @typeName(@TypeOf(values)));
             }
@@ -46,14 +46,14 @@ pub fn PyTuple(comptime root: type) type {
 
         /// Convert this tuple into the given Zig tuple struct.
         pub fn as(self: Self, comptime T: type) !T {
-            const s = @typeInfo(T).Struct;
+            const s = @typeInfo(T).@"struct";
             const result: T = undefined;
             for (s.fields, 0..) |field, i| {
                 const value = try self.getItem(field.type, i);
                 if (value) |val| {
                     @field(result, field.name) = val;
-                } else if (field.default_value) |default| {
-                    @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(default))).*;
+                } else if (field.defaultValue()) |default| {
+                    @field(result, field.name) = default;
                 } else {
                     return py.TypeError.raise("tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
                 }
@@ -76,7 +76,7 @@ pub fn PyTuple(comptime root: type) type {
 
         pub fn getItemZ(self: *const Self, comptime T: type, idx: isize) !T {
             if (ffi.PyTuple_GetItem(self.obj.py, idx)) |item| {
-                return py.as(root, T, py.PyObject(root){ .py = item });
+                return py.as(root, T, PyObject(root){ .py = item });
             } else {
                 return PyError.PyRaised;
             }

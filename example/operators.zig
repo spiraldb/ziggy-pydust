@@ -19,149 +19,149 @@ const root = @This();
 pub const Ops = py.class(struct {
     const Self = @This();
 
-    num: u64,
+    num_: u64,
 
     pub fn __init__(self: *Self, args: struct { num: u64 }) !void {
-        self.num = args.num;
+        self.num_ = args.num;
     }
 
     pub fn num(self: *const Self) u64 {
-        return self.num;
+        return self.num_;
     }
 
     pub fn __add__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num + other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ + other.num_ });
     }
 
     pub fn __iadd__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num += other.num;
+        self.num_ += other.num_;
         return self;
     }
 
     pub fn __sub__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num - other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ - other.num_ });
     }
 
     pub fn __isub__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num -= other.num;
+        self.num_ -= other.num_;
         return self;
     }
 
     pub fn __mul__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num * other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ * other.num_ });
     }
 
     pub fn __imul__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num *= other.num;
+        self.num_ *= other.num_;
         return self;
     }
 
     pub fn __mod__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = try std.math.mod(u64, self.num, other.num) });
+        return py.init(root, Self, .{ .num_ = try std.math.mod(u64, self.num_, other.num_) });
     }
 
     pub fn __imod__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = try std.math.mod(u64, self.num, other.num);
+        self.num_ = try std.math.mod(u64, self.num_, other.num_);
         return self;
     }
 
     pub fn __divmod__(self: *const Self, other: *const Self) !py.PyTuple(root) {
-        return py.PyTuple(root).create(.{ self.num / other.num, std.math.mod(u64, self.num, other.num) });
+        return py.PyTuple(root).create(.{ self.num_ / other.num_, std.math.mod(u64, self.num_, other.num_) });
     }
 
     pub fn __pow__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = std.math.pow(u64, self.num, other.num) });
+        return py.init(root, Self, .{ .num_ = std.math.pow(u64, self.num_, other.num_) });
     }
 
     pub fn __ipow__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = std.math.pow(u64, self.num, other.num);
+        self.num_ = std.math.pow(u64, self.num_, other.num_);
         return self;
     }
 
     pub fn __lshift__(self: *const Self, other: *const Self) !*Self {
         py.incref(root, self);
-        return py.init(root, Self, .{ .num = self.num << @as(u6, @intCast(other.num)) });
+        return py.init(root, Self, .{ .num_ = self.num_ << @as(u6, @intCast(other.num_)) });
     }
 
     pub fn __ilshift__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = self.num << @as(u6, @intCast(other.num));
+        self.num_ = self.num_ << @as(u6, @intCast(other.num_));
         return self;
     }
 
     pub fn __rshift__(self: *const Self, other: *const Self) !*Self {
         py.incref(root, self);
-        return py.init(root, Self, .{ .num = self.num >> @as(u6, @intCast(other.num)) });
+        return py.init(root, Self, .{ .num_ = self.num_ >> @as(u6, @intCast(other.num_)) });
     }
 
     pub fn __irshift__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = self.num >> @as(u6, @intCast(other.num));
+        self.num_ = self.num_ >> @as(u6, @intCast(other.num_));
         return self;
     }
 
     pub fn __and__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num & other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ & other.num_ });
     }
 
     pub fn __iand__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = self.num & other.num;
+        self.num_ = self.num_ & other.num_;
         return self;
     }
 
     pub fn __xor__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num ^ other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ ^ other.num_ });
     }
 
     pub fn __ixor__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = self.num ^ other.num;
+        self.num_ = self.num_ ^ other.num_;
         return self;
     }
 
     pub fn __or__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num | other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ | other.num_ });
     }
 
     pub fn __ior__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = self.num | other.num;
+        self.num_ = self.num_ | other.num_;
         return self;
     }
 
     pub fn __truediv__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num / other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ / other.num_ });
     }
 
     pub fn __itruediv__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = self.num / other.num;
+        self.num_ = self.num_ / other.num_;
         return self;
     }
 
     pub fn __floordiv__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num / other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ / other.num_ });
     }
 
     pub fn __ifloordiv__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num = self.num / other.num;
+        self.num_ = self.num_ / other.num_;
         return self;
     }
 
     pub fn __matmul__(self: *const Self, other: *const Self) !*Self {
-        return py.init(root, Self, .{ .num = self.num * other.num });
+        return py.init(root, Self, .{ .num_ = self.num_ * other.num_ });
     }
 
     pub fn __imatmul__(self: *Self, other: *const Self) !*Self {
         py.incref(root, self);
-        self.num *= other.num;
+        self.num_ *= other.num_;
         return self;
     }
 });
@@ -170,18 +170,18 @@ pub const Ops = py.class(struct {
 pub const UnaryOps = py.class(struct {
     const Self = @This();
 
-    num: i64,
+    num_: i64,
 
     pub fn __init__(self: *Self, args: struct { num: i64 }) !void {
-        self.num = args.num;
+        self.num_ = args.num;
     }
 
     pub fn num(self: *const Self) i64 {
-        return self.num;
+        return self.num_;
     }
 
     pub fn __neg__(self: *Self) !py.PyLong(root) {
-        return py.PyLong(root).create(-self.num);
+        return py.PyLong(root).create(-self.num_);
     }
 
     pub fn __pos__(self: *Self) !*Self {
@@ -190,27 +190,27 @@ pub const UnaryOps = py.class(struct {
     }
 
     pub fn __abs__(self: *Self) !*Self {
-        return py.init(root, Self, .{ .num = @as(i64, @intCast(@abs(self.num))) });
+        return py.init(root, Self, .{ .num_ = @as(i64, @intCast(@abs(self.num_))) });
     }
 
     pub fn __invert__(self: *Self) !*Self {
-        return py.init(root, Self, .{ .num = ~self.num });
+        return py.init(root, Self, .{ .num_ = ~self.num_ });
     }
 
     pub fn __int__(self: *Self) !py.PyLong(root) {
-        return py.PyLong(root).create(self.num);
+        return py.PyLong(root).create(self.num_);
     }
 
     pub fn __float__(self: *Self) !py.PyFloat(root) {
-        return py.PyFloat(root).create(@as(f64, @floatFromInt(self.num)));
+        return py.PyFloat(root).create(@as(f64, @floatFromInt(self.num_)));
     }
 
     pub fn __index__(self: *Self) !py.PyLong(root) {
-        return py.PyLong(root).create(self.num);
+        return py.PyLong(root).create(self.num_);
     }
 
     pub fn __bool__(self: *Self) !bool {
-        return self.num == 1;
+        return self.num_ == 1;
     }
 });
 
@@ -218,14 +218,14 @@ pub const UnaryOps = py.class(struct {
 pub const Operator = py.class(struct {
     const Self = @This();
 
-    num: u64,
+    num_: u64,
 
     pub fn __init__(self: *Self, args: struct { num: u64 }) void {
-        self.num = args.num;
+        self.num_ = args.num;
     }
 
     pub fn num(self: *const Self) u64 {
-        return self.num;
+        return self.num_;
     }
 
     pub fn __truediv__(self: *const Self, other: py.PyObject(root)) !py.PyObject(root) {
@@ -233,13 +233,13 @@ pub const Operator = py.class(struct {
         defer selfCls.decref();
 
         if (try py.PyFloat(root).check(other)) {
-            const numF: f64 = @floatFromInt(self.num);
+            const numF: f64 = @floatFromInt(self.num_);
             return py.create(root, numF / try py.as(root, f64, other));
         } else if (try py.PyLong(root).check(other)) {
-            return py.create(root, self.num / try py.as(root, u64, other));
+            return py.create(root, self.num_ / try py.as(root, u64, other));
         } else if (try py.isinstance(root, other, selfCls)) { // TODO(ngates): #193
             const otherO: *Self = try py.as(root, *Self, other);
-            return py.object(root, try py.init(root, Self, .{ .num = self.num / otherO.num }));
+            return py.object(root, try py.init(root, Self, .{ .num_ = self.num_ / otherO.num_ }));
         } else {
             return py.TypeError(root).raise("Unsupported number type for Operator division");
         }

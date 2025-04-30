@@ -42,7 +42,7 @@ pub inline fn as(comptime root: type, comptime T: type, obj: anytype) py.PyError
 
 /// Python -> Pydust. Perform a checked cast from a PyObject to a given PyDust class type.
 pub inline fn checked(comptime root: type, comptime T: type, obj: py.PyObject) py.PyError!T {
-    const definition = State.getDefinition(root, @typeInfo(T).Pointer.child);
+    const definition = State.getDefinition(root, @typeInfo(T).pointer.child);
     if (definition.type != .class) {
         @compileError("Can only perform checked cast into a PyDust class type");
     }
@@ -55,7 +55,7 @@ pub inline fn checked(comptime root: type, comptime T: type, obj: py.PyObject) p
 
 /// Python -> Pydust. Perform an unchecked cast from a PyObject to a given PyDust class type.
 pub inline fn unchecked(comptime root: type, comptime T: type, obj: py.PyObject(root)) T {
-    const Definition = @typeInfo(T).Pointer.child;
+    const Definition = @typeInfo(T).pointer.child;
     const definition = State.getDefinition(root, Definition);
     if (definition.type != .class) {
         @compileError("Can only perform unchecked cast into a PyDust class type. Found " ++ @typeName(Definition));

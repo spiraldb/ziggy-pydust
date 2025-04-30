@@ -31,7 +31,7 @@ pub fn PyLong(comptime root: type) type {
                 return create(@as(i64, @intCast(value)));
             }
 
-            const typeInfo = @typeInfo(@TypeOf(value)).Int;
+            const typeInfo = @typeInfo(@TypeOf(value)).int;
 
             const pylong = switch (typeInfo.signedness) {
                 .signed => ffi.PyLong_FromLongLong(@intCast(value)),
@@ -43,7 +43,7 @@ pub fn PyLong(comptime root: type) type {
 
         pub fn as(self: Self, comptime T: type) !T {
             // TODO(ngates): support non-int conversions
-            const typeInfo = @typeInfo(T).Int;
+            const typeInfo = @typeInfo(T).int;
             return switch (typeInfo.signedness) {
                 .signed => {
                     const ll = ffi.PyLong_AsLongLong(self.obj.py);

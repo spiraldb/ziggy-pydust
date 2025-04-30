@@ -25,7 +25,7 @@ const py = @import("pydust");
 const root = @This();
 const Self = root; // (1)!
 
-count: u32 = 0, // (2)!
+count_: u32 = 0, // (2)!
 name: py.PyString(root),
 
 pub fn __init__(self: *Self) !void { // (3)!
@@ -37,11 +37,11 @@ pub fn __del__(self: Self) void {
 }
 
 pub fn increment(self: *Self) void { // (4)!
-    self.count += 1;
+    self.count_ += 1;
 }
 
 pub fn count(self: *const Self) u32 {
-    return self.count;
+    return self.count_;
 }
 
 pub fn whoami(self: *const Self) py.PyString(root) {

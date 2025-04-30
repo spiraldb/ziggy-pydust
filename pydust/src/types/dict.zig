@@ -27,7 +27,7 @@ pub fn PyDict(comptime root: type) type {
 
         /// Create a dictionary from a Zig object
         pub fn create(value: anytype) !Self {
-            const s = @typeInfo(@TypeOf(value)).Struct;
+            const s = @typeInfo(@TypeOf(value)).@"struct";
 
             const dict = try new();
             inline for (s.fields) |field| {
@@ -40,14 +40,14 @@ pub fn PyDict(comptime root: type) type {
         /// Convert this dictionary into the provided Zig struct.
         /// If the dictionary has extra fields not present in the struct, no error is raised.
         pub fn as(self: Self, comptime T: type) !T {
-            const s = @typeInfo(T).Struct;
+            const s = @typeInfo(T).@"struct";
             var result: T = undefined;
             inline for (s.fields) |field| {
                 const value = try self.getItem(field.type, field.name ++ "");
                 if (value) |val| {
                     @field(result, field.name) = val;
-                } else if (field.default_value) |default| {
-                    @field(result, field.name) = @as(*const field.type, @alignCast(@ptrCast(default))).*;
+                } else if (field.defaultValue()) |default| {
+                    @field(result, field.name) = default;
                 } else {
                     return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
                 }

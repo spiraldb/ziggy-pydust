@@ -81,8 +81,8 @@ fn Slots(comptime root: type, comptime definition: type) type {
         const attrs = Attributes(root, definition);
         const submodules = Submodules(root, definition);
 
-        pub const slots: [:empty]const ffi.PyModuleDef_Slot = blk: {
-            var slots_: [:empty]const ffi.PyModuleDef_Slot = &.{};
+        pub const slots: []const ffi.PyModuleDef_Slot = blk: {
+            var slots_: []const ffi.PyModuleDef_Slot = &.{};
 
             slots_ = slots_ ++ .{ffi.PyModuleDef_Slot{
                 .slot = ffi.Py_mod_exec,
@@ -115,12 +115,12 @@ fn Slots(comptime root: type, comptime definition: type) type {
 
         inline fn mod_exec_internal(module: py.PyModule(root)) !void {
             // First, initialize the module state using an __init__ function
-            if (@typeInfo(definition).Struct.fields.len > 0) {
+            if (@typeInfo(definition).@"struct".fields.len > 0) {
                 if (!@hasDecl(definition, "__init__")) {
                     @compileError("Non-empty module must define `fn __init__(*Self) !void` method to initialize its state: " ++ @typeName(definition));
                 }
                 const state = try module.getState(definition);
-                if (@typeInfo(@typeInfo(@TypeOf(definition.__init__)).Fn.return_type.?) == .ErrorUnion) {
+                if (@typeInfo(@typeInfo(@TypeOf(definition.__init__)).@"fn".return_type.?) == .error_union) {
                     try state.__init__();
                 } else {
                     state.__init__();
@@ -164,7 +164,7 @@ fn Slots(comptime root: type, comptime definition: type) type {
 }
 
 fn Submodules(comptime root: type, comptime definition: type) type {
-    const typeInfo = @typeInfo(definition).Struct;
+    const typeInfo = @typeInfo(definition).@"struct";
     return struct {
         const submodules: []const type = blk: {
             var mods: []const type = &.{};
