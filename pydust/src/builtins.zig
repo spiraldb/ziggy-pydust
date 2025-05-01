@@ -35,7 +35,10 @@ pub const CompareOp = enum {
 /// Returns a new reference to Py_NotImplemented.
 pub fn NotImplemented(comptime root: type) py.PyObject(root) {
     // It's important that we incref the Py_NotImplemented singleton
-    const notImplemented = py.PyObject(root){ .py = ffi.Py_NotImplemented() };
+    const notImplemented = py.PyObject(root){ .py = if (ffi.PY_VERSION_HEX < 0x030D0000)
+        ffi.Py_NotImplemented()
+    else
+        ffi.Py_GetConstantBorrowed(ffi.Py_CONSTANT_NOT_IMPLEMENTED) };
     notImplemented.incref();
     return notImplemented;
 }
@@ -43,7 +46,10 @@ pub fn NotImplemented(comptime root: type) py.PyObject(root) {
 /// Returns a new reference to Py_None.
 pub fn None(comptime root: type) py.PyObject(root) {
     // It's important that we incref the Py_None singleton
-    const none = py.PyObject(root){ .py = ffi.Py_None() };
+    const none = py.PyObject(root){ .py = if (ffi.PY_VERSION_HEX < 0x030D0000) 
+        ffi.Py_None()
+    else
+        ffi.Py_GetConstantBorrowed(ffi.Py_CONSTANT_NONE) };
     none.incref();
     return none;
 }
