@@ -77,7 +77,7 @@ if a `__init__` function is defined.
 
 ### Super
 
-The `py.super(Type, self)` function returns a proxy `py.PyObject` that can be used to invoke methods on the super class. This behaves the same as the Python builtin [super](https://docs.python.org/3/library/functions.html#super).
+The `py.super(Type, self)` function returns a proxy `py.PyObject(root)` that can be used to invoke methods on the super class. This behaves the same as the Python builtin [super](https://docs.python.org/3/library/functions.html#super).
 
 ## Properties
 
@@ -158,9 +158,9 @@ Classes can define methods that are not exposed to python via `py.zig` wrapper
 Dunder methods, or "double underscore" methods, provide a mechanism for overriding builtin
 Python operators.
 
-- `object` refers to either a pointer to a Pydust type, a `py.PyObject`,
-  or any other Pydust Python type, e.g. `py.PyString`.
-- `CallArgs` refers to a Zig struct that is interpreted as `args` and `kwargs`
+- `object` refers to either a pointer to a Pydust type, a `py.PyObject(roo)`,
+  or any other Pydust Python type, e.g. `py.PyString(root)`.
+- `CallArgs(root)` refers to a Zig struct that is interpreted as `args` and `kwargs`
   where fields are marked as keyword arguments if they have a default value.
 
 Also note the shorthand signatures:
@@ -173,18 +173,18 @@ const inquiry = fn(*Self) !bool;
 
 ### Type Methods
 
-| Method        | Signature                                |
-| :------------ | :--------------------------------------- |
-| `__init__`    | `#!zig fn() void`                        |
-| `__init__`    | `#!zig fn(*Self) !void`                  |
-| `__init__`    | `#!zig fn(*Self, CallArgs) !void`        |
-| `__del__`     | `#!zig fn(*Self) void`                   |
-| `__repr__`    | `#!zig fn(*Self) !py.PyString`           |
-| `__str__`     | `#!zig fn(*Self) !py.PyString`           |
-| `__call__`    | `#!zig fn(*Self, CallArgs) !py.PyObject` |
-| `__iter__`    | `#!zig fn(*Self) !object`                |
-| `__next__`    | `#!zig fn(*Self) !?object`               |
-| `__getattr__` | `#!zig fn(*Self, object) !?object`       |
+| Method        | Signature                                            |
+| :------------ | :--------------------------------------------------- |
+| `__init__`    | `#!zig fn() void`                                    |
+| `__init__`    | `#!zig fn(*Self) !void`                              |
+| `__init__`    | `#!zig fn(*Self, CallArgs(root)) !void`              |
+| `__del__`     | `#!zig fn(*Self) void`                               |
+| `__repr__`    | `#!zig fn(*Self) !py.PyString(root)`                 |
+| `__str__`     | `#!zig fn(*Self) !py.PyString(root)`                 |
+| `__call__`    | `#!zig fn(*Self, CallArgs(root)) !py.PyObject(root)` |
+| `__iter__`    | `#!zig fn(*Self) !object`                            |
+| `__next__`    | `#!zig fn(*Self) !?object`                           |
+| `__getattr__` | `#!zig fn(*Self, object) !?object`                   |
 
 ### Sequence Methods
 
@@ -287,7 +287,7 @@ to implement the full comparison logic in a single `__richcompare__` function.
 
 ### Buffer Methods
 
-| Method               | Signature                                      |
-| :------------------- | :--------------------------------------------- |
-| `__buffer__`         | `#!zig fn (*Self, *py.PyBuffer, flags: c_int)` |
-| `__release_buffer__` | `#!zig fn (*Self, *py.PyBuffer)`               |
+| Method               | Signature                                            |
+| :------------------- | :--------------------------------------------------- |
+| `__buffer__`         | `#!zig fn (*Self, *py.PyBuffer(root), flags: c_int)` |
+| `__release_buffer__` | `#!zig fn (*Self, *py.PyBuffer(root))`               |
