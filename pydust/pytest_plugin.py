@@ -47,7 +47,13 @@ def pytest_collection(session):
     optimize = session.config.getoption("zig_optimize")
     buildzig.zig_build(["install", f"-Doptimize={optimize}", f"-Dpython-exe={sys.executable}"])
     if config.load().zig_tests:
-        buildzig.zig_build(["pydust-test-build", f"-Doptimize={optimize}", f"-Dpython-exe={sys.executable}"])
+        buildzig.zig_build(
+            [
+                "pydust-test-build",
+                f"-Doptimize={optimize}",
+                f"-Dpython-exe={sys.executable}",
+            ]
+        )
 
 
 def pytest_collect_file(file_path, path, parent):
@@ -71,7 +77,11 @@ class ZigFile(pytest.File):
         ext_module = [e for e in pydust_conf.ext_modules if e.root.absolute() == self.path][0]
 
         # Then query the test metadata
-        proc = subprocess.Popen([ext_module.test_bin, "--listen=-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        proc = subprocess.Popen(
+            [ext_module.test_bin, "--listen=-"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
         try:
             # Zig first sends us its version.
             h = TestProtocol.Header.unpack(proc.stdout)
@@ -118,7 +128,7 @@ class ZigFile(pytest.File):
                 {
                     "idx": i,
                     "name": test_name,
-                    "expected_panics": data[ep : data.index(b"\0", ep)].decode("utf-8") if ep else None,
+                    "expected_panics": (data[ep : data.index(b"\0", ep)].decode("utf-8") if ep else None),
                 }
             )
 

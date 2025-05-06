@@ -38,7 +38,10 @@ def zig_build(argv: list[str], conf: config.ToolPydust | None = None):
     conf = conf or config.load()
 
     # Always generate the supporting pydist.build.zig
-    shutil.copy(Path(pydust.__file__).parent.joinpath("src/pydust.build.zig"), conf.pydust_build_zig)
+    shutil.copy(
+        Path(pydust.__file__).parent.joinpath("src/pydust.build.zig"),
+        conf.pydust_build_zig,
+    )
 
     if not conf.self_managed:
         # Generate the build.zig if we're managing the ext_modules ourselves
