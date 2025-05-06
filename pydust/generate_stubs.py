@@ -37,14 +37,11 @@ DUNDER_RETURNS = {
     "__setattr__": "None",
     "__setattribute__": "None",
     "__setitem__": "None",
-
     "__contains__": "bool",
     "__len__": "int",
     "__length_hint__": "int",
-
     "__hash__": "int",
     "__index__": "int",
-
     "__bool__": "bool",
     "__int__": "int",
     "__float__": "float",
@@ -53,10 +50,8 @@ DUNDER_RETURNS = {
     "__str__": "str",
     "__bytes__": "bytes",
     "__format__": "str",
-
     "__buffer__": "memoryview",
     "__release_buffer__": "None",
-
     # "__iadd__": "Self",
     # "__isub__": "Self",
     # "__imul__": "Self",
@@ -70,7 +65,6 @@ DUNDER_RETURNS = {
     # "__iand__": "Self",
     # "__ixor__": "Self",
     # "__ior__": "Self",
-
     "__instancecheck__": "bool",
     "__subclasscheck__": "bool",
 }
@@ -87,7 +81,11 @@ def function(obj, indent: str, text_signature: str | None = None) -> str:
             #  we want to get the Signature object which handles string formatting for us
             text_signature = str(
                 inspect._signature_from_callable(
-                    obj, follow_wrapper_chains=True, skip_bound_arg=False, sigcls=inspect.Signature, eval_str=False
+                    obj,
+                    follow_wrapper_chains=True,
+                    skip_bound_arg=False,
+                    sigcls=inspect.Signature,
+                    eval_str=False,
                 )
             )
         except Exception:
@@ -274,6 +272,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("destination")
     parser.add_argument("--check", action="store_true")
     return parser.parse_args()
+
 
 def main() -> None:
     args = _parse_args()
