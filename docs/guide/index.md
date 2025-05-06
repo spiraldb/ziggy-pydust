@@ -10,17 +10,23 @@ If you do struggle or find any issues with the examples, please do [let us know!
 Pydust maintains a consistent set of conventions around structs, function naming, and memory
 management to assist with development.
 
+### Passing root type
+
+Pydust requires access to your top-level zig module.  As a convention, we recommend assigning
+zig's [`@This`](https://ziglang.org/documentation/master/#This) to a global variable named
+`root` which you need to pass to many Pydust functions.
+
 ### Conversion Functions
 
 When converting from Python to Zig types:
 
-* `.as(T, anytype)` - return a view of the object *as* the given type. This will leave the `refcnt` of the original object untouched.
+* `.as(root, T, anytype)` - return a view of the object *as* the given type. This will leave the `refcnt` of the original object untouched.
 
 When creating Python types from Zig types:
 
-* `.create(anytype)` - create a new Python object from a Zig type. Zig slices are copied.
-* `PyFoo.checked(py.PyObject)` - checks a `PyObject` is indeed a `PyFoo` before wrapping it up as one.
-* `PyFoo.unchecked(py.PyObject)` - wraps a `PyObject` as a `PyFoo` without checking the type.
+* `.create(root, anytype)` - create a new Python object from a Zig type. Zig slices are copied.
+* `PyFoo.checked(root, py.PyObject(root))` - checks a `PyObject(root)` is indeed a `PyFoo` before wrapping it up as one.
+* `PyFoo.unchecked(root, py.PyObject(root))` - wraps a `PyObject(root)` as a `PyFoo` without checking the type.
 
 ## Type Conversions
 
