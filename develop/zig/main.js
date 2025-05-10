@@ -1,14 +1,20 @@
 (function() {
     const CAT_namespace = 0;
-    const CAT_global_variable = 1;
-    const CAT_function = 2;
-    const CAT_primitive = 3;
-    const CAT_error_set = 4;
-    const CAT_global_const = 5;
-    const CAT_alias = 6;
-    const CAT_type = 7;
-    const CAT_type_type = 8;
-    const CAT_type_function = 9;
+    const CAT_container = 1;
+    const CAT_global_variable = 2;
+    const CAT_function = 3;
+    const CAT_primitive = 4;
+    const CAT_error_set = 5;
+    const CAT_global_const = 6;
+    const CAT_alias = 7;
+    const CAT_type = 8;
+    const CAT_type_type = 9;
+    const CAT_type_function = 10;
+
+    const LOG_err = 0;
+    const LOG_warn = 1;
+    const LOG_info = 2;
+    const LOG_debug = 3;
 
     const domDocTestsCode = document.getElementById("docTestsCode");
     const domFnErrorsAnyError = document.getElementById("fnErrorsAnyError");
@@ -47,6 +53,8 @@
     const domStatus = document.getElementById("status");
     const domTableFnErrors = document.getElementById("tableFnErrors");
     const domTldDocs = document.getElementById("tldDocs");
+    const domErrors = document.getElementById("errors");
+    const domErrorsText = document.getElementById("errorsText");
 
     var searchTimer = null;
 
@@ -83,13 +91,24 @@
 
     WebAssembly.instantiateStreaming(wasm_promise, {
       js: {
-        log: function(ptr, len) {
+        log: function(level, ptr, len) {
           const msg = decodeString(ptr, len);
-          console.log(msg);
-        },
-        panic: function (ptr, len) {
-            const msg = decodeString(ptr, len);
-            throw new Error("panic: " + msg);
+          switch (level) {
+            case LOG_err:
+              console.error(msg);
+              domErrorsText.textContent += msg + "\n";
+              domErrors.classList.remove("hidden");
+              break;
+            case LOG_warn:
+              console.warn(msg);
+              break;
+            case LOG_info:
+              console.info(msg);
+              break;
+            case LOG_debug:
+              console.debug(msg);
+              break;
+          }
         },
       },
     }).then(function(obj) {
@@ -184,6 +203,7 @@
       const category = wasm_exports.categorize_decl(decl_index, 0);
       switch (category) {
         case CAT_namespace:
+        case CAT_container:
           return renderNamespacePage(decl_index);
         case CAT_global_variable:
         case CAT_primitive:
@@ -427,14 +447,10 @@
           const member_category = wasm_exports.categorize_decl(member, 0);
           switch (member_category) {
             case CAT_namespace:
-              if (wasm_exports.decl_field_count(member) > 0) {
-                typesList.push({original: original, member: member});
-              } else {
-                namespacesList.push({original: original, member: member});
-              }
-              continue member_loop;
-            case CAT_namespace:
               namespacesList.push({original: original, member: member});
+              continue member_loop;
+            case CAT_container:
+              typesList.push({original: original, member: member});
               continue member_loop;
             case CAT_global_variable:
               varsList.push(member);
