@@ -67,7 +67,7 @@ comptime {
 
 Pydust supports:
 
-- [Zig 0.11.0](https://ziglang.org/download/0.11.0/release-notes.html)
+- [Zig 0.14.0](https://ziglang.org/download/0.14.0/release-notes.html)
 - [CPython >=3.11](https://docs.python.org/3.11/c-api/stable.html)
 
 Please reach out if you're interested in helping us to expand compatibility.
