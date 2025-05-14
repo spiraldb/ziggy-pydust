@@ -33,7 +33,7 @@ pub fn PyMemoryView(comptime root: type) type {
             const sliceType = Slice(@TypeOf(slice));
             const sliceTpInfo = @typeInfo(sliceType);
 
-            const flag = if (sliceTpInfo == .Pointer and sliceTpInfo.Pointer.is_const) Flags.PyBUF_READ else Flags.PyBUF_WRITE;
+            const flag = if (sliceTpInfo == .pointer and sliceTpInfo.pointer.is_const) Flags.PyBUF_READ else Flags.PyBUF_WRITE;
             return .{ .obj = .{
                 .py = py.ffi.PyMemoryView_FromMemory(@constCast(slice.ptr), @intCast(slice.len), flag) orelse return py.PyError.PyRaised,
             } };
@@ -47,18 +47,18 @@ pub fn PyMemoryView(comptime root: type) type {
 
         fn Slice(comptime T: type) type {
             switch (@typeInfo(T)) {
-                .Pointer => |ptr_info| {
+                .pointer => |ptr_info| {
                     var new_ptr_info = ptr_info;
                     switch (ptr_info.size) {
-                        .Slice => {},
+                        .slice => {},
                         .One => switch (@typeInfo(ptr_info.child)) {
-                            .Array => |info| new_ptr_info.child = info.child,
+                            .array => |info| new_ptr_info.child = info.child,
                             else => @compileError("invalid type given to PyMemoryview"),
                         },
                         else => @compileError("invalid type given to PyMemoryview"),
                     }
-                    new_ptr_info.size = .Slice;
-                    return @Type(.{ .Pointer = new_ptr_info });
+                    new_ptr_info.size = .slice;
+                    return @Type(.{ .pointer = new_ptr_info });
                 },
                 else => @compileError("invalid type given to PyMemoryview"),
             }

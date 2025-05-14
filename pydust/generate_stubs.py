@@ -24,19 +24,68 @@ import black
 
 INDENT = " " * 4
 
+DUNDER_RETURNS = {
+    "__init__": "None",
+    "__init_subclass__": "None",
+    "__del__": "None",
+    "__delete__": "None",
+    "__delattr__": "None",
+    "__delitem__": "None",
+    "__exit__": "None",
+    "__set__": "None",
+    "__setname__": "None",
+    "__setattr__": "None",
+    "__setattribute__": "None",
+    "__setitem__": "None",
+    "__contains__": "bool",
+    "__len__": "int",
+    "__length_hint__": "int",
+    "__hash__": "int",
+    "__index__": "int",
+    "__bool__": "bool",
+    "__int__": "int",
+    "__float__": "float",
+    "__complex__": "complex",
+    "__repr__": "str",
+    "__str__": "str",
+    "__bytes__": "bytes",
+    "__format__": "str",
+    "__buffer__": "memoryview",
+    "__release_buffer__": "None",
+    # "__iadd__": "Self",
+    # "__isub__": "Self",
+    # "__imul__": "Self",
+    # "__imatmul__": "Self",
+    # "__ipow__": "Self",
+    # "__itruediv__": "Self",
+    # "__ifloordiv__": "Self",
+    # "__imod__": "Self",
+    # "__ilshift__": "Self",
+    # "__irshift__": "Self",
+    # "__iand__": "Self",
+    # "__ixor__": "Self",
+    # "__ior__": "Self",
+    "__instancecheck__": "bool",
+    "__subclasscheck__": "bool",
+}
 
-def do_indent(text: str, indent: str):
+
+def do_indent(text: str, indent: str) -> str:
     return text.replace("\n", f"\n{indent}")
 
 
-def function(obj, indent, text_signature=None):
+def function(obj, indent: str, text_signature: str | None = None) -> str:
     if text_signature is None:
         try:
             # This is how `inspect.getfullargspec` gets signature but instead of the tuple it returns
             #  we want to get the Signature object which handles string formatting for us
             text_signature = str(
                 inspect._signature_from_callable(
-                    obj, follow_wrapper_chains=True, skip_bound_arg=False, sigcls=inspect.Signature, eval_str=False
+                    obj,
+                    follow_wrapper_chains=True,
+                    skip_bound_arg=False,
+                    sigcls=inspect.Signature,
+                    eval_str=False,
                 )
             )
         except Exception:
@@ -45,35 +94,37 @@ def function(obj, indent, text_signature=None):
     if isinstance(obj, staticmethod):
         obj = obj.__func__
 
-    string = ""
-    string += f"{indent}def {obj.__name__}{text_signature}:\n"
-    indent += INDENT
-    string += doc(obj, indent)
-    string += f"{indent}...\n"
-    string += "\n"
-    string += "\n"
-    return string
+    if obj.__name__ in DUNDER_RETURNS:
+        text_signature += " -> " + DUNDER_RETURNS[obj.__name__]
+
+    string = f"{indent}def {obj.__name__}{text_signature}:"
+
+    if obj.__doc__:
+        string += "\n"
+        string += doc(obj, indent + INDENT)
+        string += "\n"
+    else:
+        string += " ..."
+
+    return string + "\n"
 
 
-def doc(obj, indent) -> str:
+def doc(obj, indent: str) -> str:
     if obj.__doc__:
         return f'{indent}"""\n{indent}{do_indent(obj.__doc__, indent)}\n{indent}"""\n'
-    else:
-        return ""
+    return ""
 
 
-def member_sort(member):
+def member_sort(member: object) -> int:
     """Push classes and functions below attributes"""
     if inspect.isclass(member):
-        value = 10 + len(inspect.getmro(member))
-    elif inspect.isbuiltin(member):
-        value = 5
-    else:
-        value = 1
-    return value
+        return 10 + len(inspect.getmro(member))
+    if inspect.isbuiltin(member):
+        return 5
+    return 1
 
 
-def get_module_members(module):
+def get_module_members(module) -> list[tuple[str, object]]:
     members = [
         (name, member)
         for name, member in inspect.getmembers(module, lambda obj: not inspect.ismodule(obj))
@@ -83,16 +134,13 @@ def get_module_members(module):
     return members
 
 
-def pyi_file(obj, name: str, indent="") -> str:
+def pyi_file(obj, name: str, indent: str = "") -> str:
     if obj is None:
         return ""
 
     result_content = ""
     if inspect.ismodule(obj):
         result_content += doc(obj, indent)
-
-        if indent == "":
-            result_content += f"{indent}from __future__ import annotations\n"
 
         members = get_module_members(obj)
         members_string = ""
@@ -103,9 +151,14 @@ def pyi_file(obj, name: str, indent="") -> str:
         submodules = inspect.getmembers(obj, inspect.ismodule)
         for name, submodule in submodules:
             members_string += f"{indent}class {submodule.__name__}:\n"
-            submod_indent = indent + INDENT
-            members_string += doc(submodule, submod_indent)
+
             submodule_members = get_module_members(submodule)
+            if submodule.__doc__ or submodule_members:
+                submod_indent = indent + INDENT
+
+            if submodule.__doc__:
+                members_string += doc(submodule, submod_indent)
+
             for name, member in submodule_members:
                 append = pyi_file(member, name, indent=submod_indent)
                 members_string += append
@@ -124,9 +177,7 @@ def pyi_file(obj, name: str, indent="") -> str:
         class_body = doc(obj, indent)
 
         if obj.__text_signature__:
-            class_body += f"{indent}def __init__{inspect.signature(obj)}:\n"
-            class_body += f"{indent + INDENT}pass\n"
-            class_body += "\n"
+            class_body += f"{indent}def __init__{inspect.signature(obj)} -> None: ...\n"
 
         members = [
             (name, func)
@@ -153,7 +204,7 @@ def pyi_file(obj, name: str, indent="") -> str:
     elif inspect.isgetsetdescriptor(obj):
         # TODO it would be interesing to add the setter maybe ?
         result_content += f"{indent}@property\n"
-        result_content += function(obj, indent, text_signature="(self)")
+        result_content += function(obj, indent, text_signature="(self, /)")
 
     elif inspect.ismemberdescriptor(obj):
         result_content += f"{indent}{obj.__name__}: ..."
@@ -162,7 +213,7 @@ def pyi_file(obj, name: str, indent="") -> str:
     return result_content
 
 
-def do_black(content, is_pyi):
+def do_black(content: str, is_pyi: bool) -> str:
     mode = black.Mode(
         target_versions={black.TargetVersion.PY311},
         line_length=119,
@@ -206,7 +257,7 @@ def check_contents(module, directory: Path, module_name: str) -> None:
     assert pyi_content == existing_contents, f"Contents of {pyi_path} are out of date. Please run generate-stubs"
 
 
-def generate_stubs(package_name: str, destination: str = ".", check: bool = False):
+def generate_stubs(package_name: str, destination: str = ".", check: bool = False) -> None:
     module = importlib.import_module(package_name)
     directory = Path(destination).resolve()
     if check:
@@ -215,10 +266,18 @@ def generate_stubs(package_name: str, destination: str = ".", check: bool = Fals
         write(module, directory, package_name)
 
 
-if __name__ == "__main__":
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("package_name")
     parser.add_argument("destination")
     parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = _parse_args()
     generate_stubs(args.package_name, args.destination, args.check)
+
+
+if __name__ == "__main__":
+    main()

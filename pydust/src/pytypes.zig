@@ -87,7 +87,7 @@ pub fn Type(comptime root: type, comptime name: [:0]const u8, comptime definitio
 /// Discover the base classes of the pytype definition.
 /// We look for any struct field that is itself a Pydust class.
 fn Bases(comptime root: type, comptime definition: type) type {
-    const typeInfo = @typeInfo(definition).Struct;
+    const typeInfo = @typeInfo(definition).@"struct";
     return struct {
         const bases: []const type = blk: {
             var bases_: []const type = &.{};
@@ -116,8 +116,8 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
         const gc = GC(root, definition);
 
         /// Slots populated in the PyType
-        pub const slots: [:empty]const ffi.PyType_Slot = blk: {
-            var slots_: [:empty]const ffi.PyType_Slot = &.{};
+        pub const slots: []const ffi.PyType_Slot = blk: {
+            var slots_: []const ffi.PyType_Slot = &.{};
 
             if (gc.needsGc) {
                 slots_ = slots_ ++ .{ ffi.PyType_Slot{
@@ -296,7 +296,7 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
         }
 
         fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
-            const sig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ *definition, *const definition, py.PyObject(root) });
+            const sig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).@"fn", &.{ *definition, *const definition, py.PyObject(root) });
 
             if (sig.selfParam == null and @typeInfo(definition).fields.len > 0) {
                 @compileError("__init__ must take both a self argument");
@@ -393,7 +393,7 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
         }
 
         fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
-            const sig = funcs.parseSignature(root, "__call__", @typeInfo(@TypeOf(definition.__call__)).Fn, &.{ *definition, *const definition, py.PyObject(root) });
+            const sig = funcs.parseSignature(root, "__call__", @typeInfo(@TypeOf(definition.__call__)).@"fn", &.{ *definition, *const definition, py.PyObject(root) });
 
             const args = if (pyargs) |pa| py.PyTuple(root).unchecked(.{ .py = pa }) else null;
             const kwargs = if (pykwargs) |pk| py.PyDict(root).unchecked(.{ .py = pk }) else null;
@@ -420,7 +420,7 @@ fn Doc(comptime root: type, comptime definition: type, comptime name: [:0]const 
             var size: usize = 0;
             var maybeSig: ?funcs.Signature(root) = null;
             if (@hasDecl(definition, "__init__")) {
-                maybeSig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject(root), *definition, *const definition });
+                maybeSig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).@"fn", &.{ py.PyObject(root), *definition, *const definition });
             }
 
             if (maybeSig) |sig| {
@@ -446,7 +446,7 @@ fn Doc(comptime root: type, comptime definition: type, comptime name: [:0]const 
             var docOffset = 0;
             var maybeSig: ?funcs.Signature(root) = null;
             if (@hasDecl(definition, "__init__")) {
-                maybeSig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).Fn, &.{ py.PyObject(root), *definition, *const definition });
+                maybeSig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).@"fn", &.{ py.PyObject(root), *definition, *const definition });
             }
 
             if (maybeSig) |sig| {
@@ -481,7 +481,7 @@ fn GC(comptime root: type, comptime definition: type) type {
         const needsGc = classNeedsGc(definition);
 
         fn classNeedsGc(comptime CT: type) bool {
-            inline for (@typeInfo(CT).Struct.fields) |field| {
+            inline for (@typeInfo(CT).@"struct".fields) |field| {
                 if (typeNeedsGc(field.type)) {
                     return true;
                 }
@@ -491,11 +491,11 @@ fn GC(comptime root: type, comptime definition: type) type {
 
         fn typeNeedsGc(comptime FT: type) bool {
             return switch (@typeInfo(FT)) {
-                .Pointer => |p| @typeInfo(p.child) == .Struct and (p.child == ffi.PyObject or typeNeedsGc(p.child)),
-                .Struct => blk: {
+                .pointer => |p| @typeInfo(p.child) == .@"struct" and (p.child == ffi.PyObject or typeNeedsGc(p.child)),
+                .@"struct" => blk: {
                     if (State.findDefinition(root, FT)) |def| {
                         break :blk switch (def.type) {
-                            .attribute => typeNeedsGc(@typeInfo(FT).Struct.fields[0].type),
+                            .attribute => typeNeedsGc(@typeInfo(FT).@"struct".fields[0].type),
                             .property => classNeedsGc(FT),
                             .class, .module => false,
                         };
@@ -503,7 +503,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                         break :blk @hasField(FT, "obj") and @hasField(std.meta.fieldInfo(FT, .obj).type, "py") or FT == py.PyObject(root);
                     }
                 },
-                .Optional => |o| (@typeInfo(o.child) == .Struct or @typeInfo(o.child) == .Pointer) and typeNeedsGc(o.child),
+                .optional => |o| (@typeInfo(o.child) == .@"struct" or @typeInfo(o.child) == .pointer) and typeNeedsGc(o.child),
                 else => return false,
             };
         }
@@ -515,7 +515,7 @@ fn GC(comptime root: type, comptime definition: type) type {
         }
 
         fn clearFields(class: anytype) void {
-            inline for (@typeInfo(@TypeOf(class)).Struct.fields) |field| {
+            inline for (@typeInfo(@TypeOf(class)).@"struct".fields) |field| {
                 clear(@field(class, field.name));
             }
         }
@@ -523,7 +523,7 @@ fn GC(comptime root: type, comptime definition: type) type {
         fn clear(obj: anytype) void {
             const fieldType = @TypeOf(obj);
             switch (@typeInfo(fieldType)) {
-                .Pointer => |p| if (@typeInfo(p.child) == .Struct) {
+                .pointer => |p| if (@typeInfo(p.child) == .@"struct") {
                     if (p.child == ffi.PyObject) {
                         pyClear(obj);
                     }
@@ -533,10 +533,10 @@ fn GC(comptime root: type, comptime definition: type) type {
                         }
                     }
                 },
-                .Struct => {
+                .@"struct" => {
                     if (comptime State.findDefinition(root, fieldType)) |def| {
                         switch (def.type) {
-                            .attribute => clear(@field(obj, @typeInfo(fieldType).Struct.fields[0].name)),
+                            .attribute => clear(@field(obj, @typeInfo(fieldType).@"struct".fields[0].name)),
                             .property => clearFields(obj),
                             .class, .module => {},
                         }
@@ -550,7 +550,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                         }
                     }
                 },
-                .Optional => |o| if (@typeInfo(o.child) == .Struct or @typeInfo(o.child) == .Pointer) {
+                .optional => |o| if (@typeInfo(o.child) == .@"struct" or @typeInfo(o.child) == .pointer) {
                     if (obj == null) {
                         return;
                     }
@@ -582,7 +582,7 @@ fn GC(comptime root: type, comptime definition: type) type {
         }
 
         fn traverseFields(class: anytype, visit: VisitProc, arg: *anyopaque) ?c_int {
-            inline for (@typeInfo(@TypeOf(class)).Struct.fields) |field| {
+            inline for (@typeInfo(@TypeOf(class)).@"struct".fields) |field| {
                 if (traverse(@field(class, field.name), visit, arg)) |ret| {
                     return ret;
                 }
@@ -593,7 +593,7 @@ fn GC(comptime root: type, comptime definition: type) type {
         fn traverse(obj: anytype, visit: VisitProc, arg: *anyopaque) ?c_int {
             const fieldType = @TypeOf(obj);
             switch (@typeInfo(@TypeOf(obj))) {
-                .Pointer => |p| if (@typeInfo(p.child) == .Struct) {
+                .pointer => |p| if (@typeInfo(p.child) == .@"struct") {
                     if (p.child == ffi.PyObject) {
                         if (pyVisit(obj, visit, arg)) |ret| {
                             return ret;
@@ -607,9 +607,9 @@ fn GC(comptime root: type, comptime definition: type) type {
                         }
                     }
                 },
-                .Struct => if (comptime State.findDefinition(root, fieldType)) |def| {
+                .@"struct" => if (comptime State.findDefinition(root, fieldType)) |def| {
                     switch (def.type) {
-                        .attribute => if (traverse(@field(obj, @typeInfo(@TypeOf(obj)).Struct.fields[0].name), visit, arg)) |ret| {
+                        .attribute => if (traverse(@field(obj, @typeInfo(@TypeOf(obj)).@"struct".fields[0].name), visit, arg)) |ret| {
                             return ret;
                         },
                         .property => if (traverseFields(obj, visit, arg)) |ret| {
@@ -630,7 +630,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                         }
                     }
                 },
-                .Optional => |o| if (@typeInfo(o.child) == .Struct or @typeInfo(o.child) == .Pointer) {
+                .optional => |o| if (@typeInfo(o.child) == .@"struct" or @typeInfo(o.child) == .pointer) {
                     if (obj == null) {
                         return null;
                     }
@@ -658,7 +658,7 @@ fn Members(comptime root: type, comptime definition: type) type {
         const memberdefs: [count + 1]ffi.PyMemberDef = blk: {
             var defs: [count + 1]ffi.PyMemberDef = undefined;
             var idx = 0;
-            for (@typeInfo(definition).Struct.fields) |field| {
+            for (@typeInfo(definition).@"struct".fields) |field| {
                 if (!State.hasType(root, field.type, .attribute)) {
                     continue;
                 }
@@ -667,7 +667,7 @@ fn Members(comptime root: type, comptime definition: type) type {
                 // Although the value within the attribute should always be 0 since it's the only field.
                 const offset = @offsetOf(PyTypeStruct(definition), "state") + @offsetOf(definition, field.name) + @offsetOf(field.type, "value");
 
-                const T = @typeInfo(field.type).Struct.fields[0].type;
+                const T = @typeInfo(field.type).@"struct".fields[0].type;
 
                 defs[idx] = ffi.PyMemberDef{
                     .name = field.name ++ "",
@@ -698,7 +698,7 @@ fn Members(comptime root: type, comptime definition: type) type {
             }
 
             switch (@typeInfo(T)) {
-                .Int => |i| switch (i.signedness) {
+                .int => |i| switch (i.signedness) {
                     .signed => switch (i.bits) {
                         @bitSizeOf(i8) => return if (ffi.PY_VERSION_HEX < 0x030C0000) ffi.T_BYTE else ffi.Py_T_BYTE,
                         @bitSizeOf(c_short) => return if (ffi.PY_VERSION_HEX < 0x030C0000) ffi.T_SHORT else ffi.Py_T_SHORT,
@@ -729,7 +729,7 @@ fn Properties(comptime root: type, comptime definition: type) type {
         const getsetdefs: [count + 1]ffi.PyGetSetDef = blk: {
             var props: [count + 1]ffi.PyGetSetDef = undefined;
             var idx = 0;
-            for (@typeInfo(definition).Struct.fields) |field| {
+            for (@typeInfo(definition).@"struct".fields) |field| {
                 if (State.hasType(root, field.type, .property)) {
                     var prop: ffi.PyGetSetDef = .{
                         .name = field.name ++ "",
@@ -746,7 +746,7 @@ fn Properties(comptime root: type, comptime definition: type) type {
 
                                 const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
 
-                                const SelfParam = @typeInfo(@TypeOf(field.type.get)).Fn.params[0].type.?;
+                                const SelfParam = @typeInfo(@TypeOf(field.type.get)).@"fn".params[0].type.?;
                                 const propself = switch (SelfParam) {
                                     *const definition => &self.state,
                                     *const field.type => @constCast(&@field(self.state, field.name)),
@@ -768,7 +768,7 @@ fn Properties(comptime root: type, comptime definition: type) type {
                                 const self: *PyTypeStruct(definition) = @ptrCast(pyself);
                                 const propself = &@field(self.state, field.name);
 
-                                const ValueArg = @typeInfo(@TypeOf(field.type.set)).Fn.params[1].type.?;
+                                const ValueArg = @typeInfo(@TypeOf(field.type.set)).@"fn".params[1].type.?;
                                 const value = tramp.Trampoline(root, ValueArg).unwrap(.{ .py = pyvalue }) catch return -1;
 
                                 tramp.coerceError(root, field.type.set(propself, value)) catch return -1;
@@ -799,7 +799,7 @@ fn BinaryOperator(
     return struct {
         fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const func = @field(definition, op);
-            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
+            const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
             if (typeInfo.params.len != 2) @compileError(op ++ " must take exactly two parameters");
 
@@ -821,7 +821,7 @@ fn UnaryOperator(
     return struct {
         fn call(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const func = @field(definition, op);
-            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
+            const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
             if (typeInfo.params.len != 1) @compileError(op ++ " must take exactly one parameter");
 
@@ -843,7 +843,7 @@ fn EqualsOperator(
         const equals = std.mem.eql(u8, op, "__eq__");
         fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const func = @field(definition, op);
-            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
+            const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
             if (typeInfo.params.len != 2) @compileError(op ++ " must take exactly two parameters");
             const Other = typeInfo.params[1].type.?;
@@ -899,7 +899,7 @@ fn RichCompare(comptime root: type, comptime definition: type) type {
 
         fn richCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
             const func = definition.__richcompare__;
-            const typeInfo = @typeInfo(@TypeOf(func)).Fn;
+            const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
             if (typeInfo.params.len != 3) @compileError("__richcompare__ must take exactly three parameters: Self, Other, CompareOp");
 

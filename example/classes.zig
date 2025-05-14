@@ -38,10 +38,10 @@ pub const ConstructableClass = py.class(struct {
 pub const Animal = py.class(struct {
     const Self = @This();
 
-    species: py.PyString(root),
+    species_: py.PyString(root),
 
     pub fn species(self: *Self) py.PyString(root) {
-        return self.species;
+        return self.species_;
     }
 });
 
@@ -49,18 +49,18 @@ pub const Dog = py.class(struct {
     const Self = @This();
 
     animal: Animal.definition,
-    breed: py.PyString(root),
+    breed_: py.PyString(root),
 
     pub fn __init__(self: *Self, args: struct { breed: py.PyString(root) }) !void {
         args.breed.incref();
         self.* = .{
-            .animal = .{ .species = try py.PyString(root).create("dog") },
-            .breed = args.breed,
+            .animal = .{ .species_ = try py.PyString(root).create("dog") },
+            .breed_ = args.breed,
         };
     }
 
     pub fn breed(self: *Self) py.PyString(root) {
-        return self.breed;
+        return self.breed_;
     }
 });
 

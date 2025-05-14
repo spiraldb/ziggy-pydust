@@ -24,7 +24,7 @@ pub const PythonModuleOptions = struct {
     name: [:0]const u8,
     root_source_file: std.Build.LazyPath,
     limited_api: bool = true,
-    target: std.zig.CrossTarget,
+    target: std.Target.Query,
     optimize: std.builtin.Mode,
     main_pkg_path: ?std.Build.LazyPath = null,
 

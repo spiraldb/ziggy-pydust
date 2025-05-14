@@ -25,7 +25,7 @@ pub fn Attributes(comptime root: type, comptime definition: type) type {
     return struct {
         const attr_count = blk: {
             var cnt = 0;
-            for (@typeInfo(definition).Struct.decls) |decl| {
+            for (@typeInfo(definition).@"struct".decls) |decl| {
                 const value = @field(definition, decl.name);
 
                 if (State.findDefinition(root, value)) |def| {
@@ -40,7 +40,7 @@ pub fn Attributes(comptime root: type, comptime definition: type) type {
         pub const attributes: [attr_count]Attribute(root) = blk: {
             var attrs: [attr_count]Attribute(root) = undefined;
             var idx = 0;
-            for (@typeInfo(definition).Struct.decls) |decl| {
+            for (@typeInfo(definition).@"struct".decls) |decl| {
                 const value = @field(definition, decl.name);
 
                 if (State.findDefinition(root, value)) |def| {

@@ -96,7 +96,7 @@ pub fn call0(comptime root: type, comptime T: type, object: anytype) !T {
 pub fn call(comptime root: type, comptime ReturnType: type, object: anytype, args: anytype, kwargs: anytype) !ReturnType {
     const pyobj = py.object(root, object);
 
-    var argsPy = try if (@typeInfo(@TypeOf(args)) == .Optional and args == null)
+    var argsPy = try if (@typeInfo(@TypeOf(args)) == .optional and args == null)
         py.PyTuple(root).new(0)
     else
         py.PyTuple(root).checked(try py.create(root, args));
@@ -109,7 +109,7 @@ pub fn call(comptime root: type, comptime ReturnType: type, object: anytype, arg
             kwpy.decref();
         }
     }
-    if (!(@typeInfo(@TypeOf(kwargs)) == .Optional and kwargs == null)) {
+    if (!(@typeInfo(@TypeOf(kwargs)) == .optional and kwargs == null)) {
         // Annoyingly our trampoline turns an empty kwargs struct into a PyTuple.
         // This will be fixed by #94
         const kwobj = try py.create(root, kwargs);

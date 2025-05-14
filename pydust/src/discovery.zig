@@ -28,13 +28,14 @@ const Identifier = struct {
 };
 
 fn countDefinitions(comptime definition: type) usize {
+    @setEvalBranchQuota(10000);
     comptime var count = 0;
     switch (@typeInfo(definition)) {
-        .Struct => |info| {
-            for (info.fields) |f| {
+        .@"struct" => |info| {
+            inline for (info.fields) |f| {
                 count += countDefinitions(f.type);
             }
-            for (info.decls) |d| {
+            inline for (info.decls) |d| {
                 const field = @field(definition, d.name);
                 count += switch (@TypeOf(field)) {
                     Definition => 1 + countDefinitions(field.definition),
@@ -52,7 +53,7 @@ fn getDefinitions(comptime definition: type) [countDefinitions(definition)]Defin
     comptime var definitions: [countDefinitions(definition)]Definition = undefined;
     comptime var count = 0;
     switch (@typeInfo(definition)) {
-        .Struct => |info| {
+        .@"struct" => |info| {
             for (info.fields) |f| {
                 for (getDefinitions(f.type)) |subDef| {
                     // Append the sub-definition to the list.
@@ -86,7 +87,7 @@ fn getIdentifiers(
     comptime var identifiers: [countDefinitions(definition)]Identifier = undefined;
     comptime var count = 0;
     switch (@typeInfo(definition)) {
-        .Struct => |info| {
+        .@"struct" => |info| {
             // Iterate over the fields of the struct
             for (info.fields) |f| {
                 for (getIdentifiers(f.type, qualifiedName ++ .{f.name}, definition)) |identifier| {
@@ -160,7 +161,7 @@ pub const State = struct {
         return switch (@TypeOf(definition)) {
             Definition => definition,
             type => switch (@typeInfo(definition)) {
-                .Struct => blk: {
+                .@"struct" => blk: {
                     for ([_]Definition{.{ .definition = root, .type = .module }} ++ getDefinitions(root)) |def| {
                         if (def.definition == definition)
                             break :blk def;
@@ -185,7 +186,7 @@ pub const State = struct {
         comptime definition: type,
     ) ?Identifier {
         const qualifiedName = &.{@import("pyconf").module_name};
-        if (@typeInfo(definition) != .Struct) {
+        if (@typeInfo(definition) != .@"struct") {
             return null;
         }
         for ([_]Identifier{.{

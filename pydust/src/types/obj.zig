@@ -12,7 +12,6 @@
 
 const std = @import("std");
 const ffi = @import("../ffi.zig");
-const str = @import("str.zig");
 const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;

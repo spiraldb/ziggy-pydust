@@ -1,18 +1,13 @@
-from __future__ import annotations
-
 class Range:
     """
     An example of iterable class
     """
 
-    def __init__(self, lower, upper, step, /):
-        pass
-
+    def __init__(self, lower, upper, step, /) -> None: ...
     def __iter__(self, /):
         """
         Implement iter(self).
         """
-        ...
 
 class RangeIterator:
     """
@@ -23,4 +18,3 @@ class RangeIterator:
         """
         Implement next(self).
         """
-        ...

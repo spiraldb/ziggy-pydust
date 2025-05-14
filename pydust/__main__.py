@@ -21,19 +21,32 @@ from pydust import buildzig, config
 parser = argparse.ArgumentParser()
 sub = parser.add_subparsers(dest="command", required=True)
 
-debug_sp = sub.add_parser("debug", help="Compile a Zig file with debug symbols. Useful for running from an IDE.")
+debug_sp = sub.add_parser(
+    "debug",
+    help="Compile a Zig file with debug symbols. Useful for running from an IDE.",
+)
 debug_sp.add_argument("entrypoint")
 
 build_sp = sub.add_parser(
-    "build", help="Build a zig-based python extension.", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    "build",
+    help="Build a zig-based python extension.",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 build_sp.add_argument("-z", "--zig-exe", help="zig executable path")
 build_sp.add_argument("-b", "--build-zig", default="build.zig", help="build.zig file")
 build_sp.add_argument("-m", "--self-managed", default=False, action="store_true", help="self-managed mode")
-build_sp.add_argument("-a", "--limited-api", default=True, action="store_true", help="use limited python c-api")
+build_sp.add_argument(
+    "-a",
+    "--limited-api",
+    default=True,
+    action="store_true",
+    help="use limited python c-api",
+)
 build_sp.add_argument("-p", "--prefix", default="", help="prefix of built extension")
 build_sp.add_argument(
-    "extensions", nargs="+", help="space separated list of extension '<path>' or '<name>=<path>' entries"
+    "extensions",
+    nargs="+",
+    help="space separated list of extension '<path>' or '<name>=<path>' entries",
 )
 
 

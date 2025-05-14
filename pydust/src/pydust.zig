@@ -55,7 +55,7 @@ pub fn rootmodule(comptime definition: type) void {
     };
 
     const short_name = if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
-    @export(Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .strong });
+    @export(&Closure.init, .{ .name = "PyInit_" ++ short_name, .linkage = .strong });
 }
 
 /// Register a Pydust module as a submodule to an existing module.
@@ -69,7 +69,7 @@ pub fn class(comptime definition: type) Definition {
 }
 
 // pub fn zig(comptime definition: type) @TypeOf(definition) {
-//     for (@typeInfo(definition).Struct.decls) |decl| {
+//     for (@typeInfo(definition).@"struct".decls) |decl| {
 //         State.privateMethod(&@field(definition, decl.name));
 //     }
 //     return definition;
