@@ -46,7 +46,7 @@ pub fn NotImplemented(comptime root: type) py.PyObject(root) {
 /// Returns a new reference to Py_None.
 pub fn None(comptime root: type) py.PyObject(root) {
     // It's important that we incref the Py_None singleton
-    const none = py.PyObject(root){ .py = if (ffi.PY_VERSION_HEX < 0x030D0000) 
+    const none = py.PyObject(root){ .py = if (ffi.PY_VERSION_HEX < 0x030D0000)
         ffi.Py_None()
     else
         ffi.Py_GetConstantBorrowed(ffi.Py_CONSTANT_NONE) };
@@ -274,10 +274,10 @@ pub fn self(comptime root: type, comptime Class: type) !py.PyType(root) {
 pub fn super(comptime root: type, comptime Super: type, selfInstance: anytype) !py.PyObject(root) {
     const mod = State.getContaining(root, Super, .module);
 
-    const imported = try import(root, State.getIdentifier(root, mod).name);
+    const imported = try import(root, State.getIdentifier(root, mod).name());
     defer imported.decref();
 
-    const superPyType = try imported.get(State.getIdentifier(root, Super).name);
+    const superPyType = try imported.get(State.getIdentifier(root, Super).name());
     defer superPyType.decref();
 
     const superBuiltin: py.PyObject(root) = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };

@@ -139,7 +139,7 @@ fn Slots(comptime root: type, comptime definition: type) type {
                 // which is a dumb object containing only a name.
                 // See https://github.com/python/cpython/blob/042f31da552c19054acd3ef7bb6cfd857bce172b/Python/import.c#L2527-L2539
 
-                const name = State.getIdentifier(root, submodule).name;
+                const name = comptime State.getIdentifier(root, submodule).name();
                 const submodDef = Module(root, name, submodule);
                 const pySubmodDef: *ffi.PyModuleDef = @ptrCast((try submodDef.init()).py);
 

@@ -21,10 +21,14 @@ const DefinitionType = enum { module, class, attribute, property };
 
 /// Captures the name of and relationships between Pydust objects.
 const Identifier = struct {
-    name: [:0]const u8,
     qualifiedName: []const [:0]const u8,
-    definition: type,
+    definition: Definition,
     parent: type,
+
+    pub fn name(self: Identifier) [:0]const u8 {
+        const qualifiedName = self.qualifiedName;
+        return qualifiedName[qualifiedName.len - 1];
+    }
 };
 
 fn countDefinitions(comptime definition: type) usize {
@@ -47,36 +51,6 @@ fn countDefinitions(comptime definition: type) usize {
         else => {},
     }
     return count;
-}
-
-fn getDefinitions(comptime definition: type) [countDefinitions(definition)]Definition {
-    comptime var definitions: [countDefinitions(definition)]Definition = undefined;
-    comptime var count = 0;
-    switch (@typeInfo(definition)) {
-        .@"struct" => |info| {
-            for (info.fields) |f| {
-                for (getDefinitions(f.type)) |subDef| {
-                    // Append the sub-definition to the list.
-                    definitions[count] = subDef;
-                    count += 1;
-                }
-            }
-            for (info.decls) |d| {
-                const field = @field(definition, d.name);
-                for (switch (@TypeOf(field)) {
-                    Definition => .{field} ++ getDefinitions(field.definition),
-                    type => getDefinitions(field), // Handle other types
-                    else => .{},
-                }) |subDef| {
-                    // Append the sub-definition to the list.
-                    definitions[count] = subDef;
-                    count += 1;
-                }
-            }
-        },
-        else => {},
-    }
-    return definitions;
 }
 
 fn getIdentifiers(
@@ -102,9 +76,8 @@ fn getIdentifiers(
                 // Handle the field based on its type
                 for (switch (@TypeOf(field)) {
                     Definition => [_]Identifier{.{
-                        .name = d.name,
                         .qualifiedName = name,
-                        .definition = field.definition,
+                        .definition = field,
                         .parent = parent,
                     }} ++ getIdentifiers(field.definition, name, definition),
                     type => getIdentifiers(field, name, definition),
@@ -119,6 +92,15 @@ fn getIdentifiers(
         else => {},
     }
     return identifiers;
+}
+
+fn getAllIdentifiers(comptime definition: type) [countDefinitions(definition) + 1]Identifier {
+    const qualifiedName = &.{@import("pyconf").module_name};
+    return [_]Identifier{.{
+        .qualifiedName = qualifiedName,
+        .definition = .{ .definition = definition, .type = .module },
+        .parent = definition,
+    }} ++ getIdentifiers(definition, qualifiedName, definition);
 }
 
 pub const State = struct {
@@ -162,9 +144,9 @@ pub const State = struct {
             Definition => definition,
             type => switch (@typeInfo(definition)) {
                 .@"struct" => blk: {
-                    for ([_]Definition{.{ .definition = root, .type = .module }} ++ getDefinitions(root)) |def| {
-                        if (def.definition == definition)
-                            break :blk def;
+                    for (getAllIdentifiers(root)) |id| {
+                        if (id.definition.definition == definition)
+                            break :blk id.definition;
                     }
                     break :blk null;
                 },
@@ -185,18 +167,12 @@ pub const State = struct {
         comptime root: type,
         comptime definition: type,
     ) ?Identifier {
-        const qualifiedName = &.{@import("pyconf").module_name};
         if (@typeInfo(definition) != .@"struct") {
             return null;
         }
-        for ([_]Identifier{.{
-            .name = qualifiedName[0],
-            .qualifiedName = qualifiedName,
-            .definition = root,
-            .parent = root,
-        }} ++ getIdentifiers(root, qualifiedName, root)) |idef| {
-            if (idef.definition == definition) {
-                return idef;
+        for (getAllIdentifiers(root)) |id| {
+            if (id.definition.definition == definition) {
+                return id;
             }
         }
         return null;
@@ -216,11 +192,11 @@ pub const State = struct {
         comptime definition: type,
         comptime deftype: DefinitionType,
     ) ?type {
-        const defs = [_]Definition{.{ .definition = root, .type = .module }} ++ getDefinitions(root);
-        var idx = defs.len;
+        const identifiers = getAllIdentifiers(root);
+        var idx = identifiers.len;
         var foundOriginal = false;
         while (idx > 0) : (idx -= 1) {
-            const def = defs[idx - 1];
+            const def = identifiers[idx - 1].definition;
 
             if (def.definition == definition) {
                 // Only once we found the original definition, should we check for deftype.

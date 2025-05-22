@@ -229,9 +229,9 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                             defer Cls.decref();
 
                             if (!try py.isinstance(root, obj, Cls)) {
-                                const clsName = State.getIdentifier(root, p.child).name;
+                                const clsName = State.getIdentifier(root, p.child).name();
                                 const mod = State.getContaining(root, p.child, .module);
-                                const modName = State.getIdentifier(root, mod).name;
+                                const modName = State.getIdentifier(root, mod).name();
                                 return py.TypeError(root).raiseFmt(
                                     "Expected {s}.{s} but found {s}",
                                     .{ modName, clsName, try obj.getTypeName() },

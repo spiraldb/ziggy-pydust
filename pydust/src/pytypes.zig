@@ -37,7 +37,7 @@ pub fn PyTypeStruct(comptime definition: type) type {
 pub fn Type(comptime root: type, comptime name: [:0]const u8, comptime definition: type) type {
     return struct {
         const qualifiedName: [:0]const u8 = blk: {
-            const moduleName = State.getIdentifier(root, State.getContaining(root, definition, .module)).name;
+            const moduleName = State.getIdentifier(root, State.getContaining(root, definition, .module)).name();
             break :blk moduleName ++ "." ++ name;
         };
 
