@@ -18,11 +18,11 @@ const root = @This();
 pub fn append(args: struct { left: py.PyString(root) }) !py.PyString(root) {
     // Since we create right, we must also decref it.
     const right = try py.PyString(root).create("right");
-    defer right.decref();
+    defer right.obj.decref();
 
     // Left is given to us as a borrowed reference from the caller.
     // Since append steals the left-hand-side, we must incref first.
-    args.left.incref();
+    args.left.obj.incref();
     return args.left.append(right);
 }
 // --8<-- [end:append]

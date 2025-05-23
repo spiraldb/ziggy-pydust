@@ -101,12 +101,12 @@ pub fn call(comptime root: type, comptime ReturnType: type, object: anytype, arg
     else
         py.PyTuple(root).checked(try py.create(root, args));
 
-    defer argsPy.decref();
+    defer argsPy.obj.decref();
 
     var kwargsPy: ?py.PyDict(root) = null;
     defer {
         if (kwargsPy) |kwpy| {
-            kwpy.decref();
+            kwpy.obj.decref();
         }
     }
     if (!(@typeInfo(@TypeOf(kwargs)) == .optional and kwargs == null)) {
@@ -180,7 +180,7 @@ pub fn import(comptime root: type, module_name: [:0]const u8) !py.PyObject(root)
 /// Allocate a Pydust class, but does not initialize the memory.
 pub fn alloc(comptime root: type, comptime Cls: type) PyError!*Cls {
     const pytype = try self(root, Cls);
-    defer pytype.decref();
+    defer pytype.obj.decref();
 
     // Alloc the class
     // NOTE(ngates): we currently don't allow users to override tp_alloc, therefore we can shortcut
@@ -226,7 +226,7 @@ pub fn moduleState(comptime root: type, comptime Module: type) !*Module {
     }
 
     const mod = py.PyModule(root).unchecked(try lift(root, Module));
-    defer mod.decref();
+    defer mod.obj.decref();
 
     return mod.getState(Module);
 }

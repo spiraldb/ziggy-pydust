@@ -26,7 +26,7 @@ pub fn PyCode(comptime root: type) type {
 
         pub inline fn firstLineNumber(self: *const Self) !u32 {
             const lineNo = try self.obj.getAs(py.PyLong(root), "co_firstlineno");
-            defer lineNo.decref();
+            defer lineNo.obj.decref();
             return lineNo.as(u32);
         }
 

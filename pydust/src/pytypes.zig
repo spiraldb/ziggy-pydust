@@ -853,7 +853,7 @@ fn EqualsOperator(
             if (Other == *const definition) {
                 // TODO(ngates): #193
                 const selfType = py.self(root, definition) catch return null;
-                defer selfType.decref();
+                defer selfType.obj.decref();
 
                 const isSubclass = py.isinstance(root, pyother, selfType) catch return null;
                 if (!isSubclass) {

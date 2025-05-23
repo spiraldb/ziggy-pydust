@@ -43,17 +43,17 @@ pub fn PyString(comptime root: type) type {
 
         /// Append other to self.
         ///
-        /// Warning: a reference to self is stolen. Use concat, or self.incref(), if you don't own a reference to self.
+        /// Warning: a reference to self is stolen. Use concat, or self.obj.incref(), if you don't own a reference to self.
         pub fn append(self: Self, other: Self) !Self {
             return self.appendObj(other.obj);
         }
 
         /// Append the slice to self.
         ///
-        /// Warning: a reference to self is stolen. Use concat, or self.incref(), if you don't own a reference to self.
+        /// Warning: a reference to self is stolen. Use concat, or self.obj.incref(), if you don't own a reference to self.
         pub fn appendSlice(self: Self, str: []const u8) !Self {
             const other = try create(str);
-            defer other.decref();
+            defer other.obj.decref();
             return self.appendObj(other.obj);
         }
 
@@ -80,7 +80,7 @@ pub fn PyString(comptime root: type) type {
         /// Concat other to self. Returns a new reference.
         pub fn concatSlice(self: Self, other: []const u8) !Self {
             const otherString = try create(other);
-            defer otherString.decref();
+            defer otherString.obj.decref();
 
             return concat(self, otherString);
         }

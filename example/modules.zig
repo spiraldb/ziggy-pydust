@@ -33,7 +33,7 @@ pub fn __init__(self: *Self) !void { // (3)!
 }
 
 pub fn __del__(self: Self) void {
-    self.name.decref();
+    self.name.obj.decref();
 }
 
 pub fn increment(self: *Self) void { // (4)!

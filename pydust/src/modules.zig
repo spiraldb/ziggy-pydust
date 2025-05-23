@@ -147,7 +147,7 @@ fn Slots(comptime root: type, comptime definition: type) type {
                 const types = try py.import(root, "types");
                 defer types.decref();
                 const pyname = try py.PyString(root).create(name);
-                defer pyname.decref();
+                defer pyname.obj.decref();
                 const spec = try types.call(py.PyObject(root), "SimpleNamespace", .{}, .{ .name = pyname });
                 defer spec.decref();
 

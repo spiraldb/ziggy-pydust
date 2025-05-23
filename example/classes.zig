@@ -52,7 +52,7 @@ pub const Dog = py.class(struct {
     breed_: py.PyString(root),
 
     pub fn __init__(self: *Self, args: struct { breed: py.PyString(root) }) !void {
-        args.breed.incref();
+        args.breed.obj.incref();
         self.* = .{
             .animal = .{ .species_ = try py.PyString(root).create("dog") },
             .breed_ = args.breed,
@@ -71,7 +71,7 @@ pub const User = py.class(struct {
     const Self = @This();
 
     pub fn __init__(self: *Self, args: struct { name: py.PyString(root) }) void {
-        args.name.incref();
+        args.name.obj.incref();
         self.* = .{ .name = args.name, .email = .{} };
     }
 
@@ -85,7 +85,7 @@ pub const User = py.class(struct {
         e: ?py.PyString(root) = null,
 
         pub fn get(prop: *const Prop) ?py.PyString(root) {
-            if (prop.e) |e| e.incref();
+            if (prop.e) |e| e.obj.incref();
             return prop.e;
         }
 
@@ -94,7 +94,7 @@ pub const User = py.class(struct {
             if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
                 return py.ValueError(root).raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
             }
-            value.incref();
+            value.obj.incref();
             prop.e = value;
         }
     });
@@ -106,8 +106,8 @@ pub const User = py.class(struct {
     });
 
     pub fn __del__(self: *Self) void {
-        self.name.decref();
-        if (self.email.e) |e| e.decref();
+        self.name.obj.decref();
+        if (self.email.e) |e| e.obj.decref();
     }
 });
 // --8<-- [end:properties]

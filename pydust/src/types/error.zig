@@ -305,7 +305,7 @@ fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
 
                     // Import the compiled code as a module and invoke the failing function
                     const fake_module = try py.PyModule(root).fromCode(code, line_info.file_name, symbol_info.compile_unit_name);
-                    defer fake_module.decref();
+                    defer fake_module.obj.decref();
 
                     _ = fake_module.obj.call(void, symbol_info.name, .{}, .{}) catch null;
 

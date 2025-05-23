@@ -230,7 +230,7 @@ pub const Operator = py.class(struct {
 
     pub fn __truediv__(self: *const Self, other: py.PyObject(root)) !py.PyObject(root) {
         const selfCls = try py.self(root, Self);
-        defer selfCls.decref();
+        defer selfCls.obj.decref();
 
         if (try py.PyFloat(root).check(other)) {
             const numF: f64 = @floatFromInt(self.num_);
@@ -293,7 +293,7 @@ pub const LessThan = py.class(struct {
     name: py.PyString(root),
 
     pub fn __init__(self: *Self, args: struct { name: py.PyString(root) }) void {
-        args.name.incref();
+        args.name.obj.incref();
         self.name = args.name;
     }
 

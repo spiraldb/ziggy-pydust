@@ -226,7 +226,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                         if (def.type == .class) {
                             // TODO(ngates): #193
                             const Cls = try py.self(root, p.child);
-                            defer Cls.decref();
+                            defer Cls.obj.decref();
 
                             if (!try py.isinstance(root, obj, Cls)) {
                                 const clsName = State.getIdentifier(root, p.child).name();

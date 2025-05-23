@@ -62,7 +62,7 @@ pub fn PyObject(comptime root: type) type {
         /// Returns a new reference to the attribute of the object.
         pub fn get(self: Self, attrName: []const u8) !Self {
             const attrStr = try py.PyString(root).create(attrName);
-            defer attrStr.decref();
+            defer attrStr.obj.decref();
 
             return .{ .py = ffi.PyObject_GetAttr(self.py, attrStr.obj.py) orelse return PyError.PyRaised };
         }
@@ -70,7 +70,7 @@ pub fn PyObject(comptime root: type) type {
         /// Returns a new reference to the attribute of the object using default lookup semantics.
         pub fn getAttribute(self: Self, attrName: []const u8) !Self {
             const attrStr = try py.PyString(root).create(attrName);
-            defer attrStr.decref();
+            defer attrStr.obj.decref();
 
             return .{ .py = ffi.PyObject_GenericGetAttr(self.py, attrStr.obj.py) orelse return PyError.PyRaised };
         }
@@ -83,7 +83,7 @@ pub fn PyObject(comptime root: type) type {
         /// Checks whether object has given attribute
         pub fn has(self: Self, attrName: []const u8) !bool {
             const attrStr = try py.PyString(root).create(attrName);
-            defer attrStr.decref();
+            defer attrStr.obj.decref();
             return ffi.PyObject_HasAttr(self.py, attrStr.obj.py) == 1;
         }
 
@@ -102,7 +102,7 @@ pub fn PyObject(comptime root: type) type {
 
         pub fn set(self: Self, attr: []const u8, value: Self) !Self {
             const attrStr = try py.PyString(root).create(attr);
-            defer attrStr.decref();
+            defer attrStr.obj.decref();
 
             if (ffi.PyObject_SetAttr(self.py, attrStr.obj.py, value.py) < 0) {
                 return PyError.PyRaised;
@@ -112,7 +112,7 @@ pub fn PyObject(comptime root: type) type {
 
         pub fn del(self: Self, attr: []const u8) !Self {
             const attrStr = try py.PyString(root).create(attr);
-            defer attrStr.decref();
+            defer attrStr.obj.decref();
 
             if (ffi.PyObject_DelAttr(self.py, attrStr.obj.py) < 0) {
                 return PyError.PyRaised;
@@ -134,7 +134,7 @@ pub fn PyObjectMixin(comptime root: type, comptime name: []const u8, comptime pr
         pub fn checked(obj: py.PyObject(root)) !Self {
             if (PyCheck(obj.py) == 0) {
                 const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.decref();
+                defer typeName.obj.decref();
                 return py.TypeError(root).raiseFmt("expected {s}, found {s}", .{ name, try typeName.asSlice() });
             }
             return .{ .obj = obj };
@@ -143,16 +143,6 @@ pub fn PyObjectMixin(comptime root: type, comptime name: []const u8, comptime pr
         /// Unchecked conversion from a PyObject.
         pub fn unchecked(obj: py.PyObject(root)) Self {
             return .{ .obj = obj };
-        }
-
-        /// Increment the object's refcnt.
-        pub fn incref(self: Self) void {
-            self.obj.incref();
-        }
-
-        /// Decrement the object's refcnt.
-        pub fn decref(self: Self) void {
-            self.obj.decref();
         }
     };
 }
