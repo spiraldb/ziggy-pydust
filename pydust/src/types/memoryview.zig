@@ -14,7 +14,6 @@ const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const State = @import("../discovery.zig").State;
 
 pub fn PyMemoryView(comptime root: type) type {
@@ -27,10 +26,24 @@ pub fn PyMemoryView(comptime root: type) type {
         };
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(root, "memoryview", "PyMemoryView", Self);
 
         pub fn check(obj: py.PyObject(root)) !bool {
             return ffi.PyMemoryView_Check(obj.py) == 1;
+        }
+
+        /// Checked conversion from a PyObject.
+        pub fn checked(obj: py.PyObject(root)) !Self {
+            if (!try check(obj)) {
+                const typeName = try py.str(root, py.type_(root, obj));
+                defer typeName.obj.decref();
+                return py.TypeError(root).raiseFmt("expected memoryview, found {s}", .{try typeName.asSlice()});
+            }
+            return .{ .obj = obj };
+        }
+
+        /// Unchecked conversion from a PyObject.
+        pub fn unchecked(obj: py.PyObject(root)) Self {
+            return .{ .obj = obj };
         }
 
         pub fn fromSlice(slice: anytype) !Self {

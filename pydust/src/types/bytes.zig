@@ -13,7 +13,6 @@
 const std = @import("std");
 const py = @import("../pydust.zig");
 const ffi = py.ffi;
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 
@@ -22,10 +21,24 @@ pub fn PyBytes(comptime root: type) type {
         obj: py.PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(root, "bytes", "PyBytes", Self);
 
         pub fn check(obj: py.PyObject(root)) !bool {
             return ffi.PyBytes_Check(obj.py) == 1;
+        }
+
+        /// Checked conversion from a PyObject.
+        pub fn checked(obj: py.PyObject(root)) !Self {
+            if (!try check(obj)) {
+                const typeName = try py.str(root, py.type_(root, obj));
+                defer typeName.obj.decref();
+                return py.TypeError(root).raiseFmt("expected bytes, found {s}", .{try typeName.asSlice()});
+            }
+            return .{ .obj = obj };
+        }
+
+        /// Unchecked conversion from a PyObject.
+        pub fn unchecked(obj: py.PyObject(root)) Self {
+            return .{ .obj = obj };
         }
 
         pub fn create(value: []const u8) !Self {

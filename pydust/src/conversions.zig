@@ -40,19 +40,6 @@ pub inline fn as(comptime root: type, comptime T: type, obj: anytype) py.PyError
     return tramp.Trampoline(root, T).unwrap(object(root, obj));
 }
 
-/// Python -> Pydust. Perform a checked cast from a PyObject to a given PyDust class type.
-pub inline fn checked(comptime root: type, comptime T: type, obj: py.PyObject(root)) py.PyError!T {
-    const definition = State.getDefinition(root, @typeInfo(T).pointer.child);
-    if (definition.type != .class) {
-        @compileError("Can only perform checked cast into a PyDust class type");
-    }
-
-    // TODO(ngates): to perform fast type checking, we need to store our PyType on the parent module.
-    // See how the Python JSON module did this: https://github.com/python/cpython/commit/33f15a16d40cb8010a8c758952cbf88d7912ee2d#diff-efe183ae0b85e5b8d9bbbc588452dd4de80b39fd5c5174ee499ba554217a39edR1814
-    // For now, we perform a slow import/isinstance check by using the `as` conversion.
-    return as(T, obj);
-}
-
 /// Python -> Pydust. Perform an unchecked cast from a PyObject to a given PyDust class type.
 pub inline fn unchecked(comptime root: type, comptime T: type, obj: py.PyObject(root)) T {
     const Definition = @typeInfo(T).pointer.child;

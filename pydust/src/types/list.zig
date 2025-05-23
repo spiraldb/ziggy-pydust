@@ -12,8 +12,6 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
-
 const ffi = py.ffi;
 const PyObject = py.PyObject;
 const PyLong = py.PyLong;
@@ -24,13 +22,27 @@ const State = @import("../discovery.zig").State;
 /// See: https://docs.python.org/3/c-api/list.html
 pub fn PyList(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(root),
+        obj: PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(root, "list", "PyList", Self);
 
-        pub fn check(obj: py.PyObject(root)) !bool {
+        pub fn check(obj: PyObject(root)) !bool {
             return ffi.PyList_Check(obj.py) == 1;
+        }
+
+        /// Checked conversion from a PyObject.
+        pub fn checked(obj: PyObject(root)) !Self {
+            if (!try check(obj)) {
+                const typeName = try py.str(root, py.type_(root, obj));
+                defer typeName.obj.decref();
+                return py.TypeError(root).raiseFmt("expected list, found {s}", .{try typeName.asSlice()});
+            }
+            return .{ .obj = obj };
+        }
+
+        /// Unchecked conversion from a PyObject.
+        pub fn unchecked(obj: PyObject(root)) Self {
+            return .{ .obj = obj };
         }
 
         pub fn new(size: usize) !Self {

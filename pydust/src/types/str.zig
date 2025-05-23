@@ -12,7 +12,6 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 
 const ffi = py.ffi;
 const PyObject = @import("obj.zig").PyObject;
@@ -24,10 +23,24 @@ pub fn PyString(comptime root: type) type {
         obj: PyObject(root),
 
         const Self = @This();
-        pub usingnamespace PyObjectMixin(root, "str", "PyUnicode", Self);
 
         pub fn check(obj: PyObject(root)) !bool {
             return ffi.PyUnicode_Check(obj.py) == 1;
+        }
+
+        /// Checked conversion from a PyObject.
+        pub fn checked(obj: PyObject(root)) !Self {
+            if (!try check(obj)) {
+                const typeName = try py.str(root, py.type_(root, obj));
+                defer typeName.obj.decref();
+                return py.TypeError(root).raiseFmt("expected str, found {s}", .{try typeName.asSlice()});
+            }
+            return .{ .obj = obj };
+        }
+
+        /// Unchecked conversion from a PyObject.
+        pub fn unchecked(obj: PyObject(root)) Self {
+            return .{ .obj = obj };
         }
 
         pub fn create(value: []const u8) !Self {

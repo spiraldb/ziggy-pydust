@@ -126,27 +126,6 @@ pub fn PyObject(comptime root: type) type {
     };
 }
 
-pub fn PyObjectMixin(comptime root: type, comptime name: []const u8, comptime prefix: []const u8, comptime Self: type) type {
-    const PyCheck = @field(ffi, prefix ++ "_Check");
-
-    return struct {
-        /// Checked conversion from a PyObject.
-        pub fn checked(obj: py.PyObject(root)) !Self {
-            if (PyCheck(obj.py) == 0) {
-                const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.obj.decref();
-                return py.TypeError(root).raiseFmt("expected {s}, found {s}", .{ name, try typeName.asSlice() });
-            }
-            return .{ .obj = obj };
-        }
-
-        /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: py.PyObject(root)) Self {
-            return .{ .obj = obj };
-        }
-    };
-}
-
 test "call" {
     py.initialize();
     defer py.finalize();
