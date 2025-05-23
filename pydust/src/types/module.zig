@@ -29,6 +29,10 @@ pub fn PyModule(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "module", "PyModule", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyModule_Check(obj.py) == 1;
+        }
+
         pub fn import(name: [:0]const u8) !Self {
             return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.PyRaised } };
         }

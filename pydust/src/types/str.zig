@@ -26,6 +26,10 @@ pub fn PyString(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "str", "PyUnicode", Self);
 
+        pub fn check(obj: PyObject(root)) !bool {
+            return ffi.PyUnicode_Check(obj.py) == 1;
+        }
+
         pub fn create(value: []const u8) !Self {
             const unicode = ffi.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
             return .{ .obj = .{ .py = unicode } };

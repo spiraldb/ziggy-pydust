@@ -130,11 +130,6 @@ pub fn PyObjectMixin(comptime root: type, comptime name: []const u8, comptime pr
     const PyCheck = @field(ffi, prefix ++ "_Check");
 
     return struct {
-        /// Check whether the given object is of this type.
-        pub fn check(obj: py.PyObject(root)) !bool {
-            return PyCheck(obj.py) == 1;
-        }
-
         /// Checked conversion from a PyObject.
         pub fn checked(obj: py.PyObject(root)) !Self {
             if (PyCheck(obj.py) == 0) {
@@ -143,14 +138,6 @@ pub fn PyObjectMixin(comptime root: type, comptime name: []const u8, comptime pr
                 return py.TypeError(root).raiseFmt("expected {s}, found {s}", .{ name, try typeName.asSlice() });
             }
             return .{ .obj = obj };
-        }
-
-        /// Optionally downcast the object if it is of this type.
-        pub fn checkedCast(obj: py.PyObject(root)) ?Self {
-            if (PyCheck(obj.py) == 1) {
-                return .{ .obj = obj };
-            }
-            return null;
         }
 
         /// Unchecked conversion from a PyObject.

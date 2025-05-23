@@ -41,7 +41,7 @@ pub inline fn as(comptime root: type, comptime T: type, obj: anytype) py.PyError
 }
 
 /// Python -> Pydust. Perform a checked cast from a PyObject to a given PyDust class type.
-pub inline fn checked(comptime root: type, comptime T: type, obj: py.PyObject) py.PyError!T {
+pub inline fn checked(comptime root: type, comptime T: type, obj: py.PyObject(root)) py.PyError!T {
     const definition = State.getDefinition(root, @typeInfo(T).pointer.child);
     if (definition.type != .class) {
         @compileError("Can only perform checked cast into a PyDust class type");

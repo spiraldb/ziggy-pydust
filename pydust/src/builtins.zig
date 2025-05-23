@@ -225,15 +225,15 @@ pub fn moduleState(comptime root: type, comptime Module: type) !*Module {
         @compileError("Not a module definition: " ++ Module);
     }
 
-    const mod = py.PyModule.unchecked(try lift(root, Module));
+    const mod = py.PyModule(root).unchecked(try lift(root, Module));
     defer mod.decref();
 
     return mod.getState(Module);
 }
 
 /// Return the next item of an iterator. Equivalent to next(obj) in Python.
-pub fn next(comptime T: type, iterator: anytype) !?T {
-    const pyiter = try py.PyIter.checked(iterator);
+pub fn next(comptime root: type, comptime T: type, iterator: anytype) !?T {
+    const pyiter = try py.PyIter(root).checked(iterator);
     return try pyiter.next(T);
 }
 

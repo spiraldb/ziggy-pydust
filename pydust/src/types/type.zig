@@ -27,6 +27,10 @@ pub fn PyType(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "type", "PyType", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyType_Check(obj.py) == 1;
+        }
+
         pub fn name(self: Self) !py.PyString(root) {
             return py.PyString(root).unchecked(.{
                 .py = ffi.PyType_GetName(typePtr(self)) orelse return PyError.PyRaised,

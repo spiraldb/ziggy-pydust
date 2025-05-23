@@ -27,6 +27,10 @@ pub fn PyFloat(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "float", "PyFloat", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyFloat_Check(obj.py) == 1;
+        }
+
         pub fn create(value: anytype) !Self {
             const pyfloat = ffi.PyFloat_FromDouble(@floatCast(value)) orelse return PyError.PyRaised;
             return .{ .obj = .{ .py = pyfloat } };

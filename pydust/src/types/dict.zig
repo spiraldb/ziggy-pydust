@@ -25,6 +25,10 @@ pub fn PyDict(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "dict", "PyDict", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyDict_Check(obj.py) == 1;
+        }
+
         /// Create a dictionary from a Zig object
         pub fn create(value: anytype) !Self {
             const s = @typeInfo(@TypeOf(value)).@"struct";

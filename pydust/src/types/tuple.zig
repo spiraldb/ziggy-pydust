@@ -29,6 +29,10 @@ pub fn PyTuple(comptime root: type) type {
         pub usingnamespace PyObjectMixin(root, "tuple", "PyTuple", Self);
         pub usingnamespace seq.SequenceMixin(root, Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyTuple_Check(obj.py) == 1;
+        }
+
         /// Construct a PyTuple from the given Zig tuple.
         pub fn create(values: anytype) !Self {
             const s = @typeInfo(@TypeOf(values)).@"struct";

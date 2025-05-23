@@ -29,6 +29,10 @@ pub fn PyMemoryView(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "memoryview", "PyMemoryView", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyMemoryView_Check(obj.py) == 1;
+        }
+
         pub fn fromSlice(slice: anytype) !Self {
             const sliceType = Slice(@TypeOf(slice));
             const sliceTpInfo = @typeInfo(sliceType);

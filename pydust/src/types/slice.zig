@@ -25,6 +25,10 @@ pub fn PySlice(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "slice", "PySlice", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PySlice_Check(obj.py) == 1;
+        }
+
         pub fn create(start: anytype, stop: anytype, step: anytype) !Self {
             // TODO(ngates): think about how to improve comptime optional handling?
             const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(root, start)).py;

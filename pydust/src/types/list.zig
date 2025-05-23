@@ -29,6 +29,10 @@ pub fn PyList(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "list", "PyList", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyList_Check(obj.py) == 1;
+        }
+
         pub fn new(size: usize) !Self {
             const list = ffi.PyList_New(@intCast(size)) orelse return PyError.PyRaised;
             return .{ .obj = .{ .py = list } };

@@ -24,6 +24,10 @@ pub fn PyBytes(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "bytes", "PyBytes", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyBytes_Check(obj.py) == 1;
+        }
+
         pub fn create(value: []const u8) !Self {
             const bytes = ffi.PyBytes_FromStringAndSize(value.ptr, @intCast(value.len)) orelse return PyError.PyRaised;
             return .{ .obj = .{ .py = bytes } };

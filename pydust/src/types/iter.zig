@@ -26,6 +26,10 @@ pub fn PyIter(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "iterator", "PyIter", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyIter_Check(obj.py) == 1;
+        }
+
         pub fn next(self: Self, comptime T: type) !?T {
             if (ffi.PyIter_Next(self.obj.py)) |result| {
                 return try py.as(root, T, result);

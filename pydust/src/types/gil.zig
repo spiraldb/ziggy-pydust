@@ -12,7 +12,6 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
-const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;

@@ -26,6 +26,10 @@ pub fn PyLong(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "int", "PyLong", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyLong_Check(obj.py) == 1;
+        }
+
         pub fn create(value: anytype) !Self {
             if (@TypeOf(value) == comptime_int) {
                 return create(@as(i64, @intCast(value)));

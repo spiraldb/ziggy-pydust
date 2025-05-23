@@ -29,6 +29,10 @@ pub fn PyBool(comptime root: type) type {
         const Self = @This();
         pub usingnamespace PyObjectMixin(root, "bool", "PyBool", Self);
 
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return ffi.PyBool_Check(obj.py) == 1;
+        }
+
         pub fn create(value: bool) !Self {
             return if (value) true_() else false_();
         }
