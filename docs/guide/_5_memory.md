@@ -27,7 +27,7 @@ without stealing one) and also internally creates and decref's `right`.
 --8<-- "example/memory.zig:concat"
 ```
 
-In general, Pydust functions to not steal references. They should be loudly documented in the rare cases that 
+In general, Pydust functions do not steal references. They should be loudly documented in the rare cases that 
 they do, and typically will have the naming convention `fromOwned` meaning they take ownership (steal a reference)
 to the argument being passed in.
 
