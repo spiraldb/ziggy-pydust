@@ -10,22 +10,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub usingnamespace @import("types/bool.zig");
-pub usingnamespace @import("types/buffer.zig");
-pub usingnamespace @import("types/bytes.zig");
-pub usingnamespace @import("types/code.zig");
-pub usingnamespace @import("types/dict.zig");
-pub usingnamespace @import("types/error.zig");
-pub usingnamespace @import("types/float.zig");
-pub usingnamespace @import("types/frame.zig");
-pub usingnamespace @import("types/gil.zig");
-pub usingnamespace @import("types/iter.zig");
-pub usingnamespace @import("types/list.zig");
-pub usingnamespace @import("types/long.zig");
-pub usingnamespace @import("types/memoryview.zig");
-pub usingnamespace @import("types/module.zig");
-pub usingnamespace @import("types/obj.zig");
-pub usingnamespace @import("types/slice.zig");
-pub usingnamespace @import("types/str.zig");
-pub usingnamespace @import("types/tuple.zig");
-pub usingnamespace @import("types/type.zig");
+pub const PyBool = @import("types/bool.zig").PyBool;
+pub const PyBuffer = @import("types/buffer.zig").PyBuffer;
+pub const PyBytes = @import("types/bytes.zig").PyBytes;
+pub const PyCode = @import("types/code.zig").PyCode;
+pub const PyDict = @import("types/dict.zig").PyDict;
+pub const PyFloat = @import("types/float.zig").PyFloat;
+pub const PyFrame = @import("types/frame.zig").PyFrame;
+pub const PyGIL = @import("types/gil.zig").PyGIL;
+pub const PyIter = @import("types/iter.zig").PyIter;
+pub const PyList = @import("types/list.zig").PyList;
+pub const PyLong = @import("types/long.zig").PyLong;
+pub const PyMemoryView = @import("types/memoryview.zig").PyMemoryView;
+pub const PyModule = @import("types/module.zig").PyModule;
+pub const PyObject = @import("types/obj.zig").PyObject;
+pub const PySlice = @import("types/slice.zig").PySlice;
+pub const PyString = @import("types/str.zig").PyString;
+pub const PyTuple = @import("types/tuple.zig").PyTuple;
+pub const PyType = @import("types/type.zig").PyType;
