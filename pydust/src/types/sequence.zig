@@ -11,7 +11,7 @@
 // limitations under the License.
 
 const py = @import("../pydust.zig");
-const ffi = @import("../ffi.zig").c;
+const ffi = @import("ffi");
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 

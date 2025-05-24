@@ -156,7 +156,7 @@ pub const ZeroDivisionError = err.ZeroDivisionError;
 pub const raise = err.raise;
 pub const raiseFmt = err.raiseFmt;
 pub const raiseComptimeFmt = err.raiseComptimeFmt;
-pub const ffi = @import("ffi.zig").c;
+pub const ffi = @import("ffi");
 pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 

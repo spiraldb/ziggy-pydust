@@ -124,33 +124,31 @@ pub const PydustStep = struct {
             "The root path of a file emitted as a binary for use with the debugger",
         );
         if (debugRoot) |root| {
-            {
-                const pyconf = b.addOptions();
-                pyconf.addOption([:0]const u8, "module_name", "debug");
-                pyconf.addOption(bool, "limited_api", false);
-                pyconf.addOption([]const u8, "hexversion", hexversion);
+            const pyconf = b.addOptions();
+            pyconf.addOption([:0]const u8, "module_name", "debug");
+            pyconf.addOption(bool, "limited_api", false);
+            pyconf.addOption([]const u8, "hexversion", hexversion);
 
-                const testdebug = b.addTest(.{
-                    .root_source_file = b.path(root),
-                    .target = b.resolveTargetQuery(.{}),
-                    .optimize = .Debug,
-                });
-                testdebug.root_module.addOptions("pyconf", pyconf);
-                const testdebug_module = b.createModule(.{
-                    .root_source_file = b.path(self.pydust_source_file),
-                    .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
-                });
-                testdebug_module.addIncludePath(b.path(self.python_include_dir));
-                testdebug.root_module.addImport("pydust", testdebug_module);
-                testdebug.linkLibC();
-                testdebug.linkSystemLibrary(libpython);
-                testdebug.addLibraryPath(b.path(self.python_library_dir));
-                // Needed to support miniconda statically linking libpython on macos
-                testdebug.addRPath(b.path(self.python_library_dir));
+            const testdebug = b.addTest(.{
+                .root_source_file = b.path(root),
+                .target = b.resolveTargetQuery(.{}),
+                .optimize = .Debug,
+            });
+            testdebug.root_module.addOptions("pyconf", pyconf);
+            const testdebug_module = b.createModule(.{
+                .root_source_file = b.path(self.pydust_source_file),
+                .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
+            });
+            testdebug_module.addIncludePath(b.path(self.python_include_dir));
+            testdebug.root_module.addImport("pydust", testdebug_module);
+            testdebug.linkLibC();
+            testdebug.linkSystemLibrary(libpython);
+            testdebug.addLibraryPath(b.path(self.python_library_dir));
+            // Needed to support miniconda statically linking libpython on macos
+            testdebug.addRPath(b.path(self.python_library_dir));
 
-                const debugBin = b.addInstallBinFile(testdebug.getEmittedBin(), "debug.bin");
-                b.getInstallStep().dependOn(&debugBin.step);
-            }
+            const debugBin = b.addInstallBinFile(testdebug.getEmittedBin(), "debug.bin");
+            b.getInstallStep().dependOn(&debugBin.step);
         }
 
         return self;
@@ -177,9 +175,14 @@ pub const PydustStep = struct {
             //.main_pkg_path = options.main_pkg_path,
         });
         lib.root_module.addOptions("pyconf", pyconf);
+        const translate_c = self.addTranslateC(options);
+        translate_c.addIncludePath(b.path(self.python_include_dir));
         const lib_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
-            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
+            .imports = &.{
+                .{ .name = "pyconf", .module = pyconf.createModule() },
+                .{ .name = "ffi", .module = translate_c.createModule() },
+            },
         });
         lib_module.addIncludePath(b.path(self.python_include_dir));
         lib.root_module.addImport("pydust", lib_module);
@@ -197,12 +200,10 @@ pub const PydustStep = struct {
 
         // Invoke stub generator on the emitted binary
         const workingDir = std.fs.cwd().realpathAlloc(self.allocator, ".") catch @panic("OOM");
-        var genArgs: []const []const u8 = undefined;
-        if (self.check_stubs) {
-            genArgs = &.{ self.python_exe, "-m", "pydust.generate_stubs", options.name, workingDir, "--check" };
-        } else {
-            genArgs = &.{ self.python_exe, "-m", "pydust.generate_stubs", options.name, workingDir };
-        }
+        const genArgs: []const []const u8 = if (self.check_stubs)
+            &.{ self.python_exe, "-m", "pydust.generate_stubs", options.name, workingDir, "--check" }
+        else
+            &.{ self.python_exe, "-m", "pydust.generate_stubs", options.name, workingDir };
         const stubs = b.addSystemCommand(genArgs);
         stubs.step.dependOn(&install.step);
         self.generate_stubs.dependOn(&stubs.step);
@@ -217,7 +218,10 @@ pub const PydustStep = struct {
         libtest.root_module.addOptions("pyconf", pyconf);
         const libtest_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
-            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
+            .imports = &.{
+                .{ .name = "pyconf", .module = pyconf.createModule() },
+                .{ .name = "ffi", .module = translate_c.createModule() },
+            },
         });
         libtest_module.addIncludePath(b.path(self.python_include_dir));
         libtest.root_module.addImport("pydust", libtest_module);
@@ -278,6 +282,18 @@ pub const PydustStep = struct {
 
     fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
         return getPythonOutput(self.allocator, self.python_exe, code);
+    }
+
+    fn addTranslateC(self: PydustStep, options: PythonModuleOptions) *std.Build.Step.TranslateC {
+        const b = self.owner;
+        const translate_c = b.addTranslateC(.{
+            .root_source_file = b.path("pydust/src/ffi.h"),
+            .target = b.resolveTargetQuery(options.target),
+            .optimize = options.optimize,
+        });
+        if (options.limited_api)
+            translate_c.defineCMacro("Py_LIMITED_API", self.hexversion);
+        return translate_c;
     }
 };
 
