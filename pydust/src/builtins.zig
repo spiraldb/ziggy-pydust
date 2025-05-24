@@ -18,7 +18,7 @@ const std = @import("std");
 const py = @import("./pydust.zig");
 const pytypes = @import("./pytypes.zig");
 const State = @import("./discovery.zig").State;
-const ffi = @import("./ffi.zig");
+const ffi = @import("./ffi.zig").c;
 const PyError = @import("./errors.zig").PyError;
 
 /// Zig enum for python richcompare op int.

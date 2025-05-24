@@ -13,7 +13,7 @@
 const std = @import("std");
 const mem = std.mem;
 const Allocator = std.mem.Allocator;
-const ffi = @import("ffi.zig");
+const ffi = @import("ffi.zig").c;
 const py = @import("./pydust.zig");
 
 pub const PyMemAllocator = struct {

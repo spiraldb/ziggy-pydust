@@ -13,7 +13,7 @@
 // Export the Limited Python C API for use within PyDust.
 const pyconf = @import("pyconf");
 
-pub usingnamespace @cImport({
+pub const c = @cImport({
     if (pyconf.limited_api) {
         @cDefine("Py_LIMITED_API", pyconf.hexversion);
     }
