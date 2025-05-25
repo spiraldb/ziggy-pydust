@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
 
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("pydust/src/ffi.h"),
-        .target = b.resolveTargetQuery(target),
+        .target = target,
         .optimize = optimize,
     });
     translate_c.defineCMacro("Py_LIMITED_API", "0x030D0000");
