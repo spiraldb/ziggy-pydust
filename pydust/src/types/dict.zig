@@ -49,7 +49,7 @@ pub fn PyDict(comptime root: type) type {
                 } else if (field.defaultValue()) |default| {
                     @field(result, field.name) = default;
                 } else {
-                    return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+                    return py.TypeError(root).raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
                 }
             }
             return result;
