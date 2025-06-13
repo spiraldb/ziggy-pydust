@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyObject = py.PyObject;
 const PyLong = py.PyLong;
@@ -25,25 +26,7 @@ pub fn PyList(comptime root: type) type {
         obj: PyObject(root),
 
         const Self = @This();
-
-        pub fn check(obj: PyObject(root)) !bool {
-            return ffi.PyList_Check(obj.py) == 1;
-        }
-
-        /// Checked conversion from a PyObject.
-        pub fn checked(obj: PyObject(root)) !Self {
-            if (!try check(obj)) {
-                const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.obj.decref();
-                return py.TypeError(root).raiseFmt("expected list, found {s}", .{try typeName.asSlice()});
-            }
-            return .{ .obj = obj };
-        }
-
-        /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: PyObject(root)) Self {
-            return .{ .obj = obj };
-        }
+        pub const from = PyObjectMixin(root, "list", "PyList", Self);
 
         pub fn new(size: usize) !Self {
             const list = ffi.PyList_New(@intCast(size)) orelse return PyError.PyRaised;
@@ -121,7 +104,7 @@ pub fn PyList(comptime root: type) type {
 
         pub fn toTuple(self: Self) !py.PyTuple(root) {
             const pytuple = ffi.PyList_AsTuple(self.obj.py) orelse return PyError.PyRaised;
-            return py.PyTuple(root).unchecked(.{ .py = pytuple });
+            return py.PyTuple(root).from.unchecked(.{ .py = pytuple });
         }
     };
 }

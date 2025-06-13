@@ -304,7 +304,7 @@ pub fn wrap(comptime root: type, comptime definition: type, comptime func: anyty
             var kwargsMap = py.Kwargs(root).init(py.allocator);
             defer kwargsMap.deinit();
             if (kwnames) |rawnames| {
-                const names = py.PyTuple(root).unchecked(.{ .py = rawnames });
+                const names = py.PyTuple(root).from.unchecked(.{ .py = rawnames });
                 std.debug.assert(names.length() == kwargs.len);
                 for (0..names.length(), kwargs) |i, v| {
                     const k = names.getItem(py.PyString(root), i) catch return null;

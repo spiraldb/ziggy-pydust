@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyLong = @import("long.zig").PyLong;
 const PyFloat = @import("float.zig").PyFloat;
@@ -24,25 +25,7 @@ pub fn PyTuple(comptime root: type) type {
         obj: PyObject(root),
 
         const Self = @This();
-
-        pub fn check(obj: PyObject(root)) !bool {
-            return ffi.PyTuple_Check(obj.py) == 1;
-        }
-
-        /// Checked conversion from a PyObject.
-        pub fn checked(obj: PyObject(root)) !Self {
-            if (!try check(obj)) {
-                const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.obj.decref();
-                return py.TypeError(root).raiseFmt("expected tuple, found {s}", .{try typeName.asSlice()});
-            }
-            return .{ .obj = obj };
-        }
-
-        /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: PyObject(root)) Self {
-            return .{ .obj = obj };
-        }
+        pub const from = PyObjectMixin(root, "tuple", "PyTuple", Self);
 
         /// Construct a PyTuple from the given Zig tuple.
         pub fn create(values: anytype) !Self {

@@ -15,6 +15,7 @@ const Allocator = @import("std").mem.Allocator;
 const mem = @import("../mem.zig");
 const ffi = @import("ffi");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const pytypes = @import("../pytypes.zig");
 const tramp = @import("../trampoline.zig");
 const State = @import("../discovery.zig").State;
@@ -26,25 +27,7 @@ pub fn PyModule(comptime root: type) type {
         obj: py.PyObject(root),
 
         const Self = @This();
-
-        pub fn check(obj: py.PyObject(root)) !bool {
-            return ffi.PyModule_Check(obj.py) == 1;
-        }
-
-        /// Checked conversion from a PyObject.
-        pub fn checked(obj: py.PyObject(root)) !Self {
-            if (!try check(obj)) {
-                const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.obj.decref();
-                return py.TypeError(root).raiseFmt("expected module, found {s}", .{try typeName.asSlice()});
-            }
-            return .{ .obj = obj };
-        }
-
-        /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: py.PyObject(root)) Self {
-            return .{ .obj = obj };
-        }
+        pub const from = PyObjectMixin(root, "module", "PyModule", Self);
 
         pub fn import(name: [:0]const u8) !Self {
             return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.PyRaised } };

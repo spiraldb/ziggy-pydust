@@ -209,16 +209,16 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
             var obj = object orelse @panic("Unexpected null");
 
             switch (@typeInfo(T)) {
-                .bool => return (try py.PyBool(root).checked(obj)).asbool(),
+                .bool => return (try py.PyBool(root).from.checked(obj)).asbool(),
                 .error_union => @compileError("ErrorUnion already handled"),
-                .float => return try (try py.PyFloat(root).checked(obj)).as(T),
-                .int => return try (try py.PyLong(root).checked(obj)).as(T),
+                .float => return try (try py.PyFloat(root).from.checked(obj)).as(T),
+                .int => return try (try py.PyLong(root).from.checked(obj)).as(T),
                 .optional => @compileError("Optional already handled"),
                 .pointer => |p| {
                     if (comptime State.findDefinition(root, p.child)) |def| {
                         // If the pointer is for a Pydust module
                         if (def.type == .module) {
-                            const mod = try py.PyModule(root).checked(obj);
+                            const mod = try py.PyModule(root).from.checked(obj);
                             return try mod.getState(p.child);
                         }
 
@@ -246,7 +246,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
 
                     // We make the assumption that []const u8 is converted from a PyString
                     if (p.child == u8 and p.size == .slice and p.is_const) {
-                        return (try py.PyString(root).checked(obj)).asSlice();
+                        return (try py.PyString(root).from.checked(obj)).asSlice();
                     }
 
                     @compileError("Unsupported pointer type " ++ @typeName(p.child));
@@ -254,7 +254,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                 .@"struct" => |s| {
                     // Support all extensions of py.PyObject, e.g. py.PyString, py.PyFloat
                     if (@hasField(T, "obj") and @hasField(std.meta.fieldInfo(T, .obj).type, "py")) {
-                        return try @field(T, "checked")(obj);
+                        return try @field(T.from, "checked")(obj);
                     }
                     // Support py.PyObject
                     if (T == py.PyObject(root) and @TypeOf(obj) == py.PyObject(root)) {
@@ -262,10 +262,10 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                     }
                     // If the struct is a tuple, extract from the PyTuple
                     if (s.is_tuple) {
-                        return (try py.PyTuple(root).checked(obj)).as(T);
+                        return (try py.PyTuple(root).from.checked(obj)).as(T);
                     }
                     // Otherwise, extract from a Python dictionary
-                    return (try py.PyDict(root).checked(obj)).as(T);
+                    return (try py.PyDict(root).from.checked(obj)).as(T);
                 },
                 .void => if (py.is_none(root, obj)) return else return py.TypeError(root).raise("expected None"),
                 else => {},
@@ -290,7 +290,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                 if (pykwargs) |kw| {
                     var iter = kw.itemsIterator();
                     while (iter.next()) |item| {
-                        const key: []const u8 = try (try py.PyString(root).checked(item.k)).asSlice();
+                        const key: []const u8 = try (try py.PyString(root).from.checked(item.k)).asSlice();
                         try kwargs.put(key, item.v);
                     }
                 }

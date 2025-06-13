@@ -304,8 +304,8 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
             const self = tramp.Trampoline(root, sig.selfParam.?).unwrap(py.PyObject(root){ .py = pyself }) catch return -1;
 
             if (sig.argsParam) |Args| {
-                const args = if (pyargs) |pa| py.PyTuple(root).unchecked(.{ .py = pa }) else null;
-                const kwargs = if (pykwargs) |pk| py.PyDict(root).unchecked(.{ .py = pk }) else null;
+                const args = if (pyargs) |pa| py.PyTuple(root).from.unchecked(.{ .py = pa }) else null;
+                const kwargs = if (pykwargs) |pk| py.PyDict(root).from.unchecked(.{ .py = pk }) else null;
 
                 const init_args = tramp.Trampoline(root, Args).unwrapCallArgs(args, kwargs) catch return -1;
                 defer init_args.deinit();
@@ -395,8 +395,8 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
         fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
             const sig = funcs.parseSignature(root, "__call__", @typeInfo(@TypeOf(definition.__call__)).@"fn", &.{ *definition, *const definition, py.PyObject(root) });
 
-            const args = if (pyargs) |pa| py.PyTuple(root).unchecked(.{ .py = pa }) else null;
-            const kwargs = if (pykwargs) |pk| py.PyDict(root).unchecked(.{ .py = pk }) else null;
+            const args = if (pyargs) |pa| py.PyTuple(root).from.unchecked(.{ .py = pa }) else null;
+            const kwargs = if (pykwargs) |pk| py.PyDict(root).from.unchecked(.{ .py = pk }) else null;
 
             const self = tramp.Trampoline(root, sig.selfParam.?).unwrap(py.PyObject(root){ .py = pyself }) catch return null;
             const call_args = tramp.Trampoline(root, sig.argsParam.?).unwrapCallArgs(args, kwargs) catch return null;

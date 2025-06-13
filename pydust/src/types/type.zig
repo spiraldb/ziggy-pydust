@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
@@ -24,34 +25,16 @@ pub fn PyType(comptime root: type) type {
         obj: py.PyObject(root),
 
         const Self = @This();
-
-        pub fn check(obj: py.PyObject(root)) !bool {
-            return ffi.PyType_Check(obj.py) == 1;
-        }
-
-        /// Checked conversion from a PyObject.
-        pub fn checked(obj: py.PyObject(root)) !Self {
-            if (!try check(obj)) {
-                const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.obj.decref();
-                return py.TypeError(root).raiseFmt("expected type, found {s}", .{try typeName.asSlice()});
-            }
-            return .{ .obj = obj };
-        }
-
-        /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: py.PyObject(root)) Self {
-            return .{ .obj = obj };
-        }
+        pub const from = PyObjectMixin(root, "type", "PyType", Self);
 
         pub fn name(self: Self) !py.PyString(root) {
-            return py.PyString(root).unchecked(.{
+            return py.PyString(root).from.unchecked(.{
                 .py = ffi.PyType_GetName(typePtr(self)) orelse return PyError.PyRaised,
             });
         }
 
         pub fn qualifiedName(self: Self) !py.PyString(root) {
-            return py.PyString(root).unchecked(.{
+            return py.PyString(root).from.unchecked(.{
                 .py = ffi.PyType_GetQualName(typePtr(self)) orelse return PyError.PyRaised,
             });
         }

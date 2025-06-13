@@ -232,10 +232,10 @@ pub const Operator = py.class(struct {
         const selfCls = try py.self(root, Self);
         defer selfCls.obj.decref();
 
-        if (try py.PyFloat(root).check(other)) {
+        if (try py.PyFloat(root).from.check(other)) {
             const numF: f64 = @floatFromInt(self.num_);
             return py.create(root, numF / try py.as(root, f64, other));
-        } else if (try py.PyLong(root).check(other)) {
+        } else if (try py.PyLong(root).from.check(other)) {
             return py.create(root, self.num_ / try py.as(root, u64, other));
         } else if (try py.isinstance(root, other, selfCls)) { // TODO(ngates): #193
             const otherO: *Self = try py.as(root, *Self, other);

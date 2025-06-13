@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
@@ -22,25 +23,7 @@ pub fn PySlice(comptime root: type) type {
         obj: py.PyObject(root),
 
         const Self = @This();
-
-        pub fn check(obj: py.PyObject(root)) !bool {
-            return ffi.PySlice_Check(obj.py) == 1;
-        }
-
-        /// Checked conversion from a PyObject.
-        pub fn checked(obj: py.PyObject(root)) !Self {
-            if (!try check(obj)) {
-                const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.obj.decref();
-                return py.TypeError(root).raiseFmt("expected slice, found {s}", .{try typeName.asSlice()});
-            }
-            return .{ .obj = obj };
-        }
-
-        /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: py.PyObject(root)) Self {
-            return .{ .obj = obj };
-        }
+        pub const from = PyObjectMixin(root, "slice", "PySlice", Self);
 
         pub fn create(start: anytype, stop: anytype, step: anytype) !Self {
             // TODO(ngates): think about how to improve comptime optional handling?

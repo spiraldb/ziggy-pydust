@@ -41,7 +41,7 @@ pub fn PyObject(comptime root: type) type {
 
         pub fn getTypeName(self: Self) ![:0]const u8 {
             const pytype: *ffi.PyObject = ffi.PyObject_Type(self.py) orelse return PyError.PyRaised;
-            const name = py.PyString(root).unchecked(.{ .py = ffi.PyType_GetName(@ptrCast(pytype)) orelse return PyError.PyRaised });
+            const name = py.PyString(root).from.unchecked(.{ .py = ffi.PyType_GetName(@ptrCast(pytype)) orelse return PyError.PyRaised });
             return name.asSlice();
         }
 
@@ -122,6 +122,32 @@ pub fn PyObject(comptime root: type) type {
 
         pub fn repr(self: Self) !Self {
             return .{ .py = ffi.PyObject_Repr(@ptrCast(self)) orelse return PyError.PyRaised };
+        }
+    };
+}
+
+pub fn PyObjectMixin(comptime root: type, comptime name: []const u8, comptime prefix: []const u8, comptime Self: type) type {
+    const PyCheck = @field(ffi, prefix ++ "_Check");
+
+    return struct {
+        /// Check whether the given object is of this type.
+        pub fn check(obj: py.PyObject(root)) !bool {
+            return PyCheck(obj.py) == 1;
+        }
+
+        /// Checked conversion from a PyObject.
+        pub fn checked(obj: py.PyObject(root)) !Self {
+            if (PyCheck(obj.py) == 0) {
+                const typeName = try py.str(root, py.type_(root, obj));
+                defer typeName.obj.decref();
+                return py.TypeError(root).raiseFmt("expected {s}, found {s}", .{ name, try typeName.asSlice() });
+            }
+            return .{ .obj = obj };
+        }
+
+        /// Unchecked conversion from a PyObject.
+        pub fn unchecked(obj: py.PyObject(root)) Self {
+            return .{ .obj = obj };
         }
     };
 }

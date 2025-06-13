@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const py = @import("../pydust.zig");
+const PyObjectMixin = @import("./obj.zig").PyObjectMixin;
 const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
@@ -22,25 +23,7 @@ pub fn PyDict(comptime root: type) type {
         obj: py.PyObject(root),
 
         const Self = @This();
-
-        pub fn check(obj: py.PyObject(root)) !bool {
-            return ffi.PyDict_Check(obj.py) == 1;
-        }
-
-        /// Checked conversion from a PyObject.
-        pub fn checked(obj: py.PyObject(root)) !Self {
-            if (!try check(obj)) {
-                const typeName = try py.str(root, py.type_(root, obj));
-                defer typeName.obj.decref();
-                return py.TypeError(root).raiseFmt("expected dict, found {s}", .{try typeName.asSlice()});
-            }
-            return .{ .obj = obj };
-        }
-
-        /// Unchecked conversion from a PyObject.
-        pub fn unchecked(obj: py.PyObject(root)) Self {
-            return .{ .obj = obj };
-        }
+        pub const from = PyObjectMixin(root, "dict", "PyDict", Self);
 
         /// Create a dictionary from a Zig object
         pub fn create(value: anytype) !Self {
@@ -75,13 +58,13 @@ pub fn PyDict(comptime root: type) type {
         /// Return a new empty dictionary.
         pub fn new() !Self {
             const dict = ffi.PyDict_New() orelse return PyError.PyRaised;
-            return Self.unchecked(.{ .py = dict });
+            return Self.from.unchecked(.{ .py = dict });
         }
 
         /// Return a new dictionary that contains the same key-value pairs as p.
         pub fn copy(self: Self) !Self {
             const dict = ffi.PyDict_Copy(self.obj.py) orelse return PyError.PyRaised;
-            return Self.unchecked(.{ .py = dict });
+            return Self.from.unchecked(.{ .py = dict });
         }
 
         /// Empty an existing dictionary of all key-value pairs.
