@@ -555,7 +555,7 @@ fn GC(comptime root: type, comptime definition: type) type {
                         return;
                     }
 
-                    clear(obj.?);
+                    // clear(obj.?); // assuming that the optional is do Py_DECREF outside.
                 },
                 else => {},
             }
