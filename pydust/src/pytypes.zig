@@ -515,8 +515,8 @@ fn GC(comptime root: type, comptime definition: type) type {
         }
 
         fn clearFields(class: anytype) void {
-            inline for (@typeInfo(@TypeOf(class)).@"struct".fields) |_| {
-                // clear(@field(class, field.name));    // TODO: uncomment this
+            inline for (@typeInfo(@TypeOf(class)).@"struct".fields) |field| {
+                clear(@field(class, field.name));
             }
         }
 

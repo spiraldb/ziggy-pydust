@@ -232,7 +232,7 @@ fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
 
         pub fn raise(message: [:0]const u8) PyError {
             ffi.PyErr_SetString(asPyObject().py, message.ptr);
-            try augmentTraceback();
+            augmentTraceback();
             return PyError.PyRaised;
         }
 
@@ -253,7 +253,7 @@ fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
 
         /// In debug mode, augment the Python traceback to include Zig stack frames.
         /// Warning: hackery ahead!
-        fn augmentTraceback() PyError!void {
+        pub fn augmentTraceback() void {
             if (builtin.mode == .Debug) {
                 // Capture at most 32 stack frames above us.
                 var addresses: [32]usize = undefined;
@@ -285,7 +285,7 @@ fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
                     }
 
                     // Print the source location of the frame.
-                    std.debug.printSourceAtAddress(debugInfo, stderr.writer(), address, std.io.tty.detectConfig(stderr)) catch unreachable;
+                    std.debug.printSourceAtAddress(debugInfo, stderr.writer(), address, std.io.tty.detectConfig(stderr)) catch return;
                 }
             }
         }

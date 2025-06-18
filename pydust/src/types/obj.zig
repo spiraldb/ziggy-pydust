@@ -35,8 +35,7 @@ pub fn PyObject(comptime root: type) type {
         }
 
         pub fn refcnt(self: Self) isize {
-            const local_py: *CPyObject = @ptrCast(self.py);
-            return local_py.ob_refcnt;
+            return ffi.Py_REFCNT(self.py);
         }
 
         pub fn getTypeName(self: Self) ![:0]const u8 {
