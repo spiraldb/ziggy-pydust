@@ -108,6 +108,7 @@ pub const User = py.class(struct {
     pub fn __del__(self: *Self) void {
         self.name.obj.decref();
         if (self.email.e) |e| e.obj.decref();
+        self.email.e = null;
     }
 });
 // --8<-- [end:properties]
