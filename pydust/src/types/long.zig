@@ -63,13 +63,13 @@ test "PyLong" {
     defer py.finalize();
 
     const pl = try PyLong.create(100);
-    defer pl.decref();
+    defer pl.obj.decref();
 
     try std.testing.expectEqual(@as(c_long, 100), try pl.as(c_long));
     try std.testing.expectEqual(@as(c_ulong, 100), try pl.as(c_ulong));
 
     const neg_pl = try PyLong.create(@as(c_long, -100));
-    defer neg_pl.decref();
+    defer neg_pl.obj.decref();
 
     try std.testing.expectError(
         PyError.PyRaised,

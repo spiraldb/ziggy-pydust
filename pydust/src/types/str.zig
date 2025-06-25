@@ -104,7 +104,7 @@ test "PyString" {
     var ps = try PyString.create(a);
     // defer ps.decref();  <-- We don't need to decref here since append steals the reference to self.
     ps = try ps.appendSlice(b);
-    defer ps.decref();
+    defer ps.obj.decref();
 
     const ps_slice = try ps.asSlice();
 
@@ -121,7 +121,7 @@ test "PyString createFmt" {
     defer py.finalize();
 
     const a = try PyString.createFmt("Hello, {s}!", .{"foo"});
-    defer a.decref();
+    defer a.obj.decref();
 
     try testing.expectEqualStrings("Hello, foo!", try a.asSlice());
 }

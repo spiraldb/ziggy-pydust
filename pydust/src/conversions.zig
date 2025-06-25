@@ -86,7 +86,7 @@ test "create" {
     defer some_tuple.decref();
     try testing.expectEqual(@as(isize, 2), py.refcnt(root, str));
 
-    str.decref();
+    str.obj.decref();
     try testing.expectEqual(@as(isize, 1), py.refcnt(root, str));
 }
 

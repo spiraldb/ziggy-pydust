@@ -24,7 +24,7 @@ pub fn PyIter(comptime root: type) type {
         obj: py.PyObject,
 
         const Self = @This();
-        const from = PyObjectMixin("iterator", "PyIter", Self);
+        pub const from = PyObjectMixin("iterator", "PyIter", Self);
 
         pub fn next(self: Self, comptime T: type) !?T {
             if (ffi.PyIter_Next(self.obj.py)) |result| {
@@ -50,7 +50,7 @@ test "PyIter" {
     const root = @This();
 
     const tuple = try py.PyTuple(root).create(.{ 1, 2, 3 });
-    defer tuple.decref();
+    defer tuple.obj.decref();
 
     const iterator = try py.iter(root, tuple);
     var previous: u64 = 0;

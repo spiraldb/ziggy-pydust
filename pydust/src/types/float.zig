@@ -47,7 +47,7 @@ test "PyFloat" {
     defer py.finalize();
 
     const pf = try PyFloat.create(1.0);
-    defer pf.decref();
+    defer pf.obj.decref();
 
     try std.testing.expectEqual(@as(f32, 1.0), try pf.as(f32));
 }

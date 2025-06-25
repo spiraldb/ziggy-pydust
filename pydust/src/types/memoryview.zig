@@ -50,7 +50,7 @@ pub const PyMemoryView = extern struct {
                 var new_ptr_info = ptr_info;
                 switch (ptr_info.size) {
                     .slice => {},
-                    .One => switch (@typeInfo(ptr_info.child)) {
+                    .one => switch (@typeInfo(ptr_info.child)) {
                         .array => |info| new_ptr_info.child = info.child,
                         else => @compileError("invalid type given to PyMemoryview"),
                     },
@@ -70,7 +70,7 @@ test "from array" {
 
     const array = "static string";
     const mv = try PyMemoryView.fromSlice(array);
-    defer mv.decref();
+    defer mv.obj.decref();
 
     const root = @This();
     var buf = try mv.obj.getBuffer(root, py.PyBuffer.Flags.ANY_CONTIGUOUS);
@@ -86,7 +86,7 @@ test "from slice" {
     const slice: []const u8 = try std.testing.allocator.dupe(u8, array);
     defer std.testing.allocator.free(slice);
     const mv = try PyMemoryView.fromSlice(slice);
-    defer mv.decref();
+    defer mv.obj.decref();
 
     const root = @This();
     var buf = try mv.obj.getBuffer(root, py.PyBuffer.Flags.ANY_CONTIGUOUS);
@@ -102,7 +102,7 @@ test "from mutable slice" {
     const slice = try std.testing.allocator.alloc(u8, array.len);
     defer std.testing.allocator.free(slice);
     const mv = try PyMemoryView.fromSlice(slice);
-    defer mv.decref();
+    defer mv.obj.decref();
     @memcpy(slice, array);
 
     const root = @This();

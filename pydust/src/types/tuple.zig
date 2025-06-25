@@ -119,12 +119,12 @@ test "PyTuple" {
 
     const root = @This();
     const first = try PyLong.create(1);
-    defer first.decref();
+    defer first.obj.decref();
     const second = try PyFloat.create(1.0);
-    defer second.decref();
+    defer second.obj.decref();
 
     var tuple = try PyTuple(root).create(.{ first.obj, second.obj });
-    defer tuple.decref();
+    defer tuple.obj.decref();
 
     try std.testing.expectEqual(@as(usize, 2), tuple.length());
 
@@ -141,7 +141,7 @@ test "PyTuple setOwnedItem" {
 
     const root = @This();
     var tuple = try PyTuple(root).new(2);
-    defer tuple.decref();
+    defer tuple.obj.decref();
     const py1 = try py.create(root, 1);
     defer py1.decref();
     try tuple.setOwnedItem(0, py1);

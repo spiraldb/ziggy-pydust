@@ -153,9 +153,6 @@ pub const ValueError = err.ValueError;
 pub const Warning = err.Warning;
 pub const WindowsError = err.WindowsError;
 pub const ZeroDivisionError = err.ZeroDivisionError;
-pub const raise = err.raise;
-pub const raiseFmt = err.raiseFmt;
-pub const raiseComptimeFmt = err.raiseComptimeFmt;
 pub const ffi = @import("ffi");
 pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
@@ -234,4 +231,9 @@ pub fn Kwargs() type {
 /// Zig type representing `(*args, **kwargs)`
 pub fn CallArgs() type {
     return struct { args: Args, kwargs: Kwargs };
+}
+
+test {
+    // See https://ziggit.dev/t/how-do-i-get-zig-build-to-run-all-the-tests/4434/2
+    std.testing.refAllDecls(@This());
 }

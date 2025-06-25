@@ -299,27 +299,27 @@ pub fn type_(comptime root: type, object: anytype) py.PyType {
 }
 
 pub fn eq(comptime root: type, a: anytype, b: anytype) !bool {
-    return compare(root, py.object(root, a), py.object(root, b), py.CompareOp.EQ);
+    return compare(py.object(root, a), py.object(root, b), py.CompareOp.EQ);
 }
 
 pub fn ne(comptime root: type, a: anytype, b: anytype) !bool {
-    return compare(root, py.object(root, a), py.object(root, b), py.CompareOp.NE);
+    return compare(py.object(root, a), py.object(root, b), py.CompareOp.NE);
 }
 
 pub fn lt(comptime root: type, a: anytype, b: anytype) !bool {
-    return compare(root, py.object(root, a), py.object(root, b), py.CompareOp.LT);
+    return compare(py.object(root, a), py.object(root, b), py.CompareOp.LT);
 }
 
 pub fn le(comptime root: type, a: anytype, b: anytype) !bool {
-    return compare(root, py.object(root, a), py.object(root, b), py.CompareOp.LE);
+    return compare(py.object(root, a), py.object(root, b), py.CompareOp.LE);
 }
 
 pub fn gt(comptime root: type, a: anytype, b: anytype) !bool {
-    return compare(root, py.object(root, a), py.object(root, b), py.CompareOp.GT);
+    return compare(py.object(root, a), py.object(root, b), py.CompareOp.GT);
 }
 
 pub fn ge(comptime root: type, a: anytype, b: anytype) !bool {
-    return compare(root, py.object(root, a), py.object(root, b), py.CompareOp.GE);
+    return compare(py.object(root, a), py.object(root, b), py.CompareOp.GE);
 }
 
 inline fn compare(a: py.PyObject, b: py.PyObject, op: py.CompareOp) !bool {
@@ -363,7 +363,7 @@ test "is_none" {
 
     const root = @This();
 
-    const none = None(root);
+    const none = None();
     defer none.decref();
 
     try testing.expect(is_none(root, none));
@@ -376,9 +376,9 @@ test "compare" {
     const root = @This();
 
     const num = try py.PyLong.create(0);
-    defer num.decref();
+    defer num.obj.decref();
     const num2 = try py.PyLong.create(1);
-    defer num2.decref();
+    defer num2.obj.decref();
 
     try testing.expect(try le(root, num, num2));
     try testing.expect(try lt(root, num, num2));

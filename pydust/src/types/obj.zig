@@ -144,8 +144,8 @@ test "call" {
 
     const root = @This();
 
-    const math = try py.import(root, "math");
-    defer math.decref();
+    const math = try py.PyModule(root).from.checked(root, try py.import(root, "math"));
+    defer math.obj.decref();
 
     const result = try math.call(f32, "pow", .{ 2, 3 }, .{});
     try std.testing.expectEqual(@as(f32, 8.0), result);

@@ -57,11 +57,10 @@ test "PyBytes" {
     py.initialize();
     defer py.finalize();
 
-    const root = @This();
     const a = "Hello";
 
-    var ps = try PyBytes(root).create(a);
-    defer ps.decref();
+    var ps = try PyBytes.create(a);
+    defer ps.obj.decref();
 
     const ps_slice = try ps.asSlice();
     try testing.expectEqual(a.len, ps_slice.len);

@@ -192,10 +192,10 @@ test "PyDict set and get" {
     const root = @This();
 
     const pd = try PyDict(root).new();
-    defer pd.decref();
+    defer pd.obj.decref();
 
     const bar = try py.PyString.create("bar");
-    defer bar.decref();
+    defer bar.obj.decref();
     try pd.setItem("foo", bar);
 
     try testing.expect(try pd.contains("foo"));
@@ -220,7 +220,7 @@ test "PyDict from" {
     const root = @This();
 
     const pd = try PyDict(root).create(.{ .foo = 123, .bar = false });
-    defer pd.decref();
+    defer pd.obj.decref();
 
     try testing.expectEqual(@as(u32, 123), (try pd.getItem(u32, "foo")).?);
 }
@@ -232,10 +232,10 @@ test "PyDict iterator" {
     const root = @This();
 
     const pd = try PyDict(root).new();
-    defer pd.decref();
+    defer pd.obj.decref();
 
     const foo = try py.PyString.create("foo");
-    defer foo.decref();
+    defer foo.obj.decref();
 
     try pd.setItem("bar", foo);
     try pd.setItem("baz", foo);

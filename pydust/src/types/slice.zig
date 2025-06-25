@@ -27,12 +27,12 @@ pub fn PySlice(comptime root: type) type {
 
         pub fn create(start: anytype, stop: anytype, step: anytype) !Self {
             // TODO(ngates): think about how to improve comptime optional handling?
-            const pystart = if (@typeInfo(@TypeOf(start)) == .Null) null else (try py.create(root, start)).py;
-            defer if (@typeInfo(@TypeOf(start)) != .Null) py.decref(root, pystart);
-            const pystop = if (@typeInfo(@TypeOf(stop)) == .Null) null else (try py.create(root, stop)).py;
-            defer if (@typeInfo(@TypeOf(stop)) != .Null) py.decref(root, pystop);
-            const pystep = if (@typeInfo(@TypeOf(step)) == .Null) null else (try py.create(root, step)).py;
-            defer if (@typeInfo(@TypeOf(step)) != .Null) py.decref(root, pystep);
+            const pystart = if (@typeInfo(@TypeOf(start)) == .null) null else (try py.create(root, start)).py;
+            defer if (@typeInfo(@TypeOf(start)) != .null) py.decref(root, pystart);
+            const pystop = if (@typeInfo(@TypeOf(stop)) == .null) null else (try py.create(root, stop)).py;
+            defer if (@typeInfo(@TypeOf(stop)) != .null) py.decref(root, pystop);
+            const pystep = if (@typeInfo(@TypeOf(step)) == .null) null else (try py.create(root, step)).py;
+            defer if (@typeInfo(@TypeOf(step)) != .null) py.decref(root, pystep);
 
             const pyslice = ffi.PySlice_New(pystart, pystop, pystep) orelse return PyError.PyRaised;
             return .{ .obj = .{ .py = pyslice } };
@@ -59,7 +59,7 @@ test "PySlice" {
     const root = @This();
 
     const range = try PySlice(root).create(0, 100, null);
-    defer range.decref();
+    defer range.obj.decref();
 
     try std.testing.expectEqual(@as(u64, 0), try range.getStart(u64));
     try std.testing.expectEqual(@as(u64, 100), try range.getStop(u64));

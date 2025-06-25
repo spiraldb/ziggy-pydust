@@ -55,10 +55,10 @@ test "PyBool" {
     defer py.finalize();
 
     const pytrue = PyBool.true_();
-    defer pytrue.decref();
+    defer pytrue.obj.decref();
 
     const pyfalse = PyBool.false_();
-    defer pyfalse.decref();
+    defer pyfalse.obj.decref();
 
     try std.testing.expect(pytrue.asbool());
     try std.testing.expect(!pyfalse.asbool());

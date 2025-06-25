@@ -118,7 +118,7 @@ test "PyList" {
     const root = @This();
 
     var list = try PyList(root).new(2);
-    defer list.decref();
+    defer list.obj.decref();
     try list.setItem(0, 1);
     try list.setItem(1, 2.0);
 
@@ -139,7 +139,7 @@ test "PyList" {
     try testing.expectEqual(@as(i64, 1), try list.getItem(i64, 0));
 
     const tuple = try list.toTuple();
-    defer tuple.decref();
+    defer tuple.obj.decref();
 
     try std.testing.expectEqual(@as(usize, 4), tuple.length());
 }
@@ -151,7 +151,7 @@ test "PyList setOwnedItem" {
     const root = @This();
 
     var list = try PyList(root).new(2);
-    defer list.decref();
+    defer list.obj.decref();
     const py1 = try py.create(root, 1);
     defer py1.decref();
     try list.setOwnedItem(0, py1);
