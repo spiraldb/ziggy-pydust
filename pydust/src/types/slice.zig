@@ -20,10 +20,10 @@ const State = @import("../discovery.zig").State;
 /// Wrapper for Python PySlice.
 pub fn PySlice(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(root),
+        obj: py.PyObject,
 
         const Self = @This();
-        pub const from = PyObjectMixin(root, "slice", "PySlice", Self);
+        pub const from = PyObjectMixin("slice", "PySlice", Self);
 
         pub fn create(start: anytype, stop: anytype, step: anytype) !Self {
             // TODO(ngates): think about how to improve comptime optional handling?
@@ -39,15 +39,15 @@ pub fn PySlice(comptime root: type) type {
         }
 
         pub fn getStart(self: Self, comptime T: type) !T {
-            return try self.obj.getAs(T, "start");
+            return try py.as(root, T, try self.obj.get("start"));
         }
 
         pub fn getStop(self: Self, comptime T: type) !T {
-            return try self.obj.getAs(T, "stop");
+            return try py.as(root, T, try self.obj.get("stop"));
         }
 
         pub fn getStep(self: Self, comptime T: type) !T {
-            return try self.obj.getAs(T, "step");
+            return try py.as(root, T, try self.obj.get("step"));
         }
     };
 }

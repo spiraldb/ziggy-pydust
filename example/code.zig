@@ -19,11 +19,11 @@ pub fn line_number() u32 {
     return py.PyFrame(root).get().?.lineNumber();
 }
 
-pub fn function_name() !py.PyString(root) {
+pub fn function_name() !py.PyString {
     return py.PyFrame(root).get().?.code().name();
 }
 
-pub fn file_name() !py.PyString(root) {
+pub fn file_name() !py.PyString {
     return py.PyFrame(root).get().?.code().fileName();
 }
 

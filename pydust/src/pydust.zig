@@ -222,16 +222,16 @@ pub fn property(comptime definition: type) Definition {
 }
 
 /// Zig type representing variadic arguments to a Python function.
-pub fn Args(comptime root: type) type {
-    return []types.PyObject(root);
+pub fn Args() type {
+    return []types.PyObject;
 }
 
 /// Zig type representing variadic keyword arguments to a Python function.
-pub fn Kwargs(comptime root: type) type {
-    return std.StringHashMap(types.PyObject(root));
+pub fn Kwargs() type {
+    return std.StringHashMap(types.PyObject);
 }
 
 /// Zig type representing `(*args, **kwargs)`
-pub fn CallArgs(comptime root: type) type {
-    return struct { args: Args(root), kwargs: Kwargs(root) };
+pub fn CallArgs() type {
+    return struct { args: Args, kwargs: Kwargs };
 }

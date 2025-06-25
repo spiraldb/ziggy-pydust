@@ -33,9 +33,9 @@ pub const CompareOp = enum {
 };
 
 /// Returns a new reference to Py_NotImplemented.
-pub fn NotImplemented(comptime root: type) py.PyObject(root) {
+pub fn NotImplemented() py.PyObject {
     // It's important that we incref the Py_NotImplemented singleton
-    const notImplemented = py.PyObject(root){ .py = if (ffi.PY_VERSION_HEX < 0x030D0000)
+    const notImplemented = py.PyObject{ .py = if (ffi.PY_VERSION_HEX < 0x030D0000)
         ffi.Py_NotImplemented()
     else
         ffi.Py_GetConstantBorrowed(ffi.Py_CONSTANT_NOT_IMPLEMENTED) };
@@ -44,9 +44,9 @@ pub fn NotImplemented(comptime root: type) py.PyObject(root) {
 }
 
 /// Returns a new reference to Py_None.
-pub fn None(comptime root: type) py.PyObject(root) {
+pub fn None() py.PyObject {
     // It's important that we incref the Py_None singleton
-    const none = py.PyObject(root){ .py = if (ffi.PY_VERSION_HEX < 0x030D0000)
+    const none = py.PyObject{ .py = if (ffi.PY_VERSION_HEX < 0x030D0000)
         ffi.Py_None()
     else
         ffi.Py_GetConstantBorrowed(ffi.Py_CONSTANT_NONE) };
@@ -55,13 +55,13 @@ pub fn None(comptime root: type) py.PyObject(root) {
 }
 
 /// Returns a new reference to Py_False.
-pub inline fn False(comptime root: type) py.PyBool(root) {
-    return py.PyBool(root).false_();
+pub inline fn False() py.PyBool {
+    return py.PyBool.false_();
 }
 
 /// Returns a new reference to Py_True.
-pub inline fn True(comptime root: type) py.PyBool(root) {
-    return py.PyBool(root).true_();
+pub inline fn True() py.PyBool {
+    return py.PyBool.true_();
 }
 
 pub inline fn decref(comptime root: type, value: anytype) void {
@@ -99,7 +99,7 @@ pub fn call(comptime root: type, comptime ReturnType: type, object: anytype, arg
     var argsPy = try if (@typeInfo(@TypeOf(args)) == .optional and args == null)
         py.PyTuple(root).new(0)
     else
-        py.PyTuple(root).from.checked(try py.create(root, args));
+        py.PyTuple(root).from.checked(root, try py.create(root, args));
 
     defer argsPy.obj.decref();
 
@@ -116,7 +116,7 @@ pub fn call(comptime root: type, comptime ReturnType: type, object: anytype, arg
         if (try py.len(root, kwobj) == 0) {
             kwobj.decref();
         } else {
-            kwargsPy = try py.PyDict(root).from.checked(kwobj);
+            kwargsPy = try py.PyDict(root).from.checked(root, kwobj);
         }
     }
 
@@ -173,7 +173,7 @@ pub fn is_none(comptime root: type, object: anytype) bool {
 }
 
 /// Import a module by fully-qualified name returning a PyObject.
-pub fn import(comptime root: type, module_name: [:0]const u8) !py.PyObject(root) {
+pub fn import(comptime root: type, module_name: [:0]const u8) !py.PyObject {
     return (try py.PyModule(root).import(module_name)).obj;
 }
 
@@ -233,7 +233,7 @@ pub fn moduleState(comptime root: type, comptime Module: type) !*Module {
 
 /// Return the next item of an iterator. Equivalent to next(obj) in Python.
 pub fn next(comptime root: type, comptime T: type, iterator: anytype) !?T {
-    const pyiter = try py.PyIter(root).from.checked(iterator);
+    const pyiter = try py.PyIter(root).from.checked(root, iterator);
     return try pyiter.next(T);
 }
 
@@ -251,27 +251,27 @@ pub fn refcnt(comptime root: type, object: anytype) isize {
 }
 
 /// Compute a string representation of object - using str(o).
-pub fn str(comptime root: type, object: anytype) !py.PyString(root) {
+pub fn str(comptime root: type, object: anytype) !py.PyString {
     const pyobj = py.object(root, object);
-    return py.PyString(root).from.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) orelse return PyError.PyRaised });
+    return py.PyString.from.unchecked(.{ .py = ffi.PyObject_Str(pyobj.py) orelse return PyError.PyRaised });
 }
 
 /// Compute a string representation of object - using repr(o).
-pub fn repr(comptime root: type, object: anytype) !py.PyString(root) {
+pub fn repr(comptime root: type, object: anytype) !py.PyString {
     const pyobj = py.object(root, object);
-    return py.PyString(root).from.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.PyRaised });
+    return py.PyString.from.unchecked(.{ .py = ffi.PyObject_Repr(pyobj.py) orelse return PyError.PyRaised });
 }
 
 /// Returns the PyType object representing the given Pydust class.
-pub fn self(comptime root: type, comptime Class: type) !py.PyType(root) {
+pub fn self(comptime root: type, comptime Class: type) !py.PyType {
     if (State.getDefinition(root, Class).type != .class) {
         @compileError("Not a class definition: " ++ Class);
     }
-    return py.PyType(root).from.unchecked(try lift(root, Class));
+    return py.PyType.from.unchecked(try lift(root, Class));
 }
 
 /// The equivalent of Python's super() builtin. Returns a PyObject.
-pub fn super(comptime root: type, comptime Super: type, selfInstance: anytype) !py.PyObject(root) {
+pub fn super(comptime root: type, comptime Super: type, selfInstance: anytype) !py.PyObject {
     const mod = State.getContaining(root, Super, .module);
 
     const imported = try import(root, State.getIdentifier(root, mod).name());
@@ -280,7 +280,7 @@ pub fn super(comptime root: type, comptime Super: type, selfInstance: anytype) !
     const superPyType = try imported.get(State.getIdentifier(root, Super).name());
     defer superPyType.decref();
 
-    const superBuiltin: py.PyObject(root) = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
+    const superBuiltin: py.PyObject = .{ .py = @alignCast(@ptrCast(&ffi.PySuper_Type)) };
     return superBuiltin.call(.{ superPyType, py.object(root, selfInstance) }, .{});
 }
 
@@ -291,7 +291,7 @@ pub fn tuple(comptime root: type, object: anytype) !py.PyTuple(root) {
 
 /// Return the PyType object for a given Python object.
 /// Returns a borrowed reference.
-pub fn type_(comptime root: type, object: anytype) py.PyType(root) {
+pub fn type_(comptime root: type, object: anytype) py.PyType {
     return .{ .obj = .{ .py = @as(
         ?*ffi.PyObject,
         @ptrCast(@alignCast(py.object(root, object).py.ob_type)),
@@ -322,7 +322,7 @@ pub fn ge(comptime root: type, a: anytype, b: anytype) !bool {
     return compare(root, py.object(root, a), py.object(root, b), py.CompareOp.GE);
 }
 
-inline fn compare(comptime root: type, a: py.PyObject(root), b: py.PyObject(root), op: py.CompareOp) !bool {
+inline fn compare(a: py.PyObject, b: py.PyObject, op: py.CompareOp) !bool {
     const res = ffi.PyObject_RichCompareBool(a.py, b.py, @intFromEnum(op));
     if (res == -1) {
         return PyError.PyRaised;
@@ -332,7 +332,7 @@ inline fn compare(comptime root: type, a: py.PyObject(root), b: py.PyObject(root
 
 /// Lifts a Pydust struct into its corresponding runtime Python object.
 /// Returns a new reference.
-fn lift(comptime root: type, comptime PydustStruct: type) !py.PyObject(root) {
+fn lift(comptime root: type, comptime PydustStruct: type) !py.PyObject {
     // Grab the qualified name, importing the root module first.
     comptime var qualName = State.getIdentifier(root, PydustStruct).qualifiedName;
 
@@ -375,9 +375,9 @@ test "compare" {
 
     const root = @This();
 
-    const num = try py.PyLong(root).create(0);
+    const num = try py.PyLong.create(0);
     defer num.decref();
-    const num2 = try py.PyLong(root).create(1);
+    const num2 = try py.PyLong.create(1);
     defer num2.decref();
 
     try testing.expect(try le(root, num, num2));

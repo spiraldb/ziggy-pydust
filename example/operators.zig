@@ -180,8 +180,8 @@ pub const UnaryOps = py.class(struct {
         return self.num_;
     }
 
-    pub fn __neg__(self: *Self) !py.PyLong(root) {
-        return py.PyLong(root).create(-self.num_);
+    pub fn __neg__(self: *Self) !py.PyLong {
+        return py.PyLong.create(-self.num_);
     }
 
     pub fn __pos__(self: *Self) !*Self {
@@ -197,16 +197,16 @@ pub const UnaryOps = py.class(struct {
         return py.init(root, Self, .{ .num_ = ~self.num_ });
     }
 
-    pub fn __int__(self: *Self) !py.PyLong(root) {
-        return py.PyLong(root).create(self.num_);
+    pub fn __int__(self: *Self) !py.PyLong {
+        return py.PyLong.create(self.num_);
     }
 
-    pub fn __float__(self: *Self) !py.PyFloat(root) {
-        return py.PyFloat(root).create(@as(f64, @floatFromInt(self.num_)));
+    pub fn __float__(self: *Self) !py.PyFloat {
+        return py.PyFloat.create(@as(f64, @floatFromInt(self.num_)));
     }
 
-    pub fn __index__(self: *Self) !py.PyLong(root) {
-        return py.PyLong(root).create(self.num_);
+    pub fn __index__(self: *Self) !py.PyLong {
+        return py.PyLong.create(self.num_);
     }
 
     pub fn __bool__(self: *Self) !bool {
@@ -228,20 +228,20 @@ pub const Operator = py.class(struct {
         return self.num_;
     }
 
-    pub fn __truediv__(self: *const Self, other: py.PyObject(root)) !py.PyObject(root) {
+    pub fn __truediv__(self: *const Self, other: py.PyObject) !py.PyObject {
         const selfCls = try py.self(root, Self);
         defer selfCls.obj.decref();
 
-        if (try py.PyFloat(root).from.check(other)) {
+        if (try py.PyFloat.from.check(other)) {
             const numF: f64 = @floatFromInt(self.num_);
             return py.create(root, numF / try py.as(root, f64, other));
-        } else if (try py.PyLong(root).from.check(other)) {
+        } else if (try py.PyLong.from.check(other)) {
             return py.create(root, self.num_ / try py.as(root, u64, other));
         } else if (try py.isinstance(root, other, selfCls)) { // TODO(ngates): #193
             const otherO: *Self = try py.as(root, *Self, other);
             return py.object(root, try py.init(root, Self, .{ .num_ = self.num_ / otherO.num_ }));
         } else {
-            return py.TypeError(root).raise("Unsupported number type for Operator division");
+            return py.TypeError.raise("Unsupported number type for Operator division");
         }
     }
 });
@@ -290,9 +290,9 @@ pub const Equals = py.class(struct {
 pub const LessThan = py.class(struct {
     const Self = @This();
 
-    name: py.PyString(root),
+    name: py.PyString,
 
-    pub fn __init__(self: *Self, args: struct { name: py.PyString(root) }) void {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString }) void {
         args.name.obj.incref();
         self.name = args.name;
     }

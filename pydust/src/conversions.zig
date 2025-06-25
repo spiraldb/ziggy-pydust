@@ -17,21 +17,21 @@ const State = @import("./discovery.zig").State;
 
 /// Zig PyObject-like -> ffi.PyObject. Convert a Zig PyObject-like value into a py.PyObject.
 ///  e.g. py.PyObject, py.PyTuple, ffi.PyObject, etc.
-pub inline fn object(comptime root: type, value: anytype) py.PyObject(root) {
+pub inline fn object(comptime root: type, value: anytype) py.PyObject {
     return tramp.Trampoline(root, @TypeOf(value)).asObject(value);
 }
 
 /// Zig -> Python. Return a Python representation of a Zig object.
 /// For Zig primitives, this constructs a new Python object.
 /// For PyObject-like values, this returns the value without creating a new reference.
-pub inline fn createOwned(comptime root: type, value: anytype) py.PyError!py.PyObject(root) {
+pub inline fn createOwned(comptime root: type, value: anytype) py.PyError!py.PyObject {
     const trampoline = tramp.Trampoline(root, @TypeOf(value));
     defer trampoline.decref_objectlike(value);
     return trampoline.wrap(value);
 }
 
 /// Zig -> Python. Convert a Zig object into a Python object. Returns a new object.
-pub inline fn create(comptime root: type, value: anytype) py.PyError!py.PyObject(root) {
+pub inline fn create(comptime root: type, value: anytype) py.PyError!py.PyObject {
     return tramp.Trampoline(root, @TypeOf(value)).wrap(value);
 }
 
@@ -41,7 +41,7 @@ pub inline fn as(comptime root: type, comptime T: type, obj: anytype) py.PyError
 }
 
 /// Python -> Pydust. Perform an unchecked cast from a PyObject to a given PyDust class type.
-pub inline fn unchecked(comptime root: type, comptime T: type, obj: py.PyObject(root)) T {
+pub inline fn unchecked(comptime root: type, comptime T: type, obj: py.PyObject) T {
     const Definition = @typeInfo(T).pointer.child;
     const definition = State.getDefinition(root, Definition);
     if (definition.type != .class) {
@@ -61,7 +61,7 @@ test "as py -> zig" {
     const root = @This();
 
     // Start with a Python object
-    const str = try py.PyString(root).create("hello");
+    const str = try py.PyString.create("hello");
     try expect(py.refcnt(root, str) == 1);
 
     // Return a slice representation of it, and ensure the refcnt is untouched
@@ -69,7 +69,7 @@ test "as py -> zig" {
     try expect(py.refcnt(root, str) == 1);
 
     // Return a PyObject representation of it, and ensure the refcnt is untouched.
-    _ = try py.as(root, py.PyObject(root), str);
+    _ = try py.as(root, py.PyObject, str);
     try expect(py.refcnt(root, str) == 1);
 }
 
@@ -79,7 +79,7 @@ test "create" {
 
     const root = @This();
 
-    const str = try py.PyString(root).create("Hello");
+    const str = try py.PyString.create("Hello");
     try testing.expectEqual(@as(isize, 1), py.refcnt(root, str));
 
     const some_tuple = try py.create(root, .{str});
@@ -96,7 +96,7 @@ test "createOwned" {
 
     const root = @This();
 
-    const str = try py.PyString(root).create("Hello");
+    const str = try py.PyString.create("Hello");
     try testing.expectEqual(@as(isize, 1), py.refcnt(root, str));
 
     const some_tuple = try py.createOwned(root, .{str});

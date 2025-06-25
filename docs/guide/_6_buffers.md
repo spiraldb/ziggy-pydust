@@ -14,7 +14,7 @@ This function accepts Python [arrays](https://docs.python.org/3/library/array.ht
 
 !!! Note
 
-    Understanding [request types](https://docs.python.org/3/c-api/buffer.html#buffer-request-types) is important when working with buffers. Common request types are implemented as `py.PyBuffer(root).Flags`, e.g. `py.PyBuffer(root).Flags.FULL_RO`.
+    Understanding [request types](https://docs.python.org/3/c-api/buffer.html#buffer-request-types) is important when working with buffers. Common request types are implemented as `py.PyBuffer.Flags`, e.g. `py.PyBuffer.Flags.FULL_RO`.
 
 
 You can implement a buffer protocol in a Pydust module by implementing `__buffer__` and optionally `__release_buffer__` methods.

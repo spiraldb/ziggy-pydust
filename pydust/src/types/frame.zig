@@ -20,7 +20,7 @@ const ffi = py.ffi;
 /// See: https://docs.python.org/3/c-api/frame.html
 pub fn PyFrame(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(root),
+        obj: py.PyObject,
         const Self = @This();
 
         pub fn get() ?Self {

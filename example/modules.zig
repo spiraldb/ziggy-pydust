@@ -26,10 +26,10 @@ const root = @This();
 const Self = root; // (1)!
 
 count_: u32 = 0, // (2)!
-name: py.PyString(root),
+name: py.PyString,
 
 pub fn __init__(self: *Self) !void { // (3)!
-    self.* = .{ .name = try py.PyString(root).create("Ziggy") };
+    self.* = .{ .name = try py.PyString.create("Ziggy") };
 }
 
 pub fn __del__(self: Self) void {
@@ -44,24 +44,24 @@ pub fn count(self: *const Self) u32 {
     return self.count_;
 }
 
-pub fn whoami(self: *const Self) py.PyString(root) {
+pub fn whoami(self: *const Self) py.PyString {
     py.incref(root, self.name);
     return self.name;
 }
 
 pub fn hello(
     self: *const Self,
-    args: struct { name: py.PyString(root) }, // (5)!
-) !py.PyString(root) {
-    return py.PyString(root).createFmt(
+    args: struct { name: py.PyString }, // (5)!
+) !py.PyString {
+    return py.PyString.createFmt(
         "Hello, {s}. It's {s}",
         .{ try args.name.asSlice(), try self.name.asSlice() },
     );
 }
 
 pub const submod = py.module(struct { // (6)!
-    pub fn world() !py.PyString(root) {
-        return try py.PyString(root).create("Hello, World!");
+    pub fn world() !py.PyString {
+        return try py.PyString.create("Hello, World!");
     }
 });
 

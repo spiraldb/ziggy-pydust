@@ -22,10 +22,10 @@ const State = @import("../discovery.zig").State;
 
 pub fn PyTuple(comptime root: type) type {
     return extern struct {
-        obj: PyObject(root),
+        obj: PyObject,
 
         const Self = @This();
-        pub const from = PyObjectMixin(root, "tuple", "PyTuple", Self);
+        pub const from = PyObjectMixin("tuple", "PyTuple", Self);
 
         /// Construct a PyTuple from the given Zig tuple.
         pub fn create(values: anytype) !Self {
@@ -53,7 +53,7 @@ pub fn PyTuple(comptime root: type) type {
                 } else if (field.defaultValue()) |default| {
                     @field(result, field.name) = default;
                 } else {
-                    return py.TypeError(root).raise("tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+                    return py.TypeError.raise("tuple missing field " ++ field.name ++ ": " ++ @typeName(field.type));
                 }
             }
             return result;
@@ -74,7 +74,7 @@ pub fn PyTuple(comptime root: type) type {
 
         pub fn getItemZ(self: *const Self, comptime T: type, idx: isize) !T {
             if (ffi.PyTuple_GetItem(self.obj.py, idx)) |item| {
-                return py.as(root, T, PyObject(root){ .py = item });
+                return py.as(root, T, PyObject{ .py = item });
             } else {
                 return PyError.PyRaised;
             }
@@ -118,9 +118,9 @@ test "PyTuple" {
     defer py.finalize();
 
     const root = @This();
-    const first = try PyLong(root).create(1);
+    const first = try PyLong.create(1);
     defer first.decref();
-    const second = try PyFloat(root).create(1.0);
+    const second = try PyFloat.create(1.0);
     defer second.decref();
 
     var tuple = try PyTuple(root).create(.{ first.obj, second.obj });

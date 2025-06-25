@@ -20,22 +20,22 @@ const ffi = py.ffi;
 /// See: https://docs.python.org/3/c-api/code.html
 pub fn PyCode(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(root),
+        obj: py.PyObject,
 
         const Self = @This();
 
         pub inline fn firstLineNumber(self: *const Self) !u32 {
-            const lineNo = try self.obj.getAs(py.PyLong(root), "co_firstlineno");
+            const lineNo = try py.as(root, py.PyLong, try self.obj.get("co_firstlineno"));
             defer lineNo.obj.decref();
             return lineNo.as(u32);
         }
 
-        pub inline fn fileName(self: *const Self) !py.PyString(root) {
-            return self.obj.getAs(py.PyString(root), "co_filename");
+        pub inline fn fileName(self: *const Self) !py.PyString {
+            return try py.as(root, py.PyString, try self.obj.get("co_filename"));
         }
 
-        pub inline fn name(self: *const Self) !py.PyString(root) {
-            return self.obj.getAs(py.PyString(root), "co_name");
+        pub inline fn name(self: *const Self) !py.PyString {
+            return try py.as(root, py.PyString, try self.obj.get("co_name"));
         }
     };
 }

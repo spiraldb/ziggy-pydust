@@ -17,66 +17,62 @@ const ffi = py.ffi;
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 
-pub fn PyMemoryView(comptime root: type) type {
-    return extern struct {
-        obj: py.PyObject(root),
+pub const PyMemoryView = extern struct {
+    obj: py.PyObject,
 
-        pub const Flags = struct {
-            const PyBUF_READ: c_int = 0x100;
-            const PyBUF_WRITE: c_int = 0x200;
-        };
-
-        const Self = @This();
-        pub const from = PyObjectMixin(root, "memoryview", "PyMemoryView", Self);
-
-        pub fn fromSlice(slice: anytype) !Self {
-            const sliceType = Slice(@TypeOf(slice));
-            const sliceTpInfo = @typeInfo(sliceType);
-
-            const flag = if (sliceTpInfo == .pointer and sliceTpInfo.pointer.is_const) Flags.PyBUF_READ else Flags.PyBUF_WRITE;
-            return .{ .obj = .{
-                .py = py.ffi.PyMemoryView_FromMemory(@constCast(slice.ptr), @intCast(slice.len), flag) orelse return py.PyError.PyRaised,
-            } };
-        }
-
-        pub fn fromObject(obj: py.PyObject) !Self {
-            return .{ .obj = .{
-                .py = py.ffi.PyMemoryView_FromObject(obj.py) orelse return py.PyError.PyRaised,
-            } };
-        }
-
-        fn Slice(comptime T: type) type {
-            switch (@typeInfo(T)) {
-                .pointer => |ptr_info| {
-                    var new_ptr_info = ptr_info;
-                    switch (ptr_info.size) {
-                        .slice => {},
-                        .One => switch (@typeInfo(ptr_info.child)) {
-                            .array => |info| new_ptr_info.child = info.child,
-                            else => @compileError("invalid type given to PyMemoryview"),
-                        },
-                        else => @compileError("invalid type given to PyMemoryview"),
-                    }
-                    new_ptr_info.size = .slice;
-                    return @Type(.{ .pointer = new_ptr_info });
-                },
-                else => @compileError("invalid type given to PyMemoryview"),
-            }
-        }
+    pub const Flags = struct {
+        const PyBUF_READ: c_int = 0x100;
+        const PyBUF_WRITE: c_int = 0x200;
     };
-}
+
+    const Self = @This();
+    pub const from = PyObjectMixin("memoryview", "PyMemoryView", Self);
+
+    pub fn fromSlice(slice: anytype) !Self {
+        const sliceType = Slice(@TypeOf(slice));
+        const sliceTpInfo = @typeInfo(sliceType);
+
+        const flag = if (sliceTpInfo == .pointer and sliceTpInfo.pointer.is_const) Flags.PyBUF_READ else Flags.PyBUF_WRITE;
+        return .{ .obj = .{
+            .py = py.ffi.PyMemoryView_FromMemory(@constCast(slice.ptr), @intCast(slice.len), flag) orelse return py.PyError.PyRaised,
+        } };
+    }
+
+    pub fn fromObject(obj: py.PyObject) !Self {
+        return .{ .obj = .{
+            .py = py.ffi.PyMemoryView_FromObject(obj.py) orelse return py.PyError.PyRaised,
+        } };
+    }
+
+    fn Slice(comptime T: type) type {
+        switch (@typeInfo(T)) {
+            .pointer => |ptr_info| {
+                var new_ptr_info = ptr_info;
+                switch (ptr_info.size) {
+                    .slice => {},
+                    .One => switch (@typeInfo(ptr_info.child)) {
+                        .array => |info| new_ptr_info.child = info.child,
+                        else => @compileError("invalid type given to PyMemoryview"),
+                    },
+                    else => @compileError("invalid type given to PyMemoryview"),
+                }
+                new_ptr_info.size = .slice;
+                return @Type(.{ .pointer = new_ptr_info });
+            },
+            else => @compileError("invalid type given to PyMemoryview"),
+        }
+    }
+};
 
 test "from array" {
     py.initialize();
     defer py.finalize();
 
-    const root = @This();
-
     const array = "static string";
-    const mv = try PyMemoryView(root).fromSlice(array);
+    const mv = try PyMemoryView.fromSlice(array);
     defer mv.decref();
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer(root).Flags.ANY_CONTIGUOUS);
+    var buf = try mv.obj.getBuffer(py.PyBuffer.Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(buf.readonly);
 }
@@ -85,15 +81,13 @@ test "from slice" {
     py.initialize();
     defer py.finalize();
 
-    const root = @This();
-
     const array = "This is a static string";
     const slice: []const u8 = try std.testing.allocator.dupe(u8, array);
     defer std.testing.allocator.free(slice);
-    const mv = try PyMemoryView(root).fromSlice(slice);
+    const mv = try PyMemoryView.fromSlice(slice);
     defer mv.decref();
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer(root).Flags.ANY_CONTIGUOUS);
+    var buf = try mv.obj.getBuffer(py.PyBuffer.Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(buf.readonly);
 }
@@ -102,16 +96,14 @@ test "from mutable slice" {
     py.initialize();
     defer py.finalize();
 
-    const root = @This();
-
     const array = "This is a static string";
     const slice = try std.testing.allocator.alloc(u8, array.len);
     defer std.testing.allocator.free(slice);
-    const mv = try PyMemoryView(root).fromSlice(slice);
+    const mv = try PyMemoryView.fromSlice(slice);
     defer mv.decref();
     @memcpy(slice, array);
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer(root).Flags.ANY_CONTIGUOUS);
+    var buf = try mv.obj.getBuffer(py.PyBuffer.Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(!buf.readonly);
 }

@@ -19,60 +19,56 @@ const State = @import("../discovery.zig").State;
 
 /// Wrapper for Python PyLong.
 /// See: https://docs.python.org/3/c-api/long.html#c.PyLongObject
-pub fn PyLong(comptime root: type) type {
-    return extern struct {
-        obj: py.PyObject(root),
+pub const PyLong = extern struct {
+    obj: py.PyObject,
 
-        const Self = @This();
-        pub const from = PyObjectMixin(root, "int", "PyLong", Self);
+    const Self = @This();
+    pub const from = PyObjectMixin("int", "PyLong", Self);
 
-        pub fn create(value: anytype) !Self {
-            if (@TypeOf(value) == comptime_int) {
-                return create(@as(i64, @intCast(value)));
-            }
-
-            const typeInfo = @typeInfo(@TypeOf(value)).int;
-
-            const pylong = switch (typeInfo.signedness) {
-                .signed => ffi.PyLong_FromLongLong(@intCast(value)),
-                .unsigned => ffi.PyLong_FromUnsignedLongLong(@intCast(value)),
-            } orelse return PyError.PyRaised;
-
-            return .{ .obj = .{ .py = pylong } };
+    pub fn create(value: anytype) !Self {
+        if (@TypeOf(value) == comptime_int) {
+            return create(@as(i64, @intCast(value)));
         }
 
-        pub fn as(self: Self, comptime T: type) !T {
-            // TODO(ngates): support non-int conversions
-            const typeInfo = @typeInfo(T).int;
-            return switch (typeInfo.signedness) {
-                .signed => {
-                    const ll = ffi.PyLong_AsLongLong(self.obj.py);
-                    if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
-                    return @intCast(ll);
-                },
-                .unsigned => {
-                    const ull = ffi.PyLong_AsUnsignedLongLong(self.obj.py);
-                    if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
-                    return @intCast(ull);
-                },
-            };
-        }
-    };
-}
+        const typeInfo = @typeInfo(@TypeOf(value)).int;
+
+        const pylong = switch (typeInfo.signedness) {
+            .signed => ffi.PyLong_FromLongLong(@intCast(value)),
+            .unsigned => ffi.PyLong_FromUnsignedLongLong(@intCast(value)),
+        } orelse return PyError.PyRaised;
+
+        return .{ .obj = .{ .py = pylong } };
+    }
+
+    pub fn as(self: Self, comptime T: type) !T {
+        // TODO(ngates): support non-int conversions
+        const typeInfo = @typeInfo(T).int;
+        return switch (typeInfo.signedness) {
+            .signed => {
+                const ll = ffi.PyLong_AsLongLong(self.obj.py);
+                if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
+                return @intCast(ll);
+            },
+            .unsigned => {
+                const ull = ffi.PyLong_AsUnsignedLongLong(self.obj.py);
+                if (ffi.PyErr_Occurred() != null) return PyError.PyRaised;
+                return @intCast(ull);
+            },
+        };
+    }
+};
 
 test "PyLong" {
     py.initialize();
     defer py.finalize();
 
-    const root = @This();
-
-    const pl = try PyLong(root).create(100);
+    const pl = try PyLong.create(100);
     defer pl.decref();
 
     try std.testing.expectEqual(@as(c_long, 100), try pl.as(c_long));
     try std.testing.expectEqual(@as(c_ulong, 100), try pl.as(c_ulong));
 
-    const neg_pl = try PyLong(root).create(@as(c_long, -100));
+    const neg_pl = try PyLong.create(@as(c_long, -100));
     defer neg_pl.decref();
 
     try std.testing.expectError(

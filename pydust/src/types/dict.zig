@@ -20,10 +20,10 @@ const State = @import("../discovery.zig").State;
 /// See: https://docs.python.org/3/c-api/dict.html
 pub fn PyDict(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(root),
+        obj: py.PyObject,
 
         const Self = @This();
-        pub const from = PyObjectMixin(root, "dict", "PyDict", Self);
+        pub const from = PyObjectMixin("dict", "PyDict", Self);
 
         /// Create a dictionary from a Zig object
         pub fn create(value: anytype) !Self {
@@ -49,7 +49,7 @@ pub fn PyDict(comptime root: type) type {
                 } else if (field.defaultValue()) |default| {
                     @field(result, field.name) = default;
                 } else {
-                    return py.TypeError(root).raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
+                    return py.TypeError.raise("dict missing field " ++ field.name ++ ": " ++ @typeName(field.type));
                 }
             }
             return result;
@@ -127,7 +127,7 @@ pub fn PyDict(comptime root: type) type {
             defer keyObj.decref();
 
             if (ffi.PyDict_GetItemWithError(self.obj.py, keyObj.py)) |item| {
-                return try py.as(root, T, py.PyObject(root){ .py = item });
+                return try py.as(root, T, py.PyObject{ .py = item });
             }
 
             // If no exception, then the item is missing.
@@ -148,8 +148,8 @@ pub fn PyDict(comptime root: type) type {
         }
 
         pub const Item = struct {
-            k: py.PyObject(root),
-            v: py.PyObject(root),
+            k: py.PyObject,
+            v: py.PyObject,
 
             pub fn key(self: Item, comptime K: type) !K {
                 return py.as(root, K, self.k);
@@ -194,14 +194,14 @@ test "PyDict set and get" {
     const pd = try PyDict(root).new();
     defer pd.decref();
 
-    const bar = try py.PyString(root).create("bar");
+    const bar = try py.PyString.create("bar");
     defer bar.decref();
     try pd.setItem("foo", bar);
 
     try testing.expect(try pd.contains("foo"));
     try testing.expectEqual(@as(usize, 1), pd.length());
 
-    try testing.expectEqual(bar, (try pd.getItem(py.PyString(root), "foo")).?);
+    try testing.expectEqual(bar, (try pd.getItem(py.PyString, "foo")).?);
 
     try pd.delItem("foo");
     try testing.expect(!try pd.contains("foo"));
@@ -234,7 +234,7 @@ test "PyDict iterator" {
     const pd = try PyDict(root).new();
     defer pd.decref();
 
-    const foo = try py.PyString(root).create("foo");
+    const foo = try py.PyString.create("foo");
     defer foo.decref();
 
     try pd.setItem("bar", foo);
@@ -242,12 +242,12 @@ test "PyDict iterator" {
 
     var iter = pd.itemsIterator();
     const first = iter.next().?;
-    try testing.expectEqualStrings("bar", try (try first.key(py.PyString(root))).asSlice());
-    try testing.expectEqual(foo, try first.value(py.PyString(root)));
+    try testing.expectEqualStrings("bar", try (try first.key(py.PyString)).asSlice());
+    try testing.expectEqual(foo, try first.value(py.PyString));
 
     const second = iter.next().?;
-    try testing.expectEqualStrings("baz", try (try second.key(py.PyString(root))).asSlice());
-    try testing.expectEqual(foo, try second.value(py.PyString(root)));
+    try testing.expectEqualStrings("baz", try (try second.key(py.PyString)).asSlice());
+    try testing.expectEqual(foo, try second.value(py.PyString));
 
     try testing.expectEqual(@as(?PyDict(root).Item, null), iter.next());
 }

@@ -25,8 +25,8 @@ When converting from Python to Zig types:
 When creating Python types from Zig types:
 
 * `.create(root, anytype)` - create a new Python object from a Zig type. Zig slices are copied.
-* `PyFoo(root).from.checked(py.PyObject(root))` - checks a `PyObject(root)` is indeed a `PyFoo` before wrapping it up as one.
-* `PyFoo(root).from.unchecked(py.PyObject(root))` - wraps a `PyObject(root)` as a `PyFoo` without checking the type.
+* `PyFoo(root).from.checked(root, py.PyObject)` - checks a `PyObject` is indeed a `PyFoo` before wrapping it up as one.
+* `PyFoo(root).from.unchecked(py.PyObject)` - wraps a `PyObject` as a `PyFoo` without checking the type.
 
 ## Type Conversions
 

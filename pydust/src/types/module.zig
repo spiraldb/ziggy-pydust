@@ -24,10 +24,10 @@ const PyError = @import("../errors.zig").PyError;
 
 pub fn PyModule(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(root),
+        obj: py.PyObject,
 
         const Self = @This();
-        pub const from = PyObjectMixin(root, "module", "PyModule", Self);
+        pub const from = PyObjectMixin("module", "PyModule", Self);
 
         pub fn import(name: [:0]const u8) !Self {
             return .{ .obj = .{ .py = ffi.PyImport_ImportModule(name) orelse return PyError.PyRaised } };

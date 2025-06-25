@@ -22,46 +22,42 @@ const State = @import("../discovery.zig").State;
 /// See: https://docs.python.org/3/c-api/bool.html
 ///
 /// Note: refcounting semantics apply, even for bools!
-pub fn PyBool(comptime root: type) type {
-    return extern struct {
-        obj: py.PyObject(root),
+pub const PyBool = extern struct {
+    obj: py.PyObject,
 
-        const Self = @This();
-        pub const from = PyObjectMixin(root, "bool", "PyBool", Self);
+    const Self = @This();
+    pub const from = PyObjectMixin("bool", "PyBool", Self);
 
-        pub fn create(value: bool) !Self {
-            return if (value) true_() else false_();
-        }
+    pub fn create(value: bool) !Self {
+        return if (value) true_() else false_();
+    }
 
-        pub fn asbool(self: Self) bool {
-            return ffi.Py_IsTrue(self.obj.py) == 1;
-        }
+    pub fn asbool(self: Self) bool {
+        return ffi.Py_IsTrue(self.obj.py) == 1;
+    }
 
-        pub fn intobool(self: Self) bool {
-            self.decref();
-            return self.asbool();
-        }
+    pub fn intobool(self: Self) bool {
+        self.decref();
+        return self.asbool();
+    }
 
-        pub fn true_() Self {
-            return .{ .obj = .{ .py = ffi.PyBool_FromLong(1) } };
-        }
+    pub fn true_() Self {
+        return .{ .obj = .{ .py = ffi.PyBool_FromLong(1) } };
+    }
 
-        pub fn false_() Self {
-            return .{ .obj = .{ .py = ffi.PyBool_FromLong(0) } };
-        }
-    };
-}
+    pub fn false_() Self {
+        return .{ .obj = .{ .py = ffi.PyBool_FromLong(0) } };
+    }
+};
 
 test "PyBool" {
     py.initialize();
     defer py.finalize();
 
-    const root = @This();
-
-    const pytrue = PyBool(root).true_();
+    const pytrue = PyBool.true_();
     defer pytrue.decref();
 
-    const pyfalse = PyBool(root).false_();
+    const pyfalse = PyBool.false_();
     defer pyfalse.decref();
 
     try std.testing.expect(pytrue.asbool());

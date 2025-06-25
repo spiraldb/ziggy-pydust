@@ -23,10 +23,10 @@ const State = @import("../discovery.zig").State;
 /// See: https://docs.python.org/3/c-api/list.html
 pub fn PyList(comptime root: type) type {
     return extern struct {
-        obj: PyObject(root),
+        obj: PyObject,
 
         const Self = @This();
-        pub const from = PyObjectMixin(root, "list", "PyList", Self);
+        pub const from = PyObjectMixin("list", "PyList", Self);
 
         pub fn new(size: usize) !Self {
             const list = ffi.PyList_New(@intCast(size)) orelse return PyError.PyRaised;
@@ -40,7 +40,7 @@ pub fn PyList(comptime root: type) type {
         // Returns borrowed reference.
         pub fn getItem(self: Self, comptime T: type, idx: isize) !T {
             if (ffi.PyList_GetItem(self.obj.py, idx)) |item| {
-                return py.as(root, T, py.PyObject(root){ .py = item });
+                return py.as(root, T, py.PyObject{ .py = item });
             } else {
                 return PyError.PyRaised;
             }

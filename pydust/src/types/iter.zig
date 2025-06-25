@@ -21,10 +21,10 @@ const State = @import("../discovery.zig").State;
 /// Constructed using py.iter(...)
 pub fn PyIter(comptime root: type) type {
     return extern struct {
-        obj: py.PyObject(root),
+        obj: py.PyObject,
 
         const Self = @This();
-        const from = PyObjectMixin(root, "iterator", "PyIter", Self);
+        const from = PyObjectMixin("iterator", "PyIter", Self);
 
         pub fn next(self: Self, comptime T: type) !?T {
             if (ffi.PyIter_Next(self.obj.py)) |result| {

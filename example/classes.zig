@@ -38,9 +38,9 @@ pub const ConstructableClass = py.class(struct {
 pub const Animal = py.class(struct {
     const Self = @This();
 
-    species_: py.PyString(root),
+    species_: py.PyString,
 
-    pub fn species(self: *Self) py.PyString(root) {
+    pub fn species(self: *Self) py.PyString {
         return self.species_;
     }
 });
@@ -49,17 +49,17 @@ pub const Dog = py.class(struct {
     const Self = @This();
 
     animal: Animal.definition,
-    breed_: py.PyString(root),
+    breed_: py.PyString,
 
-    pub fn __init__(self: *Self, args: struct { breed: py.PyString(root) }) !void {
+    pub fn __init__(self: *Self, args: struct { breed: py.PyString }) !void {
         args.breed.obj.incref();
         self.* = .{
-            .animal = .{ .species_ = try py.PyString(root).create("dog") },
+            .animal = .{ .species_ = try py.PyString.create("dog") },
             .breed_ = args.breed,
         };
     }
 
-    pub fn breed(self: *Self) py.PyString(root) {
+    pub fn breed(self: *Self) py.PyString {
         return self.breed_;
     }
 });
@@ -70,29 +70,29 @@ pub const Dog = py.class(struct {
 pub const User = py.class(struct {
     const Self = @This();
 
-    pub fn __init__(self: *Self, args: struct { name: py.PyString(root) }) void {
+    pub fn __init__(self: *Self, args: struct { name: py.PyString }) void {
         args.name.obj.incref();
         self.* = .{ .name = args.name, .email = .{} };
     }
 
-    name: py.PyString(root),
+    name: py.PyString,
     email: Email.definition,
     greeting: Greeting.definition = .{},
 
     pub const Email = py.property(struct {
         const Prop = @This();
 
-        e: ?py.PyString(root) = null,
+        e: ?py.PyString = null,
 
-        pub fn get(prop: *const Prop) ?py.PyString(root) {
+        pub fn get(prop: *const Prop) ?py.PyString {
             if (prop.e) |e| e.obj.incref();
             return prop.e;
         }
 
-        pub fn set(prop: *Prop, value: py.PyString(root)) !void {
+        pub fn set(prop: *Prop, value: py.PyString) !void {
             const self: *Self = @fieldParentPtr("email", prop);
             if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
-                return py.ValueError(root).raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
+                return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
             }
             value.obj.incref();
             prop.e = value;
@@ -100,8 +100,8 @@ pub const User = py.class(struct {
     });
 
     pub const Greeting = py.property(struct {
-        pub fn get(self: *const Self) !py.PyString(root) {
-            return py.PyString(root).createFmt("Hello, {s}!", .{try self.name.asSlice()});
+        pub fn get(self: *const Self) !py.PyString {
+            return py.PyString.createFmt("Hello, {s}!", .{try self.name.asSlice()});
         }
     });
 
@@ -195,7 +195,7 @@ pub const GetAttr = py.class(struct {
         _ = self;
     }
 
-    pub fn __getattr__(self: *const Self, attr: py.PyString(root)) !py.PyObject(root) {
+    pub fn __getattr__(self: *const Self, attr: py.PyString) !py.PyObject {
         const name = try attr.asSlice();
         if (std.mem.eql(u8, name, "number")) {
             return py.create(root, 42);

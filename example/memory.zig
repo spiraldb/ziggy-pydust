@@ -15,9 +15,9 @@ const py = @import("pydust");
 const root = @This();
 
 // --8<-- [start:append]
-pub fn append(args: struct { left: py.PyString(root) }) !py.PyString(root) {
+pub fn append(args: struct { left: py.PyString }) !py.PyString {
     // Since we create right, we must also decref it.
-    const right = try py.PyString(root).create("right");
+    const right = try py.PyString.create("right");
     defer right.obj.decref();
 
     // Left is given to us as a borrowed reference from the caller.
@@ -28,7 +28,7 @@ pub fn append(args: struct { left: py.PyString(root) }) !py.PyString(root) {
 // --8<-- [end:append]
 
 // --8<-- [start:concat]
-pub fn concat(args: struct { left: py.PyString(root) }) !py.PyString(root) {
+pub fn concat(args: struct { left: py.PyString }) !py.PyString {
     return args.left.concatSlice("right");
 }
 // --8<-- [end:concat]

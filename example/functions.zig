@@ -27,8 +27,8 @@ pub fn with_kwargs(args: struct { x: f64, y: f64 = 42.0 }) f64 {
 // --8<-- [end:kwargs]
 
 // --8<-- [start:varargs]
-pub fn variadic(args: struct { hello: py.PyString(root), args: py.Args(root), kwargs: py.Kwargs(root) }) !py.PyString(root) {
-    return py.PyString(root).createFmt(
+pub fn variadic(args: struct { hello: py.PyString, args: py.Args(), kwargs: py.Kwargs() }) !py.PyString {
+    return py.PyString.createFmt(
         "Hello {s} with {} varargs and {} kwargs",
         .{ try args.hello.asSlice(), args.args.len, args.kwargs.count() },
     );

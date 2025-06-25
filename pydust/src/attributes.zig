@@ -16,7 +16,7 @@ const State = @import("discovery.zig").State;
 pub fn Attribute(comptime root: type) type {
     return struct {
         name: [:0]const u8,
-        ctor: fn (module: py.PyModule(root)) py.PyError!py.PyObject(root),
+        ctor: fn (module: py.PyModule(root)) py.PyError!py.PyObject,
     };
 }
 
@@ -46,7 +46,7 @@ pub fn Attributes(comptime root: type, comptime definition: type) type {
                 if (State.findDefinition(root, value)) |def| {
                     if (def.type == .class) {
                         const Closure = struct {
-                            pub fn init(module: py.PyModule(root)) !py.PyObject(root) {
+                            pub fn init(module: py.PyModule(root)) !py.PyObject {
                                 const typedef = Type(root, decl.name ++ "", def.definition);
                                 return try typedef.init(module);
                             }

@@ -50,7 +50,7 @@ pub fn Module(comptime root: type, comptime name: [:0]const u8, comptime definit
         };
 
         /// A function to initialize the Python module from its definition.
-        pub fn init() !py.PyObject(root) {
+        pub fn init() !py.PyObject {
             const pyModuleDef = try py.allocator.create(ffi.PyModuleDef);
             pyModuleDef.* = ffi.PyModuleDef{
                 .m_base = std.mem.zeroes(ffi.PyModuleDef_Base),
@@ -104,12 +104,12 @@ fn Slots(comptime root: type, comptime definition: type) type {
 
         fn custom_mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
             const mod: py.PyModule = .{ .obj = .{ .py = pymodule } };
-            tramp.coerceError(root, definition.__exec__(mod)) catch return -1;
+            tramp.coerceError(definition.__exec__(mod)) catch return -1;
             return 0;
         }
 
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
-            tramp.coerceError(root, mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
+            tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
             return 0;
         }
 
@@ -146,12 +146,12 @@ fn Slots(comptime root: type, comptime definition: type) type {
                 // Create a dumb ModuleSpec with a name attribute using types.SimpleNamespace
                 const types = try py.import(root, "types");
                 defer types.decref();
-                const pyname = try py.PyString(root).create(name);
+                const pyname = try py.PyString.create(name);
                 defer pyname.obj.decref();
-                const spec = try types.call(py.PyObject(root), "SimpleNamespace", .{}, .{ .name = pyname });
+                const spec = try call(&types, py.PyObject, "SimpleNamespace", .{}, .{ .name = pyname });
                 defer spec.decref();
 
-                const submod: py.PyObject(root) = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
+                const submod: py.PyObject = .{ .py = ffi.PyModule_FromDefAndSpec(pySubmodDef, spec.py) orelse return PyError.PyRaised };
 
                 if (ffi.PyModule_ExecDef(submod.py, pySubmodDef) < 0) {
                     return PyError.PyRaised;
@@ -159,6 +159,13 @@ fn Slots(comptime root: type, comptime definition: type) type {
 
                 try module.addObjectRef(name, submod);
             }
+        }
+
+        /// Call a method on this object with the given args and kwargs.
+        inline fn call(types: *const py.PyObject, comptime T: type, method: []const u8, args: anytype, kwargs: anytype) !T {
+            const meth = try types.get(method);
+            defer meth.decref();
+            return py.call(root, T, meth, args, kwargs);
         }
     };
 }
