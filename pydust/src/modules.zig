@@ -104,12 +104,12 @@ fn Slots(comptime root: type, comptime definition: type) type {
 
         fn custom_mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
             const mod: py.PyModule = .{ .obj = .{ .py = pymodule } };
-            tramp.coerceError(definition.__exec__(mod)) catch return -1;
+            tramp.coerceError(root, definition.__exec__(mod)) catch return -1;
             return 0;
         }
 
         fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
-            tramp.coerceError(mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
+            tramp.coerceError(root, mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
             return 0;
         }
 

@@ -72,7 +72,8 @@ test "from array" {
     const mv = try PyMemoryView.fromSlice(array);
     defer mv.decref();
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer.Flags.ANY_CONTIGUOUS);
+    const root = @This();
+    var buf = try mv.obj.getBuffer(root, py.PyBuffer.Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(buf.readonly);
 }
@@ -87,7 +88,8 @@ test "from slice" {
     const mv = try PyMemoryView.fromSlice(slice);
     defer mv.decref();
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer.Flags.ANY_CONTIGUOUS);
+    const root = @This();
+    var buf = try mv.obj.getBuffer(root, py.PyBuffer.Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(buf.readonly);
 }
@@ -103,7 +105,8 @@ test "from mutable slice" {
     defer mv.decref();
     @memcpy(slice, array);
 
-    var buf = try mv.obj.getBuffer(py.PyBuffer.Flags.ANY_CONTIGUOUS);
+    const root = @This();
+    var buf = try mv.obj.getBuffer(root, py.PyBuffer.Flags.ANY_CONTIGUOUS);
     try std.testing.expectEqualSlices(u8, array, buf.asSlice(u8));
     try std.testing.expect(!buf.readonly);
 }

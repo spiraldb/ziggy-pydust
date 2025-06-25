@@ -75,9 +75,9 @@ pub const PyObject = extern struct {
     }
 
     // See: https://docs.python.org/3/c-api/buffer.html#buffer-request-types
-    pub fn getBuffer(self: py.PyObject, flags: c_int) !py.PyBuffer {
+    pub fn getBuffer(self: py.PyObject, comptime root: type, flags: c_int) !py.PyBuffer {
         if (ffi.PyObject_CheckBuffer(self.py) != 1) {
-            return py.BufferError.raise("object does not support buffer interface");
+            return py.BufferError(root).raise("object does not support buffer interface");
         }
         var buffer: py.PyBuffer = undefined;
         if (ffi.PyObject_GetBuffer(self.py, @ptrCast(&buffer), flags) != 0) {
@@ -126,7 +126,7 @@ pub fn PyObjectMixin(comptime name: []const u8, comptime prefix: []const u8, com
             if (PyCheck(obj.py) == 0) {
                 const typeName = try py.str(root, py.type_(root, obj));
                 defer typeName.obj.decref();
-                return py.TypeError.raiseFmt("expected {s}, found {s}", .{ name, try typeName.asSlice() });
+                return py.TypeError(root).raiseFmt("expected {s}, found {s}", .{ name, try typeName.asSlice() });
             }
             return .{ .obj = obj };
         }

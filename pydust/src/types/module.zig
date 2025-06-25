@@ -83,5 +83,12 @@ pub fn PyModule(comptime root: type) type {
             const pymod = ffi.PyImport_ExecCodeModuleEx(module_nameZ.ptr, pycode, filenameZ.ptr) orelse return PyError.PyRaised;
             return .{ .obj = .{ .py = pymod } };
         }
+
+        /// Call a method on this object with the given args and kwargs.
+        pub fn call(self: *const Self, comptime T: type, method: []const u8, args: anytype, kwargs: anytype) !T {
+            const meth = try self.obj.get(method);
+            defer meth.decref();
+            return py.call(root, T, meth, args, kwargs);
+        }
     };
 }

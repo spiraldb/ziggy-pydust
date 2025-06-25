@@ -17,7 +17,7 @@ const root = @This();
 
 // --8<-- [start:valueerror]
 pub fn raise_value_error(args: struct { message: py.PyString }) !void {
-    return py.ValueError.raise(try args.message.asSlice());
+    return py.ValueError(root).raise(try args.message.asSlice());
 }
 // --8<-- [end:valueerror]
 

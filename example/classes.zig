@@ -92,7 +92,7 @@ pub const User = py.class(struct {
         pub fn set(prop: *Prop, value: py.PyString) !void {
             const self: *Self = @fieldParentPtr("email", prop);
             if (std.mem.indexOfScalar(u8, try value.asSlice(), '@') == null) {
-                return py.ValueError.raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
+                return py.ValueError(root).raiseFmt("Invalid email address for {s}", .{try self.name.asSlice()});
             }
             value.obj.incref();
             prop.e = value;

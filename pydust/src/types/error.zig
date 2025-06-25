@@ -17,78 +17,216 @@ const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;
 
-pub const ArithmeticError = PyExc("ArithmeticError");
-pub const AssertionError = PyExc("AssertionError");
-pub const AttributeError = PyExc("AttributeError");
-pub const BaseException = PyExc("BaseException");
-pub const BaseExceptionGroup = PyExc("BaseExceptionGroup");
-pub const BlockingIOError = PyExc("BlockingIOError");
-pub const BrokenPipeError = PyExc("BrokenPipeError");
-pub const BufferError = PyExc("BufferError");
-pub const BytesWarning = PyExc("BytesWarning");
-pub const ChildProcessError = PyExc("ChildProcessError");
-pub const ConnectionAbortedError = PyExc("ConnectionAbortedError");
-pub const ConnectionError = PyExc("ConnectionError");
-pub const ConnectionRefusedError = PyExc("ConnectionRefusedError");
-pub const ConnectionResetError = PyExc("ConnectionResetError");
-pub const DeprecationWarning = PyExc("DeprecationWarning");
-pub const EOFError = PyExc("EOFError");
-pub const EncodingWarning = PyExc("EncodingWarning");
-pub const EnvironmentError = PyExc("EnvironmentError");
-pub const Exception = PyExc("Exception");
-pub const FileExistsError = PyExc("FileExistsError");
-pub const FileNotFoundError = PyExc("FileNotFoundError");
-pub const FloatingPointError = PyExc("FloatingPointError");
-pub const FutureWarning = PyExc("FutureWarning");
-pub const GeneratorExit = PyExc("GeneratorExit");
-pub const IOError = PyExc("IOError");
-pub const ImportError = PyExc("ImportError");
-pub const ImportWarning = PyExc("ImportWarning");
-pub const IndentationError = PyExc("IndentationError");
-pub const IndexError = PyExc("IndexError");
-pub const InterruptedError = PyExc("InterruptedError");
-pub const IsADirectoryError = PyExc("IsADirectoryError");
-pub const KeyError = PyExc("KeyError");
-pub const KeyboardInterrupt = PyExc("KeyboardInterrupt");
-pub const LookupError = PyExc("LookupError");
-pub const MemoryError = PyExc("MemoryError");
-pub const ModuleNotFoundError = PyExc("ModuleNotFoundError");
-pub const NameError = PyExc("NameError");
-pub const NotADirectoryError = PyExc("NotADirectoryError");
-pub const NotImplementedError = PyExc("NotImplementedError");
-pub const OSError = PyExc("OSError");
-pub const OverflowError = PyExc("OverflowError");
-pub const PendingDeprecationWarning = PyExc("PendingDeprecationWarning");
-pub const PermissionError = PyExc("PermissionError");
-pub const ProcessLookupError = PyExc("ProcessLookupError");
-pub const RecursionError = PyExc("RecursionError");
-pub const ReferenceError = PyExc("ReferenceError");
-pub const ResourceWarning = PyExc("ResourceWarning");
-pub const RuntimeError = PyExc("RuntimeError");
-pub const RuntimeWarning = PyExc("RuntimeWarning");
-pub const StopAsyncIteration = PyExc("StopAsyncIteration");
-pub const StopIteration = PyExc("StopIteration");
-pub const SyntaxError = PyExc("SyntaxError");
-pub const SyntaxWarning = PyExc("SyntaxWarning");
-pub const SystemError = PyExc("SystemError");
-pub const SystemExit = PyExc("SystemExit");
-pub const TabError = PyExc("TabError");
-pub const TimeoutError = PyExc("TimeoutError");
-pub const TypeError = PyExc("TypeError");
-pub const UnboundLocalError = PyExc("UnboundLocalError");
-pub const UnicodeDecodeError = PyExc("UnicodeDecodeError");
-pub const UnicodeEncodeError = PyExc("UnicodeEncodeError");
-pub const UnicodeError = PyExc("UnicodeError");
-pub const UnicodeTranslateError = PyExc("UnicodeTranslateError");
-pub const UnicodeWarning = PyExc("UnicodeWarning");
-pub const UserWarning = PyExc("UserWarning");
-pub const ValueError = PyExc("ValueError");
-pub const Warning = PyExc("Warning");
-pub const WindowsError = PyExc("WindowsError");
-pub const ZeroDivisionError = PyExc("ZeroDivisionError");
+pub fn ArithmeticError(comptime root: type) type {
+    return PyExc(root, "ArithmeticError");
+}
+pub fn AssertionError(comptime root: type) type {
+    return PyExc(root, "AssertionError");
+}
+pub fn AttributeError(comptime root: type) type {
+    return PyExc(root, "AttributeError");
+}
+pub fn BaseException(comptime root: type) type {
+    return PyExc(root, "BaseException");
+}
+pub fn BaseExceptionGroup(comptime root: type) type {
+    return PyExc(root, "BaseExceptionGroup");
+}
+pub fn BlockingIOError(comptime root: type) type {
+    return PyExc(root, "BlockingIOError");
+}
+pub fn BrokenPipeError(comptime root: type) type {
+    return PyExc(root, "BrokenPipeError");
+}
+pub fn BufferError(comptime root: type) type {
+    return PyExc(root, "BufferError");
+}
+pub fn BytesWarning(comptime root: type) type {
+    return PyExc(root, "BytesWarning");
+}
+pub fn ChildProcessError(comptime root: type) type {
+    return PyExc(root, "ChildProcessError");
+}
+pub fn ConnectionAbortedError(comptime root: type) type {
+    return PyExc(root, "ConnectionAbortedError");
+}
+pub fn ConnectionError(comptime root: type) type {
+    return PyExc(root, "ConnectionError");
+}
+pub fn ConnectionRefusedError(comptime root: type) type {
+    return PyExc(root, "ConnectionRefusedError");
+}
+pub fn ConnectionResetError(comptime root: type) type {
+    return PyExc(root, "ConnectionResetError");
+}
+pub fn DeprecationWarning(comptime root: type) type {
+    return PyExc(root, "DeprecationWarning");
+}
+pub fn EOFError(comptime root: type) type {
+    return PyExc(root, "EOFError");
+}
+pub fn EncodingWarning(comptime root: type) type {
+    return PyExc(root, "EncodingWarning");
+}
+pub fn EnvironmentError(comptime root: type) type {
+    return PyExc(root, "EnvironmentError");
+}
+pub fn Exception(comptime root: type) type {
+    return PyExc(root, "Exception");
+}
+pub fn FileExistsError(comptime root: type) type {
+    return PyExc(root, "FileExistsError");
+}
+pub fn FileNotFoundError(comptime root: type) type {
+    return PyExc(root, "FileNotFoundError");
+}
+pub fn FloatingPointError(comptime root: type) type {
+    return PyExc(root, "FloatingPointError");
+}
+pub fn FutureWarning(comptime root: type) type {
+    return PyExc(root, "FutureWarning");
+}
+pub fn GeneratorExit(comptime root: type) type {
+    return PyExc(root, "GeneratorExit");
+}
+pub fn IOError(comptime root: type) type {
+    return PyExc(root, "IOError");
+}
+pub fn ImportError(comptime root: type) type {
+    return PyExc(root, "ImportError");
+}
+pub fn ImportWarning(comptime root: type) type {
+    return PyExc(root, "ImportWarning");
+}
+pub fn IndentationError(comptime root: type) type {
+    return PyExc(root, "IndentationError");
+}
+pub fn IndexError(comptime root: type) type {
+    return PyExc(root, "IndexError");
+}
+pub fn InterruptedError(comptime root: type) type {
+    return PyExc(root, "InterruptedError");
+}
+pub fn IsADirectoryError(comptime root: type) type {
+    return PyExc(root, "IsADirectoryError");
+}
+pub fn KeyError(comptime root: type) type {
+    return PyExc(root, "KeyError");
+}
+pub fn KeyboardInterrupt(comptime root: type) type {
+    return PyExc(root, "KeyboardInterrupt");
+}
+pub fn LookupError(comptime root: type) type {
+    return PyExc(root, "LookupError");
+}
+pub fn MemoryError(comptime root: type) type {
+    return PyExc(root, "MemoryError");
+}
+pub fn ModuleNotFoundError(comptime root: type) type {
+    return PyExc(root, "ModuleNotFoundError");
+}
+pub fn NameError(comptime root: type) type {
+    return PyExc(root, "NameError");
+}
+pub fn NotADirectoryError(comptime root: type) type {
+    return PyExc(root, "NotADirectoryError");
+}
+pub fn NotImplementedError(comptime root: type) type {
+    return PyExc(root, "NotImplementedError");
+}
+pub fn OSError(comptime root: type) type {
+    return PyExc(root, "OSError");
+}
+pub fn OverflowError(comptime root: type) type {
+    return PyExc(root, "OverflowError");
+}
+pub fn PendingDeprecationWarning(comptime root: type) type {
+    return PyExc(root, "PendingDeprecationWarning");
+}
+pub fn PermissionError(comptime root: type) type {
+    return PyExc(root, "PermissionError");
+}
+pub fn ProcessLookupError(comptime root: type) type {
+    return PyExc(root, "ProcessLookupError");
+}
+pub fn RecursionError(comptime root: type) type {
+    return PyExc(root, "RecursionError");
+}
+pub fn ReferenceError(comptime root: type) type {
+    return PyExc(root, "ReferenceError");
+}
+pub fn ResourceWarning(comptime root: type) type {
+    return PyExc(root, "ResourceWarning");
+}
+pub fn RuntimeError(comptime root: type) type {
+    return PyExc(root, "RuntimeError");
+}
+pub fn RuntimeWarning(comptime root: type) type {
+    return PyExc(root, "RuntimeWarning");
+}
+pub fn StopAsyncIteration(comptime root: type) type {
+    return PyExc(root, "StopAsyncIteration");
+}
+pub fn StopIteration(comptime root: type) type {
+    return PyExc(root, "StopIteration");
+}
+pub fn SyntaxError(comptime root: type) type {
+    return PyExc(root, "SyntaxError");
+}
+pub fn SyntaxWarning(comptime root: type) type {
+    return PyExc(root, "SyntaxWarning");
+}
+pub fn SystemError(comptime root: type) type {
+    return PyExc(root, "SystemError");
+}
+pub fn SystemExit(comptime root: type) type {
+    return PyExc(root, "SystemExit");
+}
+pub fn TabError(comptime root: type) type {
+    return PyExc(root, "TabError");
+}
+pub fn TimeoutError(comptime root: type) type {
+    return PyExc(root, "TimeoutError");
+}
+pub fn TypeError(comptime root: type) type {
+    return PyExc(root, "TypeError");
+}
+pub fn UnboundLocalError(comptime root: type) type {
+    return PyExc(root, "UnboundLocalError");
+}
+pub fn UnicodeDecodeError(comptime root: type) type {
+    return PyExc(root, "UnicodeDecodeError");
+}
+pub fn UnicodeEncodeError(comptime root: type) type {
+    return PyExc(root, "UnicodeEncodeError");
+}
+pub fn UnicodeError(comptime root: type) type {
+    return PyExc(root, "UnicodeError");
+}
+pub fn UnicodeTranslateError(comptime root: type) type {
+    return PyExc(root, "UnicodeTranslateError");
+}
+pub fn UnicodeWarning(comptime root: type) type {
+    return PyExc(root, "UnicodeWarning");
+}
+pub fn UserWarning(comptime root: type) type {
+    return PyExc(root, "UserWarning");
+}
+pub fn ValueError(comptime root: type) type {
+    return PyExc(root, "ValueError");
+}
+pub fn Warning(comptime root: type) type {
+    return PyExc(root, "Warning");
+}
+pub fn WindowsError(comptime root: type) type {
+    return PyExc(root, "WindowsError");
+}
+pub fn ZeroDivisionError(comptime root: type) type {
+    return PyExc(root, "ZeroDivisionError");
+}
 
 /// Struct providing comptime logic for raising Python exceptions.
-fn PyExc(comptime name: [:0]const u8) type {
+fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
     return struct {
         const Self = @This();
 
@@ -132,7 +270,6 @@ fn PyExc(comptime name: [:0]const u8) type {
                 std.debug.captureStackTrace(@returnAddress(), &st);
 
                 const debugInfo = std.debug.getSelfDebugInfo() catch return;
-                const stderr = std.io.getStdErr();
 
                 // Skip the first frame (this function) and the last frame (the trampoline entrypoint)
                 for (0..st.index) |idx| {
@@ -152,8 +289,47 @@ fn PyExc(comptime name: [:0]const u8) type {
                         continue;
                     }
 
-                    // Print the source location of the frame.
-                    std.debug.printSourceAtAddress(debugInfo, stderr.writer(), address, std.io.tty.detectConfig(stderr)) catch return;
+                    // Allocate a string of newlines.
+                    // Since we wrap the error in a function, we have an addition "def foo()" line.
+                    // In addition to lineno being zero-based, we have to subtract 2.
+                    // This means that exceptions on line 1 will be off... but that's quite rare.
+                    const nnewlines = if (line_info.line < 2) 0 else line_info.line - 2;
+                    const newlines = try py.allocator.alloc(u8, nnewlines);
+                    defer py.allocator.free(newlines);
+                    @memset(newlines, '\n');
+
+                    // Setup a function we know will fail (with DivideByZero error)
+                    const code = try std.fmt.allocPrintZ(
+                        py.allocator,
+                        "{s}def {s}():\n    1/0\n",
+                        .{ newlines, symbol_info.name },
+                    );
+                    defer py.allocator.free(code);
+
+                    // Import the compiled code as a module and invoke the failing function
+                    const fake_module = try py.PyModule(root).fromCode(code, line_info.file_name, symbol_info.compile_unit_name);
+                    defer fake_module.obj.decref();
+
+                    _ = fake_module.call(void, symbol_info.name, .{}, .{}) catch null;
+
+                    // Grab our forced exception info.
+                    // We can ignore qtype and qvalue, we just want to get the traceback object.
+                    var qtype: ?*ffi.PyObject = undefined;
+                    var qvalue: ?*ffi.PyObject = undefined;
+                    var qtraceback: ?*ffi.PyObject = undefined;
+                    ffi.PyErr_Fetch(&qtype, &qvalue, &qtraceback);
+                    if (qtype) |q| py.decref(root, q);
+                    if (qvalue) |q| py.decref(root, q);
+                    std.debug.assert(qtraceback != null);
+
+                    // Extract the traceback frame by calling into Python (Pytraceback isn't part of the Stable API)
+                    const pytb = py.PyObject{ .py = qtraceback.? };
+                    const frame = (try pytb.get("tb_frame")).py;
+
+                    // Restore the original exception, augment it with the new frame, then fetch the new exception.
+                    ffi.PyErr_Restore(ptype, pvalue, ptraceback);
+                    _ = ffi.PyTraceBack_Here(@alignCast(@ptrCast(frame)));
+                    ffi.PyErr_Fetch(&ptype, &pvalue, &ptraceback);
                 }
 
                 // Restore the latest the exception info

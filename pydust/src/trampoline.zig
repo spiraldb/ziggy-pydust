@@ -136,7 +136,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
 
             // Early return to handle errors
             if (typeInfo == .error_union) {
-                const value = coerceError(obj) catch |err| return err;
+                const value = coerceError(root, obj) catch |err| return err;
                 return Trampoline(root, typeInfo.error_union.payload).wrap(value);
             }
 
@@ -194,7 +194,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
 
             // Early return to handle errors
             if (typeInfo == .error_union) {
-                const value = coerceError(object) catch |err| return err;
+                const value = coerceError(root, object) catch |err| return err;
                 return @as(T, Trampoline(root, typeInfo.error_union.payload).unwrap(value));
             }
 
@@ -232,7 +232,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                                 const clsName = State.getIdentifier(root, p.child).name();
                                 const mod = State.getContaining(root, p.child, .module);
                                 const modName = State.getIdentifier(root, mod).name();
-                                return py.TypeError.raiseFmt(
+                                return py.TypeError(root).raiseFmt(
                                     "Expected {s}.{s} but found {s}",
                                     .{ modName, clsName, try obj.getTypeName() },
                                 );
@@ -267,7 +267,7 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
                     // Otherwise, extract from a Python dictionary
                     return (try py.PyDict(root).from.checked(root, obj)).as(T);
                 },
-                .void => if (py.is_none(root, obj)) return else return py.TypeError.raise("expected None"),
+                .void => if (py.is_none(root, obj)) return else return py.TypeError(root).raise("expected None"),
                 else => {},
             }
 
@@ -327,13 +327,13 @@ pub fn Trampoline(comptime root: type, comptime T: type) type {
 }
 
 /// Takes a value that optionally errors and coerces it always into a PyError.
-pub fn coerceError(result: anytype) coerceErrorType(@TypeOf(result)) {
+pub fn coerceError(comptime root: type, result: anytype) coerceErrorType(@TypeOf(result)) {
     const typeInfo = @typeInfo(@TypeOf(result));
     if (typeInfo == .error_union) {
         return result catch |err| {
             if (err == PyError.PyRaised) return PyError.PyRaised;
             if (err == PyError.OutOfMemory) return PyError.OutOfMemory;
-            return py.RuntimeError.raise(@errorName(err));
+            return py.RuntimeError(root).raise(@errorName(err));
         };
     } else {
         return result;

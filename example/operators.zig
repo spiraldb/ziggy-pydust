@@ -241,7 +241,7 @@ pub const Operator = py.class(struct {
             const otherO: *Self = try py.as(root, *Self, other);
             return py.object(root, try py.init(root, Self, .{ .num_ = self.num_ / otherO.num_ }));
         } else {
-            return py.TypeError.raise("Unsupported number type for Operator division");
+            return py.TypeError(root).raise("Unsupported number type for Operator division");
         }
     }
 });

@@ -281,10 +281,10 @@ pub fn wrap(comptime root: type, comptime definition: type, comptime func: anyty
             if (sig.argsParam) |Args| {
                 const args = try unwrapArgs(root, Args, pyargs, py.Kwargs().init(py.allocator));
                 const result = if (sig.selfParam) |_| func(self, args) else func(args);
-                return py.createOwned(root, tramp.coerceError(result));
+                return py.createOwned(root, tramp.coerceError(root, result));
             } else {
                 const result = if (sig.selfParam) |_| func(self) else func();
-                return py.createOwned(root, tramp.coerceError(result));
+                return py.createOwned(root, tramp.coerceError(root, result));
             }
         }
 
@@ -324,7 +324,7 @@ pub fn wrap(comptime root: type, comptime definition: type, comptime func: anyty
             const args = try unwrapArgs(root, sig.argsParam.?, pyargs, pykwargs);
             const self = if (sig.selfParam) |Self| try castSelf(Self, pyself) else null;
             const result = if (sig.selfParam) |_| func(self, args) else func(args);
-            return py.createOwned(root, tramp.coerceError(result));
+            return py.createOwned(root, tramp.coerceError(root, result));
         }
 
         inline fn castSelf(comptime Self: type, pyself: py.PyObject) !Self {
@@ -357,7 +357,7 @@ pub fn unwrapArgs(comptime root: type, comptime Args: type, pyargs: py.Args(), p
         } else if (field.type != py.Args() and field.type != py.Kwargs()) {
             // Otherwise, we have a regular argument.
             if (argIdx >= pyargs.len) {
-                return py.TypeError.raiseFmt("Expected {d} arg{s}", .{
+                return py.TypeError(root).raiseFmt("Expected {d} arg{s}", .{
                     argCount(Args), if (argCount(Args) > 1) "s" else "",
                 });
             }
@@ -369,7 +369,7 @@ pub fn unwrapArgs(comptime root: type, comptime Args: type, pyargs: py.Args(), p
 
     // Now to handle var args.
     if (argIdx < pyargs.len and comptime varArgsIdx(Args) == null) {
-        return py.TypeError.raiseFmt("Too many args, expected {d}", .{argCount(Args)});
+        return py.TypeError(root).raiseFmt("Too many args, expected {d}", .{argCount(Args)});
     }
     if (comptime varArgsIdx(Args)) |idx| {
         @field(args, s.fields[idx].name) = pyargs[argIdx..];
@@ -377,7 +377,7 @@ pub fn unwrapArgs(comptime root: type, comptime Args: type, pyargs: py.Args(), p
 
     if (kwargs.count() > 0 and comptime varKwargsIdx(Args) == null) {
         var iterator = kwargs.keyIterator();
-        return py.TypeError.raiseFmt("Unexpected kwarg '{s}'", .{iterator.next().?.*});
+        return py.TypeError(root).raiseFmt("Unexpected kwarg '{s}'", .{iterator.next().?.*});
     }
     if (comptime varKwargsIdx(Args)) |idx| {
         @field(args, s.fields[idx].name) = kwargs;
