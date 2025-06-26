@@ -75,15 +75,19 @@ pub fn create_foo() *const Foo {
 
 ### Pydust Type Wrappers
 
-The Pydust Python type wrappers convert as expected.
+The Pydust Python type wrappers convert as expected. Note that `root` must be passed as a compile-time parameter to container type wrappers
+(like `PyList(root)`, `PyDict(root)`, etc.), but not to simple types like `PyString` or `PyInt`.
 
-| Zig Type      | Python Type  |
-| :------------ | :----------- |
-| `py.PyObject` | `object`     |
-| `py.PyBool`   | `bool`       |
-| `py.PyBytes`  | `bytes`      |
-| `py.PyLong`   | `int`        |
-| `py.PyFloat`  | `float`      |
-| `py.PyTuple`  | `tuple`      |
-| `py.PyDict`   | `dict`       |
-| `py.PyString` | `str`        |
+| Zig Type           | Python Type |
+| :----------------- | :---------- |
+| `py.PyObject`      | `object`    |
+| `py.PyBool`        | `bool`      |
+| `py.PyBytes`       | `bytes`     |
+| `py.PyLong`        | `int`       |
+| `py.PyFloat`       | `float`     |
+| `py.PyString`      | `str`       |
+| `py.PyList(root)`  | `list`      |
+| `py.PyTuple(root)` | `tuple`     |
+| `py.PyFrame(root)` | `frame`     |
+| `py.PyDict(root)`  | `dict`      |
+| `py.PySlice(root)` | `slice`     |
