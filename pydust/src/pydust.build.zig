@@ -27,6 +27,7 @@ pub const PythonModuleOptions = struct {
     target: std.Target.Query,
     optimize: std.builtin.Mode,
     main_pkg_path: ?std.Build.LazyPath = null,
+    imports: []const std.Build.Module.Import = &.{},
 
     pub fn short_name(self: *const PythonModuleOptions) [:0]const u8 {
         if (std.mem.lastIndexOfScalar(u8, self.name, '.')) |short_name_idx| {
@@ -188,6 +189,9 @@ pub const PydustStep = struct {
         lib.root_module.addImport("pydust", lib_module);
         lib.linkLibC();
         lib.linker_allow_shlib_undefined = true;
+        for (options.imports) |import| {
+            lib.root_module.addImport(import.name, import.module);
+        }
 
         // Install the shared library within the source tree
         const install = b.addInstallFileWithDir(
@@ -230,6 +234,9 @@ pub const PydustStep = struct {
         libtest.addLibraryPath(b.path(self.python_library_dir));
         // Needed to support miniconda statically linking libpython on macos
         libtest.addRPath(b.path(self.python_library_dir));
+        for (options.imports) |import| {
+            libtest.root_module.addImport(import.name, import.module);
+        }
 
         // Install the test binary
         const install_libtest = b.addInstallBinFile(
