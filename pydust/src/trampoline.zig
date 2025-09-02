@@ -13,7 +13,7 @@
 /// Utilities for bouncing CPython calls into Zig functions and back again.
 const std = @import("std");
 const Type = std.builtin.Type;
-const ffi = @import("ffi");
+const ffi = @import("ffi.zig").ffi;
 const py = @import("pydust.zig");
 const State = @import("discovery.zig").State;
 const funcs = @import("functions.zig");

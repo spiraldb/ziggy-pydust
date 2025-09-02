@@ -12,7 +12,7 @@
 
 const builtin = @import("builtin");
 const std = @import("std");
-const ffi = @import("ffi");
+const ffi = @import("../ffi.zig").ffi;
 const py = @import("../pydust.zig");
 const PyError = @import("../errors.zig").PyError;
 const State = @import("../discovery.zig").State;

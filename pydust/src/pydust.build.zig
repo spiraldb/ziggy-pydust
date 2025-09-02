@@ -175,14 +175,9 @@ pub const PydustStep = struct {
             //.main_pkg_path = options.main_pkg_path,
         });
         lib.root_module.addOptions("pyconf", pyconf);
-        const translate_c = self.addTranslateC(options);
-        translate_c.addIncludePath(b.path(self.python_include_dir));
         const lib_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
-            .imports = &.{
-                .{ .name = "pyconf", .module = pyconf.createModule() },
-                .{ .name = "ffi", .module = translate_c.createModule() },
-            },
+            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
         });
         lib_module.addIncludePath(b.path(self.python_include_dir));
         lib.root_module.addImport("pydust", lib_module);
@@ -218,10 +213,7 @@ pub const PydustStep = struct {
         libtest.root_module.addOptions("pyconf", pyconf);
         const libtest_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
-            .imports = &.{
-                .{ .name = "pyconf", .module = pyconf.createModule() },
-                .{ .name = "ffi", .module = translate_c.createModule() },
-            },
+            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
         });
         libtest_module.addIncludePath(b.path(self.python_include_dir));
         libtest.root_module.addImport("pydust", libtest_module);
@@ -282,18 +274,6 @@ pub const PydustStep = struct {
 
     fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
         return getPythonOutput(self.allocator, self.python_exe, code);
-    }
-
-    fn addTranslateC(self: PydustStep, options: PythonModuleOptions) *std.Build.Step.TranslateC {
-        const b = self.owner;
-        const translate_c = b.addTranslateC(.{
-            .root_source_file = b.path("pydust/src/ffi.h"),
-            .target = b.resolveTargetQuery(options.target),
-            .optimize = options.optimize,
-        });
-        if (options.limited_api)
-            translate_c.defineCMacro("Py_LIMITED_API", self.hexversion);
-        return translate_c;
     }
 };
 
