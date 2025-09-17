@@ -288,14 +288,14 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
             break :blk slots_;
         };
 
-        fn tp_new_not_instantiable(pycls: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_new_not_instantiable(pycls: *ffi.PyTypeObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             _ = pycls;
             _ = pykwargs;
             _ = pyargs;
             py.TypeError(root).raise("Native type cannot be instantiated from Python") catch return null;
         }
 
-        fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) c_int {
+        fn tp_init(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.c) c_int {
             const sig = funcs.parseSignature(root, "__init__", @typeInfo(@TypeOf(definition.__init__)).@"fn", &.{ *definition, *const definition, py.PyObject });
 
             if (sig.selfParam == null and @typeInfo(definition).fields.len > 0) {
@@ -324,7 +324,7 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
         /// Note: tp_del is deprecated in favour of tp_finalize.
         ///
         /// See https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_finalize.
-        fn tp_finalize(pyself: *ffi.PyObject) callconv(.C) void {
+        fn tp_finalize(pyself: *ffi.PyObject) callconv(.c) void {
             // The finalize slot shouldn't alter any exception that is currently set.
             // So it's recommended we save the existing one (if any) and restore it afterwards.
             // NOTE(ngates): we may want to move this logic to PyErr if it happens more?
@@ -339,7 +339,7 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
             ffi.PyErr_Restore(error_type, error_value, error_tb);
         }
 
-        fn bf_getbuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.C) c_int {
+        fn bf_getbuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer, flags: c_int) callconv(.c) c_int {
             // In case of any error, the view.obj field must be set to NULL.
             view.obj = null;
 
@@ -348,24 +348,24 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
             return 0;
         }
 
-        fn bf_releasebuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.C) void {
+        fn bf_releasebuffer(pyself: *ffi.PyObject, view: *ffi.Py_buffer) callconv(.c) void {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             return definition.__release_buffer__(&self.state, @ptrCast(view));
         }
 
-        fn sq_length(pyself: *ffi.PyObject) callconv(.C) isize {
+        fn sq_length(pyself: *ffi.PyObject) callconv(.c) isize {
             const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
             const result = definition.__len__(&self.state) catch return -1;
             return @as(isize, @intCast(result));
         }
 
-        fn tp_iter(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_iter(pyself: *ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const iterator = tramp.coerceError(root, definition.__iter__(&self.state)) catch return null;
             return (py.createOwned(root, iterator) catch return null).py;
         }
 
-        fn tp_iternext(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_iternext(pyself: *ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const optionalNext = tramp.coerceError(root, definition.__next__(&self.state)) catch return null;
             if (optionalNext) |next| {
@@ -374,25 +374,25 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
             return null;
         }
 
-        fn tp_str(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_str(pyself: *ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(root, definition.__str__(&self.state)) catch return null;
             return (py.createOwned(root, result) catch return null).py;
         }
 
-        fn tp_repr(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_repr(pyself: *ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(root, definition.__repr__(&self.state)) catch return null;
             return (py.createOwned(root, result) catch return null).py;
         }
 
-        fn tp_hash(pyself: *ffi.PyObject) callconv(.C) ffi.Py_hash_t {
+        fn tp_hash(pyself: *ffi.PyObject) callconv(.c) ffi.Py_hash_t {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(root, definition.__hash__(&self.state)) catch return -1;
             return @as(isize, @bitCast(result));
         }
 
-        fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn tp_call(pyself: *ffi.PyObject, pyargs: [*c]ffi.PyObject, pykwargs: [*c]ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const sig = funcs.parseSignature(root, "__call__", @typeInfo(@TypeOf(definition.__call__)).@"fn", &.{ *definition, *const definition, py.PyObject });
 
             const args = if (pyargs) |pa| py.PyTuple(root).from.unchecked(.{ .py = pa }) else null;
@@ -406,7 +406,7 @@ fn Slots(comptime root: type, comptime definition: type, comptime name: [:0]cons
             return (py.createOwned(root, result) catch return null).py;
         }
 
-        fn nb_bool(pyself: *ffi.PyObject) callconv(.C) c_int {
+        fn nb_bool(pyself: *ffi.PyObject) callconv(.c) c_int {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             const result = tramp.coerceError(root, definition.__bool__(&self.state)) catch return -1;
             return @intCast(@intFromBool(result));
@@ -475,7 +475,7 @@ fn Doc(comptime root: type, comptime definition: type, comptime name: [:0]const 
 }
 
 fn GC(comptime root: type, comptime definition: type) type {
-    const VisitProc = *const fn (*ffi.PyObject, *anyopaque) callconv(.C) c_int;
+    const VisitProc = *const fn (*ffi.PyObject, *anyopaque) callconv(.c) c_int;
 
     return struct {
         const needsGc = classNeedsGc(definition);
@@ -508,7 +508,7 @@ fn GC(comptime root: type, comptime definition: type) type {
             };
         }
 
-        fn tp_clear(pyself: *ffi.PyObject) callconv(.C) c_int {
+        fn tp_clear(pyself: *ffi.PyObject) callconv(.c) c_int {
             const self: *PyTypeStruct(definition) = @ptrCast(pyself);
             clearFields(self.state);
             return 0;
@@ -569,7 +569,7 @@ fn GC(comptime root: type, comptime definition: type) type {
         }
 
         /// Visit all members of pyself. We visit all PyObjects that this object references
-        fn tp_traverse(pyself: *ffi.PyObject, visit: VisitProc, arg: *anyopaque) callconv(.C) c_int {
+        fn tp_traverse(pyself: *ffi.PyObject, visit: VisitProc, arg: *anyopaque) callconv(.c) c_int {
             if (pyVisit(py.type_(root, pyself).obj.py, visit, arg)) |ret| {
                 return ret;
             }
@@ -741,7 +741,7 @@ fn Properties(comptime root: type, comptime definition: type) type {
 
                     if (@hasDecl(field.type, "get")) {
                         const Closure = struct {
-                            pub fn get(pyself: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.C) ?*ffi.PyObject {
+                            pub fn get(pyself: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.c) ?*ffi.PyObject {
                                 _ = closure;
 
                                 const self: *const PyTypeStruct(definition) = @ptrCast(pyself);
@@ -763,7 +763,7 @@ fn Properties(comptime root: type, comptime definition: type) type {
 
                     if (@hasDecl(field.type, "set")) {
                         const Closure = struct {
-                            pub fn set(pyself: [*c]ffi.PyObject, pyvalue: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.C) c_int {
+                            pub fn set(pyself: [*c]ffi.PyObject, pyvalue: [*c]ffi.PyObject, closure: ?*anyopaque) callconv(.c) c_int {
                                 _ = closure;
                                 const self: *PyTypeStruct(definition) = @ptrCast(pyself);
                                 const propself = &@field(self.state, field.name);
@@ -797,7 +797,7 @@ fn BinaryOperator(
     comptime op: []const u8,
 ) type {
     return struct {
-        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const func = @field(definition, op);
             const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
@@ -819,7 +819,7 @@ fn UnaryOperator(
     comptime op: []const u8,
 ) type {
     return struct {
-        fn call(pyself: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn call(pyself: *ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const func = @field(definition, op);
             const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
@@ -841,7 +841,7 @@ fn EqualsOperator(
 ) type {
     return struct {
         const equals = std.mem.eql(u8, op, "__eq__");
-        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.C) ?*ffi.PyObject {
+        fn call(pyself: *ffi.PyObject, pyother: *ffi.PyObject) callconv(.c) ?*ffi.PyObject {
             const func = @field(definition, op);
             const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
@@ -871,7 +871,7 @@ fn EqualsOperator(
 }
 
 fn RichCompare(comptime root: type, comptime definition: type) type {
-    const BinaryFunc = *const fn (*ffi.PyObject, *ffi.PyObject) callconv(.C) ?*ffi.PyObject;
+    const BinaryFunc = *const fn (*ffi.PyObject, *ffi.PyObject) callconv(.c) ?*ffi.PyObject;
     const errorMsg =
         \\Class cannot define both __richcompare__ and
         \\ any of __lt__, __le__, __eq__, __ne__, __gt__, __ge__."
@@ -897,7 +897,7 @@ fn RichCompare(comptime root: type, comptime definition: type) type {
 
         const compare = if (@hasDecl(definition, richCmpName)) richCompare else builtCompare;
 
-        fn richCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
+        fn richCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.c) ?*ffi.PyObject {
             const func = definition.__richcompare__;
             const typeInfo = @typeInfo(@TypeOf(func)).@"fn";
 
@@ -916,7 +916,7 @@ fn RichCompare(comptime root: type, comptime definition: type) type {
             return (py.createOwned(root, result) catch return null).py;
         }
 
-        fn builtCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.C) ?*ffi.PyObject {
+        fn builtCompare(pyself: *ffi.PyObject, pyother: *ffi.PyObject, op: c_int) callconv(.c) ?*ffi.PyObject {
             const compFunc = compareFuncs[@intCast(op)];
             if (compFunc) |func| {
                 return func(pyself, pyother);

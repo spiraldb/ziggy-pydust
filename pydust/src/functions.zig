@@ -267,7 +267,7 @@ pub fn wrap(comptime root: type, comptime definition: type, comptime func: anyty
             pyself: *ffi.PyObject,
             pyargs: [*]ffi.PyObject,
             nargs: ffi.Py_ssize_t,
-        ) callconv(.C) ?*ffi.PyObject {
+        ) callconv(.c) ?*ffi.PyObject {
             const resultObject = internal(
                 .{ .py = pyself },
                 @as([*]py.PyObject, @ptrCast(pyargs))[0..@intCast(nargs)],
@@ -293,7 +293,7 @@ pub fn wrap(comptime root: type, comptime definition: type, comptime func: anyty
             pyargs: [*]ffi.PyObject,
             nargs: ffi.Py_ssize_t,
             kwnames: ?*ffi.PyObject,
-        ) callconv(.C) ?*ffi.PyObject {
+        ) callconv(.c) ?*ffi.PyObject {
             const allArgs: [*]py.PyObject = @ptrCast(pyargs);
             const args = allArgs[0..@intCast(nargs)];
 
@@ -435,7 +435,7 @@ pub fn Methods(comptime root: type, comptime definition: type) type {
 /// Format is `funcName($self, arg0Name...)\n--\n\n`.
 /// Self arg can be named however but must start with `$`
 pub fn textSignature(comptime root: type, comptime sig: Signature(root)) [sigSize(root, sig):0]u8 {
-    const args = sigArgs(root, sig) catch @compileError("Too many arguments");
+    const args = sigArgs(root, sig);
     const argSize = sigSize(root, sig);
 
     var buffer: [argSize:0]u8 = undefined;
@@ -460,7 +460,7 @@ fn writeTextSig(name: []const u8, args: []const []const u8, buffer: [:0]u8) !voi
 }
 
 fn sigSize(comptime root: type, comptime sig: Signature(root)) usize {
-    const args = sigArgs(root, sig) catch @compileError("Too many arguments");
+    const args = sigArgs(root, sig);
     var argSize: u64 = sig.name.len;
     // Count the size of the output string
     for (args) |arg| {
@@ -477,66 +477,68 @@ fn sigSize(comptime root: type, comptime sig: Signature(root)) usize {
     return argSize + 7;
 }
 
-fn sigArgs(comptime root: type, comptime sig: Signature(root)) ![]const []const u8 {
-    // 5 = self + "/" + "*" + "*args" + "**kwargs"
-    const ArgBuf = std.BoundedArray([]const u8, sig.nargs + sig.nkwargs + 5);
-    var sigargs = ArgBuf.init(0) catch @compileError("OOM");
-    if (sig.selfParam) |self| {
-        if (self == @TypeOf(py.PyObject)) {
-            try sigargs.append("$cls");
-        } else {
-            try sigargs.append("$self");
-        }
-    }
-
-    if (sig.argsParam) |Args| {
-        const fields = @typeInfo(Args).@"struct".fields;
-
-        var inKwargs = false;
-        var inVarargs = false;
-        for (fields) |field| {
-            if (field.defaultValue()) |def| {
-                // We have a kwarg
-                if (!inKwargs) {
-                    inKwargs = true;
-                    // Marker for end of positional only args
-                    try sigargs.append("/");
-                    // Marker for start of keyword only args
-                    try sigargs.append("*");
-                }
-
-                try sigargs.append(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, &def) }));
-            } else if (field.type == py.Args()) {
-                if (!inVarargs) {
-                    inVarargs = true;
-                    // Marker for end of positional only args
-                    try sigargs.append("/");
-                }
-                try sigargs.append(std.fmt.comptimePrint("*{s}", .{field.name}));
-            } else if (field.type == py.Kwargs()) {
-                if (!inKwargs) {
-                    inKwargs = true;
-                    if (!inVarargs) {
-                        // Marker for end of positional only args unless varargs (*args) is present
-                        try sigargs.append("/");
-                    }
-                    // Note: we don't mark the start of keyword only args since that's implied by **.
-                    // See https://bugs.python.org/issue2613
-                }
-                try sigargs.append(std.fmt.comptimePrint("**{s}", .{field.name}));
+fn sigArgs(comptime root: type, comptime sig: Signature(root)) []const []const u8 {
+    return comptime blk: {
+        // 5 = self + "/" + "*" + "*args" + "**kwargs"
+        var arr: [sig.nargs + sig.nkwargs + 5][]const u8 = undefined;
+        var sigargs: std.ArrayList([]const u8) = .initBuffer(&arr);
+        if (sig.selfParam) |self| {
+            if (self == @TypeOf(py.PyObject)) {
+                sigargs.appendAssumeCapacity("$cls");
             } else {
-                // We have an arg
-                try sigargs.append(field.name);
+                sigargs.appendAssumeCapacity("$self");
             }
         }
 
-        if (!inKwargs) {
-            // Always mark end of positional only args
-            try sigargs.append("/");
-        }
-    }
+        if (sig.argsParam) |Args| {
+            const fields = @typeInfo(Args).@"struct".fields;
 
-    return sigargs.constSlice();
+            var inKwargs = false;
+            var inVarargs = false;
+            for (fields) |field| {
+                if (field.defaultValue()) |def| {
+                    // We have a kwarg
+                    if (!inKwargs) {
+                        inKwargs = true;
+                        // Marker for end of positional only args
+                        sigargs.appendAssumeCapacity("/");
+                        // Marker for start of keyword only args
+                        sigargs.appendAssumeCapacity("*");
+                    }
+
+                    sigargs.appendAssumeCapacity(std.fmt.comptimePrint("{s}={s}", .{ field.name, valueToStr(field.type, &def) }));
+                } else if (field.type == py.Args()) {
+                    if (!inVarargs) {
+                        inVarargs = true;
+                        // Marker for end of positional only args
+                        sigargs.appendAssumeCapacity("/");
+                    }
+                    sigargs.appendAssumeCapacity(std.fmt.comptimePrint("*{s}", .{field.name}));
+                } else if (field.type == py.Kwargs()) {
+                    if (!inKwargs) {
+                        inKwargs = true;
+                        if (!inVarargs) {
+                            // Marker for end of positional only args unless varargs (*args) is present
+                            sigargs.appendAssumeCapacity("/");
+                        }
+                        // Note: we don't mark the start of keyword only args since that's implied by **.
+                        // See https://bugs.python.org/issue2613
+                    }
+                    sigargs.appendAssumeCapacity(std.fmt.comptimePrint("**{s}", .{field.name}));
+                } else {
+                    // We have an arg
+                    sigargs.appendAssumeCapacity(field.name);
+                }
+            }
+
+            if (!inKwargs) {
+                // Always mark end of positional only args
+                sigargs.appendAssumeCapacity("/");
+            }
+        }
+        const ret = sigargs.items;
+        break :blk ret;
+    };
 }
 
 fn valueToStr(comptime T: type, value: *const anyopaque) []const u8 {

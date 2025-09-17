@@ -177,7 +177,7 @@ pub fn rootmodule(comptime definition: type) void {
 
     // For root modules, we export a PyInit__name function per CPython API.
     const Closure = struct {
-        pub fn init() callconv(.C) ?*ffi.PyObject {
+        pub fn init() callconv(.c) ?*ffi.PyObject {
             const obj = @call(.always_inline, moddef.init, .{}) catch return null;
             return obj.py;
         }

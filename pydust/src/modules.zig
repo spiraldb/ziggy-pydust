@@ -42,7 +42,7 @@ pub fn Module(comptime root: type, comptime name: [:0]const u8, comptime definit
         };
 
         const Fns = struct {
-            pub fn free(module: ?*anyopaque) callconv(.C) void {
+            pub fn free(module: ?*anyopaque) callconv(.c) void {
                 const mod: py.PyModule(root) = .{ .obj = .{ .py = @alignCast(@ptrCast(module)) } };
                 const state = mod.getState(definition) catch return;
                 state.__del__();
@@ -102,13 +102,13 @@ fn Slots(comptime root: type, comptime definition: type) type {
             break :blk slots_;
         };
 
-        fn custom_mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
+        fn custom_mod_exec(pymodule: *ffi.PyObject) callconv(.c) c_int {
             const mod: py.PyModule = .{ .obj = .{ .py = pymodule } };
             tramp.coerceError(root, definition.__exec__(mod)) catch return -1;
             return 0;
         }
 
-        fn mod_exec(pymodule: *ffi.PyObject) callconv(.C) c_int {
+        fn mod_exec(pymodule: *ffi.PyObject) callconv(.c) c_int {
             tramp.coerceError(root, mod_exec_internal(.{ .obj = .{ .py = pymodule } })) catch return -1;
             return 0;
         }
