@@ -36,11 +36,14 @@ pub fn build(b: *std.Build) void {
     translate_c.addIncludePath(.{ .cwd_relative = pythonInc });
 
     // We never build this lib, but we use it to generate docs.
-    const pydust_lib = b.addSharedLibrary(.{
+    const pydust_lib = b.addLibrary(.{
+        .linkage = .dynamic,
         .name = "pydust",
-        .root_source_file = b.path("pydust/src/pydust.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("pydust/src/pydust.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const pydust_lib_mod = b.createModule(.{ .root_source_file = b.path("./pyconf.dummy.zig") });
     pydust_lib_mod.addIncludePath(.{ .cwd_relative = pythonInc });
@@ -56,9 +59,11 @@ pub fn build(b: *std.Build) void {
     docs_step.dependOn(&pydust_docs.step);
 
     const main_tests = b.addTest(.{
-        .root_source_file = b.path("pydust/src/pydust.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("pydust/src/pydust.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     main_tests.linkLibC();
     main_tests.addLibraryPath(.{ .cwd_relative = pythonLib });
@@ -73,11 +78,14 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_main_tests.step);
 
     // Setup a library target to trick the Zig Language Server into providing completions for @import("pydust")
-    const example_lib = b.addSharedLibrary(.{
+    const example_lib = b.addLibrary(.{
         .name = "example",
-        .root_source_file = b.path("example/hello.zig"),
-        .target = target,
-        .optimize = optimize,
+        .linkage = .dynamic,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("example/hello.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     example_lib.linkLibC();
     example_lib.addLibraryPath(.{ .cwd_relative = pythonLib });
