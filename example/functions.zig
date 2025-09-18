@@ -21,7 +21,7 @@ pub fn double(args: struct { x: i64 }) i64 {
 // --8<-- [end:function]
 
 // --8<-- [start:kwargs]
-pub fn with_kwargs(args: struct { x: f64, y: f64 = 42.0 }) f64 {
+pub fn with_kwargs(args: struct { x: f64, y: f64 = 42.42 }) f64 {
     return if (args.x < args.y) args.x * 2 else args.y;
 }
 // --8<-- [end:kwargs]

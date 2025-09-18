@@ -33,7 +33,7 @@ def test_args_signature():
 
 def test_kwargs():
     assert functions.with_kwargs(10.0) == 20
-    assert functions.with_kwargs(100.0) == 42
+    assert functions.with_kwargs(100.0) == 42.42
     assert functions.with_kwargs(100.0, y=99.0) == 99
     with pytest.raises(TypeError, match="Unexpected kwarg 'k'"):
         functions.with_kwargs(1.0, y=9.0, k=-2)
@@ -46,7 +46,7 @@ def test_kw_signature():
     assert inspect.signature(functions.with_kwargs) == inspect.Signature(
         [
             inspect.Parameter("x", kind=inspect._ParameterKind.POSITIONAL_ONLY),
-            inspect.Parameter("y", kind=inspect._ParameterKind.KEYWORD_ONLY, default=42.0),
+            inspect.Parameter("y", kind=inspect._ParameterKind.KEYWORD_ONLY, default=42.42),
         ]
     )
 
