@@ -237,7 +237,7 @@ fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
         }
 
         pub fn raiseFmt(comptime fmt: [:0]const u8, args: anytype) PyError {
-            const message = try std.fmt.allocPrintZ(py.allocator, fmt, args);
+            const message = try std.fmt.allocPrintSentinel(py.allocator, fmt, args, 0);
             defer py.allocator.free(message);
             return raise(message);
         }
@@ -299,10 +299,11 @@ fn PyExc(comptime root: type, comptime name: [:0]const u8) type {
                     @memset(newlines, '\n');
 
                     // Setup a function we know will fail (with DivideByZero error)
-                    const code = try std.fmt.allocPrintZ(
+                    const code = try std.fmt.allocPrintSentinel(
                         py.allocator,
                         "{s}def {s}():\n    1/0\n",
                         .{ newlines, symbol_info.name },
+                        0,
                     );
                     defer py.allocator.free(code);
 
