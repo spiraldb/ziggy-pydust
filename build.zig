@@ -37,8 +37,8 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    pydust_lib.root_module.addIncludePath(.{ .cwd_relative = pythonInc });
     const pydust_lib_mod = b.createModule(.{ .root_source_file = b.path("./pyconf.dummy.zig") });
-    pydust_lib_mod.addIncludePath(.{ .cwd_relative = pythonInc });
     pydust_lib.root_module.addImport("pyconf", pydust_lib_mod);
 
     const pydust_docs = b.addInstallDirectory(.{
@@ -60,8 +60,8 @@ pub fn build(b: *std.Build) void {
     main_tests.addLibraryPath(.{ .cwd_relative = pythonLib });
     main_tests.linkSystemLibrary(pythonLibName);
     main_tests.addRPath(.{ .cwd_relative = pythonLib });
+    main_tests.root_module.addIncludePath(.{ .cwd_relative = pythonInc });
     const main_tests_mod = b.createModule(.{ .root_source_file = b.path("./pyconf.dummy.zig") });
-    main_tests_mod.addIncludePath(.{ .cwd_relative = pythonInc });
     main_tests.root_module.addImport("pyconf", main_tests_mod);
 
     const run_main_tests = b.addRunArtifact(main_tests);
