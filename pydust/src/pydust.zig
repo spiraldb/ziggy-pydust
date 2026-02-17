@@ -153,7 +153,7 @@ pub const ValueError = err.ValueError;
 pub const Warning = err.Warning;
 pub const WindowsError = err.WindowsError;
 pub const ZeroDivisionError = err.ZeroDivisionError;
-pub const ffi = @import("ffi");
+pub const ffi = @import("ffi.zig").ffi;
 pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 
@@ -177,7 +177,7 @@ pub fn rootmodule(comptime definition: type) void {
 
     // For root modules, we export a PyInit__name function per CPython API.
     const Closure = struct {
-        pub fn init() callconv(.C) ?*ffi.PyObject {
+        pub fn init() callconv(.c) ?*ffi.PyObject {
             const obj = @call(.always_inline, moddef.init, .{}) catch return null;
             return obj.py;
         }

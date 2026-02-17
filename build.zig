@@ -27,24 +27,18 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run library tests");
     const docs_step = b.step("docs", "Generate docs");
 
-    const translate_c = b.addTranslateC(.{
-        .root_source_file = b.path("pydust/src/ffi.h"),
-        .target = target,
-        .optimize = optimize,
-    });
-    translate_c.defineCMacro("Py_LIMITED_API", "0x030D0000");
-    translate_c.addIncludePath(.{ .cwd_relative = pythonInc });
-
     // We never build this lib, but we use it to generate docs.
-    const pydust_lib = b.addSharedLibrary(.{
+    const pydust_lib = b.addLibrary(.{
+        .linkage = .dynamic,
         .name = "pydust",
-        .root_source_file = b.path("pydust/src/pydust.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("pydust/src/pydust.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
+    pydust_lib.root_module.addIncludePath(.{ .cwd_relative = pythonInc });
     const pydust_lib_mod = b.createModule(.{ .root_source_file = b.path("./pyconf.dummy.zig") });
-    pydust_lib_mod.addIncludePath(.{ .cwd_relative = pythonInc });
-    pydust_lib.root_module.addImport("ffi", translate_c.createModule());
     pydust_lib.root_module.addImport("pyconf", pydust_lib_mod);
 
     const pydust_docs = b.addInstallDirectory(.{
@@ -56,28 +50,32 @@ pub fn build(b: *std.Build) void {
     docs_step.dependOn(&pydust_docs.step);
 
     const main_tests = b.addTest(.{
-        .root_source_file = b.path("pydust/src/pydust.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("pydust/src/pydust.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     main_tests.linkLibC();
     main_tests.addLibraryPath(.{ .cwd_relative = pythonLib });
     main_tests.linkSystemLibrary(pythonLibName);
     main_tests.addRPath(.{ .cwd_relative = pythonLib });
+    main_tests.root_module.addIncludePath(.{ .cwd_relative = pythonInc });
     const main_tests_mod = b.createModule(.{ .root_source_file = b.path("./pyconf.dummy.zig") });
-    main_tests_mod.addIncludePath(.{ .cwd_relative = pythonInc });
-    main_tests.root_module.addImport("ffi", translate_c.createModule());
     main_tests.root_module.addImport("pyconf", main_tests_mod);
 
     const run_main_tests = b.addRunArtifact(main_tests);
     test_step.dependOn(&run_main_tests.step);
 
     // Setup a library target to trick the Zig Language Server into providing completions for @import("pydust")
-    const example_lib = b.addSharedLibrary(.{
+    const example_lib = b.addLibrary(.{
         .name = "example",
-        .root_source_file = b.path("example/hello.zig"),
-        .target = target,
-        .optimize = optimize,
+        .linkage = .dynamic,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("example/hello.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     example_lib.linkLibC();
     example_lib.addLibraryPath(.{ .cwd_relative = pythonLib });
@@ -85,7 +83,6 @@ pub fn build(b: *std.Build) void {
     example_lib.addRPath(.{ .cwd_relative = pythonLib });
     const example_lib_mod = b.createModule(.{ .root_source_file = b.path("pydust/src/pydust.zig") });
     example_lib_mod.addIncludePath(.{ .cwd_relative = pythonInc });
-    example_lib.root_module.addImport("ffi", translate_c.createModule());
     example_lib.root_module.addImport("pydust", example_lib_mod);
     example_lib.root_module.addImport(
         "pyconf",

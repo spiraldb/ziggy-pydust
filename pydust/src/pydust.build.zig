@@ -25,7 +25,7 @@ pub const PythonModuleOptions = struct {
     root_source_file: std.Build.LazyPath,
     limited_api: bool = true,
     target: std.Target.Query,
-    optimize: std.builtin.Mode,
+    optimize: std.builtin.OptimizeMode,
     main_pkg_path: ?std.Build.LazyPath = null,
     imports: []const std.Build.Module.Import = &.{},
 
@@ -131,9 +131,11 @@ pub const PydustStep = struct {
             pyconf.addOption([]const u8, "hexversion", hexversion);
 
             const testdebug = b.addTest(.{
-                .root_source_file = b.path(root),
-                .target = b.resolveTargetQuery(.{}),
-                .optimize = .Debug,
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path(root),
+                    .target = b.resolveTargetQuery(.{}),
+                    .optimize = .Debug,
+                }),
             });
             testdebug.root_module.addOptions("pyconf", pyconf);
             const testdebug_module = b.createModule(.{
@@ -168,22 +170,20 @@ pub const PydustStep = struct {
         pyconf.addOption([]const u8, "hexversion", self.hexversion);
 
         // Configure and install the Python module shared library
-        const lib = b.addSharedLibrary(.{
+        const lib = b.addLibrary(.{
             .name = short_name,
-            .root_source_file = options.root_source_file,
-            .target = b.resolveTargetQuery(options.target),
-            .optimize = options.optimize,
-            //.main_pkg_path = options.main_pkg_path,
+            .linkage = .dynamic,
+            .root_module = b.createModule(.{
+                .root_source_file = options.root_source_file,
+                .target = b.resolveTargetQuery(options.target),
+                .optimize = options.optimize,
+                //.main_pkg_path = options.main_pkg_path,
+            }),
         });
         lib.root_module.addOptions("pyconf", pyconf);
-        const translate_c = self.addTranslateC(options);
-        translate_c.addIncludePath(b.path(self.python_include_dir));
         const lib_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
-            .imports = &.{
-                .{ .name = "pyconf", .module = pyconf.createModule() },
-                .{ .name = "ffi", .module = translate_c.createModule() },
-            },
+            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
         });
         lib_module.addIncludePath(b.path(self.python_include_dir));
         lib.root_module.addImport("pydust", lib_module);
@@ -214,18 +214,17 @@ pub const PydustStep = struct {
 
         // Configure a test runner for the module
         const libtest = b.addTest(.{
-            .root_source_file = options.root_source_file,
-            // .main_pkg_path = options.main_pkg_path,
-            .target = b.resolveTargetQuery(options.target),
-            .optimize = options.optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = options.root_source_file,
+                // .main_pkg_path = options.main_pkg_path,
+                .target = b.resolveTargetQuery(options.target),
+                .optimize = options.optimize,
+            }),
         });
         libtest.root_module.addOptions("pyconf", pyconf);
         const libtest_module = b.createModule(.{
             .root_source_file = b.path(self.pydust_source_file),
-            .imports = &.{
-                .{ .name = "pyconf", .module = pyconf.createModule() },
-                .{ .name = "ffi", .module = translate_c.createModule() },
-            },
+            .imports = &.{.{ .name = "pyconf", .module = pyconf.createModule() }},
         });
         libtest_module.addIncludePath(b.path(self.python_include_dir));
         libtest.root_module.addImport("pydust", libtest_module);
@@ -289,18 +288,6 @@ pub const PydustStep = struct {
 
     fn pythonOutput(self: *PydustStep, code: []const u8) ![]const u8 {
         return getPythonOutput(self.allocator, self.python_exe, code);
-    }
-
-    fn addTranslateC(self: PydustStep, options: PythonModuleOptions) *std.Build.Step.TranslateC {
-        const b = self.owner;
-        const translate_c = b.addTranslateC(.{
-            .root_source_file = b.path("pydust/src/ffi.h"),
-            .target = b.resolveTargetQuery(options.target),
-            .optimize = options.optimize,
-        });
-        if (options.limited_api)
-            translate_c.defineCMacro("Py_LIMITED_API", self.hexversion);
-        return translate_c;
     }
 };
 
