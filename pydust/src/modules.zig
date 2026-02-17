@@ -12,7 +12,7 @@
 
 const std = @import("std");
 const State = @import("discovery.zig").State;
-const ffi = @import("ffi");
+const ffi = @import("ffi.zig").ffi;
 const py = @import("pydust.zig");
 const PyError = py.PyError;
 const Attributes = @import("attributes.zig").Attributes;

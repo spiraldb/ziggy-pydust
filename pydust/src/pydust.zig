@@ -153,7 +153,7 @@ pub const ValueError = err.ValueError;
 pub const Warning = err.Warning;
 pub const WindowsError = err.WindowsError;
 pub const ZeroDivisionError = err.ZeroDivisionError;
-pub const ffi = @import("ffi");
+pub const ffi = @import("ffi.zig").ffi;
 pub const PyError = @import("errors.zig").PyError;
 pub const allocator: std.mem.Allocator = mem.PyMemAllocator.allocator();
 

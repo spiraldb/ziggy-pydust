@@ -27,14 +27,6 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run library tests");
     const docs_step = b.step("docs", "Generate docs");
 
-    const translate_c = b.addTranslateC(.{
-        .root_source_file = b.path("pydust/src/ffi.h"),
-        .target = target,
-        .optimize = optimize,
-    });
-    translate_c.defineCMacro("Py_LIMITED_API", "0x030D0000");
-    translate_c.addIncludePath(.{ .cwd_relative = pythonInc });
-
     // We never build this lib, but we use it to generate docs.
     const pydust_lib = b.addLibrary(.{
         .linkage = .dynamic,
@@ -45,9 +37,8 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    pydust_lib.root_module.addIncludePath(.{ .cwd_relative = pythonInc });
     const pydust_lib_mod = b.createModule(.{ .root_source_file = b.path("./pyconf.dummy.zig") });
-    pydust_lib_mod.addIncludePath(.{ .cwd_relative = pythonInc });
-    pydust_lib.root_module.addImport("ffi", translate_c.createModule());
     pydust_lib.root_module.addImport("pyconf", pydust_lib_mod);
 
     const pydust_docs = b.addInstallDirectory(.{
@@ -69,9 +60,8 @@ pub fn build(b: *std.Build) void {
     main_tests.addLibraryPath(.{ .cwd_relative = pythonLib });
     main_tests.linkSystemLibrary(pythonLibName);
     main_tests.addRPath(.{ .cwd_relative = pythonLib });
+    main_tests.root_module.addIncludePath(.{ .cwd_relative = pythonInc });
     const main_tests_mod = b.createModule(.{ .root_source_file = b.path("./pyconf.dummy.zig") });
-    main_tests_mod.addIncludePath(.{ .cwd_relative = pythonInc });
-    main_tests.root_module.addImport("ffi", translate_c.createModule());
     main_tests.root_module.addImport("pyconf", main_tests_mod);
 
     const run_main_tests = b.addRunArtifact(main_tests);
@@ -93,7 +83,6 @@ pub fn build(b: *std.Build) void {
     example_lib.addRPath(.{ .cwd_relative = pythonLib });
     const example_lib_mod = b.createModule(.{ .root_source_file = b.path("pydust/src/pydust.zig") });
     example_lib_mod.addIncludePath(.{ .cwd_relative = pythonInc });
-    example_lib.root_module.addImport("ffi", translate_c.createModule());
     example_lib.root_module.addImport("pydust", example_lib_mod);
     example_lib.root_module.addImport(
         "pyconf",

@@ -13,7 +13,7 @@
 // https://docs.python.org/3/extending/newtypes_tutorial.html
 
 const std = @import("std");
-const ffi = @import("ffi");
+const ffi = @import("ffi.zig").ffi;
 const py = @import("pydust.zig");
 const discovery = @import("discovery.zig");
 const Attributes = @import("attributes.zig").Attributes;
